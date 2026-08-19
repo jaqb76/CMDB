@@ -67,6 +67,9 @@ h2 { font-size: 15px; margin: 0 0 12px; text-transform: uppercase; letter-spacin
 .panel {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  /* Szerokie tabele (oprogramowanie, uslugi) przewijaja sie w obrebie panelu,
+     zamiast rozpychac cala strone w poziomie. */
+  overflow-x: auto;
 }
 .two-col { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -95,7 +98,6 @@ h2 { font-size: 15px; margin: 0 0 12px; text-transform: uppercase; letter-spacin
 .table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .table tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .table tbody tr.row-active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.panel .table { display: block; overflow-x: auto; white-space: normal; }
 
 /* --- formularze --- */
 input, select, textarea {
