@@ -145,12 +145,19 @@ def summarize(payload: dict) -> dict:
 
 
 def _primary_ip(payload: dict) -> str | None:
-    for iface in (payload.get("network") or {}).get("interfaces") or []:
-        if not iface.get("is_up", True):
-            continue
-        for addr in iface.get("ip_addresses") or []:
-            if addr and not str(addr).startswith(("127.", "169.254.", "::1")):
-                return str(addr)
+    """Adres glowny: najpierw z interfejsu w stanie UP, potem z dowolnego.
+
+    Druga tura ma znaczenie dla maszyn wirtualnych i kontenerow, gdzie
+    interfejs bywa raportowany jako 'unknown' mimo dzialajacej sieci.
+    """
+    interfaces = (payload.get("network") or {}).get("interfaces") or []
+    for require_up in (True, False):
+        for iface in interfaces:
+            if require_up and not iface.get("is_up", True):
+                continue
+            for addr in iface.get("ip_addresses") or []:
+                if addr and not str(addr).startswith(("127.", "169.254.", "::1", "fe80")):
+                    return str(addr)
     return None
 
 

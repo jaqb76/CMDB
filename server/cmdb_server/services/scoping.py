@@ -26,7 +26,7 @@ class TenantContext:
 
 
 def scoped(stmt: Select, model, ctx: TenantContext) -> Select:
-    """Dokleja filtr tenant_id. Superadmin ogląda dane wskazanej firmy,
+    """Dokleja filtr tenant_id. Superadmin oglada dane wskazanej firmy,
     nie wszystkich naraz - podglad "wszystkiego" wymaga jawnej petli po firmach."""
     return stmt.where(model.tenant_id == ctx.tenant_id)
 

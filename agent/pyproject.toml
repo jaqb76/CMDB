@@ -1,0 +1,17 @@
+[project]
+name = "cmdb-agent"
+version = "0.1.0"
+description = "Agent inwentaryzacyjny CMDB - zbiera dane o sprzecie, oprogramowaniu i uzytkownikach"
+requires-python = ">=3.9"
+# Swiadomie zero zaleznosci: agent ma dzialac na kazdej maszynie klienta
+# i pakowac sie do jednego pliku .exe bez ciagniecia bibliotek.
+dependencies = []
+
+[project.scripts]
+cmdb-agent = "cmdb_agent.main:main"
+
+[tool.setuptools]
+packages = ["cmdb_agent", "cmdb_agent.collectors"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

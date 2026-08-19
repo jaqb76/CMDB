@@ -13,6 +13,7 @@ from .api import agent as agent_api
 from .api import ui as ui_api
 from .config import get_settings
 from .db import init_db
+from .middleware import GzipRequestMiddleware
 from .services.auth import LoginRequired
 
 log = logging.getLogger("cmdb")
@@ -47,6 +48,9 @@ def create_app() -> FastAPI:
 
     app.include_router(agent_api.router)
     app.include_router(ui_api.router)
+
+    # Agenci wysylaja raporty spakowane gzipem - rozpakowujemy z limitem.
+    app.add_middleware(GzipRequestMiddleware, max_bytes=settings.max_report_bytes)
 
     @app.middleware("http")
     async def guard_and_harden(request: Request, call_next):
