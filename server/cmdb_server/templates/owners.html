@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Opiekunowie - CMDB{% endblock %}
+{% block content %}
+<h1>Opiekunowie zasobow</h1>
+<p class="muted">Kazda maszyna moze miec przypisana osobe odpowiedzialna.</p>
+
+<div class="two-col">
+  <section class="panel">
+    <h2>Lista</h2>
+    {% if owners %}
+    <table class="table">
+      <thead><tr><th>Osoba</th><th>Kontakt</th><th>Dzial</th><th>Maszyn</th><th></th></tr></thead>
+      <tbody>
+      {% for o in owners %}
+        <tr>
+          <td class="strong">{{ o.full_name }}</td>
+          <td class="small">{{ o.email }}{% if o.phone %}<div class="muted">{{ o.phone }}</div>{% endif %}</td>
+          <td class="small">{{ o.department or '—' }}</td>
+          <td><a href="/assets?owner={{ o.id }}">{{ counts.get(o.id, 0) }}</a></td>
+          <td>
+            {% if ctx.can_write %}
+            <form method="post" action="/owners/{{ o.id }}/delete" class="inline-form"
+                  data-confirm="Usunac opiekuna {{ o.full_name }}? Maszyny zostana bez przypisania.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-small btn-danger">Usun</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">Nie dodano jeszcze zadnego opiekuna.</p>{% endif %}
+  </section>
+
+  {% if ctx.can_write %}
+  <section class="panel">
+    <h2>Dodaj opiekuna</h2>
+    <form method="post" action="/owners" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="full_name">Imie i nazwisko</label>
+      <input id="full_name" name="full_name" required maxlength="200">
+      <label for="email">E-mail</label>
+      <input id="email" name="email" type="email" required maxlength="255">
+      <label for="phone">Telefon</label>
+      <input id="phone" name="phone" maxlength="64">
+      <label for="department">Dzial</label>
+      <input id="department" name="department" maxlength="200">
+      <label for="notes">Notatki</label>
+      <textarea id="notes" name="notes" rows="3"></textarea>
+      <button type="submit" class="btn btn-primary">Dodaj</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

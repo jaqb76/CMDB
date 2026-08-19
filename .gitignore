@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Baza i konfiguracja lokalna
+*.db
+*.sqlite3
+.env
+*.env.local
+
+# Agent: stan i poswiadczenia (NIGDY do repozytorium)
+agent-state.json
+agent/dist/
+agent/build/
+*.spec
+
+# Certyfikaty
+*.pem
+*.key
+*.crt
+!deploy/nginx/*.conf
+
+# Narzedzia
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CMDB{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><a href="/">CMDB</a></div>
+  <nav class="mainnav">
+    <a href="/">Pulpit</a>
+    <a href="/assets">Maszyny</a>
+    <a href="/owners">Opiekunowie</a>
+    <a href="/tokens">Tokeny agentow</a>
+    <a href="/audit">Audyt</a>
+  </nav>
+  <div class="userbox">
+    {% if user.is_superadmin and all_tenants %}
+      <form method="get" action="/switch-tenant" class="inline-form">
+        <select name="slug" class="tenant-select" data-autosubmit>
+          {% for t in all_tenants %}
+            <option value="{{ t.slug }}" {% if ctx and t.id == ctx.tenant_id %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-small">Zmien</button>
+      </form>
+    {% elif ctx %}
+      <span class="tenant-name">{{ ctx.tenant_slug }}</span>
+    {% endif %}
+    <span class="user-email">{{ user.email }}</span>
+    <form method="post" action="/logout" class="inline-form">
+      <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
+    </form>
+  </div>
+</header>
+
+<main class="content">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  CMDB {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wylacznie dla Twojej firmy
+</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

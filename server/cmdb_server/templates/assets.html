@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Maszyny - CMDB{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Maszyny <span class="muted">({{ assets | length }})</span></h1>
+  <a class="btn btn-small" href="/export/assets.json">Eksport JSON</a>
+</div>
+
+<form method="get" action="/assets" class="filters">
+  <input type="search" name="q" value="{{ filters.q }}" placeholder="hostname, IP, numer seryjny...">
+  <select name="os_family">
+    <option value="">wszystkie systemy</option>
+    {% for f in families %}
+      <option value="{{ f }}" {% if filters.os_family == f %}selected{% endif %}>{{ f }}</option>
+    {% endfor %}
+  </select>
+  <select name="owner">
+    <option value="">kazdy opiekun</option>
+    <option value="none" {% if filters.owner == 'none' %}selected{% endif %}>bez opiekuna</option>
+    {% for o in owners %}
+      <option value="{{ o.id }}" {% if filters.owner == o.id %}selected{% endif %}>{{ o.full_name }}</option>
+    {% endfor %}
+  </select>
+  <select name="state">
+    <option value="">dowolny stan</option>
+    <option value="online" {% if filters.state == 'online' %}selected{% endif %}>aktywne</option>
+    <option value="stale" {% if filters.state == 'stale' %}selected{% endif %}>bez kontaktu</option>
+  </select>
+  <button type="submit" class="btn btn-primary btn-small">Filtruj</button>
+  <a class="btn btn-small btn-ghost" href="/assets">Wyczysc</a>
+</form>
+
+{% if assets %}
+<table class="table table-assets">
+  <thead>
+    <tr>
+      <th>Maszyna</th><th>System</th><th>Sprzet</th><th>IP</th>
+      <th>Opiekun</th><th>Rola</th><th>Ostatni kontakt</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for a in assets %}
+    {% set f = a.facts or {} %}
+    <tr>
+      <td>
+        <a class="strong" href="/assets/{{ a.id }}">{{ a.hostname }}</a>
+        {% if a.serial_number %}<div class="muted small">s/n {{ a.serial_number }}</div>{% endif %}
+      </td>
+      <td>
+        {{ a.os_name or a.os_family or '-' }}
+        {% if a.os_version %}<div class="muted small">{{ a.os_version }}</div>{% endif %}
+      </td>
+      <td class="small">
+        {% if f.cpu_threads %}{{ f.cpu_threads }} vCPU{% endif %}
+        {% if f.memory_gb %} &middot; {{ f.memory_gb }} GB RAM{% endif %}
+        {% if f.storage_gb %} &middot; {{ f.storage_gb }} GB{% endif %}
+      </td>
+      <td class="small">{{ a.primary_ip or '-' }}</td>
+      <td>
+        {% if a.owner %}{{ a.owner.full_name }}
+        {% else %}<span class="badge badge-warn">brak</span>{% endif %}
+      </td>
+      <td class="small">{{ a.role_label or '—' }}</td>
+      <td class="small">
+        {{ a.last_seen | ago }}
+        {% if f.collector_errors %}<span class="badge badge-warn" title="bledy kolektorow">{{ f.collector_errors }}</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="muted">Brak maszyn spelniajacych kryteria.</p>
+{% endif %}
+{% endblock %}

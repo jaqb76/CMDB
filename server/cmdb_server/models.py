@@ -1,0 +1,273 @@
+"""Model danych CMDB.
+
+Zasada: wszystko co przysyla agent ladujemy w JSON (payload snapshotu).
+Do kolumn relacyjnych wyciagamy tylko to, po czym filtrujemy/sortujemy w UI.
+Kazda tabela z danymi klienta niesie tenant_id - izolacja firm jest wymuszana
+na poziomie zapytan (patrz services/scoping.py).
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+# JSONB na PostgreSQL, zwykly JSON na SQLite (dev/testy).
+JSONType = JSON().with_variant(JSONB(), "postgresql")
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def as_utc(value: datetime | None) -> datetime | None:
+    """Normalizuje date odczytana z bazy do UTC-aware.
+
+    PostgreSQL z DateTime(timezone=True) zwraca daty ze strefa, SQLite bez -
+    porownanie jednych z drugimi rzuca TypeError. Wszystkie porownania w kodzie
+    Pythona przepuszczamy przez ta funkcje.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def new_id() -> str:
+    return str(uuid.uuid4())
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Tenant(Base):
+    """Firma / klient. Korzen izolacji danych."""
+
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")
+
+
+class PortalUser(Base):
+    """Uzytkownik panelu WWW. Zwykly user widzi tylko swoja firme."""
+
+    __tablename__ = "portal_users"
+    __table_args__ = (UniqueConstraint("email", name="uq_portal_user_email"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str | None] = mapped_column(String(200))
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # admin  - moze zarzadzac tokenami, opiekunami i uzytkownikami swojej firmy
+    # viewer - tylko odczyt
+    role: Mapped[str] = mapped_column(String(20), default="viewer", nullable=False)
+    # superadmin nie nalezy do zadnej firmy i widzi wszystkie
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    tenant: Mapped[Tenant | None] = relationship()
+
+
+class EnrollmentToken(Base):
+    """Token rejestracyjny wydawany firmie.
+
+    Agent uzywa go WYLACZNIE przy pierwszym uruchomieniu (enrollment), po czym
+    dostaje wlasne, indywidualne poswiadczenie (AgentCredential). Dzieki temu
+    wyciek z jednej maszyny nie kompromituje calej firmy.
+    W bazie trzymamy wylacznie skrot SHA-256 - wartosc jawna pokazujemy raz.
+    """
+
+    __tablename__ = "enrollment_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    use_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+
+    tenant: Mapped[Tenant] = relationship()
+
+    @property
+    def is_usable(self) -> bool:
+        if self.revoked_at is not None:
+            return False
+        expires_at = as_utc(self.expires_at)
+        if expires_at is not None and expires_at < utcnow():
+            return False
+        return True
+
+
+class Owner(Base):
+    """Opiekun / wlasciciel zasobu po stronie firmy."""
+
+    __tablename__ = "owners"
+    __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_owner_tenant_email"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(64))
+    department: Mapped[str | None] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    tenant: Mapped[Tenant] = relationship()
+
+
+class Asset(Base):
+    """Maszyna (serwer/stacja). Kolumny = pola po ktorych filtrujemy w UI."""
+
+    __tablename__ = "assets"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "machine_id", name="uq_asset_tenant_machine"),
+        Index("ix_asset_tenant_lastseen", "tenant_id", "last_seen"),
+        Index("ix_asset_tenant_hostname", "tenant_id", "hostname"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Stabilny identyfikator maszyny liczony przez agenta (UUID plyty / machine-id).
+    machine_id: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    hostname: Mapped[str] = mapped_column(String(255), nullable=False)
+    fqdn: Mapped[str | None] = mapped_column(String(255))
+    domain: Mapped[str | None] = mapped_column(String(255))
+    os_family: Mapped[str | None] = mapped_column(String(32), index=True)
+    os_name: Mapped[str | None] = mapped_column(String(200))
+    os_version: Mapped[str | None] = mapped_column(String(100))
+    manufacturer: Mapped[str | None] = mapped_column(String(200))
+    model: Mapped[str | None] = mapped_column(String(200))
+    serial_number: Mapped[str | None] = mapped_column(String(128), index=True)
+    primary_ip: Mapped[str | None] = mapped_column(String(64))
+    agent_version: Mapped[str | None] = mapped_column(String(32))
+
+    owner_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Rola maszyny wpisywana recznie w panelu (np. "serwer plikow", "laptop ksiegowosc").
+    role_label: Mapped[str | None] = mapped_column(String(200))
+    tags: Mapped[list | None] = mapped_column(JSONType, default=list)
+
+    # Skrocone podsumowanie do listy (cpu/ram/dyski) - zeby nie czytac calego payloadu.
+    facts: Mapped[dict | None] = mapped_column(JSONType, default=dict)
+
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_change_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    tenant: Mapped[Tenant] = relationship(back_populates="assets")
+    owner: Mapped[Owner | None] = relationship()
+    snapshots: Mapped[list["InventorySnapshot"]] = relationship(
+        back_populates="asset", cascade="all, delete-orphan", order_by="InventorySnapshot.collected_at.desc()"
+    )
+
+
+class AgentCredential(Base):
+    """Indywidualne poswiadczenie agenta wydane po enrollmencie."""
+
+    __tablename__ = "agent_credentials"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    enrollment_token_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("enrollment_tokens.id", ondelete="SET NULL")
+    )
+    prefix: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_ip: Mapped[str | None] = mapped_column(String(64))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    asset: Mapped[Asset] = relationship()
+
+    @property
+    def is_usable(self) -> bool:
+        return self.revoked_at is None
+
+
+class InventorySnapshot(Base):
+    """Pelny raport agenta w postaci JSON - zrodlo prawdy o stanie maszyny."""
+
+    __tablename__ = "inventory_snapshots"
+    __table_args__ = (
+        Index("ix_snapshot_asset_collected", "asset_id", "collected_at"),
+        Index("ix_snapshot_tenant_collected", "tenant_id", "collected_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
+    )
+    schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Skrot payloadu - identyczny raport nie tworzy nowego wiersza.
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONType, nullable=False)
+
+    asset: Mapped[Asset] = relationship(back_populates="snapshots")
+
+
+class AuditLog(Base):
+    """Slad audytowy operacji wrazliwych (tokeny, logowania, zmiany wlasciciela)."""
+
+    __tablename__ = "audit_log"
+    __table_args__ = (Index("ix_audit_tenant_created", "tenant_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    actor: Mapped[str] = mapped_column(String(255), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target: Mapped[str | None] = mapped_column(String(255))
+    detail: Mapped[dict | None] = mapped_column(JSONType)
+    ip: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

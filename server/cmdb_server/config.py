@@ -1,0 +1,70 @@
+"""Konfiguracja serwera CMDB (zmienne srodowiskowe / plik .env)."""
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="CMDB_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    env: Literal["dev", "prod"] = "dev"
+
+    # Postgres w produkcji (JSONB), SQLite wystarcza do developmentu i testow.
+    database_url: str = "sqlite:///./cmdb.db"
+
+    # Klucz do podpisywania ciasteczek sesyjnych. W prod MUSI byc ustawiony.
+    secret_key: str = "dev-only-insecure-key-change-me"
+
+    session_cookie: str = "cmdb_session"
+    session_max_age: int = 8 * 3600
+
+    # Wymuszenie HTTPS (Secure cookie + HSTS + redirect). Wylaczane tylko w dev.
+    require_https: bool = False
+
+    # Ile snapshotow trzymamy per maszyna (0 = bez limitu).
+    snapshot_retention: int = 50
+
+    # Maksymalny rozmiar raportu przyjmowany od agenta.
+    max_report_bytes: int = 8 * 1024 * 1024
+
+    # Po ilu godzinach bez kontaktu maszyna jest oznaczana jako "stale".
+    stale_after_hours: int = 48
+
+    # Co ile sekund agent ma raportowac (serwer narzuca to w odpowiedzi).
+    report_interval_seconds: int = 3600
+
+    log_level: str = "INFO"
+
+    @field_validator("secret_key")
+    @classmethod
+    def _check_secret(cls, v: str, info) -> str:
+        return v
+
+    def validate_for_runtime(self) -> None:
+        """Twarde zabezpieczenia, ktore nie moga przejsc na produkcje."""
+        if self.env != "prod":
+            return
+        problems = []
+        if self.secret_key == "dev-only-insecure-key-change-me" or len(self.secret_key) < 32:
+            problems.append("CMDB_SECRET_KEY musi byc ustawiony i miec >= 32 znaki")
+        if not self.require_https:
+            problems.append("CMDB_REQUIRE_HTTPS musi byc wlaczone w trybie prod")
+        if self.database_url.startswith("sqlite"):
+            problems.append("SQLite nie jest wspierany w trybie prod - uzyj PostgreSQL")
+        if problems:
+            raise RuntimeError("Bledna konfiguracja produkcyjna: " + "; ".join(problems))
+
+    @property
+    def is_postgres(self) -> bool:
+        return self.database_url.startswith("postgresql")
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

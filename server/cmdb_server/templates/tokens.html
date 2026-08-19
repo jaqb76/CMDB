@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Tokeny agentow - CMDB{% endblock %}
+{% block content %}
+<h1>Tokeny agentow</h1>
+<p class="muted">
+  Token rejestracyjny jest wspolny dla firmy <b>{{ ctx.tenant_slug }}</b> i sluzy wylacznie
+  do pierwszego uruchomienia agenta. Po rejestracji kazda maszyna otrzymuje wlasne,
+  indywidualne poswiadczenie, ktore mozna uniewaznic osobno.
+</p>
+
+{% if issued %}
+<div class="alert alert-ok">
+  <div><b>Nowy token rejestracyjny — zapisz go teraz, nie pokazemy go ponownie:</b></div>
+  <code class="token-value">{{ issued }}</code>
+  <div class="small muted">Instalacja agenta: <code>cmdb-agent enroll --server https://cmdb.twojafirma.pl --token &lt;token&gt;</code></div>
+</div>
+{% endif %}
+
+<div class="two-col">
+  <section class="panel">
+    <h2>Wydane tokeny</h2>
+    {% if tokens %}
+    <table class="table">
+      <thead><tr><th>Nazwa</th><th>Prefiks</th><th>Uzyc</th><th>Waznosc</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for t in tokens %}
+        <tr>
+          <td class="strong">{{ t.name }}</td>
+          <td><code>{{ t.prefix }}</code></td>
+          <td>{{ t.use_count }}{% if t.last_used_at %}<div class="muted small">{{ t.last_used_at | ago }}</div>{% endif %}</td>
+          <td class="small">{{ (t.expires_at | dt) if t.expires_at else 'bezterminowo' }}</td>
+          <td>
+            {% if t.revoked_at %}<span class="badge badge-danger">wycofany</span>
+            {% elif not t.is_usable %}<span class="badge badge-warn">wygasl</span>
+            {% else %}<span class="badge badge-ok">aktywny</span>{% endif %}
+          </td>
+          <td>
+            {% if ctx.can_write and not t.revoked_at %}
+            <form method="post" action="/tokens/{{ t.id }}/revoke" class="inline-form"
+                  data-confirm="Wycofac token {{ t.name }}? Nowi agenci nie beda mogli sie zarejestrowac.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-small btn-danger">Wycofaj</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">Brak tokenow. Wygeneruj pierwszy, aby zarejestrowac agenta.</p>{% endif %}
+  </section>
+
+  {% if ctx.can_write %}
+  <section class="panel">
+    <h2>Wygeneruj token</h2>
+    <form method="post" action="/tokens" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="name">Nazwa / przeznaczenie</label>
+      <input id="name" name="name" required maxlength="200" placeholder="np. stacje robocze Warszawa">
+      <label for="expires_days">Waznosc (dni, 0 = bezterminowo)</label>
+      <input id="expires_days" name="expires_days" type="number" min="0" max="3650" value="90">
+      <button type="submit" class="btn btn-primary">Wygeneruj</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+
+<section class="panel">
+  <h2>Zarejestrowani agenci</h2>
+  {% if agents %}
+  <table class="table">
+    <thead><tr><th>Maszyna</th><th>Prefiks</th><th>Zarejestrowany</th><th>Ostatni kontakt</th><th>Z adresu</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for cred, asset in agents %}
+      <tr>
+        <td><a href="/assets/{{ asset.id }}">{{ asset.hostname }}</a></td>
+        <td><code>{{ cred.prefix }}</code></td>
+        <td class="small">{{ cred.created_at | dt }}</td>
+        <td class="small">{{ cred.last_used_at | ago }}</td>
+        <td class="small">{{ cred.last_used_ip or '—' }}</td>
+        <td>{% if cred.revoked_at %}<span class="badge badge-danger">wycofany</span>{% else %}<span class="badge badge-ok">aktywny</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">Zaden agent nie zostal jeszcze zarejestrowany.</p>{% endif %}
+</section>
+{% endblock %}

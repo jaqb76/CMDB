@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logowanie - CMDB</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-page">
+  <form method="post" action="/login" class="login-card">
+    <h1>CMDB</h1>
+    <p class="muted">Inwentaryzacja maszyn</p>
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+    <label for="email">E-mail</label>
+    <input id="email" type="email" name="email" required autocomplete="username" autofocus>
+    <label for="password">Haslo</label>
+    <input id="password" type="password" name="password" required autocomplete="current-password">
+    <button type="submit" class="btn btn-primary btn-block">Zaloguj</button>
+  </form>
+</body>
+</html>

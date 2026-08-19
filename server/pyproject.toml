@@ -1,0 +1,19 @@
+[project]
+name = "cmdb-server"
+version = "0.1.0"
+description = "Serwer CMDB - inwentaryzacja maszyn zbierana przez agentow, multi-tenant"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.scripts]
+cmdb-admin = "cmdb_server.cli:main"
+
+[tool.setuptools]
+packages = ["cmdb_server"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

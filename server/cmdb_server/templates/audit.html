@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Audyt - CMDB{% endblock %}
+{% block content %}
+<h1>Slad audytowy</h1>
+<p class="muted">Ostatnie 200 zdarzen dotyczacych tokenow, logowan i zmian przypisania.</p>
+<table class="table">
+  <thead><tr><th>Kiedy</th><th>Kto</th><th>Akcja</th><th>Obiekt</th><th>Adres IP</th><th>Szczegoly</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr>
+      <td class="small">{{ e.created_at | dt }}</td>
+      <td class="small">{{ e.actor }}</td>
+      <td><code>{{ e.action }}</code></td>
+      <td class="small">{{ e.target or '—' }}</td>
+      <td class="small">{{ e.ip or '—' }}</td>
+      <td class="small muted">{{ e.detail or '' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">Brak zdarzen.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

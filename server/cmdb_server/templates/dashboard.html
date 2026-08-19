@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Pulpit - CMDB{% endblock %}
+{% block content %}
+<h1>Pulpit</h1>
+
+<section class="cards">
+  <a class="card" href="/assets">
+    <div class="card-value">{{ total }}</div>
+    <div class="card-label">maszyn w firmie</div>
+  </a>
+  <a class="card {% if stale %}card-warn{% endif %}" href="/assets?state=stale">
+    <div class="card-value">{{ stale }}</div>
+    <div class="card-label">bez kontaktu &gt; {{ stale_after_hours }} h</div>
+  </a>
+  <a class="card {% if unassigned %}card-warn{% endif %}" href="/assets?owner=none">
+    <div class="card-value">{{ unassigned }}</div>
+    <div class="card-label">bez przypisanego opiekuna</div>
+  </a>
+  <div class="card">
+    <div class="card-value">{{ by_os | length }}</div>
+    <div class="card-label">rodzin systemow</div>
+  </div>
+</section>
+
+{% if by_os %}
+<section class="panel">
+  <h2>Systemy operacyjne</h2>
+  <ul class="chips">
+    {% for family, count in by_os %}
+      <li><a class="chip" href="/assets?os_family={{ family or '' }}">{{ family or 'nieznany' }} <b>{{ count }}</b></a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<div class="two-col">
+  <section class="panel">
+    <h2>Ostatni kontakt</h2>
+    {% if recent %}
+    <table class="table">
+      <thead><tr><th>Maszyna</th><th>System</th><th>Opiekun</th><th>Widziana</th></tr></thead>
+      <tbody>
+      {% for a in recent %}
+        <tr>
+          <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
+          <td>{{ a.os_name or a.os_family or '-' }}</td>
+          <td>{{ a.owner.full_name if a.owner else '—' }}</td>
+          <td class="muted">{{ a.last_seen | ago }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">Zaden agent jeszcze sie nie zgłosił. Wygeneruj token w zakladce
+        <a href="/tokens">Tokeny agentow</a> i zainstaluj agenta na maszynie.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Ostatnie zmiany konfiguracji</h2>
+    {% if changed %}
+    <table class="table">
+      <thead><tr><th>Maszyna</th><th>Zmiana</th></tr></thead>
+      <tbody>
+      {% for a in changed %}
+        <tr>
+          <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
+          <td class="muted">{{ a.last_change_at | ago }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">Brak zarejestrowanych zmian.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

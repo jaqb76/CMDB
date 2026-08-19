@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+{% block title %}{{ asset.hostname }} - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ asset.hostname }}</h1>
+    <p class="muted">
+      {{ asset.fqdn or asset.hostname }}
+      {% if asset.domain %} &middot; domena {{ asset.domain }}{% endif %}
+      &middot; agent {{ asset.agent_version or '?' }}
+      &middot; ostatni kontakt {{ asset.last_seen | ago }}
+    </p>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-small" href="/assets/{{ asset.id }}/raw.json{% if snapshot %}?snapshot={{ snapshot.id }}{% endif %}">Surowy JSON</a>
+    <a class="btn btn-small btn-ghost" href="/assets">Wroc do listy</a>
+  </div>
+</div>
+
+{% if not snapshot %}
+  <div class="alert alert-warn">Maszyna jest zarejestrowana, ale nie przyslala jeszcze zadnego raportu.</div>
+{% endif %}
+
+{% if collector_errors %}
+  <div class="alert alert-warn">
+    <b>Kolektory zglosily bledy ({{ collector_errors | length }}):</b>
+    <ul class="tight">
+      {% for e in collector_errors %}<li><code>{{ e.collector }}</code>: {{ e.message }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<section class="panel">
+  <h2>Opiekun i rola</h2>
+  <form method="post" action="/assets/{{ asset.id }}/owner" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div>
+      <label for="owner_id">Opiekun / wlasciciel</label>
+      <select id="owner_id" name="owner_id" {% if not ctx.can_write %}disabled{% endif %}>
+        <option value="">— nieprzypisany —</option>
+        {% for o in owners %}
+          <option value="{{ o.id }}" {% if asset.owner_id == o.id %}selected{% endif %}>
+            {{ o.full_name }} ({{ o.email }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="role_label">Rola maszyny</label>
+      <input id="role_label" name="role_label" maxlength="200" value="{{ asset.role_label or '' }}"
+             placeholder="np. serwer plikow, kontroler domeny" {% if not ctx.can_write %}disabled{% endif %}>
+    </div>
+    {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
+  </form>
+  {% if asset.owner %}
+    <p class="small muted">Kontakt: {{ asset.owner.email }}{% if asset.owner.phone %} &middot; {{ asset.owner.phone }}{% endif %}{% if asset.owner.department %} &middot; {{ asset.owner.department }}{% endif %}</p>
+  {% endif %}
+</section>
+
+<div class="tabs" data-tabs>
+  <div class="tab-buttons">
+    <button type="button" class="tab-button is-active" data-tab="overview">Przeglad</button>
+    <button type="button" class="tab-button" data-tab="hardware">Sprzet</button>
+    <button type="button" class="tab-button" data-tab="software">Oprogramowanie</button>
+    <button type="button" class="tab-button" data-tab="users">Uzytkownicy</button>
+    <button type="button" class="tab-button" data-tab="history">Historia</button>
+    <button type="button" class="tab-button" data-tab="raw">JSON</button>
+  </div>
+
+  <section class="tab-panel is-active" data-panel="overview">
+    <div class="grid-2">
+      <div class="panel">
+        <h2>System operacyjny</h2>
+        <dl class="kv">
+          <dt>Nazwa</dt><dd>{{ os_info.name or asset.os_name or '-' }}</dd>
+          <dt>Wersja / build</dt><dd>{{ os_info.version or '-' }}{% if os_info.build %} ({{ os_info.build }}){% endif %}</dd>
+          <dt>Edycja</dt><dd>{{ os_info.edition or '-' }}</dd>
+          <dt>Architektura</dt><dd>{{ os_info.architecture or '-' }}</dd>
+          <dt>Zainstalowany</dt><dd>{{ os_info.install_date or '-' }}</dd>
+          <dt>Ostatni start</dt><dd>{{ os_info.last_boot or '-' }}</dd>
+          <dt>Jezyk / strefa</dt><dd>{{ os_info.locale or '-' }} {{ os_info.timezone or '' }}</dd>
+        </dl>
+      </div>
+      <div class="panel">
+        <h2>Identyfikacja</h2>
+        <dl class="kv">
+          <dt>Producent</dt><dd>{{ asset.manufacturer or '-' }}</dd>
+          <dt>Model</dt><dd>{{ asset.model or '-' }}</dd>
+          <dt>Numer seryjny</dt><dd>{{ asset.serial_number or '-' }}</dd>
+          <dt>ID maszyny</dt><dd><code class="small">{{ asset.machine_id }}</code></dd>
+          <dt>Pierwszy raport</dt><dd>{{ asset.first_seen | dt }}</dd>
+          <dt>Ostatnia zmiana</dt><dd>{{ (asset.last_change_at | ago) if asset.last_change_at else '—' }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Sieć</h2>
+      {% set interfaces = network.interfaces or [] %}
+      {% if interfaces %}
+      <table class="table">
+        <thead><tr><th>Interfejs</th><th>MAC</th><th>Adresy IP</th><th>Brama</th><th>DNS</th><th>DHCP</th></tr></thead>
+        <tbody>
+        {% for i in interfaces %}
+          <tr>
+            <td>{{ i.name or '-' }}<div class="muted small">{{ i.description or '' }}</div></td>
+            <td class="small"><code>{{ i.mac_address or '-' }}</code></td>
+            <td class="small">{% for ip in i.ip_addresses or [] %}<div>{{ ip }}</div>{% endfor %}</td>
+            <td class="small">{{ (i.gateways or []) | join(', ') or '-' }}</td>
+            <td class="small">{{ (i.dns_servers or []) | join(', ') or '-' }}</td>
+            <td class="small">{{ 'tak' if i.dhcp_enabled else 'nie' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Brak danych o interfejsach.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="tab-panel" data-panel="hardware">
+    {% set cpu = hardware.cpu or {} %}
+    {% set memory = hardware.memory or {} %}
+    {% set system = hardware.system or {} %}
+    {% set storage = hardware.storage or {} %}
+    <div class="grid-2">
+      <div class="panel">
+        <h2>Procesor</h2>
+        <dl class="kv">
+          <dt>Model</dt><dd>{{ cpu.model or '-' }}</dd>
+          <dt>Rdzenie</dt><dd>{{ cpu.physical_cores or '-' }} fiz. / {{ cpu.logical_cores or '-' }} log.</dd>
+          <dt>Taktowanie</dt><dd>{{ cpu.max_clock_mhz or '-' }} MHz</dd>
+          <dt>Architektura</dt><dd>{{ cpu.architecture or '-' }}</dd>
+          <dt>Gniazd</dt><dd>{{ cpu.sockets or '-' }}</dd>
+        </dl>
+      </div>
+      <div class="panel">
+        <h2>Pamiec i plyta</h2>
+        <dl class="kv">
+          <dt>RAM lacznie</dt><dd>{{ memory.total_bytes | bytes }}</dd>
+          <dt>Moduly</dt><dd>{{ (memory.modules or []) | length }}</dd>
+          <dt>Producent</dt><dd>{{ system.manufacturer or '-' }}</dd>
+          <dt>Model</dt><dd>{{ system.model or '-' }}</dd>
+          <dt>Obudowa</dt><dd>{{ system.chassis or '-' }}</dd>
+          <dt>BIOS/UEFI</dt><dd>{{ (hardware.firmware or {}).version or '-' }} {{ (hardware.firmware or {}).release_date or '' }}</dd>
+          <dt>Wirtualizacja</dt><dd>{{ system.virtualization or 'fizyczna' }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    {% if memory.modules %}
+    <div class="panel">
+      <h2>Moduly pamieci</h2>
+      <table class="table">
+        <thead><tr><th>Slot</th><th>Pojemnosc</th><th>Typ</th><th>Taktowanie</th><th>Producent</th><th>Numer seryjny</th></tr></thead>
+        <tbody>
+        {% for m in memory.modules %}
+          <tr>
+            <td>{{ m.slot or '-' }}</td><td>{{ m.capacity_bytes | bytes }}</td>
+            <td class="small">{{ m.type or '-' }}</td><td class="small">{{ m.speed_mhz or '-' }} MHz</td>
+            <td class="small">{{ m.manufacturer or '-' }}</td><td class="small">{{ m.serial_number or '-' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <div class="panel">
+      <h2>Dyski fizyczne</h2>
+      {% if storage.physical_disks %}
+      <table class="table">
+        <thead><tr><th>Model</th><th>Pojemnosc</th><th>Typ</th><th>Interfejs</th><th>Numer seryjny</th><th>Stan</th></tr></thead>
+        <tbody>
+        {% for d in storage.physical_disks %}
+          <tr>
+            <td>{{ d.model or '-' }}</td><td>{{ d.size_bytes | bytes }}</td>
+            <td class="small">{{ d.media_type or '-' }}</td><td class="small">{{ d.interface or '-' }}</td>
+            <td class="small">{{ d.serial_number or '-' }}</td><td class="small">{{ d.status or '-' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Brak danych.</p>{% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>Wolumeny</h2>
+      {% if storage.logical_disks %}
+      <table class="table">
+        <thead><tr><th>Litera</th><th>Etykieta</th><th>System plikow</th><th>Zajetosc</th><th>Wolne</th><th>Rozmiar</th></tr></thead>
+        <tbody>
+        {% for d in storage.logical_disks %}
+          {% set used_pct = d.used_percent if d.used_percent is not none else 0 %}
+          <tr>
+            <td class="strong">{{ d.mount or d.device or '-' }}</td>
+            <td class="small">{{ d.label or '-' }}</td>
+            <td class="small">{{ d.filesystem or '-' }}</td>
+            <td class="usage-cell">
+              <div class="meter {% if used_pct >= 90 %}meter-danger{% elif used_pct >= 75 %}meter-warn{% endif %}">
+                <span class="meter-fill" data-percent="{{ used_pct }}"></span>
+              </div>
+              <span class="small">{{ used_pct }}%</span>
+            </td>
+            <td class="small">{{ d.free_bytes | bytes }}</td>
+            <td class="small">{{ d.size_bytes | bytes }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Brak danych.</p>{% endif %}
+    </div>
+
+    {% if hardware.gpus %}
+    <div class="panel">
+      <h2>Karty graficzne</h2>
+      <ul class="tight">
+        {% for g in hardware.gpus %}<li>{{ g.name }} {% if g.driver_version %}<span class="muted small">(sterownik {{ g.driver_version }})</span>{% endif %}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="tab-panel" data-panel="software">
+    {% set packages = software.packages or [] %}
+    {% set services = software.services or [] %}
+    {% set updates = software.updates or [] %}
+    {% set processes = software.processes or [] %}
+
+    <div class="panel">
+      <h2>Zainstalowane oprogramowanie <span class="muted">({{ packages | length }})</span></h2>
+      {% if packages %}
+      <input type="search" class="table-filter" data-filter-for="packages-table" placeholder="Filtruj po nazwie...">
+      <table class="table" id="packages-table">
+        <thead><tr><th>Nazwa</th><th>Wersja</th><th>Producent</th><th>Instalacja</th><th>Zrodlo</th></tr></thead>
+        <tbody>
+        {% for p in packages %}
+          <tr>
+            <td>{{ p.name }}</td><td class="small">{{ p.version or '-' }}</td>
+            <td class="small">{{ p.publisher or '-' }}</td><td class="small">{{ p.install_date or '-' }}</td>
+            <td class="small muted">{{ p.source or '-' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Brak danych.</p>{% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>Uslugi <span class="muted">({{ services | length }})</span></h2>
+      {% if services %}
+      <input type="search" class="table-filter" data-filter-for="services-table" placeholder="Filtruj uslugi...">
+      <table class="table" id="services-table">
+        <thead><tr><th>Nazwa</th><th>Opis</th><th>Stan</th><th>Uruchamianie</th><th>Konto</th></tr></thead>
+        <tbody>
+        {% for s in services %}
+          <tr>
+            <td><code class="small">{{ s.name }}</code></td>
+            <td class="small">{{ s.display_name or '-' }}</td>
+            <td>
+              {% if s.state and s.state | lower in ['running', 'active'] %}
+                <span class="badge badge-ok">{{ s.state }}</span>
+              {% else %}<span class="badge">{{ s.state or '-' }}</span>{% endif %}
+            </td>
+            <td class="small">{{ s.start_mode or '-' }}</td>
+            <td class="small">{{ s.account or '-' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Brak danych.</p>{% endif %}
+    </div>
+
+    {% if updates %}
+    <div class="panel">
+      <h2>Aktualizacje / poprawki <span class="muted">({{ updates | length }})</span></h2>
+      <table class="table">
+        <thead><tr><th>Identyfikator</th><th>Opis</th><th>Zainstalowano</th></tr></thead>
+        <tbody>
+        {% for u in updates %}
+          <tr><td><code>{{ u.id }}</code></td><td class="small">{{ u.description or '-' }}</td><td class="small">{{ u.installed_on or '-' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% if processes %}
+    <div class="panel">
+      <h2>Procesy w chwili raportu <span class="muted">({{ processes | length }})</span></h2>
+      <table class="table">
+        <thead><tr><th>Proces</th><th>PID</th><th>Pamiec</th><th>Uzytkownik</th></tr></thead>
+        <tbody>
+        {% for p in processes %}
+          <tr><td>{{ p.name }}</td><td class="small">{{ p.pid }}</td><td class="small">{{ p.memory_bytes | bytes }}</td><td class="small">{{ p.user or '-' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="tab-panel" data-panel="users">
+    {% set accounts = users_info.local_accounts or [] %}
+    {% set admins = users_info.administrators or [] %}
+    {% set sessions = users_info.sessions or [] %}
+    {% set groups = users_info.groups or [] %}
+
+    <div class="panel">
+      <h2>Konta lokalne <span class="muted">({{ accounts | length }})</span></h2>
+      {% if accounts %}
+      <table class="table">
+        <thead><tr><th>Konto</th><th>Pelna nazwa</th><th>Status</th><th>Ostatnie logowanie</th><th>Haslo</th><th>SID</th></tr></thead>
+        <tbody>
+        {% for u in accounts %}
+          <tr>
+            <td class="strong">{{ u.name }}</td>
+            <td class="small">{{ u.full_name or u.description or '-' }}</td>
+            <td>
+              {% if u.enabled %}<span class="badge badge-ok">aktywne</span>{% else %}<span class="badge">wylaczone</span>{% endif %}
+              {% if u.locked %}<span class="badge badge-warn">zablokowane</span>{% endif %}
+            </td>
+            <td class="small">{{ u.last_logon or '-' }}</td>
+            <td class="small">
+              {% if u.password_expires is defined and u.password_expires == false %}
+                <span class="badge badge-warn">nie wygasa</span>
+              {% else %}{{ u.password_last_set or '-' }}{% endif %}
+            </td>
+            <td class="small muted">{{ u.sid or u.uid or '-' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Brak danych.</p>{% endif %}
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h2>Administratorzy lokalni</h2>
+        {% if admins %}
+        <ul class="tight">
+          {% for a in admins %}
+            <li><b>{{ a.name }}</b> <span class="muted small">{{ a.type or '' }} {{ a.source or '' }}</span></li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="muted">Brak danych.</p>{% endif %}
+      </div>
+      <div class="panel">
+        <h2>Sesje w chwili raportu</h2>
+        {% if sessions %}
+        <ul class="tight">
+          {% for s in sessions %}<li>{{ s.user }} <span class="muted small">{{ s.session_type or '' }} {{ s.logon_time or '' }}</span></li>{% endfor %}
+        </ul>
+        {% else %}<p class="muted">Brak zalogowanych uzytkownikow.</p>{% endif %}
+      </div>
+    </div>
+
+    {% if groups %}
+    <div class="panel">
+      <h2>Grupy lokalne</h2>
+      <table class="table">
+        <thead><tr><th>Grupa</th><th>Czlonkowie</th></tr></thead>
+        <tbody>
+        {% for g in groups %}
+          <tr><td class="strong">{{ g.name }}</td><td class="small">{{ (g.members or []) | join(', ') or '—' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="tab-panel" data-panel="history">
+    <div class="panel">
+      <h2>Historia snapshotow</h2>
+      <p class="muted small">Nowy wpis powstaje tylko wtedy, gdy zmienil sie stan maszyny — cykliczne raporty bez zmian nie zasmiecaja historii.</p>
+      <table class="table">
+        <thead><tr><th>Zebrany</th><th>Otrzymany</th><th>Rozmiar</th><th>Skrot</th><th></th></tr></thead>
+        <tbody>
+        {% for s in history %}
+          <tr {% if snapshot and s.id == snapshot.id %}class="row-active"{% endif %}>
+            <td>{{ s.collected_at | dt }}</td>
+            <td class="small muted">{{ s.received_at | ago }}</td>
+            <td class="small">{{ s.size_bytes | bytes }}</td>
+            <td class="small muted"><code>{{ s.payload_hash[:12] }}</code></td>
+            <td><a class="btn btn-small" href="/assets/{{ asset.id }}?snapshot={{ s.id }}">Pokaz</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="muted">Brak snapshotow.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Poswiadczenia agenta</h2>
+      <table class="table">
+        <thead><tr><th>Prefiks</th><th>Wydane</th><th>Ostatnie uzycie</th><th>Adres</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for c in credentials %}
+          <tr>
+            <td><code>{{ c.prefix }}</code></td>
+            <td class="small">{{ c.created_at | dt }}</td>
+            <td class="small">{{ c.last_used_at | ago }}</td>
+            <td class="small">{{ c.last_used_ip or '—' }}</td>
+            <td>{% if c.revoked_at %}<span class="badge badge-danger">wycofane</span>{% else %}<span class="badge badge-ok">aktywne</span>{% endif %}</td>
+            <td>
+              {% if ctx.can_write and not c.revoked_at %}
+              <form method="post" action="/assets/{{ asset.id }}/credentials/{{ c.id }}/revoke" class="inline-form"
+                    data-confirm="Wycofac poswiadczenie? Agent na tej maszynie przestanie raportowac do czasu ponownej rejestracji.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-small btn-danger">Wycofaj</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="muted">Brak poswiadczen.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tab-panel" data-panel="raw">
+    <div class="panel">
+      <h2>Surowy raport JSON</h2>
+      <p class="muted small">Dokladnie to, co trafilo do bazy — zrodlo prawdy dla wszystkich powyzszych widokow.</p>
+      <pre class="json-dump">{{ payload | pretty_json }}</pre>
+    </div>
+  </section>
+</div>
+{% endblock %}
