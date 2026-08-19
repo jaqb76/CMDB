@@ -77,16 +77,26 @@ Szczegóły: [`docs/wdrozenie.md`](docs/wdrozenie.md).
 ## Instalacja agenta na Windows
 
 ```powershell
-# na maszynie budującej (raz)
-.\agent\packaging\build-agent.ps1
+# na maszynie budującej (raz) — powstaje CMDB-Agent-Setup-0.1.0.exe
+.\agent\packaging\build-agent.ps1 -Installer
 
-# na maszynie docelowej (jako administrator)
-.\install-agent.ps1 -ServerUrl https://cmdb.firma.pl -Token cmdb_ent_... -IntervalHours 4
+# na maszynie docelowej — kreator pyta o adres serwera i token
+CMDB-Agent-Setup-0.1.0.exe
+
+# albo bez kreatora, np. przez GPO
+.\install-agent.ps1 -ServerUrl https://cmdb.firma.pl -Token cmdb_ent_... -Silent
 ```
 
-Instalator kopiuje agenta, zapisuje konfigurację z ograniczonymi
-uprawnieniami, rejestruje maszynę i tworzy zadanie harmonogramu działające
-jako SYSTEM. Szczegóły i wdrożenie masowe (GPO, Intune, SCCM):
+Instalacja kopiuje pliki, zapisuje konfigurację z ograniczonymi uprawnieniami,
+rejestruje maszynę i tworzy zadanie harmonogramu działające jako SYSTEM.
+
+W zasobniku pojawia się ikona pokazująca kolorem stan agenta, a w oknie statusu
+— **datę ostatniej poprawnej synchronizacji** (osobno od daty ostatniej próby,
+żeby seria nieudanych prób nie wyglądała jak działający agent). Z tego samego
+menu zmienia się adres serwera i token oraz wymusza synchronizację.
+
+Ikona działa jako zwykły użytkownik i tylko czyta plik statusu — nigdy nie
+sięga do poświadczenia agenta. Szczegóły i wdrożenie masowe (GPO, Intune, SCCM):
 [`docs/agent-windows.md`](docs/agent-windows.md).
 
 ## Wielofirmowość i tokeny
@@ -118,7 +128,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 
 ```bash
 cd server && pytest              # 28 testów: API agentów, izolacja firm, panel, gzip
-cd agent  && pytest              # 30 testów: konfiguracja, stan, kolektory, transport
+cd agent  && pytest              # 42 testy: konfiguracja, stan, status, kolektory, transport
 
 # Testy kasują schemat przed każdym przypadkiem, więc odmawiają startu na bazie
 # bez "test" w nazwie — przypadkowe wskazanie produkcji nic nie zniszczy.

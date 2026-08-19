@@ -26,7 +26,16 @@ class AgentState:
     machine_id: str = ""
     server_url: str = ""
     enrolled_at: str = ""
-    last_report_at: str = ""
+
+    # Ostatnia UDANA synchronizacja - to jest data pokazywana w oknie statusu.
+    # Ustawiana wylacznie po potwierdzeniu przyjecia raportu przez serwer.
+    last_sync_at: str = ""
+    # Ostatnia proba, niezaleznie od wyniku - pozwala odroznic "cisza w eterze"
+    # od "agent probuje, ale serwer odmawia".
+    last_attempt_at: str = ""
+    last_status: str = "never"      # never | ok | error | offline
+    last_error: str = ""
+    last_sync_changed: bool = False
     last_report_hash: str = ""
 
     @property
@@ -42,8 +51,16 @@ def load_state(path: Path) -> AgentState:
     except (json.JSONDecodeError, OSError) as exc:
         log.warning("nie udalo sie odczytac stanu (%s) - traktuje jako brak rejestracji", exc)
         return AgentState()
-    known = {f: raw.get(f, "") for f in AgentState.__dataclass_fields__}
-    return AgentState(**known)
+    # Bierzemy tylko znane pola i tylko te obecne w pliku - reszta zostaje na
+    # wartosciach domyslnych. Dzieki temu stan zapisany przez nowsza wersje
+    # agenta nie wywraca starszej, a brakujace pole nie nadpisuje domyslnego
+    # typu pustym stringiem.
+    known = {name: raw[name] for name in AgentState.__dataclass_fields__ if name in raw}
+    try:
+        return AgentState(**known)
+    except TypeError as exc:
+        log.warning("niezgodny format stanu (%s) - traktuje jako brak rejestracji", exc)
+        return AgentState()
 
 
 def save_state(path: Path, state: AgentState) -> None:
@@ -79,6 +96,30 @@ def _harden_directory(path: Path) -> None:
         return
     if sys.platform == "win32":
         _icacls(path)
+
+
+def harden_public_directory(path: Path) -> None:
+    """Katalog na plik statusu - do odczytu takze dla zwyklych uzytkownikow.
+
+    Agent chodzi jako SYSTEM, a ikona w zasobniku jako zalogowany uzytkownik.
+    Zamiast rozluzniac dostep do katalogu z tokenem, publikujemy status
+    w osobnym podkatalogu, w ktorym nie ma zadnych sekretow.
+    """
+    path.mkdir(parents=True, exist_ok=True)
+    if os.name == "posix":
+        os.chmod(path, 0o755)
+        return
+    if sys.platform != "win32":  # pragma: no cover
+        return
+    try:
+        subprocess.run(
+            ["icacls", str(path), "/grant:r", "*S-1-5-32-545:(OI)(CI)RX"],  # BUILTIN\Users
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:  # pragma: no cover - tylko Windows
+        log.warning("nie udalo sie nadac praw odczytu do %s: %s", path, exc)
 
 
 def _icacls(path: Path) -> None:

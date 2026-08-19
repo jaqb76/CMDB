@@ -3,14 +3,14 @@
     Usuwa agenta CMDB z maszyny.
 
 .DESCRIPTION
-    Kasuje zadanie harmonogramu i pliki programu. Katalog danych z
-    poswiadczeniem usuwany jest tylko z parametrem -RemoveData - bez niego
-    ponowna instalacja odtworzy istniejaca rejestracje zamiast tworzyc
-    duplikat maszyny w bazie.
+    Kasuje zadanie harmonogramu, autostart ikony w zasobniku i pliki programu.
+    Katalog danych z poswiadczeniem usuwany jest tylko z parametrem -RemoveData
+    - bez niego ponowna instalacja odtworzy istniejaca rejestracje zamiast
+    tworzyc duplikat maszyny w bazie.
 
-    Pamietaj, ze odinstalowanie agenta nie kasuje maszyny w CMDB - zasob
-    zostaje w bazie z data ostatniego kontaktu, co jest zamierzone
-    (historia inwentarza nie powinna znikac po odinstalowaniu agenta).
+    Odinstalowanie agenta nie kasuje maszyny w CMDB - zasob zostaje w bazie
+    z data ostatniego kontaktu. Jest to zamierzone: historia inwentarza nie
+    powinna znikac razem z agentem.
 
 .EXAMPLE
     .\uninstall-agent.ps1
@@ -21,7 +21,9 @@ param(
     [string] $InstallDir = "$env:ProgramFiles\CMDB Agent",
     [string] $DataDir    = "$env:ProgramData\CMDB",
     [string] $TaskName   = "CMDB Agent",
-    [switch] $RemoveData
+    [switch] $RemoveData,
+    # Wywolywane z instalatora, ktory sam usuwa swoje pliki.
+    [switch] $KeepFiles
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,17 +33,31 @@ if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
     throw "Skrypt wymaga uprawnien administratora."
 }
 
+# --- zadanie harmonogramu ---------------------------------------------------
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
     Write-Host "Usunieto zadanie: $TaskName"
 }
 
-if (Test-Path $InstallDir) {
+# --- ikona w zasobniku ------------------------------------------------------
+Remove-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run" `
+                    -Name "CMDB Agent Tray" -ErrorAction SilentlyContinue
+
+# Ikona trzyma otwarty plik exe - bez zamkniecia usuwanie katalogu sie nie uda.
+Get-Process -Name "cmdb-agent-tray" -ErrorAction SilentlyContinue | ForEach-Object {
+    $_ | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Host "Zatrzymano ikone agenta (PID $($_.Id))"
+}
+Start-Sleep -Milliseconds 500
+
+# --- pliki programu ---------------------------------------------------------
+if (-not $KeepFiles -and (Test-Path $InstallDir)) {
     Remove-Item $InstallDir -Recurse -Force
     Write-Host "Usunieto katalog programu: $InstallDir"
 }
 
+# --- dane -------------------------------------------------------------------
 if ($RemoveData) {
     if (Test-Path $DataDir) {
         Remove-Item $DataDir -Recurse -Force

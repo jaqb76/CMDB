@@ -1,0 +1,5 @@
+# Zaleznosci WYLACZNIE dla interfejsu graficznego (ikona w zasobniku).
+# Sam agent - zbieranie danych i wysylka - dziala bez nich.
+# tkinter jest czescia biblioteki standardowej i nie wymaga instalacji.
+pystray>=0.19
+Pillow>=10.0

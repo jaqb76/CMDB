@@ -143,6 +143,38 @@ zawiera gotową listę zbieranych pól do takiej rozmowy.
 * Czas zebrania z zegara klienta jest przycinany: raport „z przyszłości"
   albo sprzed roku dostaje czas serwera.
 
+## Podział uprawnień na stacji
+
+Na maszynie klienta pracują dwa procesy o różnych uprawnieniach:
+
+| Proces | Konto | Co robi | Do czego ma dostęp |
+|---|---|---|---|
+| `cmdb-agent.exe` (zadanie) | SYSTEM | zbiera dane i wysyła raport | konfiguracja i poświadczenie |
+| `cmdb-agent-tray.exe` (ikona) | zalogowany użytkownik | pokazuje status | wyłącznie plik statusu |
+
+Rozdział plików wynika wprost z tego podziału:
+
+```
+%ProgramData%\CMDB\
+├── agent.conf          token firmowy      → SYSTEM + Administratorzy
+├── agent-state.json    poświadczenie      → SYSTEM + Administratorzy
+├── agent.log                              → SYSTEM + Administratorzy
+└── public\
+    └── status.json     bez sekretów       → dodatkowo odczyt dla Użytkowników
+```
+
+Gdyby ikona czytała stan bezpośrednio, trzeba by otworzyć zwykłym użytkownikom
+dostęp do pliku z tokenem. Zamiast tego agent publikuje osobną migawkę bez
+żadnych sekretów — test `test_published_file_contains_no_secrets` pilnuje,
+żeby token nigdy się tam nie znalazł.
+
+Operacje wymagające uprawnień ikona uruchamia jako osobny, podniesiony proces
+(monit UAC), a nie podnosząc uprawnień całej aplikacji działającej stale na
+pulpicie. Wyjątkiem jest „Synchronizuj teraz": instalator nadaje grupie
+Użytkownicy prawo *uruchomienia* zadania (`GRGX`), ale nie jego zmiany — dzięki
+temu wymuszenie odświeżenia nie wymaga hasła administratora, a użytkownik nadal
+nie może podmienić tego, co zadanie uruchamia.
+
 ## Ślad audytowy
 
 `audit_log` zapisuje: logowania udane i nieudane, wydanie i wycofanie

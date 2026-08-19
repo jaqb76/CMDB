@@ -15,6 +15,7 @@ import logging.handlers
 import random
 import sys
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 from . import __version__
@@ -22,6 +23,7 @@ from .collectors import get_collector
 from .collectors.common import utc_now_iso
 from .config import AgentConfig, default_config_path, load_config
 from .report import build_report, report_hash, report_size
+from . import status
 from .spool import load_report, pending_reports, spool_report
 from .state import AgentState, load_state, save_state
 from .transport import ApiError, CertificatePinError, CmdbClient, TransportError
@@ -92,6 +94,7 @@ def do_enroll(config: AgentConfig, state: AgentState, client: CmdbClient) -> Age
     state.enrolled_at = utc_now_iso()
     save_state(config.state_path, state)
 
+    status.publish(config, state)
     log.info(
         "zarejestrowano w firmie '%s' jako zasob %s; poswiadczenie zapisane w %s",
         state.tenant_slug, state.asset_id, config.state_path,
@@ -101,6 +104,28 @@ def do_enroll(config: AgentConfig, state: AgentState, client: CmdbClient) -> Age
 
 def send_report(config: AgentConfig, state: AgentState, client: CmdbClient, report: dict) -> dict:
     return client.post("/api/v1/inventory", token=state.agent_token, payload=report)
+
+
+def record_attempt(
+    config: AgentConfig,
+    state: AgentState,
+    outcome: str,
+    error: str = "",
+    changed: bool = False,
+) -> None:
+    """Zapisuje wynik proby i publikuje status dla ikony w zasobniku.
+
+    last_sync_at przesuwamy WYLACZNIE przy powodzeniu - to data, ktora
+    operator czyta jako "kiedy dane w CMDB byly ostatnio aktualne".
+    """
+    state.last_attempt_at = utc_now_iso()
+    state.last_status = outcome
+    state.last_error = error[:500]
+    if outcome == "ok":
+        state.last_sync_at = state.last_attempt_at
+        state.last_sync_changed = changed
+    save_state(config.state_path, state)
+    status.publish(config, state, spooled=len(pending_reports(config.spool_dir)))
 
 
 def flush_spool(config: AgentConfig, state: AgentState, client: CmdbClient) -> None:
@@ -149,15 +174,16 @@ def do_run(config: AgentConfig, state: AgentState, client: CmdbClient) -> int:
             response = send_report(config, state, client, report)
         else:
             log.error("serwer odrzucil raport: %s", exc)
+            record_attempt(config, state, "error", str(exc))
             return 2
     except TransportError as exc:
         log.error("brak lacznosci z serwerem: %s - raport trafia do bufora", exc)
         spool_report(config.spool_dir, report)
+        record_attempt(config, state, "offline", str(exc))
         return 3
 
-    state.last_report_at = utc_now_iso()
     state.last_report_hash = report_hash(report)
-    save_state(config.state_path, state)
+    record_attempt(config, state, "ok", changed=bool(response.get("changed")))
 
     log.info(
         "raport wyslany (%d B, zmiana: %s), nastepny za ~%d s",
@@ -199,21 +225,75 @@ def do_show(config: AgentConfig, output: str | None) -> int:
     return 0
 
 
-def do_status(config: AgentConfig, state: AgentState) -> int:
-    print(f"agent               : {__version__}")
-    print(f"plik konfiguracyjny : {default_config_path()}")
-    print(f"katalog danych      : {config.data_dir}")
-    print(f"serwer              : {config.server_url or '(nie ustawiono)'}")
-    print(f"zarejestrowany      : {'tak' if state.is_enrolled else 'nie'}")
+def do_status(config: AgentConfig, state: AgentState, as_json: bool = False) -> int:
+    spooled = len(pending_reports(config.spool_dir))
+    snapshot = status.build_status(config, state, spooled)
+
+    if as_json:
+        print(json.dumps(asdict(snapshot), indent=2, ensure_ascii=False))
+        return 0
+
+    print(f"agent                : {__version__}")
+    print(f"plik konfiguracyjny  : {default_config_path()}")
+    print(f"katalog danych       : {config.data_dir}")
+    print(f"serwer               : {config.server_url or '(nie ustawiono)'}")
+    print(f"zarejestrowany       : {'tak' if state.is_enrolled else 'nie'}")
     if state.is_enrolled:
-        print(f"firma               : {state.tenant_slug}")
-        print(f"identyfikator zasobu: {state.asset_id}")
+        print(f"firma                : {state.tenant_slug}")
+        print(f"identyfikator zasobu : {state.asset_id}")
         print(f"identyfikator maszyny: {state.machine_id}")
-        print(f"ostatni raport      : {state.last_report_at or 'brak'}")
-    spooled = pending_reports(config.spool_dir)
+    print()
+    print(f"stan                 : {snapshot.status_label}")
+    print(
+        "ostatnia udana synchr: "
+        f"{status.format_local(snapshot.last_sync_at)}"
+        f" ({status.format_relative(snapshot.last_sync_at)})"
+    )
+    if snapshot.last_attempt_at and snapshot.last_attempt_at != snapshot.last_sync_at:
+        print(
+            "ostatnia proba       : "
+            f"{status.format_local(snapshot.last_attempt_at)}"
+            f" ({status.format_relative(snapshot.last_attempt_at)})"
+        )
+    if snapshot.last_error:
+        print(f"ostatni blad         : {snapshot.last_error}")
+    if snapshot.next_sync_estimate:
+        print(f"nastepna okolo       : {status.format_local(snapshot.next_sync_estimate)}")
     if spooled:
-        print(f"raporty w buforze   : {len(spooled)}")
+        print(f"raporty w buforze    : {spooled}")
+    for warning in snapshot.warnings:
+        print(f"uwaga                : {warning}")
     return 0
+
+
+def do_gui(config: AgentConfig) -> int:
+    """Uruchamia ikone w zasobniku. Import lokalny - wiersz polecen ma dzialac
+    takze tam, gdzie nie ma bibliotek graficznych."""
+    try:
+        from .gui.tray_app import run_tray
+    except ImportError as exc:
+        log.error(
+            "interfejs graficzny jest niedostepny (%s). "
+            "Zainstaluj zaleznosci: pip install -r requirements-gui.txt",
+            exc,
+        )
+        return 1
+    return run_tray(config)
+
+
+def do_configure(config: AgentConfig, config_path: Path | None) -> int:
+    """Okno konfiguracji: adres serwera i token. Wymaga uprawnien administratora,
+    bo zapisuje konfiguracje w katalogu programu."""
+    try:
+        from .gui.settings_window import open_settings
+    except ImportError as exc:
+        log.error("interfejs graficzny jest niedostepny (%s)", exc)
+        log.error(
+            "skonfiguruj agenta z wiersza polecen: "
+            "cmdb-agent --server https://... --token cmdb_ent_... enroll"
+        )
+        return 1
+    return 0 if open_settings(config, config_path) else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -232,7 +312,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("loop", help="dziala w petli z ustawionym interwalem")
     show = sub.add_parser("show", help="zbiera raport i wypisuje go bez wysylania")
     show.add_argument("--out", help="zapisz do pliku zamiast na standardowe wyjscie")
-    sub.add_parser("status", help="pokazuje stan rejestracji agenta")
+    status_cmd = sub.add_parser("status", help="pokazuje stan agenta i ostatnia synchronizacje")
+    status_cmd.add_argument("--json", action="store_true", help="wypisz w formacie JSON")
+    sub.add_parser("gui", help="uruchamia ikone w zasobniku systemowym")
+    sub.add_parser("configure", help="otwiera okno konfiguracji (adres serwera i token)")
     return parser
 
 
@@ -254,7 +337,11 @@ def main(argv: list[str] | None = None) -> int:
 
     state = load_state(config.state_path)
     if args.command == "status":
-        return do_status(config, state)
+        return do_status(config, state, as_json=getattr(args, "json", False))
+    if args.command == "gui":
+        return do_gui(config)
+    if args.command == "configure":
+        return do_configure(config, args.config)
 
     try:
         config.validate()
@@ -284,6 +371,11 @@ def main(argv: list[str] | None = None) -> int:
         log.exception("nieoczekiwany blad agenta: %s", exc)
         return 1
     return 0
+
+
+def main_tray(argv: list[str] | None = None) -> int:
+    """Punkt wejscia dla cmdb-agent-tray: to samo co 'cmdb-agent gui'."""
+    return main([*(argv or []), "gui"])
 
 
 if __name__ == "__main__":

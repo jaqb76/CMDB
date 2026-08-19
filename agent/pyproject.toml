@@ -7,11 +7,16 @@ requires-python = ">=3.9"
 # i pakowac sie do jednego pliku .exe bez ciagniecia bibliotek.
 dependencies = []
 
+[project.optional-dependencies]
+# Interfejs graficzny jest opcjonalny: pip install -e ".[gui]"
+gui = ["pystray>=0.19", "Pillow>=10.0"]
+
 [project.scripts]
 cmdb-agent = "cmdb_agent.main:main"
+cmdb-agent-tray = "cmdb_agent.main:main_tray"
 
 [tool.setuptools]
-packages = ["cmdb_agent", "cmdb_agent.collectors"]
+packages = ["cmdb_agent", "cmdb_agent.collectors", "cmdb_agent.gui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

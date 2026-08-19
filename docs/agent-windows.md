@@ -8,29 +8,74 @@
   dysków) jest niedostępna dla zwykłego użytkownika. Agent działa jako SYSTEM.
 * Łączność HTTPS do serwera CMDB. Agent nie wymaga otwierania portów
   przychodzących — inicjuje połączenie sam.
-* Python **nie jest wymagany** — zalecana postać to jeden plik `.exe`.
+* Python **nie jest wymagany** — agent i ikona w zasobniku to samodzielne pliki `.exe`.
+* Ikona w zasobniku wymaga sesji graficznej. Na serwerach bez pulpitu instaluj
+  z `-NoTray` — sam agent działa wtedy normalnie jako zadanie.
 
-## Instalacja
+## Budowanie
+
+Agent powstaje jako dwa samodzielne pliki `.exe` plus instalator:
 
 ```powershell
-# 1. Zbuduj agenta (raz, na maszynie budującej)
-.\agent\packaging\build-agent.ps1
-# opcjonalnie z podpisem — bez niego SmartScreen i część EDR blokują uruchomienie:
-.\agent\packaging\build-agent.ps1 -SignCertThumbprint 1A2B3C…
+cd agent\packaging
+.\build-agent.ps1 -Installer
 
-# 2. Zainstaluj na maszynie docelowej (PowerShell jako administrator)
+# z podpisem kodu — bez niego SmartScreen i część systemów EDR blokują agenta:
+.\build-agent.ps1 -Installer -SignCertThumbprint 1A2B3C…
+```
+
+| Plik | Rola |
+|---|---|
+| `cmdb-agent.exe` | agent zbierający dane, uruchamiany przez zadanie jako SYSTEM |
+| `cmdb-agent-tray.exe` | ikona w zasobniku: status i ustawienia, działa jako zalogowany użytkownik |
+| `CMDB-Agent-Setup-0.1.0.exe` | instalator graficzny |
+
+Budowanie instalatora wymaga **Inno Setup 6** (`winget install JRSoftware.InnoSetup`).
+Bez niego powstaną same pliki `.exe`, a instalacja przebiegnie skryptem
+`install-agent.ps1`.
+
+Buduj na najstarszej wersji Windows w flocie — plik zbudowany na Windows 11
+działa na starszych, ale nie odwrotnie.
+
+## Instalacja z kreatora
+
+Uruchom `CMDB-Agent-Setup-0.1.0.exe` i podaj dane otrzymane od administratora:
+
+```
+┌─ Połączenie z serwerem CMDB ─────────────────────────────┐
+│  Adres serwera (wymagane https):  https://cmdb.firma.pl  │
+│  Token rejestracyjny:             cmdb_ent_…             │
+└──────────────────────────────────────────────────────────┘
+```
+
+Kreator sprawdza oba pola od razu — adres bez `https://` i token bez prefiksu
+`cmdb_ent_` nie przepuszczą do następnego kroku. Kolejne strony pozwalają
+ustawić częstotliwość raportowania, zbieranie listy procesów, widoczność ikony
+w zasobniku i opcjonalny plik CA.
+
+Cała logika instalacji siedzi w `install-agent.ps1` — kreator tylko go wywołuje.
+Dzięki temu instalacja z kreatora i wdrożenie masowe przez GPO idą dokładnie tą
+samą ścieżką, zamiast rozjeżdżać się w dwóch miejscach.
+
+## Instalacja z wiersza poleceń
+
+```powershell
 .\install-agent.ps1 -ServerUrl https://cmdb.firma.pl -Token cmdb_ent_… -IntervalHours 4
 ```
 
-Instalator:
+Skrypt:
 
-1. kopiuje `cmdb-agent.exe` do `%ProgramFiles%\CMDB Agent`,
+1. kopiuje pliki do `%ProgramFiles%\CMDB Agent`,
 2. zapisuje `%ProgramData%\CMDB\agent.conf` i zawęża dostęp do katalogu
    (`icacls`: tylko SYSTEM i Administratorzy — plik zawiera token),
-3. rejestruje maszynę w serwerze (wymiana tokenu firmowego na własny),
-4. tworzy zadanie **CMDB Agent** działające jako SYSTEM: przy starcie systemu
+3. tworzy `%ProgramData%\CMDB\public\` na plik statusu — czytelny dla
+   wszystkich użytkowników, bo nie ma w nim żadnych sekretów,
+4. rejestruje maszynę w serwerze (wymiana tokenu firmowego na własny),
+5. tworzy zadanie **CMDB Agent** działające jako SYSTEM: przy starcie systemu
    (z 3-minutowym opóźnieniem) i co N godzin, z losowym rozrzutem do 10 minut,
-5. wysyła pierwszy raport i wypisuje stan.
+6. nadaje grupie Użytkownicy prawo *uruchomienia* zadania (nie zmiany), żeby
+   „Synchronizuj teraz" z ikony nie prosiło o hasło administratora,
+7. dodaje ikonę w zasobniku do autostartu i wysyła pierwszy raport.
 
 Parametry dodatkowe:
 
@@ -40,6 +85,71 @@ Parametry dodatkowe:
 | `-PinSha256 <odcisk>` | przypięcie certyfikatu serwera |
 | `-NoProcessList` | rezygnacja ze zbierania listy procesów |
 | `-IntervalHours 8` | rzadsze raportowanie (domyślnie 4 h) |
+| `-NoTray` | bez ikony w zasobniku (serwery bez pulpitu) |
+| `-Silent` | bez komunikatów interaktywnych (tryb dla instalatora) |
+
+## Ikona w zasobniku
+
+Ikona pokazuje stan kolorem, bez otwierania czegokolwiek:
+
+| Kolor | Znaczenie |
+|---|---|
+| zielony | ostatnia synchronizacja poprawna |
+| pomarańczowy | brak łączności — raporty czekają w buforze |
+| czerwony | serwer odrzucił raport (np. wycofany token) |
+| szary | agent nieskonfigurowany |
+
+Menu: **Status agenta**, **Synchronizuj teraz**, **Ustawienia**, **Pokaż dziennik**,
+**Zakończ**. Okno statusu odświeża się co 5 sekund i pokazuje:
+
+```
+Agent inwentaryzacyjny CMDB
+Synchronizacja poprawna
+
+Ostatnia poprawna synchronizacja   2026-08-19 20:29:34  (3 min temu)
+Ostatnia proba                     -
+Nastepna okolo                     2026-08-20 00:29:34
+Maszyna                            WS-KSIEGOWOSC-01
+Firma                              firma-abc
+Serwer                             https://cmdb.firma.pl
+```
+
+**Data ostatniej poprawnej synchronizacji jest pokazywana osobno od daty
+ostatniej próby.** Ma to znaczenie praktyczne: agent może próbować co godzinę
+i za każdym razem dostawać odmowę — wtedy „ostatnia próba: przed chwilą"
+sugerowałaby, że wszystko działa, podczas gdy dane w CMDB są sprzed tygodnia.
+Data poprawnej synchronizacji przesuwa się **wyłącznie** po potwierdzeniu
+przyjęcia raportu przez serwer.
+
+### Podział uprawnień
+
+Ikona działa jako zwykły zalogowany użytkownik i tylko **czyta** plik
+`%ProgramData%\CMDB\public\status.json`. Nigdy nie sięga do pliku
+z poświadczeniem. Operacje wymagające uprawnień rozwiązywane są tak:
+
+* **Synchronizuj teraz** → uruchomienie zadania harmonogramu, które i tak
+  działa jako SYSTEM (i dzięki temu zbierze komplet danych). Gdy się nie uda —
+  monit UAC.
+* **Ustawienia** → osobny, podniesiony proces `cmdb-agent.exe configure`.
+
+Dzięki temu nic, co chodzi cały czas na pulpicie, nie potrzebuje uprawnień
+administratora.
+
+## Zmiana ustawień po instalacji
+
+Ikona w zasobniku → **Ustawienia…** (albo `cmdb-agent.exe configure` z wiersza
+poleceń jako administrator). Okno pozwala zmienić adres serwera, token, plik CA
+i częstotliwość, a po zapisaniu od razu rejestruje maszynę — nie trzeba czekać
+do najbliższego przebiegu zadania, żeby zobaczyć, czy dane są poprawne.
+
+Typowe błędy tłumaczone są na komunikaty, z których wynika, co zrobić:
+
+| Sytuacja | Komunikat |
+|---|---|
+| certyfikat wewnętrznego CA | „Nie udało się zweryfikować certyfikatu serwera… wskaż plik CA" |
+| token wycofany lub obcięty | „Serwer odrzucił token. Sprawdź, czy nie został wycofany…" |
+| zapora / zły adres | „Brak łączności z serwerem. Sprawdź adres, połączenie i zaporę" |
+| niezgodny odcisk certyfikatu | „…może to oznaczać podszycie się pod serwer" |
 
 ## Wdrożenie masowe
 
@@ -62,9 +172,11 @@ if (-not (Get-ScheduledTask -TaskName "CMDB Agent" -ErrorAction SilentlyContinue
 }
 ```
 
-**Intune / SCCM** — spakuj `cmdb-agent.exe` i `install-agent.ps1`.
+**Intune / SCCM** — spakuj `cmdb-agent.exe`, `cmdb-agent-tray.exe`
+i `install-agent.ps1` (kreator graficzny nie nadaje się do wdrożenia cichego,
+bo pyta o dane).
 
-* Polecenie instalacji: `powershell.exe -ExecutionPolicy Bypass -File install-agent.ps1 -ServerUrl … -Token …`
+* Polecenie instalacji: `powershell.exe -ExecutionPolicy Bypass -File install-agent.ps1 -ServerUrl … -Token … -Silent`
 * Polecenie deinstalacji: `powershell.exe -ExecutionPolicy Bypass -File uninstall-agent.ps1`
 * Reguła wykrywania: obecność pliku `%ProgramFiles%\CMDB Agent\cmdb-agent.exe`
 
@@ -111,13 +223,25 @@ Na polskim Windows grupa nazywa się „Administratorzy”. Skrypt szukający
 ```powershell
 cd "$env:ProgramFiles\CMDB Agent"
 
-.\cmdb-agent.exe status                    # czy zarejestrowany, kiedy ostatni raport
+.\cmdb-agent.exe status                    # stan i data ostatniej poprawnej synchronizacji
+.\cmdb-agent.exe status --json             # to samo maszynowo (czyta to ikona w zasobniku)
 .\cmdb-agent.exe show --out C:\temp\raport.json   # zbierz bez wysyłki i obejrzyj
 .\cmdb-agent.exe run                       # jeden pełny cykl z komunikatami
 .\cmdb-agent.exe --log-level DEBUG run     # czasy poszczególnych kroków
+.\cmdb-agent.exe configure                 # okno ustawień (wymaga uprawnień administratora)
 
 Get-Content "$env:ProgramData\CMDB\agent.log" -Tail 50
 Get-ScheduledTaskInfo -TaskName "CMDB Agent"   # ostatni wynik zadania
+```
+
+Przykładowe wyjście `status`:
+
+```
+stan                 : brak lacznosci z serwerem
+ostatnia udana synchr: 2026-08-19 20:10:00 (7 min temu)
+ostatnia proba       : 2026-08-19 20:17:19 (przed chwila)
+ostatni blad         : nie udalo sie polaczyc z serwerem po 4 probach
+raporty w buforze    : 1
 ```
 
 Kody wyjścia:
@@ -153,9 +277,11 @@ biurem nie zostawia dziury w historii inwentarza.
 
 ## Aktualizacja i deinstalacja
 
-Aktualizacja: uruchom `install-agent.ps1` ponownie z nowym `.exe`.
-Skrypt zatrzyma zadanie, podmieni plik i zarejestruje maszynę na nowo
-(poprzednie poświadczenie zostanie unieważnione po stronie serwera).
+Aktualizacja: uruchom nowy `CMDB-Agent-Setup.exe` albo `install-agent.ps1`
+z nowym `.exe`. Skrypt zatrzyma zadanie, podmieni pliki i zarejestruje maszynę
+na nowo (poprzednie poświadczenie zostanie unieważnione po stronie serwera).
+Ikona w zasobniku jest zatrzymywana przed podmianą plików — inaczej trzymałaby
+otwarty plik `.exe` i aktualizacja by się nie powiodła.
 
 ```powershell
 .\uninstall-agent.ps1                # usuwa zadanie i program, zachowuje poświadczenie
