@@ -1,5 +1,29 @@
 # Wdrożenie
 
+## Uruchomienie testowe (jedno polecenie)
+
+Do pierwszego kontaktu i testów z agentem:
+
+```bash
+cd server
+pip install -r requirements-dev.txt
+python quickstart.py                 # --port 8443, --host 0.0.0.0
+python quickstart.py --print-only    # tylko dane dostępowe, bez startu
+```
+
+Skrypt wystawia certyfikat self-signed (dla `localhost`, nazwy maszyny
+i adresów lokalnych), zakłada bazę SQLite, firmę, konto panelu i token,
+po czym startuje serwer z TLS i wypisuje dane do wklejenia w agencie.
+Artefakty lądują w `server/.quickstart/` i są pomijane przez git — zawierają
+klucz prywatny, klucz sesji i token.
+
+Certyfikat generowany jest biblioteką `cryptography`, a nie poleceniem
+`openssl` — na Windows zwykle go nie ma.
+
+**To nie jest konfiguracja produkcyjna**: SQLite zamiast PostgreSQL,
+certyfikat self-signed i konto z hasłem wpisanym w skrypcie. Do produkcji
+użyj poniższego docker compose.
+
 ## Docker Compose (zalecane)
 
 ```bash

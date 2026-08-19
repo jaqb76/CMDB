@@ -33,34 +33,59 @@ maszyny, a agent posługuje się tokenem przypisanym do konkretnej firmy.
 Pełny raport trafia do bazy jako JSON — widoki w panelu są tylko jego
 prezentacją, więc dołożenie nowego pola nie wymaga migracji bazy.
 
-## Szybki start (środowisko deweloperskie)
+## Szybki start — jedno polecenie
 
 ```bash
-# 1. Serwer
 cd server
-python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
+python quickstart.py
+```
 
+Skrypt wystawia certyfikat, zakłada bazę, firmę, konto panelu i token, po czym
+startuje serwer i wypisuje gotowe dane do wklejenia w agencie:
+
+```
+  Adres serwera : https://localhost:8443
+  Token         : cmdb_ent_…
+  Certyfikat CA : …\server\.quickstart\server.crt
+
+  PANEL WWW     : https://localhost:8443/
+  login         : admin@moja-firma.pl
+  haslo         : cmdb-haslo-testowe-2026
+```
+
+Agent wysyła dane **wyłącznie po HTTPS**, więc serwer startuje z TLS nawet
+w trybie testowym. Certyfikat jest self-signed, dlatego agent musi dostać go
+jawnie — wskaż wypisany plik w polu „Certyfikat CA" okna ustawień albo podaj
+`--ca-bundle`. Uruchomienie jest idempotentne: kolejne starty używają
+istniejącego certyfikatu i tokenu.
+
+Domyślnie serwer nasłuchuje na `0.0.0.0`, więc agent z innej maszyny w sieci
+lokalnej też się połączy (skrypt wypisuje adres LAN). Do produkcji użyj
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) — PostgreSQL, nginx
+i certyfikat publicznego urzędu.
+
+<details>
+<summary>Ręczna konfiguracja krok po kroku</summary>
+
+```bash
+cd server
 export CMDB_SECRET_KEY="$(python -m cmdb_server.cli gen-secret)"
 python -m cmdb_server.cli init-db
 python -m cmdb_server.cli tenant-create --name "Firma ABC" --slug abc
 python -m cmdb_server.cli user-create --email admin@abc.pl --tenant abc --role admin
 python -m cmdb_server.cli token-issue --tenant abc --name "stacje robocze"
-
-uvicorn cmdb_server.main:app --reload          # http://127.0.0.1:8000
+uvicorn cmdb_server.main:app --reload
 ```
 
 ```bash
-# 2. Agent (na maszynie do zinwentaryzowania)
 cd agent
 python -m cmdb_agent.main show                 # podgląd raportu, bez wysyłki
 python -m cmdb_agent.main --server https://cmdb.firma.pl --token cmdb_ent_... enroll
 python -m cmdb_agent.main run
 ```
 
-W trybie deweloperskim serwer działa po HTTP. **Agent wysyła dane wyłącznie
-po HTTPS** — do testów lokalnych użyj certyfikatu i parametru `--ca-bundle`
-(opis w [`docs/wdrozenie.md`](docs/wdrozenie.md)).
+</details>
 
 ## Wdrożenie produkcyjne
 

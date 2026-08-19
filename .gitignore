@@ -8,6 +8,9 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# Uruchomienie testowe: certyfikat, baza, klucz sesji i token
+server/.quickstart/
+
 # Baza i konfiguracja lokalna
 *.db
 *.sqlite3
