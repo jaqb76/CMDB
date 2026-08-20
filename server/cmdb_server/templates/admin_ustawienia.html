@@ -1,0 +1,90 @@
+{% extends "base_admin.html" %}
+{% block title %}Ustawienia - {{ firma.name }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Ustawienia firmy</h1>
+    <p class="muted">{{ firma.name }} (<code>{{ firma.slug }}</code>) &middot; {{ maszyny }} maszyn</p>
+  </div>
+  <a class="btn btn-small btn-ghost" href="/admin/firmy">Wroc do listy firm</a>
+</div>
+
+<form method="post" action="/admin/tenants/{{ firma.id }}/ustawienia">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <section class="panel">
+    <h2>Dane organizacji</h2>
+    <div class="two-col">
+      <div class="stack">
+        <label for="name">Nazwa</label>
+        <input id="name" name="name" required maxlength="200" value="{{ firma.name }}">
+      </div>
+      <div class="stack">
+        <label for="slug">Identyfikator</label>
+        <input id="slug" name="slug" required maxlength="63" value="{{ firma.slug }}"
+               pattern="[a-z0-9][a-z0-9-]{1,62}">
+        <div class="muted small">
+          Uzywany w adresach i wpisach dziennika. Zmiana jest bezpieczna — agenci
+          rozpoznaja firme po tokenie, a nie po identyfikatorze.
+        </div>
+      </div>
+    </div>
+    <label for="notes">Notatki</label>
+    <textarea id="notes" name="notes" rows="2"
+              placeholder="osoba kontaktowa, numer umowy, uwagi">{{ firma.notes or '' }}</textarea>
+  </section>
+
+  <section class="panel">
+    <h2>Zachowanie agentow</h2>
+    <p class="muted small">
+      Puste pole oznacza wartosc z konfiguracji serwera. Firmy roznia sie charakterem:
+      flota laptopow bywa offline tygodniami, a serwerownia odzywa sie co godzine
+      i tydzien ciszy to juz awaria.
+    </p>
+
+    <div class="two-col">
+      <div class="stack">
+        <label for="report_interval_hours">Czestotliwosc raportowania (godziny)</label>
+        <input id="report_interval_hours" name="report_interval_hours" type="number"
+               min="1" max="168"
+               value="{{ (firma.report_interval_seconds // 3600) if firma.report_interval_seconds else '' }}"
+               placeholder="domyslnie {{ domyslne.report_interval_seconds // 3600 }}">
+        <div class="muted small">
+          Serwer podaje te wartosc agentom w odpowiedzi — zmiana zadziala przy
+          ich najblizszym kontakcie.
+        </div>
+      </div>
+
+      <div class="stack">
+        <label for="stale_after_hours">Prog braku kontaktu (godziny)</label>
+        <input id="stale_after_hours" name="stale_after_hours" type="number"
+               min="1" max="8760" value="{{ firma.stale_after_hours or '' }}"
+               placeholder="domyslnie {{ domyslne.stale_after_hours }}">
+        <div class="muted small">
+          Po tym czasie agent liczy sie jako nieaktywny — w zestawieniach
+          i na pulpicie firmy.
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <label for="snapshot_retention">Retencja raportow (ile trzymac na maszyne)</label>
+      <input id="snapshot_retention" name="snapshot_retention" type="number"
+             min="0" max="10000"
+             value="{{ firma.snapshot_retention if firma.snapshot_retention is not none else '' }}"
+             placeholder="domyslnie {{ domyslne.snapshot_retention }}">
+      <div class="muted small">
+        0 oznacza brak limitu. Historia zmian nie jest tym objeta — zostaje
+        niezaleznie od tego, ile raportow trzymamy.
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
+    <a class="btn btn-ghost" href="/admin/tenants/{{ firma.id }}/upgrade">Maszyny i aktualizacje</a>
+    <a class="btn btn-ghost" href="/switch-tenant?slug={{ firma.slug }}">Podglad firmy</a>
+  </section>
+</form>
+{% endblock %}

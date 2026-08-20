@@ -51,6 +51,7 @@
           {% else %}<span class="badge badge-danger">wylaczona</span>{% endif %}
         </td>
         <td class="small">
+          <a class="btn btn-small" href="/admin/tenants/{{ f.id }}/ustawienia">Ustawienia</a>
           <form method="post" action="/admin/tenants/{{ f.id }}/active" class="inline-form"
                 data-confirm="{% if f.is_active %}Wylaczyc firme {{ f.name }}? Jej agenci przestana byc przyjmowani.{% else %}Wlaczyc firme {{ f.name }}?{% endif %}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

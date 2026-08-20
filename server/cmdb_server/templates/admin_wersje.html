@@ -160,7 +160,7 @@
     </div>
     <div>
       <label for="wersja">Numer wersji</label>
-      <input id="wersja" name="version" required maxlength="32" placeholder="0.3.0">
+      <input id="wersja" name="version" maxlength="32" placeholder="odczytamy z pliku">
     </div>
     <div>
       <label for="plik">Plik agenta</label>
@@ -173,9 +173,11 @@
     <div><button type="submit" class="btn btn-primary">Wgraj</button></div>
   </form>
   <p class="muted small">
-    Numer musi zgadzac sie z tym, co zglasza agent (<code>cmdb-agent --version</code>) —
-    inaczej serwer w kolko proponowalby te sama aktualizacje. Sygnatura pliku jest
-    sprawdzana przy wgrywaniu, wiec plik dla niewlasciwego systemu nie przejdzie.
+    Numer wersji i system odczytujemy z samego pliku — skrypt budujacy dopisuje je
+    na jego koncu. Pole numeru wypelnij tylko dla plikow zbudowanych starszym
+    skryptem; podanie numeru sprzecznego z tym w pliku zostanie odrzucone.
+    Sygnatura formatu jest sprawdzana niezaleznie, wiec plik dla niewlasciwego
+    systemu nie przejdzie.
   </p>
 </section>
 {% endblock %}

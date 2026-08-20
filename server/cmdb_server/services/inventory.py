@@ -18,10 +18,9 @@ from typing import Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from ..config import get_settings
-from ..models import Asset, AssetChange, InventorySnapshot, utcnow
+from ..models import Asset, AssetChange, InventorySnapshot, Tenant, utcnow
 from ..schemas import InventoryReport
-from . import changes
+from . import changes, ustawienia
 from .scoping import TenantContext
 
 log = logging.getLogger(__name__)
@@ -209,7 +208,6 @@ def store_report(
     db: Session, ctx: TenantContext, asset: Asset, report: InventoryReport
 ) -> tuple[InventorySnapshot | None, bool]:
     """Zapisuje raport. Zwraca (snapshot, czy_stan_sie_zmienil)."""
-    settings = get_settings()
     payload = report.model_dump(mode="json")
     fingerprint = stable_fingerprint(payload)
     collected_at = _normalize_collected_at(report.agent.collected_at)
@@ -262,9 +260,10 @@ def store_report(
     if zmiany:
         log.info("maszyna %s: %d zmian w konfiguracji", asset.hostname, len(zmiany))
 
-    if settings.snapshot_retention > 0:
+    retencja = ustawienia.retencja_raportow(db.get(Tenant, ctx.tenant_id))
+    if retencja > 0:
         db.flush()
-        _apply_retention(db, asset.id, settings.snapshot_retention)
+        _apply_retention(db, asset.id, retencja)
 
     return snapshot, True
 

@@ -591,3 +591,148 @@ def test_ustawienie_maszyny_bije_firme_i_oficjalna(client, tenant_a, make_user):
     assert client.get(
         "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
     ).json()["version"] == "0.9.0"
+
+
+# --- odczyt wersji z pliku --------------------------------------------------
+
+def _plik_z_metadanymi(wersja="0.7.0", system="windows", baza=None):
+    """Plik agenta ze stopka, ktora dopisuje skrypt budujacy."""
+    import json as _json
+
+    tresc = baza if baza is not None else PLIK_AGENTA
+    meta = _json.dumps({"version": wersja, "os_family": system, "built_at": "2026-08-20T10:00:00Z"})
+    return tresc + b"\n<<<CMDB-AGENT-META>>>" + meta.encode("utf-8") + b"<<<KONIEC>>>"
+
+
+def test_wersja_odczytana_z_pliku_bez_wpisywania(client, make_user):
+    """Sedno poprawki: numeru nie trzeba podawac recznie."""
+    csrf = _superadmin(client, make_user)
+    odpowiedz = client.post(
+        "/admin/releases",
+        data={"version": "", "os_family": "windows", "notes": "", "csrf_token": csrf},
+        files={"plik": ("agent.exe", io.BytesIO(_plik_z_metadanymi("0.7.0")), "application/octet-stream")},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 303
+    with SessionLocal() as db:
+        assert db.execute(select(AgentRelease)).scalar_one().version == "0.7.0"
+
+
+def test_numer_sprzeczny_z_plikiem_jest_odrzucany(client, make_user):
+    """Rozbieznosc konczylaby sie aktualizacja proponowana bez konca - agent
+    zglaszalby przeciez inna wersje niz oczekiwana."""
+    csrf = _superadmin(client, make_user)
+    odpowiedz = client.post(
+        "/admin/releases",
+        data={"version": "9.9.9", "os_family": "windows", "notes": "", "csrf_token": csrf},
+        files={"plik": ("agent.exe", io.BytesIO(_plik_z_metadanymi("0.7.0")), "application/octet-stream")},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 400
+
+
+def test_niezgodny_system_w_metadanych_jest_odrzucany(client, make_user):
+    csrf = _superadmin(client, make_user)
+    odpowiedz = client.post(
+        "/admin/releases",
+        data={"version": "", "os_family": "windows", "notes": "", "csrf_token": csrf},
+        files={"plik": ("agent.exe",
+                        io.BytesIO(_plik_z_metadanymi("0.7.0", "linux")),
+                        "application/octet-stream")},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 400
+
+
+def test_plik_bez_metadanych_wymaga_podania_numeru(client, make_user):
+    """Starszy build nadal da sie wgrac - trzeba tylko podac numer recznie."""
+    csrf = _superadmin(client, make_user)
+    assert _wgraj_wersje(client, csrf, "").status_code == 400
+    assert _wgraj_wersje(client, csrf, "0.6.0").status_code == 303
+
+
+# --- ustawienia firmy -------------------------------------------------------
+
+def test_zmiana_nazwy_i_identyfikatora_firmy(client, tenant_a, make_user):
+    csrf = _superadmin(client, make_user)
+    client.post(
+        f"/admin/tenants/{tenant_a['id']}/ustawienia",
+        data={"name": "Firma A po zmianie", "slug": "firma-a-nowa",
+              "report_interval_hours": "", "stale_after_hours": "",
+              "snapshot_retention": "", "notes": "kontakt: Jan", "csrf_token": csrf},
+        follow_redirects=True,
+    )
+    with SessionLocal() as db:
+        firma = db.get(Tenant, tenant_a["id"])
+        assert firma.name == "Firma A po zmianie"
+        assert firma.slug == "firma-a-nowa"
+        assert firma.notes == "kontakt: Jan"
+
+
+def test_nie_mozna_zajac_identyfikatora_innej_firmy(client, tenant_a, tenant_b, make_user):
+    csrf = _superadmin(client, make_user)
+    odpowiedz = client.post(
+        f"/admin/tenants/{tenant_a['id']}/ustawienia",
+        data={"name": "Firma A", "slug": "firma-b", "report_interval_hours": "",
+              "stale_after_hours": "", "snapshot_retention": "", "notes": "", "csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 400
+
+
+def test_ustawienia_firmy_maja_pierwszenstwo_przed_globalnymi(client, tenant_a, make_user):
+    """Firma z laptopami moze miec inny prog niz serwerownia."""
+    csrf = _superadmin(client, make_user)
+    client.post(
+        f"/admin/tenants/{tenant_a['id']}/ustawienia",
+        data={"name": "Firma A", "slug": "firma-a", "report_interval_hours": "8",
+              "stale_after_hours": "336", "snapshot_retention": "10",
+              "notes": "", "csrf_token": csrf},
+        follow_redirects=True,
+    )
+
+    # Agent tej firmy dostaje interwal firmowy, a nie globalny.
+    token = enroll(client, tenant_a["token"], machine_id="maszyna-ustawienia").json()["agent_token"]
+    odpowiedz = client.post(
+        "/api/v1/inventory",
+        headers={"Authorization": f"Bearer {token}"},
+        json=build_report(machine_id="maszyna-ustawienia"),
+    ).json()
+    assert odpowiedz["report_interval_seconds"] == 8 * 3600
+
+    with SessionLocal() as db:
+        firma = db.get(Tenant, tenant_a["id"])
+        assert firma.stale_after_hours == 336
+        assert firma.snapshot_retention == 10
+
+
+def test_puste_pole_oznacza_wartosc_globalna(client, tenant_a, make_user):
+    """Nie zapisujemy wartosci domyslnej do firmy - inaczej zmiana globalna
+    przestalaby dzialac dla firm, ktore nigdy niczego swiadomie nie ustawily."""
+    csrf = _superadmin(client, make_user)
+    client.post(
+        f"/admin/tenants/{tenant_a['id']}/ustawienia",
+        data={"name": "Firma A", "slug": "firma-a", "report_interval_hours": "6",
+              "stale_after_hours": "", "snapshot_retention": "", "notes": "", "csrf_token": csrf},
+        follow_redirects=True,
+    )
+    with SessionLocal() as db:
+        firma = db.get(Tenant, tenant_a["id"])
+        assert firma.report_interval_seconds == 6 * 3600
+        assert firma.stale_after_hours is None
+        assert firma.snapshot_retention is None
+
+
+def test_odrzuca_bezsensowne_wartosci_ustawien(client, tenant_a, make_user):
+    csrf = _superadmin(client, make_user)
+    for pole, wartosc in (("report_interval_hours", "0"),
+                          ("stale_after_hours", "-5"),
+                          ("snapshot_retention", "nie-liczba")):
+        dane = {"name": "Firma A", "slug": "firma-a", "report_interval_hours": "",
+                "stale_after_hours": "", "snapshot_retention": "", "notes": "",
+                "csrf_token": csrf}
+        dane[pole] = wartosc
+        odpowiedz = client.post(
+            f"/admin/tenants/{tenant_a['id']}/ustawienia", data=dane, follow_redirects=False
+        )
+        assert odpowiedz.status_code == 400, f"{pole}={wartosc} powinno byc odrzucone"

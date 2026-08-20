@@ -72,6 +72,14 @@ class Tenant(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    # Ustawienia firmowe. Puste znaczy "jak w konfiguracji serwera" - firmy
+    # roznia sie charakterem: flota laptopow bywa offline tygodniami, a
+    # serwerownia odzywa sie co godzine i tydzien ciszy to awaria.
+    report_interval_seconds: Mapped[int | None] = mapped_column(Integer)
+    stale_after_hours: Mapped[int | None] = mapped_column(Integer)
+    snapshot_retention: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
+
     assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")
 
 

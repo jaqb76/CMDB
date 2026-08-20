@@ -25,7 +25,7 @@ from ..schemas import (
 )
 from ..security import generate_token
 from ..services.auth import client_ip, require_agent, require_enrollment_token
-from ..services import upgrades
+from ..services import upgrades, ustawienia
 from ..services.inventory import store_report
 from ..services.scoping import TenantContext, audit
 
@@ -127,7 +127,7 @@ def enroll(
         tenant_slug=tenant.slug,
         agent_token=token.plaintext,
         server_time=utcnow(),
-        report_interval_seconds=settings.report_interval_seconds,
+        report_interval_seconds=ustawienia.interwal_raportowania(tenant),
     )
 
 
@@ -166,7 +166,9 @@ def submit_inventory(
         snapshot_id=snapshot.id if snapshot else None,
         changed=changed,
         server_time=utcnow(),
-        report_interval_seconds=settings.report_interval_seconds,
+        report_interval_seconds=ustawienia.interwal_raportowania(
+            db.get(Tenant, ctx.tenant_id)
+        ),
         upgrade=_oferta_aktualizacji(db, asset),
     )
 

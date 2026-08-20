@@ -11,6 +11,7 @@ tego filtra nie maja - kazde takie miejsce jest w tym pliku i tylko tutaj.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 from datetime import timedelta
@@ -27,13 +28,14 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
     LIFECYCLE_AKTYWNY,
+    as_utc,
     AgentRelease,
     Asset,
     AuditLog,
@@ -47,6 +49,7 @@ from ..models import (
 )
 from ..security import check_csrf_token, generate_token, hash_password, issue_csrf_token
 from ..services.auth import client_ip, require_superadmin
+from ..services import ustawienia
 from ..services.scoping import audit
 from .ui import templates
 
@@ -64,6 +67,46 @@ SYSTEMY = {
     "linux": {"etykieta": "Linux", "sygnatura": bytes.fromhex("7f") + b"ELF", "opis": "program ELF"},
 }
 MIN_DLUGOSC_HASLA = 12
+
+# Skrypt budujacy dopisuje metadane na koncu pliku agenta. PyInstaller pakuje
+# kod w skompresowane archiwum, wiec numeru wersji nie da sie odczytac
+# z gotowego pliku, a uruchomienie go na serwerze byloby wykonywaniem obcego
+# kodu. Stopka rozwiazuje to bez jednego i bez drugiego.
+ZNACZNIK_POCZATEK = b"<<<CMDB-AGENT-META>>>"
+ZNACZNIK_KONIEC = b"<<<KONIEC>>>"
+OGON_METADANYCH = 4096
+
+
+def odczytaj_metadane(sciezka: Path) -> dict | None:
+    """Wyciaga metadane dopisane na koncu pliku agenta.
+
+    To wygoda, a nie zabezpieczenie: plik sam o sobie mowi, jaka ma wersje.
+    Sygnatura formatu i skrot SHA-256 sprawdzane sa niezaleznie, a gdyby ktos
+    podal zly numer, serwer w kolko proponowalby te sama aktualizacje - agent
+    zglaszalby przeciez inna wersje niz oczekiwana.
+    """
+    try:
+        rozmiar = sciezka.stat().st_size
+        with sciezka.open("rb") as plik:
+            plik.seek(max(0, rozmiar - OGON_METADANYCH))
+            ogon = plik.read()
+    except OSError:
+        return None
+
+    poczatek = ogon.rfind(ZNACZNIK_POCZATEK)
+    if poczatek < 0:
+        return None
+    koniec = ogon.find(ZNACZNIK_KONIEC, poczatek)
+    if koniec < 0:
+        return None
+
+    surowe = ogon[poczatek + len(ZNACZNIK_POCZATEK):koniec]
+    try:
+        dane = json.loads(surowe.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        log.warning("plik agenta ma uszkodzone metadane wersji")
+        return None
+    return dane if isinstance(dane, dict) else None
 
 
 def render_admin(request: Request, template: str, user: PortalUser, strona: str, **extra):
@@ -107,41 +150,49 @@ def _wydania(db: Session):
 
 
 def _statystyki_agentow(db: Session):
-    """Per firma: rozklad wersji, liczba aktywnych i nieaktywnych agentow."""
-    prog = utcnow() - timedelta(hours=get_settings().stale_after_hours)
+    """Per firma: rozklad wersji, liczba aktywnych i nieaktywnych agentow.
 
-    # Jedno zapytanie na komplet. Petla z zapytaniem na kazda firme bylaby
-    # zauwazalna juz przy kilkudziesieciu firmach.
+    Prog braku kontaktu moze byc ustawiony osobno dla kazdej firmy, wiec
+    zliczamy po stronie Pythona zamiast jednym zapytaniem agregujacym.
+    Wyrazenie tego w SQL wymagaloby arytmetyki dat rozniacej sie miedzy
+    SQLite a PostgreSQL, a przy kilkunastu firmach i setkach maszyn roznica
+    w czasie wykonania jest niemierzalna.
+    """
     wiersze = db.execute(
-        select(
-            Asset.tenant_id,
-            Asset.os_family,
-            Asset.agent_version,
-            func.count(Asset.id),
-            func.sum(case((Asset.last_seen >= prog, 1), else_=0)),
-        )
+        select(Asset.tenant_id, Asset.os_family, Asset.agent_version, Asset.last_seen)
         .where(Asset.lifecycle == LIFECYCLE_AKTYWNY)
-        .group_by(Asset.tenant_id, Asset.os_family, Asset.agent_version)
     ).all()
 
-    rozklad: dict[str, list[dict]] = {}
+    granice = {
+        firma.id: ustawienia.granica_aktywnosci(firma)
+        for firma in db.execute(select(Tenant)).scalars()
+    }
+
+    zliczone: dict[str, dict[tuple, dict]] = {}
     aktywne: dict[str, int] = {}
     nieaktywne: dict[str, int] = {}
-    for tenant_id, system, wersja, ile, ilu_aktywnych in wiersze:
-        ilu_aktywnych = int(ilu_aktywnych or 0)
-        rozklad.setdefault(tenant_id, []).append(
-            {
-                "os_family": system or "nieznany",
-                "wersja": wersja or "nieznana",
-                "ile": ile,
-                "aktywne": ilu_aktywnych,
-                "nieaktywne": ile - ilu_aktywnych,
-            }
+
+    for tenant_id, system, wersja, ostatni in wiersze:
+        klucz = (system or "nieznany", wersja or "nieznana")
+        pozycja = zliczone.setdefault(tenant_id, {}).setdefault(
+            klucz,
+            {"os_family": klucz[0], "wersja": klucz[1], "ile": 0, "aktywne": 0, "nieaktywne": 0},
         )
-        aktywne[tenant_id] = aktywne.get(tenant_id, 0) + ilu_aktywnych
-        nieaktywne[tenant_id] = nieaktywne.get(tenant_id, 0) + (ile - ilu_aktywnych)
-    for lista in rozklad.values():
-        lista.sort(key=lambda p: (p["os_family"], p["wersja"]))
+        granica = granice.get(tenant_id)
+        czy_aktywny = ostatni is not None and as_utc(ostatni) >= granica if granica else False
+
+        pozycja["ile"] += 1
+        if czy_aktywny:
+            pozycja["aktywne"] += 1
+            aktywne[tenant_id] = aktywne.get(tenant_id, 0) + 1
+        else:
+            pozycja["nieaktywne"] += 1
+            nieaktywne[tenant_id] = nieaktywne.get(tenant_id, 0) + 1
+
+    rozklad = {
+        tenant_id: sorted(pozycje.values(), key=lambda p: (p["os_family"], p["wersja"]))
+        for tenant_id, pozycje in zliczone.items()
+    }
     return rozklad, aktywne, nieaktywne
 
 
@@ -381,6 +432,102 @@ def wydaj_token(
     )
 
 
+@router.get("/tenants/{tenant_id}/ustawienia", response_class=HTMLResponse)
+def widok_ustawien(
+    tenant_id: str,
+    request: Request,
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    firma = znajdz_firme(db, tenant_id)
+    globalne = get_settings()
+    return render_admin(
+        request, "admin_ustawienia.html", user, "firmy",
+        firma=firma,
+        domyslne={
+            "report_interval_seconds": globalne.report_interval_seconds,
+            "stale_after_hours": globalne.stale_after_hours,
+            "snapshot_retention": globalne.snapshot_retention,
+        },
+        maszyny=db.execute(
+            select(func.count(Asset.id)).where(Asset.tenant_id == firma.id)
+        ).scalar_one(),
+    )
+
+
+@router.post("/tenants/{tenant_id}/ustawienia")
+def zapisz_ustawienia(
+    tenant_id: str,
+    request: Request,
+    name: str = Form(...),
+    slug: str = Form(...),
+    report_interval_hours: str = Form(""),
+    stale_after_hours: str = Form(""),
+    snapshot_retention: str = Form(""),
+    notes: str = Form(""),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zmiana danych i ustawien firmy.
+
+    Puste pole liczbowe znaczy "jak w konfiguracji serwera" - nie zapisujemy
+    wtedy wartosci domyslnej, bo zmiana globalna przestalaby dzialac dla firm,
+    ktore nigdy swiadomie niczego nie ustawily.
+    """
+    sprawdz_csrf(user, csrf_token)
+    firma = znajdz_firme(db, tenant_id)
+
+    nowy_slug = slug.strip().lower()
+    if not SLUG_RE.match(nowy_slug):
+        raise HTTPException(
+            status_code=400,
+            detail="identyfikator moze zawierac male litery, cyfry i myslnik (2-63 znaki)",
+        )
+    if nowy_slug != firma.slug:
+        zajety = db.execute(
+            select(Tenant).where(Tenant.slug == nowy_slug, Tenant.id != firma.id)
+        ).scalar_one_or_none()
+        if zajety is not None:
+            raise HTTPException(status_code=400, detail="ten identyfikator jest juz zajety")
+
+    def liczba(wartosc: str, nazwa: str, minimum: int, maksimum: int) -> int | None:
+        tekst = wartosc.strip()
+        if not tekst:
+            return None
+        try:
+            liczbowa = int(tekst)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"{nazwa}: podaj liczbe") from None
+        if not minimum <= liczbowa <= maksimum:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{nazwa}: wartosc musi miescic sie w zakresie {minimum}-{maksimum}",
+            )
+        return liczbowa
+
+    godziny = liczba(report_interval_hours, "czestotliwosc raportowania", 1, 168)
+    prog = liczba(stale_after_hours, "prog braku kontaktu", 1, 8760)
+    retencja = liczba(snapshot_retention, "retencja raportow", 0, 10000)
+
+    poprzednie = {"slug": firma.slug, "name": firma.name}
+    firma.name = name.strip() or firma.name
+    firma.slug = nowy_slug
+    firma.report_interval_seconds = godziny * 3600 if godziny else None
+    firma.stale_after_hours = prog
+    firma.snapshot_retention = retencja
+    firma.notes = notes.strip() or None
+
+    audit(db, None, action="tenant.settings_changed", target=firma.slug,
+          detail={"z": poprzednie, "interwal_h": godziny, "prog_h": prog, "retencja": retencja},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s zmienil ustawienia firmy %s", user.email, firma.slug)
+    return RedirectResponse(
+        f"/admin/tenants/{firma.id}/ustawienia", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
 # --- wersje agenta ----------------------------------------------------------
 
 @router.get("/wersje", response_class=HTMLResponse)
@@ -422,7 +569,7 @@ def widok_wersji(
 @router.post("/releases")
 async def wgraj_wersje(
     request: Request,
-    version: str = Form(...),
+    version: str = Form(""),
     os_family: str = Form("windows"),
     notes: str = Form(""),
     plik: UploadFile = File(...),
@@ -443,19 +590,7 @@ async def wgraj_wersje(
     if system not in SYSTEMY:
         raise HTTPException(status_code=400, detail="nieznany system operacyjny")
 
-    numer = version.strip()
-    if not WERSJA_RE.match(numer):
-        raise HTTPException(status_code=400, detail="niepoprawny numer wersji")
-    if db.execute(
-        select(AgentRelease).where(
-            AgentRelease.version == numer, AgentRelease.os_family == system
-        )
-    ).scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"wersja {numer} dla {SYSTEMY[system]['etykieta']} juz istnieje",
-        )
-
+    podany = version.strip()
     katalog = katalog_wersji()
     tymczasowy = katalog / f".wgrywanie-{utcnow().timestamp()}"
     skrot = hashlib.sha256()
@@ -484,6 +619,42 @@ async def wgraj_wersje(
                            f"({SYSTEMY[system]['opis']})",
                 )
 
+        metadane = odczytaj_metadane(tymczasowy) or {}
+        wykryta = str(metadane.get("version") or "").strip()
+        numer = wykryta or podany
+
+        if not numer:
+            raise HTTPException(
+                status_code=400,
+                detail="plik nie zawiera numeru wersji - zbuduj go aktualnym "
+                       "build-agent.ps1 albo podaj numer recznie",
+            )
+        if not WERSJA_RE.match(numer):
+            raise HTTPException(status_code=400, detail="niepoprawny numer wersji")
+        # Numer podany recznie nie moze byc sprzeczny z tym z pliku - taka
+        # rozbieznosc konczylaby sie aktualizacja proponowana bez konca.
+        if wykryta and podany and wykryta != podany:
+            raise HTTPException(
+                status_code=400,
+                detail=f"plik zglasza wersje {wykryta}, a podano {podany}",
+            )
+        wykryty_system = str(metadane.get("os_family") or "").strip().lower()
+        if wykryty_system and wykryty_system != system:
+            raise HTTPException(
+                status_code=400,
+                detail=f"plik zbudowano dla {wykryty_system}, a wybrano "
+                       f"{SYSTEMY[system]['etykieta']}",
+            )
+        if db.execute(
+            select(AgentRelease).where(
+                AgentRelease.version == numer, AgentRelease.os_family == system
+            )
+        ).scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"wersja {numer} dla {SYSTEMY[system]['etykieta']} juz istnieje",
+            )
+
         odcisk = skrot.hexdigest()
         nazwa_w_magazynie = f"{system}-{odcisk}.bin"
         tymczasowy.replace(katalog / nazwa_w_magazynie)
@@ -507,7 +678,9 @@ async def wgraj_wersje(
           detail={"sha256": odcisk, "size": rozmiar, "os_family": system},
           ip=client_ip(request), actor=user.email)
     db.commit()
-    log.info("superadmin %s wgral agenta %s dla %s (%s)", user.email, numer, system, odcisk[:16])
+    log.info("superadmin %s wgral agenta %s dla %s (%s, wersja %s)",
+             user.email, numer, system, odcisk[:16],
+             "odczytana z pliku" if wykryta else "podana recznie")
     return RedirectResponse("/admin/wersje", status_code=status.HTTP_303_SEE_OTHER)
 
 

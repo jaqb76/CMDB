@@ -35,7 +35,7 @@ from ..models import (
     utcnow,
 )
 from ..security import generate_token, issue_csrf_token, sign_session
-from ..services import duplicates, scoping
+from ..services import duplicates, scoping, ustawienia
 from ..services.auth import (
     LoginRequired,
     authenticate_user,
@@ -160,7 +160,11 @@ def render(
         "ctx": ctx,
         "csrf_token": issue_csrf_token(user.id),
         "all_tenants": tenants,
-        "stale_after_hours": settings.stale_after_hours,
+        # Prog braku kontaktu moze byc ustawiony per firma - szablony maja
+        # pokazywac te wartosc, ktora faktycznie obowiazuje.
+        "stale_after_hours": ustawienia.prog_bez_kontaktu(
+            db.get(Tenant, ctx.tenant_id) if ctx else None
+        ),
         **extra,
     }
     return templates.TemplateResponse(request, template, payload)
@@ -256,8 +260,7 @@ def dashboard(
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
 ) -> Response:
-    settings = get_settings()
-    stale_before = utcnow() - timedelta(hours=settings.stale_after_hours)
+    stale_before = ustawienia.granica_aktywnosci(db.get(Tenant, ctx.tenant_id))
 
     total = db.execute(
         select(func.count(Asset.id)).where(Asset.tenant_id == ctx.tenant_id)
@@ -317,7 +320,7 @@ def asset_list(
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
 ) -> Response:
-    settings = get_settings()
+    granica = ustawienia.granica_aktywnosci(db.get(Tenant, ctx.tenant_id))
     stmt = scoping.assets_query(ctx)
 
     if q:
@@ -338,9 +341,9 @@ def asset_list(
     elif owner:
         stmt = stmt.where(Asset.owner_id == owner)
     if state == "stale":
-        stmt = stmt.where(Asset.last_seen < utcnow() - timedelta(hours=settings.stale_after_hours))
+        stmt = stmt.where(Asset.last_seen < granica)
     elif state == "online":
-        stmt = stmt.where(Asset.last_seen >= utcnow() - timedelta(hours=settings.stale_after_hours))
+        stmt = stmt.where(Asset.last_seen >= granica)
 
     # Wycofane maszyny znikaja z domyslnej listy, ale zostaja w bazie razem
     # z cala historia - pokazujemy je na zadanie.

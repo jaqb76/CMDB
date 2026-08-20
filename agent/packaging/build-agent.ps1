@@ -97,6 +97,36 @@ finally {
 $exe = Join-Path $OutputDir "cmdb-agent.exe"
 if (-not (Test-Path $exe)) { throw "Nie powstal plik $exe" }
 
+# --- metadane w pliku -------------------------------------------------------
+# PyInstaller pakuje kod w skompresowane archiwum, wiec numeru wersji nie da
+# sie z gotowego pliku odczytac. Serwer musialby go uruchomic, a uruchamianie
+# wgranego pliku na serwerze to po prostu wykonywanie obcego kodu. Dopisujemy
+# wiec metadane na koncu pliku: PE i ELF ignoruja dane za wlasciwa zawartoscia,
+# wiec program dziala tak samo, a serwer odczytuje wersje bez uruchamiania.
+#
+# Kolejnosc jest istotna: podpis Authenticode obejmuje caly plik, wiec metadane
+# musza byc dopisane PRZED podpisaniem.
+$wersjaZrodel = (Select-String -Path (Join-Path $agentRoot "cmdb_agent\__init__.py") `
+                               -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+Write-Host "Wersja ze zrodel: $wersjaZrodel" -ForegroundColor Cyan
+
+function Add-Metadane($sciezka, $system) {
+    $meta = [ordered]@{
+        version   = $wersjaZrodel
+        os_family = $system
+        built_at  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    } | ConvertTo-Json -Compress
+    $stopka = "`n<<<CMDB-AGENT-META>>>$meta<<<KONIEC>>>"
+    $bajty = [System.Text.Encoding]::UTF8.GetBytes($stopka)
+    $strumien = [System.IO.File]::Open($sciezka, "Append", "Write")
+    try { $strumien.Write($bajty, 0, $bajty.Length) } finally { $strumien.Close() }
+}
+
+Add-Metadane $exe "windows"
+$trayExeSciezka = Join-Path $OutputDir "cmdb-agent-tray.exe"
+if (Test-Path $trayExeSciezka) { Add-Metadane $trayExeSciezka "windows" }
+Write-Host "  dopisano metadane wersji do plikow" -ForegroundColor Cyan
+
 $artifacts = @($exe)
 $trayExe = Join-Path $OutputDir "cmdb-agent-tray.exe"
 if (Test-Path $trayExe) { $artifacts += $trayExe }

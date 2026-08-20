@@ -132,6 +132,16 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 .btn-ghost { background: transparent; }
 .btn-danger { color: var(--danger-fg); border-color: var(--danger-bg); }
 .btn-danger:hover { border-color: var(--danger-fg); }
+/* Akcja w tekscie tabeli - bez ramki przycisku. */
+.btn-link { background: none; border: none; padding: 0; font: inherit;
+  font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: underline; }
+.row-muted td { opacity: 0.55; }
+.card-ok .card-value { color: var(--ok-fg); }
+.card-sub { font-size: 16px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.topbar-admin { border-bottom: 2px solid var(--accent); }
+.brand-tag { font-size: 11px; font-weight: 600; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 1px; margin-left: 6px; }
+.mainnav a.is-active { color: var(--accent); font-weight: 600; }
 
 /* --- oznaczenia --- */
 .badge {
