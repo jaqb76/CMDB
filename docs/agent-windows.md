@@ -220,6 +220,40 @@ Na polskim Windows grupa nazywa się „Administratorzy”. Skrypt szukający
 
 ## Diagnostyka
 
+### Gdy rejestracja się zawiesza
+
+Zacznij od `doctor` — rozkłada połączenie na etapy i mierzy każdy osobno,
+więc od razu widać, który zawodzi. Odpowiada w kilka sekund zamiast czekać
+do końca limitów:
+
+```powershell
+.\cmdb-agent.exe doctor
+.\cmdb-agent.exe --server https://127.0.0.1:8443 --ca-bundle C:\...\server.crt doctor
+```
+
+```
+  [OK  ] Adres serwera                        0.00 s  127.0.0.1:8443
+  [OK  ] Rozwiazanie nazwy                    0.00 s  127.0.0.1 (IPv4)
+  [BLAD] Polaczenie TCP 127.0.0.1 (IPv4)      5.01 s  brak odpowiedzi - zapora odrzuca pakiety po cichu
+
+  Wynik: polaczenie NIE dziala.
+  Podpowiedz: Brak odpowiedzi na TCP zwykle oznacza regule zapory...
+```
+
+To samo jest pod przyciskiem **Sprawdź połączenie** w oknie ustawień (działa
+przed zapisaniem konfiguracji) i w menu ikony w zasobniku.
+
+Trzy przyczyny, które to najczęściej wyłapuje:
+
+| Objaw w `doctor` | Przyczyna | Co zrobić |
+|---|---|---|
+| TCP: „brak odpowiedzi" po pełnym limicie | zapora odrzuca pakiety po cichu | reguła w Zaporze Windows po stronie serwera |
+| TCP na IPv6 nieudane, IPv4 udane | `localhost` rozwiązuje się na `::1`, serwer słucha tylko IPv4 | wpisz adres IPv4 wprost: `https://127.0.0.1:8443` |
+| TLS: „certyfikat niezaufany" | certyfikat self-signed | wskaż plik CA (`--ca-bundle` / pole w oknie) |
+| TLS: „nie obejmuje nazwy" | użyta nazwa nie jest w certyfikacie | użyj nazwy lub adresu z certyfikatu |
+
+### Pozostałe polecenia
+
 ```powershell
 cd "$env:ProgramFiles\CMDB Agent"
 
@@ -251,7 +285,7 @@ Kody wyjścia:
 | 0 | raport wysłany | — |
 | 1 | błędna konfiguracja lub nieoczekiwany błąd | sprawdź `agent.conf` i dziennik |
 | 2 | serwer odrzucił żądanie (np. 401) | token wycofany albo maszyna usunięta — zarejestruj ponownie |
-| 3 | brak łączności | raport trafił do bufora, pójdzie przy następnym cyklu |
+| 3 | brak łączności | raport trafił do bufora, pójdzie przy następnym cyklu; uruchom `doctor` |
 | 4 | niezgodny odcisk certyfikatu | **potencjalny MITM** — sprawdź certyfikat serwera przed dalszymi krokami |
 
 Najczęstsze sytuacje:
@@ -267,6 +301,29 @@ Najczęstsze sytuacje:
   na wielu maszynach. Agent to wykrywa i schodzi na `MachineGuid`, ale jeśli
   maszyny sklonowano razem z systemem, `MachineGuid` też się powtórzy —
   wtedy trzeba przegenerować go sysprepem.
+
+## Ile trwa rejestracja
+
+Przy sprawnym połączeniu **1–3 sekundy**. Rejestracja nie zbiera całego
+raportu — czyta tylko identyfikację maszyny (jedno wywołanie PowerShella
+z kilkoma zapytaniami CIM) i wysyła jedno żądanie HTTPS. Pierwszy pełny
+raport idzie dopiero potem i zajmuje kilka–kilkanaście sekund, zależnie
+od liczby zainstalowanych programów.
+
+Gdy połączenie nie działa, czas zależy od tego, **jak** nie działa:
+
+| Sytuacja | Czas do błędu |
+|---|---|
+| serwer odmawia połączenia (RST) lub zła nazwa DNS | poniżej sekundy |
+| zapora odrzuca pakiety po cichu — rejestracja z okna | ~30 s |
+| zapora odrzuca pakiety po cichu — agent w tle | ~4 min 15 s |
+
+Ta różnica jest zamierzona. W tle cierpliwość jest zaletą — agent ma przetrwać
+chwilową awarię sieci, więc próbuje 4 razy z limitem 60 s. Przy rejestracji
+z okna ktoś czeka przed ekranem, więc budżet jest skrócony do 2 prób po 15 s.
+Test `test_interactive_budget_fits_in_process_timeout` pilnuje, żeby limit
+okna był większy od budżetu agenta — inaczej okno ubijałoby agenta, zanim ten
+zdąży zgłosić zrozumiały błąd.
 
 ## Bufor offline
 

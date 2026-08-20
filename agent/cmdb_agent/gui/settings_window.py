@@ -13,18 +13,34 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import subprocess
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from ..config import AgentConfig, default_config_path
+from ..config import (
+    INTERACTIVE_MAX_RETRIES,
+    INTERACTIVE_PROCESS_TIMEOUT,
+    INTERACTIVE_TIMEOUT_SECONDS,
+    AgentConfig,
+    default_config_path,
+)
 from ..state import load_state
 from .common import is_admin, run_agent
 
 log = logging.getLogger(__name__)
 
 PADDING = {"padx": 12, "pady": 6}
+
+# Budzet rejestracji z okna - stale w config.py, zeby dalo sie je sprawdzic
+# testem bez uruchamiania interfejsu graficznego.
+INTERACTIVE_ENV = {
+    "CMDB_AGENT_TIMEOUT": str(INTERACTIVE_TIMEOUT_SECONDS),
+    "CMDB_AGENT_MAX_RETRIES": str(INTERACTIVE_MAX_RETRIES),
+}
+ENROLL_PROCESS_TIMEOUT = INTERACTIVE_PROCESS_TIMEOUT
+TIMEOUT_RETURNCODE = -1
 
 
 class SettingsWindow:
@@ -33,6 +49,7 @@ class SettingsWindow:
         self.config_path = config_path or default_config_path()
         self.saved = False
         self.results: queue.Queue = queue.Queue()
+        self.check_results: queue.Queue = queue.Queue()
 
         self.root = tk.Tk()
         self.root.title("CMDB Agent - konfiguracja")
@@ -106,7 +123,13 @@ class SettingsWindow:
         self.progress = ttk.Progressbar(frame, mode="indeterminate", length=520)
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=12, column=0, columnspan=3, sticky="e", pady=(12, 0))
+        buttons.grid(row=12, column=0, columnspan=3, sticky="we", pady=(12, 0))
+        # Sprawdzenie polaczenia nie zapisuje niczego - mozna go uzyc, zanim
+        # zdecydujemy sie na rejestracje.
+        self.check_button = ttk.Button(
+            buttons, text="Sprawdz polaczenie", command=self._on_check
+        )
+        self.check_button.pack(side="left")
         self.save_button = ttk.Button(
             buttons, text="Zapisz i zarejestruj", command=self._on_save
         )
@@ -227,6 +250,56 @@ class SettingsWindow:
             )
             return False
 
+    def _on_check(self) -> None:
+        """Diagnostyka polaczenia - bez zapisywania konfiguracji."""
+        server = self.server_var.get().strip().rstrip("/")
+        if not server.startswith("https://"):
+            self._set_message("Podaj adres serwera zaczynajacy sie od https://", "#a52222")
+            return
+
+        self.check_button.configure(state="disabled", text="Sprawdzam...")
+        self._set_message("Sprawdzam polaczenie...", "#333")
+        ca = self.ca_var.get().strip() or None
+        threading.Thread(
+            target=self._check_worker, args=(server, ca), daemon=True
+        ).start()
+        self._poll_check_result()
+
+    def _check_worker(self, server: str, ca: str | None) -> None:
+        from ..diagnose import render_report
+
+        try:
+            report, healthy = render_report(server, ca)
+            self.check_results.put((report, healthy))
+        except Exception as exc:
+            self.check_results.put((f"Diagnostyka nie powiodla sie: {exc}", False))
+
+    def _poll_check_result(self) -> None:
+        try:
+            report, healthy = self.check_results.get_nowait()
+        except queue.Empty:
+            self.root.after(150, self._poll_check_result)
+            return
+
+        self.check_button.configure(state="normal", text="Sprawdz polaczenie")
+        self._set_message(
+            "Polaczenie z serwerem dziala." if healthy else "Polaczenie nie dziala - szczegoly ponizej.",
+            "#1c6b34" if healthy else "#a52222",
+        )
+        self._show_report(report)
+
+    def _show_report(self, report: str) -> None:
+        window = tk.Toplevel(self.root)
+        window.title("Diagnostyka polaczenia")
+        text = tk.Text(window, width=94, height=20, wrap="word", font=("Consolas", 9))
+        text.insert("1.0", report)
+        text.configure(state="disabled")
+        text.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        scroll = ttk.Scrollbar(window, command=text.yview)
+        scroll.pack(side="right", fill="y")
+        text.configure(yscrollcommand=scroll.set)
+        ttk.Button(window, text="Zamknij", command=window.destroy).pack(pady=(0, 10))
+
     def _on_save(self) -> None:
         candidate = self._collect()
         if candidate is None:
@@ -252,9 +325,16 @@ class SettingsWindow:
         glownego to jedyny bezpieczny most.
         """
         try:
-            result = run_agent(["enroll"], self.config_path, timeout=180)
+            result = run_agent(
+                ["enroll"],
+                self.config_path,
+                timeout=ENROLL_PROCESS_TIMEOUT,
+                extra_env=INTERACTIVE_ENV,
+            )
             output = (result.stderr or b"").decode("utf-8", errors="replace")
             self.results.put((result.returncode, output))
+        except subprocess.TimeoutExpired:
+            self.results.put((TIMEOUT_RETURNCODE, ""))
         except Exception as exc:  # okno nie moze zniknac bez komunikatu
             self.results.put((1, str(exc)))
 
@@ -294,6 +374,17 @@ class SettingsWindow:
 
 def _explain_failure(returncode: int, output: str) -> str:
     """Zamienia kod wyjscia i log na komunikat zrozumialy dla uzytkownika."""
+    if returncode == TIMEOUT_RETURNCODE:
+        return (
+            "Rejestracja nie odpowiedziala w wyznaczonym czasie.\n\n"
+            "Najczestsze przyczyny:\n"
+            "- zapora blokuje polaczenie (pakiety sa odrzucane po cichu, "
+            "wiec agent czeka do konca limitu),\n"
+            "- adres 'localhost' rozwiazuje sie na IPv6, a serwer nasluchuje "
+            "tylko na IPv4 - sprobuj wpisac https://127.0.0.1:8443,\n"
+            "- serwer nie zdazyl wystartowac.\n\n"
+            "Szczegoly znajdziesz w dzienniku agenta (menu ikony: Pokaz dziennik)."
+        )
     lowered = output.lower()
     if "certificate_verify_failed" in lowered or "certificate verify failed" in lowered:
         return (

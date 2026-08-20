@@ -15,6 +15,7 @@ import logging.handlers
 import random
 import sys
 import time
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -72,10 +73,17 @@ def do_enroll(config: AgentConfig, state: AgentState, client: CmdbClient) -> Age
         )
 
     collector = get_collector(config)
+
+    # Mierzymy etapy osobno - gdy rejestracja sie przeciaga, z dziennika ma
+    # wynikac CO trwa: odczyt danych maszyny czy polaczenie z serwerem.
+    started = time.monotonic()
     machine_id = collector.machine_id()
     identity = collector.identity()
+    collect_ms = int((time.monotonic() - started) * 1000)
+    log.info("odczyt identyfikacji maszyny zajal %d ms", collect_ms)
 
     log.info("rejestruje maszyne %s (%s) w %s", identity["hostname"], machine_id, config.server_url)
+    started = time.monotonic()
     response = client.post(
         "/api/v1/agents/enroll",
         token=config.enrollment_token,
@@ -85,6 +93,8 @@ def do_enroll(config: AgentConfig, state: AgentState, client: CmdbClient) -> Age
             "agent_version": __version__,
         },
     )
+
+    log.info("odpowiedz serwera po %d ms", int((time.monotonic() - started) * 1000))
 
     state.agent_token = response["agent_token"]
     state.asset_id = response["asset_id"]
@@ -281,6 +291,18 @@ def do_gui(config: AgentConfig) -> int:
     return run_tray(config)
 
 
+def do_doctor(config: AgentConfig) -> int:
+    """Rozklada polaczenie na etapy i pokazuje, ktory zawodzi."""
+    from .diagnose import render_report
+
+    if not config.server_url:
+        print("Nie ustawiono adresu serwera. Podaj --server albo skonfiguruj agenta.")
+        return 1
+    report, healthy = render_report(config.server_url, config.ca_bundle)
+    print(report)
+    return 0 if healthy else 3
+
+
 def do_configure(config: AgentConfig, config_path: Path | None) -> int:
     """Okno konfiguracji: adres serwera i token. Wymaga uprawnien administratora,
     bo zapisuje konfiguracje w katalogu programu."""
@@ -316,6 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
     status_cmd.add_argument("--json", action="store_true", help="wypisz w formacie JSON")
     sub.add_parser("gui", help="uruchamia ikone w zasobniku systemowym")
     sub.add_parser("configure", help="otwiera okno konfiguracji (adres serwera i token)")
+    sub.add_parser("doctor", help="sprawdza polaczenie z serwerem etap po etapie")
     return parser
 
 
@@ -342,6 +365,8 @@ def main(argv: list[str] | None = None) -> int:
         return do_gui(config)
     if args.command == "configure":
         return do_configure(config, args.config)
+    if args.command == "doctor":
+        return do_doctor(config)
 
     try:
         config.validate()

@@ -153,7 +153,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 
 ```bash
 cd server && pytest              # 28 testów: API agentów, izolacja firm, panel, gzip
-cd agent  && pytest              # 42 testy: konfiguracja, stan, status, kolektory, transport
+cd agent  && pytest              # 53 testy: konfiguracja, stan, status, diagnostyka, kolektory
 
 # Testy kasują schemat przed każdym przypadkiem, więc odmawiają startu na bazie
 # bez "test" w nazwie — przypadkowe wskazanie produkcji nic nie zniszczy.

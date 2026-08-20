@@ -14,6 +14,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+# --- budzet rejestracji uruchamianej z okna ustawien -------------------------
+# Rejestracja w tle moze sobie pozwolic na cierpliwosc (4 proby po 60 s).
+# Rejestracja z okna jest interaktywna - ktos na nia patrzy - wiec skracamy
+# budzet, zeby uzytkownik dostal odpowiedz w kilkanascie sekund zamiast po
+# czterech minutach.
+INTERACTIVE_TIMEOUT_SECONDS = 15
+INTERACTIVE_MAX_RETRIES = 2
+
+# Limit podprocesu MUSI byc wiekszy niz budzet agenta, inaczej okno ubija go,
+# zanim ten zdazy zwrocic zrozumialy blad - i zamiast "brak lacznosci"
+# uzytkownik widzi surowy wyjatek Pythona. Pilnuje tego test.
+INTERACTIVE_PROCESS_TIMEOUT = 120
+
+
 def default_data_dir() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("ProgramData", r"C:\ProgramData")
@@ -84,6 +98,8 @@ _ENV_MAP = {
     "CMDB_AGENT_CA_BUNDLE": "ca_bundle",
     "CMDB_AGENT_PIN_SHA256": "pin_sha256",
     "CMDB_AGENT_INTERVAL": "report_interval_seconds",
+    "CMDB_AGENT_TIMEOUT": "timeout_seconds",
+    "CMDB_AGENT_MAX_RETRIES": "max_retries",
     "CMDB_AGENT_LOG_LEVEL": "log_level",
 }
 

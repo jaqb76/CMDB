@@ -30,6 +30,20 @@ GZIP_THRESHOLD_BYTES = 4096
 RETRYABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
 
 
+def worst_case_seconds(timeout: int, max_retries: int) -> float:
+    """Gorne oszacowanie czasu, jaki klient moze spedzic na jednym zadaniu.
+
+    Sumuje limity wszystkich prob i odczekania miedzy nimi, biorac gorna
+    granice rozproszenia. Sluzy do sprawdzenia, czy limit nalozony z zewnatrz
+    (np. przez okno ustawien) daje agentowi szanse dokonczyc prace.
+    """
+    total = float(timeout * max_retries)
+    for attempt in range(1, max_retries):
+        base = min(2.0**attempt, 120.0)
+        total += base * 1.25  # baza + maksymalne rozproszenie (25%)
+    return total
+
+
 class TransportError(Exception):
     """Blad komunikacji, ktory ma sens ponowic pozniej."""
 

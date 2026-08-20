@@ -53,16 +53,35 @@ def _no_window_flags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if is_windows() else 0
 
 
-def run_agent(args: list[str], config_path: Path | None = None, timeout: int = 300):
-    """Uruchamia agenta i czeka na wynik. Zwraca CompletedProcess."""
+def run_agent(
+    args: list[str],
+    config_path: Path | None = None,
+    timeout: int = 300,
+    extra_env: dict[str, str] | None = None,
+):
+    """Uruchamia agenta i czeka na wynik. Zwraca CompletedProcess.
+
+    extra_env pozwala nadpisac ustawienia na czas jednego wywolania - okno
+    ustawien korzysta z tego, zeby rejestracja odpowiadala szybko zamiast
+    wyczerpywac pelny budzet ponowien przewidziany dla pracy w tle.
+    """
     program, prefix = agent_executable()
     command = [program, *prefix]
     if config_path:
         command += ["--config", str(config_path)]
     command += args
+
+    env = None
+    if extra_env:
+        env = {**os.environ, **extra_env}
+
     log.debug("uruchamiam: %s", command)
     return subprocess.run(
-        command, capture_output=True, timeout=timeout, creationflags=_no_window_flags()
+        command,
+        capture_output=True,
+        timeout=timeout,
+        creationflags=_no_window_flags(),
+        env=env,
     )
 
 

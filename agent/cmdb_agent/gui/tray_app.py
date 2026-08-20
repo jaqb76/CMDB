@@ -103,6 +103,21 @@ class TrayApp:
                 "Uruchom ponownie i potwierdz monit systemu Windows.",
             )
 
+    def run_diagnostics(self) -> None:
+        """Diagnostyka jest tylko odczytem sieci - nie wymaga uprawnien."""
+        if not self.config.server_url:
+            messagebox.showinfo(
+                "Diagnostyka", "Agent nie ma jeszcze ustawionego adresu serwera."
+            )
+            return
+        from ..diagnose import render_report
+
+        report, healthy = render_report(self.config.server_url, self.config.ca_bundle)
+        if healthy:
+            messagebox.showinfo("Diagnostyka polaczenia", report)
+        else:
+            messagebox.showwarning("Diagnostyka polaczenia", report)
+
     def open_log(self) -> None:
         log_path = self.config.data_dir / "agent.log"
         if not log_path.is_file():
@@ -134,6 +149,7 @@ class TrayApp:
                     "status": self.show_status,
                     "sync": self.request_sync,
                     "settings": self.open_settings,
+                    "doctor": self.run_diagnostics,
                     "log": self.open_log,
                     "quit": self.quit,
                 }.get(command)
@@ -156,6 +172,7 @@ class TrayApp:
             pystray.MenuItem("Synchronizuj teraz", self._enqueue("sync")),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Ustawienia...", self._enqueue("settings")),
+            pystray.MenuItem("Sprawdz polaczenie", self._enqueue("doctor")),
             pystray.MenuItem("Pokaz dziennik", self._enqueue("log")),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Zakoncz", self._enqueue("quit")),

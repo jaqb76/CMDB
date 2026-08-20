@@ -1,7 +1,9 @@
 """Punkt wejscia aplikacji FastAPI."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +21,36 @@ from .services.auth import LoginRequired
 log = logging.getLogger("cmdb")
 
 
+def _silence_windows_disconnect_noise() -> None:
+    """Wycisza halas asyncio na Windows przy zerwanym polaczeniu klienta.
+
+    Petla ProactorEventLoop zglasza ConnectionResetError (WinError 10054) jako
+    "Exception in callback _ProactorBasePipeTransport._call_connection_lost"
+    z pelnym sladem stosu, gdy przegladarka albo agent zamknie polaczenie bez
+    ceregieli - co jest calkowicie normalne. Trace w logu wyglada jak awaria,
+    a nia nie jest, wiec przy tym jednym przypadku milczymy. Kazdy inny wyjatek
+    trafia do domyslnej obslugi.
+    """
+    if sys.platform != "win32":
+        return
+
+    loop = asyncio.get_running_loop()
+    previous = loop.get_exception_handler()
+
+    def handler(active_loop, context):
+        exception = context.get("exception")
+        message = str(context.get("message", ""))
+        if isinstance(exception, ConnectionResetError) and "_call_connection_lost" in message:
+            log.debug("klient zerwal polaczenie (WinError 10054) - pomijam")
+            return
+        if previous is not None:
+            previous(active_loop, context)
+        else:
+            active_loop.default_exception_handler(context)
+
+    loop.set_exception_handler(handler)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -27,6 +59,7 @@ async def lifespan(app: FastAPI):
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
     settings.validate_for_runtime()
+    _silence_windows_disconnect_noise()
     init_db()
     log.info("CMDB wystartowal (env=%s, db=%s)", settings.env, settings.database_url.split("@")[-1])
     yield
