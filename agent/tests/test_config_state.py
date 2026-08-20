@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import stat
 import time
 
@@ -121,3 +122,42 @@ def test_unknown_fields_in_state_are_ignored(tmp_path):
         encoding="utf-8",
     )
     assert load_state(path).agent_token == "t"
+
+
+# --- uprawnienia na Windows -------------------------------------------------
+
+def test_icacls_uses_inheritance_flags_only_for_directories():
+    """Flagi (OI)(CI) opisuja dziedziczenie i maja sens wylacznie dla katalogow.
+
+    Uzyte na pliku icacls przyjmuje bez protestu - zglasza "Successfully
+    processed 1 files" - ale tworzy ACL, w ktorej nikt nie ma zadnych
+    uprawnien. Plik staje sie nieczytelny takze dla agenta, i to po cichu.
+    """
+    from cmdb_agent.state import icacls_command
+
+    katalog = icacls_command(Path(r"C:\ProgramData\CMDB"), True, None)
+    plik = icacls_command(Path(r"C:\ProgramData\CMDB\agent-state.json"), False, None)
+
+    assert all("(OI)(CI)F" in a for a in katalog if a.startswith("*"))
+    assert not any("(OI)" in a for a in plik), "flagi dziedziczenia na pliku"
+    assert all(a.endswith(":F") for a in plik if a.startswith("*"))
+
+
+def test_icacls_grants_access_to_the_account_running_the_agent():
+    """Bez tego agent na zwyklym koncie odbiera dostep samemu sobie: nie
+    odczyta wlasnej konfiguracji ani stanu, a katalog zostaje zablokowany."""
+    from cmdb_agent.state import icacls_command
+
+    sid = "S-1-5-21-111-222-333-1001"
+    polecenie = icacls_command(Path("/tmp/x"), True, sid)
+    assert f"*{sid}:(OI)(CI)F" in polecenie
+    assert "*S-1-5-18:(OI)(CI)F" in polecenie          # SYSTEM
+    assert "*S-1-5-32-544:(OI)(CI)F" in polecenie      # Administratorzy
+
+
+def test_icacls_does_not_duplicate_system_grant():
+    """Zadanie harmonogramu dziala jako SYSTEM - nie dokladamy drugiego wpisu."""
+    from cmdb_agent.state import icacls_command
+
+    polecenie = icacls_command(Path("/tmp/x"), True, "S-1-5-18")
+    assert polecenie.count("*S-1-5-18:(OI)(CI)F") == 1

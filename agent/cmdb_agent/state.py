@@ -11,6 +11,7 @@ import logging
 import os
 import subprocess
 import sys
+from functools import lru_cache
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -119,7 +120,7 @@ def _harden_file(path: Path) -> None:
         os.chmod(path, 0o600)
         return
     if sys.platform == "win32":
-        _icacls(path)
+        _icacls(path, is_directory=False)
 
 
 def _harden_directory(path: Path) -> None:
@@ -127,7 +128,7 @@ def _harden_directory(path: Path) -> None:
         os.chmod(path, 0o700)
         return
     if sys.platform == "win32":
-        _icacls(path)
+        _icacls(path, is_directory=True)
 
 
 def harden_public_directory(path: Path) -> None:
@@ -154,18 +155,64 @@ def harden_public_directory(path: Path) -> None:
         log.warning("nie udalo sie nadac praw odczytu do %s: %s", path, exc)
 
 
-def _icacls(path: Path) -> None:
-    """Zdejmuje dziedziczenie i zostawia dostep tylko SYSTEM + Administratorzy."""
+@lru_cache(maxsize=1)
+def _current_user_sid() -> str | None:
+    """SID konta, na ktorym dziala agent."""
     try:
-        subprocess.run(
-            [
-                "icacls", str(path), "/inheritance:r",
-                "/grant:r", "*S-1-5-18:(OI)(CI)F",   # NT AUTHORITY\\SYSTEM
-                "/grant:r", "*S-1-5-32-544:(OI)(CI)F",  # BUILTIN\\Administrators
-            ],
-            check=False,
+        result = subprocess.run(
+            ["whoami", "/user", "/fo", "csv", "/nh"],
             capture_output=True,
-            timeout=30,
+            timeout=15,
         )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - tylko Windows
+        return None
+    text = result.stdout.decode("utf-8", errors="replace")
+    for part in text.replace('"', "").split(","):
+        part = part.strip()
+        if part.startswith("S-1-"):
+            return part
+    return None
+
+
+def icacls_command(path: Path, is_directory: bool, sid: str | None) -> list[str]:
+    """Sklada polecenie icacls nadajace dostep SYSTEM, administratorom i sid.
+
+    Wydzielone, zeby dalo sie sprawdzic testem na dowolnym systemie - blad
+    w samych flagach nie daje sie zauwazyc w dzialaniu, bo icacls zglasza
+    powodzenie takze wtedy, gdy nic nie nada.
+    """
+    prawa = "(OI)(CI)F" if is_directory else "F"
+    grants = [f"*S-1-5-18:{prawa}", f"*S-1-5-32-544:{prawa}"]
+    if sid and sid not in {"S-1-5-18", "S-1-5-32-544"}:
+        grants.append(f"*{sid}:{prawa}")
+
+    command = ["icacls", str(path), "/inheritance:r"]
+    for grant in grants:
+        command += ["/grant:r", grant]
+    return command
+
+
+def _icacls(path: Path, is_directory: bool) -> None:
+    """Zdejmuje dziedziczenie i zostawia dostep SYSTEM, administratorom
+    oraz kontu, na ktorym dziala agent.
+
+    Rozroznienie pliku od katalogu jest istotne: flagi dziedziczenia (OI)(CI)
+    maja sens wylacznie dla katalogow. Uzyte na pliku icacls przyjmuje bez
+    protestu ("Successfully processed 1 files"), ale tworzy ACL, w ktorej nikt
+    nie ma zadnych uprawnien - plik staje sie nieczytelny takze dla agenta,
+    i to po cichu. Dla pliku nadajemy wiec samo F.
+
+    To ostatnie jest konieczne: bez niego agent uruchomiony na zwyklym koncie
+    odbiera dostep samemu sobie - nie odczyta juz wlasnej konfiguracji ani nie
+    zapisze stanu, a katalog uzytkownika zostaje trwale zablokowany. Konto
+    agenta i tak trzyma token, wiec nadanie mu praw niczego nie ujawnia;
+    chodzi o odciecie POZOSTALYCH uzytkownikow maszyny.
+
+    Przy pracy jako SYSTEM (zadanie harmonogramu) SID pokrywa sie z juz
+    nadanym S-1-5-18 i nic nie dokladamy.
+    """
+    command = icacls_command(path, is_directory, _current_user_sid())
+    try:
+        subprocess.run(command, check=False, capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as exc:  # pragma: no cover - tylko Windows
         log.warning("nie udalo sie zawezic uprawnien do %s: %s", path, exc)
