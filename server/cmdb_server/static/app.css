@@ -115,6 +115,10 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 .row-form > div { flex: 1; min-width: 200px; }
 .row-form > div:last-child { flex: 0; }
 .table-filter { margin-bottom: 10px; max-width: 320px; }
+/* Kompaktowy formularz wersji docelowej w tabeli firm. */
+.cel-form { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; white-space: nowrap; }
+.cel-form .muted { min-width: 58px; font-size: 12px; }
+.cel-select { width: auto; min-width: 92px; padding: 3px 6px; font-size: 13px; }
 
 .btn {
   display: inline-block; font: inherit; font-weight: 500; cursor: pointer;

@@ -27,7 +27,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -39,6 +39,7 @@ from ..models import (
     Owner,
     PortalUser,
     Tenant,
+    TenantAgentTarget,
     utcnow,
 )
 from ..security import check_csrf_token, generate_token, hash_password, issue_csrf_token
@@ -51,6 +52,15 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 WERSJA_RE = re.compile(r"^[0-9][0-9a-zA-Z._-]{0,31}$")
+
+# Agent budowany jest osobno dla kazdego systemu. Sygnatura pliku pozwala
+# odrzucic pomylke juz przy wgrywaniu, a nie dopiero na maszynie klienta.
+# Bajt 0x7F zapisujemy przez fromhex, bo doslownie w zrodle jest niewidoczny
+# i latwo go zgubic przy edycji.
+SYSTEMY = {
+    "windows": {"etykieta": "Windows", "sygnatura": b"MZ", "opis": "program Windows (.exe)"},
+    "linux": {"etykieta": "Linux", "sygnatura": bytes.fromhex("7f") + b"ELF", "opis": "program ELF"},
+}
 MIN_DLUGOSC_HASLA = 12
 
 
@@ -95,20 +105,39 @@ def przeglad(
     db: Session = Depends(get_db),
 ) -> Response:
     settings = get_settings()
-    prog_aktywnosci = utcnow() - timedelta(hours=settings.stale_after_hours)
+    prog = utcnow() - timedelta(hours=settings.stale_after_hours)
 
-    # Liczniki jednym zapytaniem na metryke. Petla z zapytaniem na kazda firme
+    # Jedno zapytanie daje komplet: firma, system, wersja agenta, ile maszyn
+    # i ile z nich odzywalo sie ostatnio. Petla z zapytaniem na kazda firme
     # bylaby zauwazalna juz przy kilkudziesieciu firmach.
-    wszystkie = dict(
-        db.execute(select(Asset.tenant_id, func.count(Asset.id)).group_by(Asset.tenant_id)).all()
-    )
-    aktywne = dict(
-        db.execute(
-            select(Asset.tenant_id, func.count(Asset.id))
-            .where(Asset.last_seen >= prog_aktywnosci)
-            .group_by(Asset.tenant_id)
-        ).all()
-    )
+    rozklad = db.execute(
+        select(
+            Asset.tenant_id,
+            Asset.os_family,
+            Asset.agent_version,
+            func.count(Asset.id),
+            func.sum(case((Asset.last_seen >= prog, 1), else_=0)),
+        ).group_by(Asset.tenant_id, Asset.os_family, Asset.agent_version)
+    ).all()
+
+    agenci: dict[str, list[dict]] = {}
+    maszyny_razem: dict[str, int] = {}
+    aktywne_razem: dict[str, int] = {}
+    for tenant_id, system, wersja, ile, aktywne in rozklad:
+        aktywne = int(aktywne or 0)
+        agenci.setdefault(tenant_id, []).append(
+            {
+                "os_family": system or "nieznany",
+                "wersja": wersja or "nieznana",
+                "ile": ile,
+                "aktywne": aktywne,
+            }
+        )
+        maszyny_razem[tenant_id] = maszyny_razem.get(tenant_id, 0) + ile
+        aktywne_razem[tenant_id] = aktywne_razem.get(tenant_id, 0) + aktywne
+    for lista in agenci.values():
+        lista.sort(key=lambda p: (p["os_family"], p["wersja"]))
+
     opiekunowie = dict(
         db.execute(select(Owner.tenant_id, func.count(Owner.id)).group_by(Owner.tenant_id)).all()
     )
@@ -127,29 +156,37 @@ def przeglad(
         ).all()
     )
 
-    wersje = {r.id: r for r in db.execute(select(AgentRelease)).scalars()}
-    firmy = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
+    wydania = db.execute(
+        select(AgentRelease).order_by(AgentRelease.os_family, AgentRelease.version.desc())
+    ).scalars().all()
+    wersje = {w.id: w for w in wydania}
 
+    # Cele aktualizacji: osobno dla kazdego systemu w kazdej firmie.
+    cele: dict[str, dict[str, AgentRelease]] = {}
+    for cel in db.execute(select(TenantAgentTarget)).scalars():
+        wydanie = wersje.get(cel.release_id)
+        if wydanie is not None:
+            cele.setdefault(cel.tenant_id, {})[cel.os_family] = wydanie
+
+    firmy = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
     wiersze = [
         {
             "firma": firma,
-            "maszyny": wszystkie.get(firma.id, 0),
-            "aktywne": aktywne.get(firma.id, 0),
+            "maszyny": maszyny_razem.get(firma.id, 0),
+            "aktywne": aktywne_razem.get(firma.id, 0),
+            "agenci": agenci.get(firma.id, []),
+            "cele": cele.get(firma.id, {}),
             "opiekunowie": opiekunowie.get(firma.id, 0),
             "tokeny": tokeny.get(firma.id, 0),
             "konta": konta.get(firma.id, 0),
-            "wersja_docelowa": wersje.get(firma.target_release_id),
         }
         for firma in firmy
     ]
 
-    # Wersje agenta faktycznie spotykane we flocie - widac, co wymaga aktualizacji.
-    rozklad_wersji = db.execute(
-        select(Asset.agent_version, func.count(Asset.id))
-        .where(Asset.last_seen >= prog_aktywnosci)
-        .group_by(Asset.agent_version)
-        .order_by(func.count(Asset.id).desc())
-    ).all()
+    # Wydania pogrupowane po systemie - do list wyboru w formularzach.
+    wydania_wg_systemu: dict[str, list[AgentRelease]] = {}
+    for wydanie in wydania:
+        wydania_wg_systemu.setdefault(wydanie.os_family, []).append(wydanie)
 
     return render_admin(
         request,
@@ -159,13 +196,12 @@ def przeglad(
         podsumowanie={
             "firmy": len(firmy),
             "firmy_aktywne": sum(1 for f in firmy if f.is_active),
-            "maszyny": sum(wszystkie.values()),
-            "aktywne": sum(aktywne.values()),
+            "maszyny": sum(maszyny_razem.values()),
+            "aktywne": sum(aktywne_razem.values()),
         },
-        rozklad_wersji=rozklad_wersji,
-        wydania=db.execute(select(AgentRelease).order_by(AgentRelease.created_at.desc()))
-        .scalars()
-        .all(),
+        wydania=wydania,
+        wydania_wg_systemu=wydania_wg_systemu,
+        systemy=SYSTEMY,
         wydany_token=wydany_token,
         stale_after_hours=settings.stale_after_hours,
     )
@@ -304,13 +340,14 @@ def wydaj_token(
 async def wgraj_wersje(
     request: Request,
     version: str = Form(...),
+    os_family: str = Form("windows"),
     notes: str = Form(""),
     plik: UploadFile = File(...),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Wgrywa plik agenta i liczy jego skrot.
+    """Wgrywa plik agenta dla wskazanego systemu i liczy jego skrot.
 
     Skrot jest sercem calego mechanizmu: agent porownuje go po pobraniu
     i odmawia podmiany, gdy sie nie zgadza. Liczymy go strumieniowo, zeby
@@ -319,11 +356,23 @@ async def wgraj_wersje(
     sprawdz_csrf(user, csrf_token)
     settings = get_settings()
 
+    system = os_family.strip().lower()
+    if system not in SYSTEMY:
+        raise HTTPException(status_code=400, detail="nieznany system operacyjny")
+
     numer = version.strip()
     if not WERSJA_RE.match(numer):
         raise HTTPException(status_code=400, detail="niepoprawny numer wersji")
-    if db.execute(select(AgentRelease).where(AgentRelease.version == numer)).scalar_one_or_none():
-        raise HTTPException(status_code=400, detail=f"wersja {numer} juz istnieje")
+    istnieje = db.execute(
+        select(AgentRelease).where(
+            AgentRelease.version == numer, AgentRelease.os_family == system
+        )
+    ).scalar_one_or_none()
+    if istnieje is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"wersja {numer} dla {SYSTEMY[system]['etykieta']} juz istnieje",
+        )
 
     katalog = katalog_wersji()
     tymczasowy = katalog / f".wgrywanie-{utcnow().timestamp()}"
@@ -341,16 +390,20 @@ async def wgraj_wersje(
 
         if rozmiar == 0:
             raise HTTPException(status_code=400, detail="pusty plik")
-        # Agent chodzi na Windows - odrzucamy cokolwiek, co nie jest programem.
+
+        # Sygnatura odrzuca pomylke juz tutaj, a nie dopiero na maszynie
+        # klienta, gdzie plik po prostu nie chcialby sie uruchomic.
+        oczekiwana = SYSTEMY[system]["sygnatura"]
         with tymczasowy.open("rb") as sprawdzany:
-            if sprawdzany.read(2) != b"MZ":
+            if sprawdzany.read(len(oczekiwana)) != oczekiwana:
                 raise HTTPException(
                     status_code=400,
-                    detail="plik nie jest programem Windows (brak sygnatury MZ)",
+                    detail=f"plik nie jest programem dla {SYSTEMY[system]['etykieta']} "
+                           f"({SYSTEMY[system]['opis']})",
                 )
 
         odcisk = skrot.hexdigest()
-        nazwa_w_magazynie = f"{odcisk}.exe"
+        nazwa_w_magazynie = f"{system}-{odcisk}.bin"
         tymczasowy.replace(katalog / nazwa_w_magazynie)
     except Exception:
         tymczasowy.unlink(missing_ok=True)
@@ -359,7 +412,8 @@ async def wgraj_wersje(
     db.add(
         AgentRelease(
             version=numer,
-            filename=plik.filename or f"cmdb-agent-{numer}.exe",
+            os_family=system,
+            filename=plik.filename or f"cmdb-agent-{numer}",
             storage_name=nazwa_w_magazynie,
             sha256=odcisk,
             size_bytes=rozmiar,
@@ -367,10 +421,11 @@ async def wgraj_wersje(
             created_by=user.email,
         )
     )
-    audit(db, None, action="release.uploaded", target=numer,
-          detail={"sha256": odcisk, "size": rozmiar}, ip=client_ip(request), actor=user.email)
+    audit(db, None, action="release.uploaded", target=f"{numer} ({system})",
+          detail={"sha256": odcisk, "size": rozmiar, "os_family": system},
+          ip=client_ip(request), actor=user.email)
     db.commit()
-    log.info("superadmin %s wgral wersje agenta %s (%s)", user.email, numer, odcisk[:16])
+    log.info("superadmin %s wgral agenta %s dla %s (%s)", user.email, numer, system, odcisk[:16])
     return RedirectResponse("/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -388,7 +443,9 @@ def usun_wersje(
         raise HTTPException(status_code=404, detail="nie znaleziono wersji")
 
     uzywana = db.execute(
-        select(func.count(Tenant.id)).where(Tenant.target_release_id == release_id)
+        select(func.count(TenantAgentTarget.id)).where(
+            TenantAgentTarget.release_id == release_id
+        )
     ).scalar_one() + db.execute(
         select(func.count(Asset.id)).where(Asset.target_release_id == release_id)
     ).scalar_one()
@@ -417,9 +474,32 @@ def widok_aktualizacji(
 ) -> Response:
     firma = znajdz_firme(db, tenant_id)
     maszyny = db.execute(
-        select(Asset).where(Asset.tenant_id == firma.id).order_by(Asset.hostname)
+        select(Asset).where(Asset.tenant_id == firma.id).order_by(Asset.os_family, Asset.hostname)
     ).scalars().all()
-    wersje = {r.id: r for r in db.execute(select(AgentRelease)).scalars()}
+
+    wydania = db.execute(
+        select(AgentRelease).order_by(AgentRelease.os_family, AgentRelease.version.desc())
+    ).scalars().all()
+    wersje = {w.id: w for w in wydania}
+
+    wydania_wg_systemu: dict[str, list[AgentRelease]] = {}
+    for wydanie in wydania:
+        wydania_wg_systemu.setdefault(wydanie.os_family, []).append(wydanie)
+
+    cele = {
+        cel.os_family: wersje.get(cel.release_id)
+        for cel in db.execute(
+            select(TenantAgentTarget).where(TenantAgentTarget.tenant_id == firma.id)
+        ).scalars()
+    }
+
+    # Systemy faktycznie obecne w tej firmie - nie ma sensu pokazywac celu
+    # dla Linuksa firmie, ktora ma same maszyny z Windows.
+    obecne = []
+    for maszyna in maszyny:
+        system = (maszyna.os_family or "nieznany").lower()
+        if system not in obecne:
+            obecne.append(system)
 
     return render_admin(
         request,
@@ -428,10 +508,11 @@ def widok_aktualizacji(
         firma=firma,
         maszyny=maszyny,
         wersje=wersje,
-        wydania=db.execute(select(AgentRelease).order_by(AgentRelease.version.desc()))
-        .scalars()
-        .all(),
-        wersja_firmy=wersje.get(firma.target_release_id),
+        wydania=wydania,
+        wydania_wg_systemu=wydania_wg_systemu,
+        cele=cele,
+        obecne_systemy=obecne,
+        systemy=SYSTEMY,
         stale_after_hours=get_settings().stale_after_hours,
     )
 
@@ -443,9 +524,9 @@ async def zlec_aktualizacje(
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Ustawia wersje docelowa dla calej firmy albo wybranych maszyn.
+    """Ustawia wersje docelowa dla systemu w calej firmie albo dla wybranych maszyn.
 
-    Nie wysylamy niczego na maszyny - to agent przy swoim cyklicznym raporcie
+    Nie wysylamy niczego na maszyny - to agent przy swoim cyklicznym przebiegu
     dowiaduje sie, ze oczekiwana jest inna wersja, i sam ja pobiera. Serwer
     nigdy nie inicjuje polaczenia do agenta.
     """
@@ -463,32 +544,18 @@ async def zlec_aktualizacje(
             raise HTTPException(status_code=400, detail="nie znaleziono wskazanej wersji")
 
     if zakres == "firma":
-        firma.target_release_id = wydanie.id if wydanie else None
-        # Ustawienia poszczegolnych maszyn kasujemy, zeby nie przeslanialy
-        # decyzji podjetej dla calej firmy.
-        for maszyna in db.execute(
-            select(Asset).where(Asset.tenant_id == firma.id)
-        ).scalars():
-            maszyna.target_release_id = None
-            maszyna.upgrade_status = "zlecona" if wydanie else None
-            maszyna.upgrade_detail = None
-            maszyna.upgrade_updated_at = utcnow()
-        objete = "wszystkie maszyny"
+        system = (formularz.get("os_family") or "").strip().lower()
+        if system not in SYSTEMY:
+            raise HTTPException(status_code=400, detail="nieznany system operacyjny")
+        if wydanie is not None and wydanie.os_family != system:
+            raise HTTPException(
+                status_code=400,
+                detail=f"wersja {wydanie.version} jest dla {wydanie.os_family}, "
+                       f"a cel dotyczy {system}",
+            )
+        objete = _ustaw_cel_firmy(db, firma, system, wydanie, user.email)
     else:
-        wybrane = formularz.getlist("asset_id")
-        if not wybrane:
-            raise HTTPException(status_code=400, detail="nie wskazano zadnej maszyny")
-        maszyny = db.execute(
-            select(Asset).where(Asset.tenant_id == firma.id, Asset.id.in_(wybrane))
-        ).scalars().all()
-        if len(maszyny) != len(set(wybrane)):
-            raise HTTPException(status_code=400, detail="maszyna spoza tej firmy")
-        for maszyna in maszyny:
-            maszyna.target_release_id = wydanie.id if wydanie else None
-            maszyna.upgrade_status = "zlecona" if wydanie else None
-            maszyna.upgrade_detail = None
-            maszyna.upgrade_updated_at = utcnow()
-        objete = f"{len(maszyny)} maszyn"
+        objete = _ustaw_cel_maszyn(db, firma, formularz.getlist("asset_id"), wydanie)
 
     audit(db, None, action="agent.upgrade_requested", target=firma.slug,
           detail={"wersja": wydanie.version if wydanie else None, "zakres": objete},
@@ -501,3 +568,70 @@ async def zlec_aktualizacje(
     return RedirectResponse(
         f"/admin/tenants/{firma.id}/upgrade", status_code=status.HTTP_303_SEE_OTHER
     )
+
+
+def _ustaw_cel_firmy(
+    db: Session, firma: Tenant, system: str, wydanie: AgentRelease | None, kto: str
+) -> str:
+    """Cel dla wszystkich maszyn firmy dzialajacych na wskazanym systemie."""
+    cel = db.execute(
+        select(TenantAgentTarget).where(
+            TenantAgentTarget.tenant_id == firma.id,
+            TenantAgentTarget.os_family == system,
+        )
+    ).scalar_one_or_none()
+
+    if wydanie is None:
+        if cel is not None:
+            db.delete(cel)
+    elif cel is None:
+        db.add(
+            TenantAgentTarget(
+                tenant_id=firma.id, os_family=system, release_id=wydanie.id, updated_by=kto
+            )
+        )
+    else:
+        cel.release_id = wydanie.id
+        cel.updated_at = utcnow()
+        cel.updated_by = kto
+
+    # Ustawienia poszczegolnych maszyn tego systemu kasujemy, zeby nie
+    # przeslanialy decyzji podjetej dla calej firmy.
+    maszyny = db.execute(
+        select(Asset).where(Asset.tenant_id == firma.id, Asset.os_family == system)
+    ).scalars().all()
+    for maszyna in maszyny:
+        maszyna.target_release_id = None
+        maszyna.upgrade_status = "zlecona" if wydanie else None
+        maszyna.upgrade_detail = None
+        maszyna.upgrade_updated_at = utcnow()
+    return f"wszystkie maszyny {SYSTEMY[system]['etykieta']} ({len(maszyny)})"
+
+
+def _ustaw_cel_maszyn(
+    db: Session, firma: Tenant, wybrane: list[str], wydanie: AgentRelease | None
+) -> str:
+    if not wybrane:
+        raise HTTPException(status_code=400, detail="nie wskazano zadnej maszyny")
+
+    maszyny = db.execute(
+        select(Asset).where(Asset.tenant_id == firma.id, Asset.id.in_(wybrane))
+    ).scalars().all()
+    if len(maszyny) != len(set(wybrane)):
+        raise HTTPException(status_code=400, detail="maszyna spoza tej firmy")
+
+    if wydanie is not None:
+        niezgodne = [m.hostname for m in maszyny if (m.os_family or "") != wydanie.os_family]
+        if niezgodne:
+            raise HTTPException(
+                status_code=400,
+                detail=f"wersja jest dla {wydanie.os_family}, a wskazano maszyny "
+                       f"innego systemu: {', '.join(niezgodne[:5])}",
+            )
+
+    for maszyna in maszyny:
+        maszyna.target_release_id = wydanie.id if wydanie else None
+        maszyna.upgrade_status = "zlecona" if wydanie else None
+        maszyna.upgrade_detail = None
+        maszyna.upgrade_updated_at = utcnow()
+    return f"{len(maszyny)} maszyn"

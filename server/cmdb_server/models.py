@@ -65,12 +65,6 @@ class Tenant(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    # Wersja agenta oczekiwana na wszystkich maszynach firmy. Pojedyncza
-    # maszyna moze miec wlasne ustawienie, ktore ma pierwszenstwo.
-    target_release_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("agent_releases.id", ondelete="SET NULL")
-    )
-
     assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")
 
 
@@ -134,6 +128,31 @@ class EnrollmentToken(Base):
         if expires_at is not None and expires_at < utcnow():
             return False
         return True
+
+
+class TenantAgentTarget(Base):
+    """Wersja agenta oczekiwana w danej firmie, osobno dla kazdego systemu.
+
+    Pojedyncza maszyna moze miec wlasne ustawienie, ktore ma pierwszenstwo -
+    pozwala to wypchnac nowa wersje na kilka maszyn testowych, nie ruszajac
+    reszty floty.
+    """
+
+    __tablename__ = "tenant_agent_targets"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "os_family", name="uq_target_tenant_os"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    os_family: Mapped[str] = mapped_column(String(32), nullable=False)
+    release_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("agent_releases.id", ondelete="CASCADE"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_by: Mapped[str | None] = mapped_column(String(255))
 
 
 class Owner(Base):
@@ -281,9 +300,16 @@ class AgentRelease(Base):
     """
 
     __tablename__ = "agent_releases"
+    __table_args__ = (
+        UniqueConstraint("version", "os_family", name="uq_release_version_os"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    version: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    version: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    # Agent jest budowany osobno dla kazdego systemu - plik dla Windows nie
+    # uruchomi sie na Linuksie i odwrotnie. Wersja bez tego rozroznienia
+    # pozwalalaby wyslac maszynie plik, ktorego nie ma jak wykonac.
+    os_family: Mapped[str] = mapped_column(String(32), nullable=False, default="windows", index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     # Nazwa pliku w magazynie serwera (skrot + rozszerzenie).
     storage_name: Mapped[str] = mapped_column(String(128), nullable=False)

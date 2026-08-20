@@ -24,12 +24,25 @@ def _superadmin(client, make_user):
     return _extract_csrf(client.get("/admin").text)
 
 
-def _wgraj_wersje(client, csrf, wersja="0.2.0", tresc=PLIK_AGENTA):
+PLIK_LINUKSOWY = bytes.fromhex("7f") + b"ELF" + b"" + b"agent dla linuksa" * 40
+SKROT_LINUKSOWY = hashlib.sha256(PLIK_LINUKSOWY).hexdigest()
+
+
+def _wgraj_wersje(client, csrf, wersja="0.2.0", tresc=PLIK_AGENTA, system="windows"):
     return client.post(
         "/admin/releases",
-        data={"version": wersja, "notes": "testowa", "csrf_token": csrf},
+        data={"version": wersja, "os_family": system, "notes": "testowa", "csrf_token": csrf},
         files={"plik": ("cmdb-agent.exe", io.BytesIO(tresc), "application/octet-stream")},
         follow_redirects=False,
+    )
+
+
+def _zlec_dla_firmy(client, csrf, tenant_id, release_id, system="windows"):
+    return client.post(
+        f"/admin/tenants/{tenant_id}/upgrade",
+        data={"zakres": "firma", "os_family": system,
+              "release_id": release_id, "csrf_token": csrf},
+        follow_redirects=True,
     )
 
 
@@ -178,6 +191,23 @@ def test_odrzuca_plik_ktory_nie_jest_programem(client, make_user):
     assert odpowiedz.status_code == 400
 
 
+def test_odrzuca_plik_windows_wgrywany_jako_linuksowy(client, make_user):
+    """Sygnatura pilnuje, ze plik pasuje do wskazanego systemu - pomylka
+    wychodzi przy wgrywaniu, a nie dopiero na maszynie klienta."""
+    csrf = _superadmin(client, make_user)
+    odpowiedz = _wgraj_wersje(client, csrf, tresc=PLIK_AGENTA, system="linux")
+    assert odpowiedz.status_code == 400
+
+
+def test_ta_sama_wersja_dla_dwoch_systemow_jest_dozwolona(client, make_user):
+    """0.2.0 dla Windows i 0.2.0 dla Linuksa to dwa rozne pliki."""
+    csrf = _superadmin(client, make_user)
+    assert _wgraj_wersje(client, csrf, "0.2.0", PLIK_AGENTA, "windows").status_code == 303
+    assert _wgraj_wersje(client, csrf, "0.2.0", PLIK_LINUKSOWY, "linux").status_code == 303
+    with SessionLocal() as db:
+        assert len(db.execute(select(AgentRelease)).scalars().all()) == 2
+
+
 def test_odrzuca_duplikat_wersji(client, make_user):
     csrf = _superadmin(client, make_user)
     _wgraj_wersje(client, csrf)
@@ -213,11 +243,7 @@ def test_zlecenie_dla_calej_firmy_dociera_do_agenta(client, tenant_a, make_user)
     with SessionLocal() as db:
         wydanie_id = db.execute(select(AgentRelease.id)).scalar_one()
 
-    client.post(
-        f"/admin/tenants/{tenant_a['id']}/upgrade",
-        data={"zakres": "firma", "release_id": wydanie_id, "csrf_token": csrf},
-        follow_redirects=True,
-    )
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], wydanie_id)
 
     oferta = client.get(
         "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
@@ -235,11 +261,7 @@ def test_agent_pobiera_plik_i_skrot_sie_zgadza(client, tenant_a, make_user):
     _wgraj_wersje(client, csrf)
     with SessionLocal() as db:
         wydanie_id = db.execute(select(AgentRelease.id)).scalar_one()
-    client.post(
-        f"/admin/tenants/{tenant_a['id']}/upgrade",
-        data={"zakres": "firma", "release_id": wydanie_id, "csrf_token": csrf},
-        follow_redirects=True,
-    )
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], wydanie_id)
 
     plik = client.get("/api/v1/agent/release", headers={"Authorization": f"Bearer {token}"})
     assert plik.status_code == 200
@@ -266,11 +288,7 @@ def test_zlecenie_nie_przecieka_miedzy_firmami(client, tenant_a, tenant_b, make_
     _wgraj_wersje(client, csrf)
     with SessionLocal() as db:
         wydanie_id = db.execute(select(AgentRelease.id)).scalar_one()
-    client.post(
-        f"/admin/tenants/{tenant_a['id']}/upgrade",
-        data={"zakres": "firma", "release_id": wydanie_id, "csrf_token": csrf},
-        follow_redirects=True,
-    )
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], wydanie_id)
 
     assert client.get(
         "/api/v1/agent/version", headers={"Authorization": f"Bearer {token_a}"}
@@ -352,11 +370,7 @@ def test_oferta_znika_po_aktualizacji(client, tenant_a, make_user):
     _wgraj_wersje(client, csrf)
     with SessionLocal() as db:
         wydanie_id = db.execute(select(AgentRelease.id)).scalar_one()
-    client.post(
-        f"/admin/tenants/{tenant_a['id']}/upgrade",
-        data={"zakres": "firma", "release_id": wydanie_id, "csrf_token": csrf},
-        follow_redirects=True,
-    )
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], wydanie_id)
 
     raport = build_report(machine_id="maszyna-1", hostname="WS-01")
     raport["agent"]["version"] = "0.2.0"
@@ -364,3 +378,78 @@ def test_oferta_znika_po_aktualizacji(client, tenant_a, make_user):
         "/api/v1/inventory", headers={"Authorization": f"Bearer {token}"}, json=raport
     ).json()
     assert odpowiedz["upgrade"]["available"] is False
+
+
+def test_nie_zlecimy_wersji_dla_innego_systemu(client, tenant_a, make_user):
+    """Maszyna z Windows nie moze dostac pliku zbudowanego dla Linuksa -
+    pobralaby cos, czego nie ma jak uruchomic."""
+    token = _przygotuj_maszyne(client, tenant_a)
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.2.0", PLIK_LINUKSOWY, "linux")
+    with SessionLocal() as db:
+        linuksowe = db.execute(
+            select(AgentRelease.id).where(AgentRelease.os_family == "linux")
+        ).scalar_one()
+        maszyna = db.execute(select(Asset.id)).scalar_one()
+
+    # Cel dla calej firmy: wersja linuksowa zadeklarowana jako windowsowa.
+    odpowiedz = client.post(
+        f"/admin/tenants/{tenant_a['id']}/upgrade",
+        data={"zakres": "firma", "os_family": "windows",
+              "release_id": linuksowe, "csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 400
+
+    # Cel dla wskazanej maszyny z Windows.
+    odpowiedz = client.post(
+        f"/admin/tenants/{tenant_a['id']}/upgrade",
+        data={"zakres": "wybrane", "release_id": linuksowe,
+              "asset_id": maszyna, "csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 400
+    assert client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
+    ).json()["available"] is False
+
+
+def test_cel_linuksowy_nie_dotyczy_maszyn_windows(client, tenant_a, make_user):
+    """Cel ustawiony dla Linuksa nie moze objac maszyn z Windows w tej firmie."""
+    token = _przygotuj_maszyne(client, tenant_a)      # maszyna zglasza os_family=windows
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.2.0", PLIK_LINUKSOWY, "linux")
+    with SessionLocal() as db:
+        linuksowe = db.execute(
+            select(AgentRelease.id).where(AgentRelease.os_family == "linux")
+        ).scalar_one()
+
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], linuksowe, system="linux")
+
+    assert client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
+    ).json()["available"] is False
+    assert client.get(
+        "/api/v1/agent/release", headers={"Authorization": f"Bearer {token}"}
+    ).status_code == 404
+
+
+def test_widok_globalny_pokazuje_wersje_agentow(client, tenant_a, make_user):
+    """Zestawienie ma pokazywac firme, liczbe agentow, aktywnych i wersje."""
+    _przygotuj_maszyne(client, tenant_a)
+    _superadmin(client, make_user)
+    strona = client.get("/admin").text
+    assert "zainstalowanych agentow" in strona
+    assert "Wersje agentow" in strona
+    assert "0.1.0" in strona          # wersja z raportu testowego
+    assert "windows" in strona
+
+
+def test_pulpit_firmy_pokazuje_wersje_agentow(client, tenant_a, make_user):
+    """Administrator firmy widzi wersje pracujace u siebie."""
+    _przygotuj_maszyne(client, tenant_a)
+    make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
+    _login(client, "admin@firma-a.pl", "bardzo-dlugie-haslo")
+    strona = client.get("/").text
+    assert "Wersje agenta w firmie" in strona
+    assert "0.1.0" in strona

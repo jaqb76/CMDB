@@ -10,30 +10,61 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import AgentRelease, AgentUpgradeLog, Asset, Tenant, utcnow
+from ..models import AgentRelease, AgentUpgradeLog, Asset, TenantAgentTarget, utcnow
 
 log = logging.getLogger(__name__)
 
 
 def wersja_docelowa(db: Session, asset: Asset) -> AgentRelease | None:
-    """Ustawienie maszyny ma pierwszenstwo przed ustawieniem firmy.
+    """Wersja oczekiwana na tej maszynie, albo None.
 
-    Dzieki temu da sie wypchnac nowa wersje na kilka maszyn testowych,
-    nie ruszajac reszty floty, a pozniej jednym ruchem objac cala firme.
+    Kolejnosc: ustawienie maszyny ma pierwszenstwo przed ustawieniem firmy.
+    Pozwala to wypchnac nowa wersje na kilka maszyn testowych, nie ruszajac
+    reszty floty, a pozniej jednym ruchem objac cala firme.
+
+    Niezaleznie od zrodla wydanie MUSI byc zbudowane dla systemu tej maszyny.
+    Agent jest osobnym plikiem dla Windows i dla Linuksa - wyslanie nie tego
+    co trzeba konczyloby sie plikiem, ktorego maszyna nie ma jak uruchomic.
     """
+    system = (asset.os_family or "").lower()
+
     if asset.target_release_id:
         wydanie = db.get(AgentRelease, asset.target_release_id)
-        if wydanie is not None:
+        if wydanie is None:
+            log.warning("maszyna %s wskazuje nieistniejaca wersje agenta", asset.hostname)
+        elif _pasuje(wydanie, system):
             return wydanie
-        log.warning("maszyna %s wskazuje nieistniejaca wersje agenta", asset.hostname)
+        else:
+            log.warning(
+                "maszyna %s (%s) ma ustawiona wersje dla %s - pomijam",
+                asset.hostname, system or "?", wydanie.os_family,
+            )
 
-    firma = db.get(Tenant, asset.tenant_id)
-    if firma is not None and firma.target_release_id:
-        return db.get(AgentRelease, firma.target_release_id)
+    cel = db.execute(
+        select(TenantAgentTarget).where(
+            TenantAgentTarget.tenant_id == asset.tenant_id,
+            TenantAgentTarget.os_family == system,
+        )
+    ).scalar_one_or_none()
+    if cel is None:
+        return None
+
+    wydanie = db.get(AgentRelease, cel.release_id)
+    if wydanie is not None and _pasuje(wydanie, system):
+        return wydanie
     return None
+
+
+def _pasuje(wydanie: AgentRelease, system: str) -> bool:
+    """Ostatnia bariera przed wyslaniem pliku dla niewlasciwego systemu."""
+    if not system:
+        # Maszyna, ktora nie zglosila systemu, nie dostaje niczego.
+        return False
+    return (wydanie.os_family or "").lower() == system
 
 
 def czy_wymaga_aktualizacji(asset: Asset, wydanie: AgentRelease | None) -> bool:

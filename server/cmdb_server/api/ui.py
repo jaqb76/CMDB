@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, sta
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from jinja2 import ChainableUndefined, Undefined
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -275,6 +275,28 @@ def dashboard(
         .group_by(Asset.os_family)
     ).all()
 
+    # Wersje agenta faktycznie pracujace w firmie - administrator firmy widzi
+    # to samo, co superadmin w widoku globalnym, tyle ze dla siebie.
+    wersje_agenta = [
+        {
+            "os_family": system or "nieznany",
+            "wersja": wersja or "nieznana",
+            "ile": ile,
+            "aktywne": int(aktywne or 0),
+        }
+        for system, wersja, ile, aktywne in db.execute(
+            select(
+                Asset.os_family,
+                Asset.agent_version,
+                func.count(Asset.id),
+                func.sum(case((Asset.last_seen >= stale_before, 1), else_=0)),
+            )
+            .where(Asset.tenant_id == ctx.tenant_id)
+            .group_by(Asset.os_family, Asset.agent_version)
+            .order_by(Asset.os_family, Asset.agent_version)
+        ).all()
+    ]
+
     recent = db.execute(
         scoping.assets_query(ctx).order_by(Asset.last_seen.desc()).limit(10)
     ).scalars().all()
@@ -295,6 +317,7 @@ def dashboard(
         stale=stale,
         unassigned=unassigned,
         by_os=by_os,
+        wersje_agenta=wersje_agenta,
         recent=recent,
         changed=changed,
     )

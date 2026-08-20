@@ -15,6 +15,8 @@
   <i>oczekiwana</i>, a agent sprawdza ja sam — przed kazda zaplanowana synchronizacja —
   i jesli rozni sie od jego wlasnej, pobiera plik po HTTPS. Zmiana nie jest wiec
   natychmiastowa: pojawi sie na maszynie przy jej najblizszym przebiegu.
+  Agent jest osobnym plikiem dla kazdego systemu, wiec cel ustawia sie oddzielnie
+  dla Windows i dla Linuksa.
 </div>
 
 {% if not wydania %}
@@ -25,45 +27,65 @@
 {% endif %}
 
 <section class="panel">
-  <h2>Cala firma</h2>
-  <p class="muted small">
-    Ustawia wersje dla wszystkich maszyn firmy i kasuje ustawienia pojedynczych maszyn,
-    zeby nie przeslanialy tej decyzji.
-    Obecnie: {% if wersja_firmy %}<code>{{ wersja_firmy.version }}</code>{% else %}<span class="muted">nie ustawiono</span>{% endif %}
-  </p>
-  <form method="post" action="/admin/tenants/{{ firma.id }}/upgrade" class="row-form"
-        data-confirm="Ustawic wersje docelowa dla WSZYSTKICH maszyn firmy {{ firma.name }}?">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="zakres" value="firma">
-    <div>
-      <label for="wersja_firmy">Wersja docelowa</label>
-      <select id="wersja_firmy" name="release_id">
-        <option value="">— nie aktualizuj —</option>
-        {% for w in wydania %}
-          <option value="{{ w.id }}" {% if wersja_firmy and wersja_firmy.id == w.id %}selected{% endif %}>
-            {{ w.version }} ({{ w.size_bytes | bytes }})
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-    <div><button type="submit" class="btn btn-primary">Zastosuj dla firmy</button></div>
-  </form>
+  <h2>Cala firma — wedlug systemu</h2>
+  {% if obecne_systemy %}
+    {% for system in obecne_systemy %}
+      {% set dostepne = wydania_wg_systemu.get(system, []) %}
+      <form method="post" action="/admin/tenants/{{ firma.id }}/upgrade" class="row-form"
+            data-confirm="Ustawic wersje docelowa dla WSZYSTKICH maszyn {{ system }} w firmie {{ firma.name }}?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="zakres" value="firma">
+        <input type="hidden" name="os_family" value="{{ system }}">
+        <div>
+          <label>System</label>
+          <div class="strong">{{ systemy.get(system, {}).get('etykieta', system) }}</div>
+        </div>
+        <div>
+          <label for="wersja_{{ system }}">Wersja docelowa</label>
+          <select id="wersja_{{ system }}" name="release_id" {% if not dostepne %}disabled{% endif %}>
+            <option value="">— nie aktualizuj —</option>
+            {% for w in dostepne %}
+              {% set biezacy = cele.get(system) %}
+              <option value="{{ w.id }}" {% if biezacy and biezacy.id == w.id %}selected{% endif %}>
+                {{ w.version }} ({{ w.size_bytes | bytes }})
+              </option>
+            {% endfor %}
+          </select>
+          {% if not dostepne %}
+            <div class="muted small">brak wgranej wersji dla tego systemu</div>
+          {% endif %}
+        </div>
+        <div>
+          <button type="submit" class="btn btn-primary" {% if not dostepne %}disabled{% endif %}>
+            Zastosuj
+          </button>
+        </div>
+      </form>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Ta firma nie ma jeszcze zadnej maszyny.</p>
+  {% endif %}
 </section>
 
+{% if maszyny %}
 <form method="post" action="/admin/tenants/{{ firma.id }}/upgrade">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="zakres" value="wybrane">
 
   <section class="panel">
     <h2>Wybrane maszyny <span class="muted">({{ maszyny | length }})</span></h2>
-    {% if maszyny %}
     <div class="row-form">
       <div>
         <label for="wersja_wybrane">Wersja docelowa dla zaznaczonych</label>
         <select id="wersja_wybrane" name="release_id">
           <option value="">— nie aktualizuj (kasuje ustawienie) —</option>
-          {% for w in wydania %}<option value="{{ w.id }}">{{ w.version }}</option>{% endfor %}
+          {% for w in wydania %}
+            <option value="{{ w.id }}">{{ w.os_family }} · {{ w.version }}</option>
+          {% endfor %}
         </select>
+        <div class="muted small">
+          Wersja musi pasowac do systemu zaznaczonych maszyn — inaczej zlecenie zostanie odrzucone.
+        </div>
       </div>
       <div><button type="submit" class="btn btn-primary">Zastosuj dla zaznaczonych</button></div>
     </div>
@@ -78,14 +100,18 @@
       </thead>
       <tbody>
       {% for m in maszyny %}
-        {% set docelowa = wersje.get(m.target_release_id) or wersja_firmy %}
+        {% set system = (m.os_family or 'nieznany') %}
+        {% set docelowa = wersje.get(m.target_release_id) or cele.get(system) %}
         <tr>
           <td><input type="checkbox" name="asset_id" value="{{ m.id }}"></td>
           <td>
             <a class="strong" href="/assets/{{ m.id }}">{{ m.hostname }}</a>
             {% if m.target_release_id %}<div class="muted small">ustawienie wlasne</div>{% endif %}
           </td>
-          <td class="small">{{ m.os_name or m.os_family or '-' }}</td>
+          <td class="small">
+            <code>{{ system }}</code>
+            <div class="muted">{{ m.os_name or '' }}</div>
+          </td>
           <td class="small"><code>{{ m.agent_version or '?' }}</code></td>
           <td class="small">
             {% if docelowa %}
@@ -109,9 +135,7 @@
       {% endfor %}
       </tbody>
     </table>
-    {% else %}
-      <p class="muted">Ta firma nie ma jeszcze zadnej maszyny.</p>
-    {% endif %}
   </section>
 </form>
+{% endif %}
 {% endblock %}

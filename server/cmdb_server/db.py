@@ -98,17 +98,48 @@ def _dodaj_brakujace_kolumny() -> None:
         for kolumna in tabela.columns:
             if kolumna.name in obecne:
                 continue
-            if not kolumna.nullable:
-                log.warning(
-                    "kolumna %s.%s wymaga wartosci - dodaj ja migracja recznie",
-                    tabela.name,
-                    kolumna.name,
-                )
-                continue
             typ = kolumna.type.compile(dialect=engine.dialect)
+            definicja = f"{kolumna.name} {typ}"
+
+            if not kolumna.nullable:
+                # Kolumna wymagana da sie dolozyc do tabeli z danymi tylko
+                # wtedy, gdy znamy wartosc dla juz istniejacych wierszy.
+                wartosc = _domyslna_wartosc(kolumna)
+                if wartosc is None:
+                    log.warning(
+                        "kolumna %s.%s jest wymagana i nie ma wartosci domyslnej - "
+                        "dodaj ja migracja recznie",
+                        tabela.name,
+                        kolumna.name,
+                    )
+                    continue
+                definicja += f" NOT NULL DEFAULT {wartosc}"
+
             with engine.begin() as conn:
-                conn.execute(text(f'ALTER TABLE {tabela.name} ADD COLUMN {kolumna.name} {typ}'))
+                conn.execute(text(f"ALTER TABLE {tabela.name} ADD COLUMN {definicja}"))
             log.info("dodano brakujaca kolumne %s.%s", tabela.name, kolumna.name)
+
+
+def _domyslna_wartosc(kolumna) -> str | None:
+    """Wartosc domyslna kolumny w postaci gotowej do wstawienia w SQL.
+
+    Obslugujemy wylacznie proste wartosci stale. Domyslne wyliczane funkcja
+    (np. znacznik czasu) nie daja jednej wartosci dla istniejacych wierszy,
+    wiec takie przypadki zostawiamy do recznej migracji.
+    """
+    zrodlo = kolumna.default or kolumna.server_default
+    if zrodlo is None:
+        return None
+    wartosc = getattr(zrodlo, "arg", None)
+    if wartosc is None or callable(wartosc):
+        return None
+    if isinstance(wartosc, bool):
+        return "1" if wartosc else "0"
+    if isinstance(wartosc, (int, float)):
+        return str(wartosc)
+    if isinstance(wartosc, str):
+        return "'" + wartosc.replace("'", "''") + "'"
+    return None
 
 
 def _create_postgres_indexes() -> None:

@@ -33,6 +33,32 @@
 </section>
 {% endif %}
 
+{% if wersje_agenta %}
+<section class="panel">
+  <h2>Wersje agenta w firmie</h2>
+  <table class="table">
+    <thead><tr><th>System</th><th>Wersja agenta</th><th>Maszyn</th><th>Aktywnych</th></tr></thead>
+    <tbody>
+    {% for w in wersje_agenta %}
+      <tr>
+        <td><code>{{ w.os_family }}</code></td>
+        <td class="strong">{{ w.wersja }}</td>
+        <td>{{ w.ile }}</td>
+        <td>
+          {% if w.aktywne == w.ile %}
+            <span class="badge badge-ok">{{ w.aktywne }}</span>
+          {% else %}
+            <span class="badge badge-warn">{{ w.aktywne }} z {{ w.ile }}</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">Aktywne = odezwaly sie w ciagu ostatnich {{ stale_after_hours }} h.</p>
+</section>
+{% endif %}
+
 <div class="two-col">
   <section class="panel">
     <h2>Ostatni kontakt</h2>

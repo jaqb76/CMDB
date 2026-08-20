@@ -12,7 +12,8 @@ opcjonalny:
   1. adres pobierania sklada agent z WLASNEJ konfiguracji - serwer podaje
      wylacznie numer wersji i skrot, nigdy URL-a,
   2. pobrany plik musi zgadzac sie ze skrotem SHA-256 podanym przez serwer,
-  3. plik musi byc programem Windows (sygnatura MZ),
+  3. plik musi byc programem wykonywalnym dla systemu tej maszyny
+     (sygnatura MZ na Windows, ELF na Linuksie),
   4. nowy plik musi dac sie uruchomic - sprawdzamy to przed zatwierdzeniem
      podmiany, a gdy zawiedzie, wracamy do poprzedniej wersji.
 
@@ -43,6 +44,24 @@ MAX_ROZMIAR = 128 * 1024 * 1024
 
 ROZSZERZENIE_NOWEJ = ".nowa"
 ROZSZERZENIE_STAREJ = ".stara"
+
+
+# Agent jest budowany osobno dla kazdego systemu. Serwer pilnuje, zeby wydac
+# plik zgodny z systemem maszyny, ale sprawdzamy to takze po stronie agenta -
+# to on ma najwiecej do stracenia, gdyby podmienil plik na niewykonywalny.
+SYGNATURY = {
+    "win32": b"MZ",
+    "linux": bytes.fromhex("7f") + b"ELF",
+    "darwin": None,  # Mach-O ma kilka wariantow - nie zgadujemy
+}
+
+
+def sygnatura_systemu() -> bytes | None:
+    """Oczekiwany poczatek pliku wykonywalnego dla biezacego systemu."""
+    for przedrostek, sygnatura in SYGNATURY.items():
+        if sys.platform.startswith(przedrostek):
+            return sygnatura
+    return None
 
 
 class UpgradeError(Exception):
@@ -115,10 +134,14 @@ def _pobierz_i_sprawdz(client: CmdbClient, token: str, oferta: dict, cel: Path) 
             f"z podanym przez serwer ({oczekiwany[:16]}...)"
         )
 
-    with cel.open("rb") as plik:
-        if plik.read(2) != b"MZ":
-            cel.unlink(missing_ok=True)
-            raise UpgradeError("pobrany plik nie jest programem Windows")
+    oczekiwana = sygnatura_systemu()
+    if oczekiwana:
+        with cel.open("rb") as plik:
+            if plik.read(len(oczekiwana)) != oczekiwana:
+                cel.unlink(missing_ok=True)
+                raise UpgradeError(
+                    "pobrany plik nie jest programem dla tego systemu - odmawiam podmiany"
+                )
 
 
 def _czy_dziala(plik: Path) -> tuple[bool, str]:

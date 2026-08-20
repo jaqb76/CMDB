@@ -26,49 +26,83 @@
   </div>
   <div class="card">
     <div class="card-value">{{ podsumowanie.maszyny }}</div>
-    <div class="card-label">maszyn lacznie</div>
+    <div class="card-label">zainstalowanych agentow</div>
   </div>
   <div class="card {% if podsumowanie.aktywne < podsumowanie.maszyny %}card-warn{% endif %}">
     <div class="card-value">{{ podsumowanie.aktywne }}</div>
-    <div class="card-label">agentow aktywnych (&lt; {{ stale_after_hours }} h)</div>
+    <div class="card-label">aktywnych (&lt; {{ stale_after_hours }} h)</div>
   </div>
 </section>
 
 <section class="panel">
-  <h2>Firmy</h2>
+  <h2>Zestawienie firm</h2>
   <table class="table">
     <thead>
       <tr>
-        <th>Firma</th><th>Identyfikator</th><th>Maszyny</th><th>Aktywne</th>
-        <th>Konta</th><th>Opiekunowie</th><th>Tokeny</th><th>Wersja docelowa</th>
-        <th>Status</th><th></th>
+        <th>Firma</th>
+        <th>Agenci</th>
+        <th>Wersje agentow</th>
+        <th>Wersja docelowa</th>
+        <th>Konta</th><th>Opiekun.</th><th>Tokeny</th><th>Status</th><th></th>
       </tr>
     </thead>
     <tbody>
     {% for w in wiersze %}
       <tr>
-        <td class="strong">{{ w.firma.name }}</td>
-        <td><code>{{ w.firma.slug }}</code></td>
-        <td>{{ w.maszyny }}</td>
         <td>
-          {{ w.aktywne }}
-          {% if w.maszyny and w.aktywne < w.maszyny %}
-            <span class="badge badge-warn">{{ w.maszyny - w.aktywne }} bez kontaktu</span>
+          <span class="strong">{{ w.firma.name }}</span>
+          <div class="muted small"><code>{{ w.firma.slug }}</code></div>
+        </td>
+        <td class="small">
+          <b>{{ w.maszyny }}</b> zainstalowanych<br>
+          {% if w.aktywne == w.maszyny %}
+            <span class="badge badge-ok">{{ w.aktywne }} aktywnych</span>
+          {% else %}
+            <span class="badge badge-warn">{{ w.aktywne }} z {{ w.maszyny }} aktywnych</span>
           {% endif %}
+        </td>
+        <td class="small">
+          {% if w.agenci %}
+            {% for a in w.agenci %}
+              <div>
+                <code>{{ a.os_family }}</code> {{ a.wersja }}
+                <span class="muted">— {{ a.ile }} szt.{% if a.aktywne < a.ile %}, {{ a.aktywne }} aktywnych{% endif %}</span>
+              </div>
+            {% endfor %}
+          {% else %}<span class="muted">brak agentow</span>{% endif %}
+        </td>
+        <td class="small">
+          {% for system, dane in systemy.items() %}
+            {% set cel = w.cele.get(system) %}
+            {% if cel or wydania_wg_systemu.get(system) %}
+              <form method="post" action="/admin/tenants/{{ w.firma.id }}/upgrade" class="cel-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="zakres" value="firma">
+                <input type="hidden" name="os_family" value="{{ system }}">
+                <span class="muted">{{ dane.etykieta }}</span>
+                <select name="release_id" class="cel-select">
+                  <option value="">— brak —</option>
+                  {% for wyd in wydania_wg_systemu.get(system, []) %}
+                    <option value="{{ wyd.id }}" {% if cel and cel.id == wyd.id %}selected{% endif %}>
+                      {{ wyd.version }}
+                    </option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-small">Ustaw</button>
+              </form>
+            {% endif %}
+          {% endfor %}
+          {% if not wydania %}<span class="muted">brak wgranych wersji</span>{% endif %}
         </td>
         <td>{{ w.konta }}</td>
         <td>{{ w.opiekunowie }}</td>
         <td>{{ w.tokeny }}</td>
-        <td class="small">
-          {% if w.wersja_docelowa %}<code>{{ w.wersja_docelowa.version }}</code>
-          {% else %}<span class="muted">—</span>{% endif %}
-        </td>
         <td>
           {% if w.firma.is_active %}<span class="badge badge-ok">aktywna</span>
           {% else %}<span class="badge badge-danger">wylaczona</span>{% endif %}
         </td>
         <td class="small">
-          <a class="btn btn-small" href="/admin/tenants/{{ w.firma.id }}/upgrade">Aktualizacja</a>
+          <a class="btn btn-small" href="/admin/tenants/{{ w.firma.id }}/upgrade">Maszyny</a>
           <a class="btn btn-small btn-ghost" href="/switch-tenant?slug={{ w.firma.slug }}">Podglad</a>
           <form method="post" action="/admin/tenants/{{ w.firma.id }}/active" class="inline-form"
                 data-confirm="{% if w.firma.is_active %}Wylaczyc firme {{ w.firma.name }}? Jej agenci przestana byc przyjmowani.{% else %}Wlaczyc firme {{ w.firma.name }}?{% endif %}">
@@ -80,23 +114,15 @@
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="10" class="muted">Nie zdefiniowano jeszcze zadnej firmy.</td></tr>
+      <tr><td colspan="9" class="muted">Nie zdefiniowano jeszcze zadnej firmy.</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  <p class="muted small">
+    Ustawienie wersji docelowej obejmuje wszystkie maszyny danego systemu w tej firmie.
+    Pojedyncze maszyny wybierzesz przyciskiem <b>Maszyny</b>.
+  </p>
 </section>
-
-{% if rozklad_wersji %}
-<section class="panel">
-  <h2>Wersje agenta we flocie</h2>
-  <p class="muted small">Liczone tylko dla maszyn, ktore odezwaly sie w ciagu {{ stale_after_hours }} h.</p>
-  <ul class="chips">
-    {% for wersja, ile in rozklad_wersji %}
-      <li><span class="chip">{{ wersja or 'nieznana' }} <b>{{ ile }}</b></span></li>
-    {% endfor %}
-  </ul>
-</section>
-{% endif %}
 
 <div class="two-col">
   <section class="panel">
@@ -161,11 +187,21 @@
     <h2>Wgraj wersje agenta</h2>
     <form method="post" action="/admin/releases" class="stack" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="wyd_system">System</label>
+      <select id="wyd_system" name="os_family" required>
+        {% for system, dane in systemy.items() %}
+          <option value="{{ system }}">{{ dane.etykieta }} — {{ dane.opis }}</option>
+        {% endfor %}
+      </select>
+      <div class="muted small">
+        Agent jest budowany osobno dla kazdego systemu. Plik dla Windows nie uruchomi sie
+        na Linuksie, dlatego sprawdzamy sygnature pliku juz przy wgrywaniu.
+      </div>
       <label for="wersja">Numer wersji</label>
       <input id="wersja" name="version" required maxlength="32" placeholder="0.2.0">
       <div class="muted small">Musi zgadzac sie z wersja zglaszana przez agenta (<code>cmdb-agent --version</code>).</div>
-      <label for="plik">Plik cmdb-agent.exe</label>
-      <input id="plik" name="plik" type="file" required accept=".exe">
+      <label for="plik">Plik agenta</label>
+      <input id="plik" name="plik" type="file" required>
       <label for="uwagi">Uwagi</label>
       <textarea id="uwagi" name="notes" rows="2" placeholder="co sie zmienilo"></textarea>
       <button type="submit" class="btn btn-primary">Wgraj</button>
@@ -177,19 +213,20 @@
   <h2>Wgrane wersje agenta</h2>
   {% if wydania %}
   <table class="table">
-    <thead><tr><th>Wersja</th><th>Plik</th><th>Rozmiar</th><th>SHA-256</th><th>Wgral</th><th>Kiedy</th><th></th></tr></thead>
+    <thead><tr><th>System</th><th>Wersja</th><th>Plik</th><th>Rozmiar</th><th>SHA-256</th><th>Wgral</th><th>Kiedy</th><th></th></tr></thead>
     <tbody>
     {% for w in wydania %}
       <tr>
+        <td><code>{{ w.os_family }}</code></td>
         <td class="strong">{{ w.version }}</td>
         <td class="small">{{ w.filename }}</td>
         <td class="small">{{ w.size_bytes | bytes }}</td>
-        <td class="small muted"><code>{{ w.sha256[:24] }}…</code></td>
+        <td class="small muted"><code>{{ w.sha256[:20] }}…</code></td>
         <td class="small">{{ w.created_by or '—' }}</td>
         <td class="small">{{ w.created_at | dt }}</td>
         <td>
           <form method="post" action="/admin/releases/{{ w.id }}/delete" class="inline-form"
-                data-confirm="Usunac wersje {{ w.version }} wraz z plikiem?">
+                data-confirm="Usunac wersje {{ w.version }} ({{ w.os_family }}) wraz z plikiem?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn-small btn-danger">Usun</button>
           </form>
