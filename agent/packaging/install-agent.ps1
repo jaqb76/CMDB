@@ -133,7 +133,15 @@ if ($TrayExe -and (Test-Path $TrayExe)) {
         Copy-Item $sourceTray $targetTray -Force
     }
 }
-Write-Step "  program        : $targetExe"
+# Sprawdzamy, ze skopiowany plik naprawde dziala. Bez tego blad w samym
+# programie wychodzi dopiero przy rejestracji - juz po zapisaniu konfiguracji
+# z tokenem - a przy podmianie na nowsza wersje latwo nie zauwazyc, ze
+# w katalogu docelowym zostal stary plik.
+$wersja = (& $targetExe --version 2>&1) -join " "
+if ($LASTEXITCODE -ne 0) {
+    throw "Skopiowany $targetExe nie uruchamia sie poprawnie: $wersja"
+}
+Write-Step "  program        : $targetExe ($wersja)"
 
 # --- 2. konfiguracja --------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null

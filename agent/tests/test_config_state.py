@@ -197,3 +197,16 @@ def test_config_with_polish_characters(tmp_path):
     config = load_config(path)
     config.validate()
     assert config.ca_bundle == str(sciezka_ca)
+
+
+def test_broken_config_gives_readable_error_not_traceback(tmp_path, capsys):
+    """Uszkodzony agent.conf konczyl sie sladem stosu, a w wersji spakowanej
+    dodatkowo komunikatem PyInstallera "Failed to execute script" - z czego
+    nie wynikalo nic uzytecznego."""
+    from cmdb_agent.main import main
+
+    cfg = tmp_path / "agent.conf"
+    cfg.write_text("{to nie jest poprawny json", encoding="utf-8")
+
+    kod = main(["--config", str(cfg), "status"])
+    assert kod == 1

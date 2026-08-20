@@ -352,7 +352,20 @@ def main(argv: list[str] | None = None) -> int:
         "pin_sha256": args.pin_sha256,
         "log_level": args.log_level,
     }
-    config = load_config(args.config, overrides)
+    try:
+        config = load_config(args.config, overrides)
+    except ValueError as exc:
+        # Uszkodzony plik konfiguracyjny nie moze konczyc sie sladem stosu -
+        # w wersji spakowanej PyInstaller dokleja do niego jeszcze "Failed to
+        # execute script", z czego nie wynika nic uzytecznego.
+        logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s")
+        log.error("%s", exc)
+        log.error(
+            "popraw plik konfiguracyjny albo usun go i skonfiguruj agenta na nowo: "
+            "cmdb-agent --server https://... --token cmdb_ent_... enroll"
+        )
+        return 1
+
     setup_logging(config)
 
     if config.config_access_denied is not None:
