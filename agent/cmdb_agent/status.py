@@ -155,7 +155,7 @@ def read(config) -> AgentStatus:
     if not path.is_file():
         return AgentStatus(hostname=platform.node(), last_status="not_configured")
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
         log.warning("nie moge odczytac statusu (%s)", exc)
         return AgentStatus(hostname=platform.node(), last_status="not_configured")

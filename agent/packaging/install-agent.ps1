@@ -149,7 +149,11 @@ $config = [ordered]@{
 if ($CaBundle)  { $config.ca_bundle  = $CaBundle }
 if ($PinSha256) { $config.pin_sha256 = $PinSha256 }
 
-$config | ConvertTo-Json -Depth 3 | Set-Content -Path $configPath -Encoding UTF8
+# Set-Content -Encoding UTF8 dopisuje w Windows PowerShell 5.1 znacznik BOM,
+# na ktorym parser JSON w Pythonie sie wywraca. UTF8Encoding($false) zapisuje
+# czyste UTF-8, bez znacznika.
+$json = $config | ConvertTo-Json -Depth 3
+[System.IO.File]::WriteAllText($configPath, $json, (New-Object System.Text.UTF8Encoding $false))
 
 # Konfiguracja i poswiadczenie: tylko SYSTEM i administratorzy.
 & icacls $DataDir /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null

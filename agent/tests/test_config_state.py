@@ -161,3 +161,39 @@ def test_icacls_does_not_duplicate_system_grant():
 
     polecenie = icacls_command(Path("/tmp/x"), True, "S-1-5-18")
     assert polecenie.count("*S-1-5-18:(OI)(CI)F") == 1
+
+
+def test_config_with_utf8_bom_is_accepted(tmp_path):
+    """Windows PowerShell 5.1 zapisuje pliki z "-Encoding UTF8" wraz ze
+    znacznikiem BOM, tak samo Notatnik. Parser JSON w Pythonie konczy sie
+    wtedy bledem "Unexpected UTF-8 BOM" - agent nie wstawal po instalacji.
+    """
+    path = tmp_path / "agent.conf"
+    tresc = json.dumps({"server_url": "https://cmdb.firma.pl", "report_interval_seconds": 900})
+    path.write_bytes(b"\xef\xbb\xbf" + tresc.encode("utf-8"))   # BOM + JSON
+
+    config = load_config(path)
+    assert config.server_url == "https://cmdb.firma.pl"
+    assert config.report_interval_seconds == 900
+
+
+def test_config_without_bom_still_works(tmp_path):
+    path = tmp_path / "agent.conf"
+    path.write_text(json.dumps({"server_url": "https://bez-bom.pl"}), encoding="utf-8")
+    assert load_config(path).server_url == "https://bez-bom.pl"
+
+
+def test_config_with_polish_characters(tmp_path):
+    """Sciezka do certyfikatu moze zawierac polskie znaki."""
+    path = tmp_path / "agent.conf"
+    sciezka_ca = tmp_path / "certyfikat-firmy.pem"
+    sciezka_ca.write_text("-----BEGIN CERTIFICATE-----", encoding="utf-8")
+    path.write_bytes(
+        b"\xef\xbb\xbf" + json.dumps({
+            "server_url": "https://cmdb.firma.pl",
+            "ca_bundle": str(sciezka_ca),
+        }, ensure_ascii=False).encode("utf-8")
+    )
+    config = load_config(path)
+    config.validate()
+    assert config.ca_bundle == str(sciezka_ca)

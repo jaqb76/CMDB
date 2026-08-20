@@ -45,7 +45,7 @@ class AgentState:
 
 def load_state(path: Path) -> AgentState:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         return AgentState()
     except PermissionError:

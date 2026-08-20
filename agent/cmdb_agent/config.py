@@ -123,7 +123,11 @@ def load_config(config_path: Path | None = None, overrides: dict | None = None) 
     path = config_path or default_config_path()
 
     try:
-        raw_text = path.read_text(encoding="utf-8")
+        # utf-8-sig, a nie utf-8: Windows PowerShell 5.1 zapisuje pliki
+        # z "-Encoding UTF8" wraz ze znacznikiem BOM, tak samo Notatnik.
+        # json.loads na takim tekscie konczy sie bledem "Unexpected UTF-8 BOM".
+        # utf-8-sig zdejmuje znacznik, gdy jest, i nie przeszkadza, gdy go nie ma.
+        raw_text = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         raw_text = None
     except PermissionError:
