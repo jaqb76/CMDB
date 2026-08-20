@@ -115,7 +115,7 @@ if ($sourceExe -ne [System.IO.Path]::GetFullPath($targetExe)) {
 
 # Pozostalosc po instalacji w drugim Program Files (np. po uruchomieniu
 # skryptu z 32-bitowego PowerShella) tylko myli przy diagnozie.
-foreach ($inny in @("$env:ProgramFiles(x86)\CMDB Agent", "${env:ProgramFiles}\CMDB Agent",
+foreach ($inny in @("${env:ProgramFiles(x86)}\CMDB Agent", "${env:ProgramFiles}\CMDB Agent",
                     "$env:ProgramW6432\CMDB Agent")) {
     if ($inny -and (Test-Path $inny) -and
         ([System.IO.Path]::GetFullPath($inny) -ne [System.IO.Path]::GetFullPath($InstallDir))) {
@@ -223,13 +223,50 @@ catch {
 Write-Step "  zadanie        : $TaskName (SYSTEM, przy starcie + co $IntervalHours h)"
 
 # --- 5. ikona w zasobniku ---------------------------------------------------
-$runKey = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run"
-if (-not $NoTray -and (Test-Path $targetTray)) {
-    Set-ItemProperty -Path $runKey -Name "CMDB Agent Tray" -Value "`"$targetTray`"" -Force
-    Write-Step "  ikona          : $targetTray (autostart dla kazdego uzytkownika)"
+# Wpis zakladamy jawnie w widoku 64-bitowym. Przy uruchomieniu instalatora
+# z 32-bitowego PowerShella zwykly zapis do HKLM:\Software\... jest przez
+# system przekierowywany do WOW6432Node - wpis powstaje, ale nie tam, gdzie
+# go potem szukamy przy diagnozie i deinstalacji.
+$sciezkaRun = "Software\Microsoft\Windows\CurrentVersion\Run"
+$bazaRejestru = [Microsoft.Win32.RegistryKey]::OpenBaseKey("LocalMachine", "Registry64")
+try {
+    $kluczRun = $bazaRejestru.CreateSubKey($sciezkaRun, $true)
+    try {
+        if (-not $NoTray -and (Test-Path $targetTray)) {
+            $kluczRun.SetValue("CMDB Agent Tray", "`"$targetTray`"", "String")
+            Write-Step "  ikona          : $targetTray (autostart dla kazdego uzytkownika)"
+        }
+        else {
+            $kluczRun.DeleteValue("CMDB Agent Tray", $false)
+        }
+    }
+    finally { $kluczRun.Close() }
+
+    # Sprzatamy pozostalosc po zapisie w widoku 32-bitowym.
+    $baza32 = [Microsoft.Win32.RegistryKey]::OpenBaseKey("LocalMachine", "Registry32")
+    try {
+        $klucz32 = $baza32.OpenSubKey($sciezkaRun, $true)
+        if ($klucz32) {
+            $klucz32.DeleteValue("CMDB Agent Tray", $false)
+            $klucz32.Close()
+        }
+    }
+    finally { $baza32.Close() }
 }
-else {
-    Remove-ItemProperty -Path $runKey -Name "CMDB Agent Tray" -ErrorAction SilentlyContinue
+finally { $bazaRejestru.Close() }
+
+# Autostart zadziala dopiero przy nastepnym logowaniu, wiec uruchamiamy ikone
+# od razu. Posrednictwo explorer.exe jest tu celowe: instalator dziala z
+# podniesionymi uprawnieniami, a ikona ma chodzic na zwyklym koncie
+# zalogowanego uzytkownika - explorer startuje ja na swoim poziomie.
+if (-not $NoTray -and (Test-Path $targetTray) -and -not (Get-Process -Name "cmdb-agent-tray" -ErrorAction SilentlyContinue)) {
+    try {
+        Start-Process "explorer.exe" -ArgumentList "`"$targetTray`"" -ErrorAction Stop
+        Write-Step "  ikona uruchomiona (bez czekania na ponowne logowanie)"
+    }
+    catch {
+        Write-Warning "Nie udalo sie uruchomic ikony teraz - pojawi sie przy nastepnym logowaniu."
+    }
 }
 
 # --- 6. pierwszy przebieg ---------------------------------------------------
