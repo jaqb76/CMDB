@@ -65,6 +65,12 @@ class Tenant(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    # Wersja agenta oczekiwana na wszystkich maszynach firmy. Pojedyncza
+    # maszyna moze miec wlasne ustawienie, ktore ma pierwszenstwo.
+    target_release_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_releases.id", ondelete="SET NULL")
+    )
+
     assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")
 
 
@@ -189,6 +195,14 @@ class Asset(Base):
     # Skrocone podsumowanie do listy (cpu/ram/dyski) - zeby nie czytac calego payloadu.
     facts: Mapped[dict | None] = mapped_column(JSONType, default=dict)
 
+    # Aktualizacja agenta: ustawienie na maszynie ma pierwszenstwo przed firmowym.
+    target_release_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_releases.id", ondelete="SET NULL")
+    )
+    upgrade_status: Mapped[str | None] = mapped_column(String(20))
+    upgrade_detail: Mapped[str | None] = mapped_column(Text)
+    upgrade_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_change_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -255,6 +269,46 @@ class InventorySnapshot(Base):
     payload: Mapped[dict] = mapped_column(JSONType, nullable=False)
 
     asset: Mapped[Asset] = relationship(back_populates="snapshots")
+
+
+class AgentRelease(Base):
+    """Wersja agenta wgrana przez superadmina, gotowa do rozeslania.
+
+    Sam plik lezy na dysku serwera (katalog z konfiguracji), w bazie trzymamy
+    metadane i skrot. Skrot jest tu kluczowy: agent porownuje go po pobraniu
+    i odmawia podmiany, jesli sie nie zgadza. Bez tego kanal aktualizacji
+    bylby po prostu zdalnym uruchamianiem dowolnego kodu na kazdej maszynie.
+    """
+
+    __tablename__ = "agent_releases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    version: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nazwa pliku w magazynie serwera (skrot + rozszerzenie).
+    storage_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+
+
+class AgentUpgradeLog(Base):
+    """Slad kazdej proby aktualizacji - kto zlecil, co sie stalo na maszynie."""
+
+    __tablename__ = "agent_upgrade_log"
+    __table_args__ = (Index("ix_upgrade_tenant_created", "tenant_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    release_id: Mapped[str | None] = mapped_column(String(36))
+    from_version: Mapped[str | None] = mapped_column(String(32))
+    to_version: Mapped[str | None] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  # zlecona|pobrana|ok|blad
+    detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AuditLog(Base):

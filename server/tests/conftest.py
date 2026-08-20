@@ -16,6 +16,9 @@ _TMPDIR = tempfile.mkdtemp(prefix="cmdb-tests-")
 os.environ["CMDB_ENV"] = "dev"
 os.environ["CMDB_SECRET_KEY"] = "test-secret-key-that-is-long-enough-123456"
 os.environ["CMDB_REQUIRE_HTTPS"] = "false"
+# Wgrywane wersje agenta laduja w katalogu tymczasowym testu, a nie
+# w katalogu roboczym repozytorium.
+os.environ["CMDB_RELEASE_DIR"] = str(Path(_TMPDIR) / "releases")
 # Domyslnie SQLite (szybko, bez zaleznosci). Ustawienie CMDB_DATABASE_URL na
 # PostgreSQL pozwala uruchomic te same testy na silniku produkcyjnym:
 #   CMDB_DATABASE_URL=postgresql+psycopg://cmdb:...@localhost/cmdb pytest

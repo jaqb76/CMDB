@@ -11,12 +11,13 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from .api import admin as admin_api
 from .api import agent as agent_api
 from .api import ui as ui_api
 from .config import get_settings
 from .db import init_db
 from .middleware import GzipRequestMiddleware
-from .services.auth import LoginRequired
+from .services.auth import LoginRequired, SuperadminRequired
 
 log = logging.getLogger("cmdb")
 
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.include_router(agent_api.router)
+    app.include_router(admin_api.router)
     app.include_router(ui_api.router)
 
     # Agenci wysylaja raporty spakowane gzipem - rozpakowujemy z limitem.
@@ -103,12 +105,16 @@ def create_app() -> FastAPI:
                     request.url.replace(scheme="https"), status_code=status.HTTP_308_PERMANENT_REDIRECT
                 )
 
-        # 2. Limit rozmiaru raportu - odrzucamy przed zbudowaniem ciala w pamieci.
+        # 2. Limit rozmiaru zadania - odrzucamy przed zbudowaniem ciala w pamieci.
+        #    Wgrywanie wersji agenta ma osobny, znacznie wyzszy limit: raport
+        #    to kilkaset kB tekstu, a agent spakowany PyInstallerem ~30 MB.
         content_length = request.headers.get("content-length")
         if content_length and content_length.isdigit():
-            if int(content_length) > settings.max_report_bytes:
+            wgrywanie = request.url.path.startswith("/admin/releases")
+            limit = settings.max_release_bytes if wgrywanie else settings.max_report_bytes
+            if int(content_length) > limit:
                 return JSONResponse(
-                    {"detail": "raport przekracza dozwolony rozmiar"},
+                    {"detail": "zadanie przekracza dozwolony rozmiar"},
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 )
 
@@ -127,6 +133,13 @@ def create_app() -> FastAPI:
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
             )
         return response
+
+    @app.exception_handler(SuperadminRequired)
+    async def superadmin_required_handler(request: Request, exc: SuperadminRequired) -> Response:
+        return JSONResponse(
+            {"detail": "ta czesc panelu jest dostepna wylacznie dla superadmina"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
 
     @app.exception_handler(LoginRequired)
     async def login_required_handler(request: Request, exc: LoginRequired) -> Response:

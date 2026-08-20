@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Aktualizacja agentow - {{ firma.name }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Aktualizacja agentow</h1>
+    <p class="muted">{{ firma.name }} (<code>{{ firma.slug }}</code>)</p>
+  </div>
+  <a class="btn btn-small btn-ghost" href="/admin">Wroc do administracji</a>
+</div>
+
+<div class="alert alert-warn">
+  <b>Jak to dziala:</b> serwer nie laczy sie z maszynami. Ustawiasz tu wersje
+  <i>oczekiwana</i>, a agent sprawdza ja sam — przed kazda zaplanowana synchronizacja —
+  i jesli rozni sie od jego wlasnej, pobiera plik po HTTPS. Zmiana nie jest wiec
+  natychmiastowa: pojawi sie na maszynie przy jej najblizszym przebiegu.
+</div>
+
+{% if not wydania %}
+  <div class="alert alert-error">
+    Nie wgrano zadnej wersji agenta. Zrob to w <a href="/admin">administracji</a>,
+    zanim zlecisz aktualizacje.
+  </div>
+{% endif %}
+
+<section class="panel">
+  <h2>Cala firma</h2>
+  <p class="muted small">
+    Ustawia wersje dla wszystkich maszyn firmy i kasuje ustawienia pojedynczych maszyn,
+    zeby nie przeslanialy tej decyzji.
+    Obecnie: {% if wersja_firmy %}<code>{{ wersja_firmy.version }}</code>{% else %}<span class="muted">nie ustawiono</span>{% endif %}
+  </p>
+  <form method="post" action="/admin/tenants/{{ firma.id }}/upgrade" class="row-form"
+        data-confirm="Ustawic wersje docelowa dla WSZYSTKICH maszyn firmy {{ firma.name }}?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="zakres" value="firma">
+    <div>
+      <label for="wersja_firmy">Wersja docelowa</label>
+      <select id="wersja_firmy" name="release_id">
+        <option value="">— nie aktualizuj —</option>
+        {% for w in wydania %}
+          <option value="{{ w.id }}" {% if wersja_firmy and wersja_firmy.id == w.id %}selected{% endif %}>
+            {{ w.version }} ({{ w.size_bytes | bytes }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><button type="submit" class="btn btn-primary">Zastosuj dla firmy</button></div>
+  </form>
+</section>
+
+<form method="post" action="/admin/tenants/{{ firma.id }}/upgrade">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="zakres" value="wybrane">
+
+  <section class="panel">
+    <h2>Wybrane maszyny <span class="muted">({{ maszyny | length }})</span></h2>
+    {% if maszyny %}
+    <div class="row-form">
+      <div>
+        <label for="wersja_wybrane">Wersja docelowa dla zaznaczonych</label>
+        <select id="wersja_wybrane" name="release_id">
+          <option value="">— nie aktualizuj (kasuje ustawienie) —</option>
+          {% for w in wydania %}<option value="{{ w.id }}">{{ w.version }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><button type="submit" class="btn btn-primary">Zastosuj dla zaznaczonych</button></div>
+    </div>
+
+    <table class="table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" data-zaznacz-wszystkie></th>
+          <th>Maszyna</th><th>System</th><th>Wersja agenta</th>
+          <th>Wersja docelowa</th><th>Stan aktualizacji</th><th>Ostatni kontakt</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for m in maszyny %}
+        {% set docelowa = wersje.get(m.target_release_id) or wersja_firmy %}
+        <tr>
+          <td><input type="checkbox" name="asset_id" value="{{ m.id }}"></td>
+          <td>
+            <a class="strong" href="/assets/{{ m.id }}">{{ m.hostname }}</a>
+            {% if m.target_release_id %}<div class="muted small">ustawienie wlasne</div>{% endif %}
+          </td>
+          <td class="small">{{ m.os_name or m.os_family or '-' }}</td>
+          <td class="small"><code>{{ m.agent_version or '?' }}</code></td>
+          <td class="small">
+            {% if docelowa %}
+              <code>{{ docelowa.version }}</code>
+              {% if docelowa.version != m.agent_version %}
+                <span class="badge badge-warn">do aktualizacji</span>
+              {% else %}
+                <span class="badge badge-ok">aktualna</span>
+              {% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="small">
+            {% if m.upgrade_status == 'ok' %}<span class="badge badge-ok">zakonczona</span>
+            {% elif m.upgrade_status == 'blad' %}<span class="badge badge-danger">blad</span>
+            {% elif m.upgrade_status %}<span class="badge">{{ m.upgrade_status }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+            {% if m.upgrade_detail %}<div class="muted small">{{ m.upgrade_detail[:120] }}</div>{% endif %}
+          </td>
+          <td class="small">{{ m.last_seen | ago }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">Ta firma nie ma jeszcze zadnej maszyny.</p>
+    {% endif %}
+  </section>
+</form>
+{% endblock %}

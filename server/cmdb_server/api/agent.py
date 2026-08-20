@@ -8,15 +8,24 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
 from ..models import AgentCredential, Asset, EnrollmentToken, Tenant, utcnow
-from ..schemas import EnrollRequest, EnrollResponse, InventoryReport, InventoryResponse
+from ..schemas import (
+    EnrollRequest,
+    EnrollResponse,
+    InventoryReport,
+    InventoryResponse,
+    UpgradeOffer,
+    UpgradeResult,
+)
 from ..security import generate_token
 from ..services.auth import client_ip, require_agent, require_enrollment_token
+from ..services import upgrades
 from ..services.inventory import store_report
 from ..services.scoping import TenantContext, audit
 
@@ -158,4 +167,110 @@ def submit_inventory(
         changed=changed,
         server_time=utcnow(),
         report_interval_seconds=settings.report_interval_seconds,
+        upgrade=_oferta_aktualizacji(db, asset),
     )
+
+
+# --- aktualizacja agenta ----------------------------------------------------
+#
+# Komunikacja pozostaje jednostronna: serwer nigdy nie laczy sie z maszyna.
+# Agent sam pyta o oczekiwana wersje i sam pobiera plik tym samym polaczeniem
+# HTTPS, ktorym raportuje.
+
+def _oferta_aktualizacji(db: Session, asset: Asset) -> UpgradeOffer:
+    wydanie = upgrades.wersja_docelowa(db, asset)
+    if not upgrades.czy_wymaga_aktualizacji(asset, wydanie):
+        return UpgradeOffer(available=False, current_version=asset.agent_version)
+    return UpgradeOffer(
+        available=True,
+        version=wydanie.version,
+        sha256=wydanie.sha256,
+        size_bytes=wydanie.size_bytes,
+        current_version=asset.agent_version,
+    )
+
+
+@router.get("/agent/version", response_model=UpgradeOffer)
+def sprawdz_wersje(
+    db: Session = Depends(get_db),
+    auth: tuple[AgentCredential, TenantContext] = Depends(require_agent),
+) -> UpgradeOffer:
+    """Odpytywane przez agenta przed zaplanowana synchronizacja.
+
+    Dzieki temu raport powstaje juz z wersji, ktora ma byc na maszynie,
+    zamiast czekac na kolejny cykl.
+    """
+    credential, ctx = auth
+    asset = db.get(Asset, credential.asset_id)
+    if asset is None or asset.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="maszyna nie istnieje")
+    oferta = _oferta_aktualizacji(db, asset)
+    db.commit()
+    return oferta
+
+
+@router.get("/agent/release")
+def pobierz_wersje(
+    db: Session = Depends(get_db),
+    auth: tuple[AgentCredential, TenantContext] = Depends(require_agent),
+) -> FileResponse:
+    """Wydaje plik wersji oczekiwanej na TEJ maszynie.
+
+    Agent nie podaje, co chce pobrac - serwer wydaje dokladnie to, co sam
+    wskazal jako wersje docelowa. Nie ma tu wiec parametru, ktorym dalo by
+    sie wyciagnac dowolny plik z magazynu.
+    """
+    credential, ctx = auth
+    asset = db.get(Asset, credential.asset_id)
+    if asset is None or asset.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="maszyna nie istnieje")
+
+    wydanie = upgrades.wersja_docelowa(db, asset)
+    if wydanie is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="dla tej maszyny nie ustawiono wersji docelowej",
+        )
+
+    sciezka = upgrades.sciezka_pliku(wydanie)
+    if not sciezka.is_file():
+        log.error("brak pliku wersji %s w magazynie (%s)", wydanie.version, sciezka)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="plik wersji jest niedostepny na serwerze",
+        )
+
+    upgrades.zapisz_wynik(db, asset, wydanie, "pobrana")
+    db.commit()
+    log.info("maszyna %s pobiera wersje agenta %s", asset.hostname, wydanie.version)
+
+    return FileResponse(
+        path=sciezka,
+        media_type="application/octet-stream",
+        filename=wydanie.filename,
+        headers={"X-CMDB-SHA256": wydanie.sha256, "X-CMDB-Version": wydanie.version},
+    )
+
+
+@router.post("/agent/upgrade-result")
+def zglos_wynik_aktualizacji(
+    wynik: UpgradeResult,
+    db: Session = Depends(get_db),
+    auth: tuple[AgentCredential, TenantContext] = Depends(require_agent),
+) -> dict:
+    """Agent zglasza, co sie stalo - dzieki temu w panelu widac nieudane proby."""
+    credential, ctx = auth
+    asset = db.get(Asset, credential.asset_id)
+    if asset is None or asset.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="maszyna nie istnieje")
+
+    wydanie = upgrades.wersja_docelowa(db, asset)
+    upgrades.zapisz_wynik(db, asset, wydanie, wynik.status, wynik.detail)
+    db.commit()
+
+    if wynik.status == "blad":
+        log.warning(
+            "aktualizacja agenta na %s nie powiodla sie (%s): %s",
+            asset.hostname, wynik.version, wynik.detail,
+        )
+    return {"status": "przyjeto"}

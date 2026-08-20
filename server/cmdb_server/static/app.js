@@ -50,6 +50,32 @@
     });
   });
 
+  // Formularze administracyjne kierowane do wybranej firmy: adres akcji
+  // zawiera znacznik PODMIEN, ktory zastepujemy identyfikatorem z listy.
+  document.querySelectorAll("form[data-tenant-form]").forEach(function (form) {
+    var select = form.querySelector("[data-tenant-select]");
+    if (!select) { return; }
+    form.addEventListener("submit", function (event) {
+      if (!select.value) {
+        event.preventDefault();
+        window.alert("Wybierz firme.");
+        return;
+      }
+      form.action = form.action.replace("PODMIEN", encodeURIComponent(select.value));
+    });
+  });
+
+  // Zaznaczanie wszystkich maszyn na liscie aktualizacji.
+  document.querySelectorAll("[data-zaznacz-wszystkie]").forEach(function (box) {
+    box.addEventListener("change", function () {
+      var tabela = box.closest("table");
+      if (!tabela) { return; }
+      tabela.querySelectorAll('tbody input[type="checkbox"]').forEach(function (pole) {
+        pole.checked = box.checked;
+      });
+    });
+  });
+
   // Przelacznik firmy dla superadmina.
   document.querySelectorAll("select[data-autosubmit]").forEach(function (select) {
     select.addEventListener("change", function () { select.form.submit(); });

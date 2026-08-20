@@ -198,6 +198,21 @@ def require_user(user: PortalUser | None = Depends(current_user)) -> PortalUser:
     return user
 
 
+class SuperadminRequired(Exception):
+    """Przechwytywane przez handler, ktory zwraca 403."""
+
+
+def require_superadmin(user: PortalUser = Depends(require_user)) -> PortalUser:
+    """Dostep do zarzadzania firmami, kontami i wersjami agenta.
+
+    Celowo osobna zaleznosc, a nie sprawdzenie roli w kazdym widoku:
+    zapomniana kontrola w jednym miejscu otwieralaby caly panel globalny.
+    """
+    if not user.is_superadmin:
+        raise SuperadminRequired()
+    return user
+
+
 def tenant_context_for(user: PortalUser, tenant: Tenant) -> TenantContext:
     return TenantContext(
         tenant_id=tenant.id,

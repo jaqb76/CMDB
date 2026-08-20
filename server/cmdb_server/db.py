@@ -1,6 +1,7 @@
 """Silnik bazy danych i sesje SQLAlchemy."""
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -9,6 +10,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import get_settings
+
+log = logging.getLogger(__name__)
 
 _settings = get_settings()
 
@@ -64,8 +67,48 @@ def init_db() -> None:
     from . import models  # noqa: F401  (rejestracja mapperow)
 
     models.Base.metadata.create_all(bind=engine)
+    _dodaj_brakujace_kolumny()
     if _settings.is_postgres:
         _create_postgres_indexes()
+
+
+def _dodaj_brakujace_kolumny() -> None:
+    """Doklada kolumny, ktorych nie ma w istniejacych tabelach.
+
+    create_all tworzy brakujace TABELE, ale nie rusza tabel juz istniejacych -
+    po dolozeniu pola do modelu baza z danymi zostawala ze starym ukladem
+    i zapytania konczyly sie bledem o nieznana kolumne.
+
+    Swiadomie obslugujemy tylko dokladanie kolumn dopuszczajacych NULL,
+    czyli przypadek bezpieczny i odwracalny. Zmiany typow, usuwanie kolumn
+    i przenoszenie danych wymagaja Alembica - to rozwiazanie pomostowe,
+    ktore ma pozwolic zaktualizowac dzialajaca instalacje bez utraty danych.
+    """
+    from sqlalchemy import inspect, text
+
+    from . import models
+
+    inspector = inspect(engine)
+    istniejace_tabele = set(inspector.get_table_names())
+
+    for tabela in models.Base.metadata.sorted_tables:
+        if tabela.name not in istniejace_tabele:
+            continue
+        obecne = {kolumna["name"] for kolumna in inspector.get_columns(tabela.name)}
+        for kolumna in tabela.columns:
+            if kolumna.name in obecne:
+                continue
+            if not kolumna.nullable:
+                log.warning(
+                    "kolumna %s.%s wymaga wartosci - dodaj ja migracja recznie",
+                    tabela.name,
+                    kolumna.name,
+                )
+                continue
+            typ = kolumna.type.compile(dialect=engine.dialect)
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE {tabela.name} ADD COLUMN {kolumna.name} {typ}'))
+            log.info("dodano brakujaca kolumne %s.%s", tabela.name, kolumna.name)
 
 
 def _create_postgres_indexes() -> None:

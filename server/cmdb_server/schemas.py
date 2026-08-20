@@ -83,9 +83,44 @@ class InventoryReport(BaseModel):
         return v
 
 
+class UpgradeOffer(BaseModel):
+    """Informacja o wersji agenta oczekiwanej na tej maszynie.
+
+    Swiadomie NIE ma tu adresu pobierania. Agent sklada go sam z wlasnej
+    konfiguracji, wiec nawet podszycie sie pod serwer nie przekieruje go
+    po plik na obcy host. Skrot jest obowiazkowy - agent odmawia podmiany,
+    gdy pobrany plik sie z nim nie zgadza.
+    """
+
+    available: bool = False
+    version: str | None = None
+    sha256: str | None = None
+    size_bytes: int | None = None
+    current_version: str | None = None
+
+
+class UpgradeResult(BaseModel):
+    """Wynik proby aktualizacji zglaszany przez agenta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(max_length=32)
+    status: str = Field(max_length=20)
+    detail: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("status")
+    @classmethod
+    def _znany_status(cls, v: str) -> str:
+        dozwolone = {"ok", "blad", "pobrana", "odrzucona"}
+        if v not in dozwolone:
+            raise ValueError(f"status musi byc jednym z: {', '.join(sorted(dozwolone))}")
+        return v
+
+
 class InventoryResponse(BaseModel):
     asset_id: str
     snapshot_id: str | None
     changed: bool
     server_time: datetime
     report_interval_seconds: int
+    upgrade: UpgradeOffer | None = None

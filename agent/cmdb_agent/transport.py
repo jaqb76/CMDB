@@ -20,6 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 from . import __version__
 
@@ -164,6 +165,67 @@ class CmdbClient:
                 time.sleep(delay)
 
         raise TransportError(f"nie udalo sie polaczyc z serwerem po {self.max_retries} probach: {last_error}")
+
+    def get(self, path: str, token: str) -> dict:
+        """Zapytanie GET zwracajace JSON (sprawdzenie oczekiwanej wersji agenta)."""
+        request = urllib.request.Request(
+            f"{self.base_url}{path}",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {token}",
+                "User-Agent": f"cmdb-agent/{__version__}",
+            },
+            method="GET",
+        )
+        try:
+            with self._opener.open(request, timeout=self.timeout) as response:
+                raw = response.read()
+                return json.loads(raw.decode("utf-8")) if raw else {}
+        except urllib.error.HTTPError as exc:
+            detail = _extract_detail(exc)
+            if exc.code in RETRYABLE_STATUS:
+                raise TransportError(f"HTTP {exc.code}: {detail}") from exc
+            raise ApiError(exc.code, detail) from exc
+
+    def download(self, path: str, token: str, cel: Path, max_bytes: int) -> str:
+        """Pobiera plik strumieniowo i zwraca jego skrot SHA-256.
+
+        Adres skladamy z WLASNEJ konfiguracji - serwer nigdy nie podaje URL-a.
+        Dzieki temu nawet podszycie sie pod serwer nie przekieruje agenta po
+        plik na obcy host. Skrot liczymy w locie, zeby nie czytac
+        trzydziestomegabajtowego pliku po raz drugi.
+        """
+        request = urllib.request.Request(
+            f"{self.base_url}{path}",
+            headers={
+                "Accept": "application/octet-stream",
+                "Authorization": f"Bearer {token}",
+                "User-Agent": f"cmdb-agent/{__version__}",
+            },
+            method="GET",
+        )
+        skrot = hashlib.sha256()
+        pobrano = 0
+        try:
+            with self._opener.open(request, timeout=self.timeout) as response:
+                with open(cel, "wb") as wyjscie:
+                    while fragment := response.read(256 * 1024):
+                        pobrano += len(fragment)
+                        if pobrano > max_bytes:
+                            raise TransportError(
+                                f"pobierany plik przekracza {max_bytes} bajtow - przerwano"
+                            )
+                        skrot.update(fragment)
+                        wyjscie.write(fragment)
+        except urllib.error.HTTPError as exc:
+            detail = _extract_detail(exc)
+            if exc.code in RETRYABLE_STATUS:
+                raise TransportError(f"HTTP {exc.code}: {detail}") from exc
+            raise ApiError(exc.code, detail) from exc
+
+        if pobrano == 0:
+            raise TransportError("serwer zwrocil pusty plik")
+        return skrot.hexdigest()
 
     def _send(self, url: str, body: bytes, headers: dict) -> dict:
         request = urllib.request.Request(url, data=body, headers=headers, method="POST")

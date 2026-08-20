@@ -24,7 +24,7 @@ from .collectors import get_collector
 from .collectors.common import utc_now_iso
 from .config import AgentConfig, default_config_path, load_config
 from .report import build_report, report_hash, report_size
-from . import status
+from . import status, upgrade
 from .spool import load_report, pending_reports, spool_report
 from .state import AgentState, StateWriteError, load_state, save_state
 from .transport import ApiError, CertificatePinError, CmdbClient, TransportError
@@ -327,6 +327,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pin-sha256", help="przypiety odcisk SHA-256 certyfikatu serwera")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--version", action="version", version=f"cmdb-agent {__version__}")
+    # Ustawiany przez agenta, ktory sam siebie uruchomil po podmianie pliku -
+    # zapobiega petli sprawdzania wersji.
+    parser.add_argument("--po-aktualizacji", dest="po_aktualizacji",
+                        action="store_true", help=argparse.SUPPRESS)
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("enroll", help="rejestruje maszyne i zapisuje wlasne poswiadczenie")
@@ -340,6 +344,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("configure", help="otwiera okno konfiguracji (adres serwera i token)")
     sub.add_parser("doctor", help="sprawdza polaczenie z serwerem etap po etapie")
     return parser
+
+
+def _argumenty_cyklu(args) -> list[str]:
+    """Argumenty, ktore nowa wersja ma powtorzyc przy tym samym cyklu."""
+    argumenty: list[str] = []
+    if args.config:
+        argumenty += ["--config", str(args.config)]
+    if args.log_level:
+        argumenty += ["--log-level", args.log_level]
+    argumenty.append("run")
+    return argumenty
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -404,6 +419,13 @@ def main(argv: list[str] | None = None) -> int:
             do_enroll(config, state, client)
             return 0
         if args.command == "run":
+            # Wersje sprawdzamy PRZED zebraniem danych, zeby raport powstal
+            # juz z tej wersji, ktora ma byc na maszynie - a nie dopiero
+            # w kolejnym cyklu.
+            if state.is_enrolled and not args.po_aktualizacji:
+                nowa = upgrade.zastosuj(config, state, client)
+                if nowa:
+                    return upgrade.uruchom_ponownie(_argumenty_cyklu(args))
             return do_run(config, state, client)
         if args.command == "loop":
             return do_loop(config, state, client)

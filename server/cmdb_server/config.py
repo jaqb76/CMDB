@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # Maksymalny rozmiar raportu przyjmowany od agenta.
     max_report_bytes: int = 8 * 1024 * 1024
 
+    # Katalog z wgranymi wersjami agenta (pliki .exe rozsylane na maszyny).
+    release_dir: str = "./releases"
+    # Wgrywana wersja agenta jest znacznie wieksza niz raport - spakowany
+    # PyInstallerem agent z interfejsem ma okolo 30 MB.
+    max_release_bytes: int = 128 * 1024 * 1024
+
     # Po ilu godzinach bez kontaktu maszyna jest oznaczana jako "stale".
     stale_after_hours: int = 48
 

@@ -46,6 +46,7 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .mainnav { display: flex; gap: 18px; flex: 1; flex-wrap: wrap; }
 .mainnav a { color: var(--muted); font-weight: 500; }
 .mainnav a:hover { color: var(--text); text-decoration: none; }
+.mainnav .nav-admin { color: var(--accent); }
 .userbox { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .tenant-name { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; }
 .tenant-select { max-width: 190px; }

@@ -15,6 +15,7 @@
     <a href="/owners">Opiekunowie</a>
     <a href="/tokens">Tokeny agentow</a>
     <a href="/audit">Audyt</a>
+    {% if user.is_superadmin %}<a href="/admin" class="nav-admin">Administracja</a>{% endif %}
   </nav>
   <div class="userbox">
     {% if user.is_superadmin and all_tenants %}

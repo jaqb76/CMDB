@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Administracja - CMDB{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Administracja</h1>
+    <p class="muted">Widok globalny wszystkich firm. Dostepny wylacznie dla superadmina.</p>
+  </div>
+</div>
+
+{% if wydany_token %}
+<div class="alert alert-ok">
+  <div><b>Nowy token rejestracyjny — zapisz go teraz, nie pokazemy go ponownie:</b></div>
+  <code class="token-value">{{ wydany_token }}</code>
+</div>
+{% endif %}
+
+<section class="cards">
+  <div class="card">
+    <div class="card-value">{{ podsumowanie.firmy }}</div>
+    <div class="card-label">firm w systemie</div>
+  </div>
+  <div class="card">
+    <div class="card-value">{{ podsumowanie.firmy_aktywne }}</div>
+    <div class="card-label">firm aktywnych</div>
+  </div>
+  <div class="card">
+    <div class="card-value">{{ podsumowanie.maszyny }}</div>
+    <div class="card-label">maszyn lacznie</div>
+  </div>
+  <div class="card {% if podsumowanie.aktywne < podsumowanie.maszyny %}card-warn{% endif %}">
+    <div class="card-value">{{ podsumowanie.aktywne }}</div>
+    <div class="card-label">agentow aktywnych (&lt; {{ stale_after_hours }} h)</div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Firmy</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Firma</th><th>Identyfikator</th><th>Maszyny</th><th>Aktywne</th>
+        <th>Konta</th><th>Opiekunowie</th><th>Tokeny</th><th>Wersja docelowa</th>
+        <th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for w in wiersze %}
+      <tr>
+        <td class="strong">{{ w.firma.name }}</td>
+        <td><code>{{ w.firma.slug }}</code></td>
+        <td>{{ w.maszyny }}</td>
+        <td>
+          {{ w.aktywne }}
+          {% if w.maszyny and w.aktywne < w.maszyny %}
+            <span class="badge badge-warn">{{ w.maszyny - w.aktywne }} bez kontaktu</span>
+          {% endif %}
+        </td>
+        <td>{{ w.konta }}</td>
+        <td>{{ w.opiekunowie }}</td>
+        <td>{{ w.tokeny }}</td>
+        <td class="small">
+          {% if w.wersja_docelowa %}<code>{{ w.wersja_docelowa.version }}</code>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>
+          {% if w.firma.is_active %}<span class="badge badge-ok">aktywna</span>
+          {% else %}<span class="badge badge-danger">wylaczona</span>{% endif %}
+        </td>
+        <td class="small">
+          <a class="btn btn-small" href="/admin/tenants/{{ w.firma.id }}/upgrade">Aktualizacja</a>
+          <a class="btn btn-small btn-ghost" href="/switch-tenant?slug={{ w.firma.slug }}">Podglad</a>
+          <form method="post" action="/admin/tenants/{{ w.firma.id }}/active" class="inline-form"
+                data-confirm="{% if w.firma.is_active %}Wylaczyc firme {{ w.firma.name }}? Jej agenci przestana byc przyjmowani.{% else %}Wlaczyc firme {{ w.firma.name }}?{% endif %}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-ghost">
+              {% if w.firma.is_active %}Wylacz{% else %}Wlacz{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="muted">Nie zdefiniowano jeszcze zadnej firmy.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if rozklad_wersji %}
+<section class="panel">
+  <h2>Wersje agenta we flocie</h2>
+  <p class="muted small">Liczone tylko dla maszyn, ktore odezwaly sie w ciagu {{ stale_after_hours }} h.</p>
+  <ul class="chips">
+    {% for wersja, ile in rozklad_wersji %}
+      <li><span class="chip">{{ wersja or 'nieznana' }} <b>{{ ile }}</b></span></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<div class="two-col">
+  <section class="panel">
+    <h2>Nowa firma</h2>
+    <form method="post" action="/admin/tenants" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="name">Nazwa</label>
+      <input id="name" name="name" required maxlength="200" placeholder="Firma ABC sp. z o.o.">
+      <label for="slug">Identyfikator</label>
+      <input id="slug" name="slug" required maxlength="63" placeholder="abc"
+             pattern="[a-z0-9][a-z0-9-]{1,62}">
+      <div class="muted small">Male litery, cyfry i myslnik. Uzywany w adresach i logach.</div>
+      <button type="submit" class="btn btn-primary">Utworz firme</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Konto logowania dla firmy</h2>
+    <form method="post" action="/admin/tenants/PODMIEN/users" class="stack" data-tenant-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="konto_firma">Firma</label>
+      <select id="konto_firma" data-tenant-select required>
+        <option value="">— wybierz —</option>
+        {% for w in wiersze %}<option value="{{ w.firma.id }}">{{ w.firma.name }}</option>{% endfor %}
+      </select>
+      <label for="konto_email">E-mail (login)</label>
+      <input id="konto_email" name="email" type="email" required maxlength="255">
+      <label for="konto_haslo">Haslo</label>
+      <input id="konto_haslo" name="password" type="text" required minlength="12" maxlength="200">
+      <div class="muted small">Minimum 12 znakow. Pokazane jawnie, zeby dalo sie je przekazac klientowi.</div>
+      <label for="konto_nazwa">Imie i nazwisko</label>
+      <input id="konto_nazwa" name="full_name" maxlength="200">
+      <label for="konto_rola">Rola</label>
+      <select id="konto_rola" name="role">
+        <option value="admin">admin — zarzadza tokenami i opiekunami</option>
+        <option value="viewer">viewer — tylko odczyt</option>
+      </select>
+      <button type="submit" class="btn btn-primary">Utworz konto</button>
+    </form>
+  </section>
+</div>
+
+<div class="two-col">
+  <section class="panel">
+    <h2>Token rejestracyjny dla firmy</h2>
+    <form method="post" action="/admin/tenants/PODMIEN/tokens" class="stack" data-tenant-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="token_firma">Firma</label>
+      <select id="token_firma" data-tenant-select required>
+        <option value="">— wybierz —</option>
+        {% for w in wiersze %}<option value="{{ w.firma.id }}">{{ w.firma.name }}</option>{% endfor %}
+      </select>
+      <label for="token_nazwa">Nazwa / przeznaczenie</label>
+      <input id="token_nazwa" name="name" required maxlength="200" placeholder="stacje robocze">
+      <label for="token_dni">Waznosc (dni, 0 = bezterminowo)</label>
+      <input id="token_dni" name="expires_days" type="number" min="0" max="3650" value="365">
+      <button type="submit" class="btn btn-primary">Wygeneruj token</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Wgraj wersje agenta</h2>
+    <form method="post" action="/admin/releases" class="stack" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="wersja">Numer wersji</label>
+      <input id="wersja" name="version" required maxlength="32" placeholder="0.2.0">
+      <div class="muted small">Musi zgadzac sie z wersja zglaszana przez agenta (<code>cmdb-agent --version</code>).</div>
+      <label for="plik">Plik cmdb-agent.exe</label>
+      <input id="plik" name="plik" type="file" required accept=".exe">
+      <label for="uwagi">Uwagi</label>
+      <textarea id="uwagi" name="notes" rows="2" placeholder="co sie zmienilo"></textarea>
+      <button type="submit" class="btn btn-primary">Wgraj</button>
+    </form>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Wgrane wersje agenta</h2>
+  {% if wydania %}
+  <table class="table">
+    <thead><tr><th>Wersja</th><th>Plik</th><th>Rozmiar</th><th>SHA-256</th><th>Wgral</th><th>Kiedy</th><th></th></tr></thead>
+    <tbody>
+    {% for w in wydania %}
+      <tr>
+        <td class="strong">{{ w.version }}</td>
+        <td class="small">{{ w.filename }}</td>
+        <td class="small">{{ w.size_bytes | bytes }}</td>
+        <td class="small muted"><code>{{ w.sha256[:24] }}…</code></td>
+        <td class="small">{{ w.created_by or '—' }}</td>
+        <td class="small">{{ w.created_at | dt }}</td>
+        <td>
+          <form method="post" action="/admin/releases/{{ w.id }}/delete" class="inline-form"
+                data-confirm="Usunac wersje {{ w.version }} wraz z plikiem?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-danger">Usun</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">Nie wgrano jeszcze zadnej wersji. Bez tego nie da sie zlecic aktualizacji.</p>
+  {% endif %}
+</section>
+{% endblock %}
