@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_admin.html" %}
 {% block title %}Aktualizacja agentow - {{ firma.name }}{% endblock %}
 {% block content %}
 
@@ -7,7 +7,7 @@
     <h1>Aktualizacja agentow</h1>
     <p class="muted">{{ firma.name }} (<code>{{ firma.slug }}</code>)</p>
   </div>
-  <a class="btn btn-small btn-ghost" href="/admin">Wroc do administracji</a>
+  <a class="btn btn-small btn-ghost" href="/admin/wersje">Wroc do wersji</a>
 </div>
 
 <div class="alert alert-warn">
@@ -43,7 +43,7 @@
         <div>
           <label for="wersja_{{ system }}">Wersja docelowa</label>
           <select id="wersja_{{ system }}" name="release_id" {% if not dostepne %}disabled{% endif %}>
-            <option value="">— nie aktualizuj —</option>
+            <option value="">— wersja oficjalna{% if oficjalne.get(system) %} ({{ oficjalne[system].version }}){% endif %} —</option>
             {% for w in dostepne %}
               {% set biezacy = cele.get(system) %}
               <option value="{{ w.id }}" {% if biezacy and biezacy.id == w.id %}selected{% endif %}>
@@ -101,7 +101,7 @@
       <tbody>
       {% for m in maszyny %}
         {% set system = (m.os_family or 'nieznany') %}
-        {% set docelowa = wersje.get(m.target_release_id) or cele.get(system) %}
+        {% set docelowa = wersje.get(m.target_release_id) or cele.get(system) or oficjalne.get(system) %}
         <tr>
           <td><input type="checkbox" name="asset_id" value="{{ m.id }}"></td>
           <td>

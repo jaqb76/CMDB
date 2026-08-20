@@ -1,12 +1,12 @@
-"""Panel superadmina: firmy, konta, tokeny i wersje agenta.
+"""Panel glownego administratora: firmy, konta, tokeny i wersje agenta.
 
 Odrebny router z jedna zaleznoscia wejsciowa (require_superadmin), zamiast
 sprawdzania roli w kazdym widoku - zapomniana kontrola w jednym miejscu
 otwieralaby caly panel globalny.
 
-Widoki firmowe (api/ui.py) pokazuja zawsze jedna firme. Tutaj patrzymy na
-wszystkie naraz, wiec zapytania swiadomie nie przechodza przez scoping -
-kazde takie miejsce jest w tym pliku i tylko tutaj.
+Widoki firmowe (api/ui.py) pokazuja zawsze jedna firme i przechodza przez
+services/scoping. Tutaj patrzymy na wszystkie naraz, wiec zapytania swiadomie
+tego filtra nie maja - kazde takie miejsce jest w tym pliku i tylko tutaj.
 """
 from __future__ import annotations
 
@@ -33,9 +33,12 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
+    LIFECYCLE_AKTYWNY,
     AgentRelease,
     Asset,
+    AuditLog,
     EnrollmentToken,
+    GlobalAgentTarget,
     Owner,
     PortalUser,
     Tenant,
@@ -55,8 +58,7 @@ WERSJA_RE = re.compile(r"^[0-9][0-9a-zA-Z._-]{0,31}$")
 
 # Agent budowany jest osobno dla kazdego systemu. Sygnatura pliku pozwala
 # odrzucic pomylke juz przy wgrywaniu, a nie dopiero na maszynie klienta.
-# Bajt 0x7F zapisujemy przez fromhex, bo doslownie w zrodle jest niewidoczny
-# i latwo go zgubic przy edycji.
+# Bajt 0x7F zapisujemy przez fromhex, bo doslownie w zrodle jest niewidoczny.
 SYSTEMY = {
     "windows": {"etykieta": "Windows", "sygnatura": b"MZ", "opis": "program Windows (.exe)"},
     "linux": {"etykieta": "Linux", "sygnatura": bytes.fromhex("7f") + b"ELF", "opis": "program ELF"},
@@ -64,13 +66,12 @@ SYSTEMY = {
 MIN_DLUGOSC_HASLA = 12
 
 
-def render_admin(request: Request, template: str, user: PortalUser, **extra) -> HTMLResponse:
+def render_admin(request: Request, template: str, user: PortalUser, strona: str, **extra):
     payload = {
         "request": request,
         "user": user,
-        "ctx": None,
+        "strona": strona,
         "csrf_token": issue_csrf_token(user.id),
-        "all_tenants": [],
         **extra,
     }
     return templates.TemplateResponse(request, template, payload)
@@ -94,74 +95,75 @@ def katalog_wersji() -> Path:
     return katalog
 
 
-# --- widok globalny ---------------------------------------------------------
+def _wydania(db: Session):
+    """Wszystkie wydania, mapa po identyfikatorze i podzial na systemy."""
+    wszystkie = db.execute(
+        select(AgentRelease).order_by(AgentRelease.os_family, AgentRelease.version.desc())
+    ).scalars().all()
+    wedlug_systemu: dict[str, list[AgentRelease]] = {}
+    for wydanie in wszystkie:
+        wedlug_systemu.setdefault(wydanie.os_family, []).append(wydanie)
+    return wszystkie, {w.id: w for w in wszystkie}, wedlug_systemu
 
-@router.get("", response_class=HTMLResponse)
-@router.get("/", response_class=HTMLResponse)
-def przeglad(
-    request: Request,
-    wydany_token: str = "",
-    user: PortalUser = Depends(require_superadmin),
-    db: Session = Depends(get_db),
-) -> Response:
-    settings = get_settings()
-    prog = utcnow() - timedelta(hours=settings.stale_after_hours)
 
-    # Jedno zapytanie daje komplet: firma, system, wersja agenta, ile maszyn
-    # i ile z nich odzywalo sie ostatnio. Petla z zapytaniem na kazda firme
-    # bylaby zauwazalna juz przy kilkudziesieciu firmach.
-    rozklad = db.execute(
+def _statystyki_agentow(db: Session):
+    """Per firma: rozklad wersji, liczba aktywnych i nieaktywnych agentow."""
+    prog = utcnow() - timedelta(hours=get_settings().stale_after_hours)
+
+    # Jedno zapytanie na komplet. Petla z zapytaniem na kazda firme bylaby
+    # zauwazalna juz przy kilkudziesieciu firmach.
+    wiersze = db.execute(
         select(
             Asset.tenant_id,
             Asset.os_family,
             Asset.agent_version,
             func.count(Asset.id),
             func.sum(case((Asset.last_seen >= prog, 1), else_=0)),
-        ).group_by(Asset.tenant_id, Asset.os_family, Asset.agent_version)
+        )
+        .where(Asset.lifecycle == LIFECYCLE_AKTYWNY)
+        .group_by(Asset.tenant_id, Asset.os_family, Asset.agent_version)
     ).all()
 
-    agenci: dict[str, list[dict]] = {}
-    maszyny_razem: dict[str, int] = {}
-    aktywne_razem: dict[str, int] = {}
-    for tenant_id, system, wersja, ile, aktywne in rozklad:
-        aktywne = int(aktywne or 0)
-        agenci.setdefault(tenant_id, []).append(
+    rozklad: dict[str, list[dict]] = {}
+    aktywne: dict[str, int] = {}
+    nieaktywne: dict[str, int] = {}
+    for tenant_id, system, wersja, ile, ilu_aktywnych in wiersze:
+        ilu_aktywnych = int(ilu_aktywnych or 0)
+        rozklad.setdefault(tenant_id, []).append(
             {
                 "os_family": system or "nieznany",
                 "wersja": wersja or "nieznana",
                 "ile": ile,
-                "aktywne": aktywne,
+                "aktywne": ilu_aktywnych,
+                "nieaktywne": ile - ilu_aktywnych,
             }
         )
-        maszyny_razem[tenant_id] = maszyny_razem.get(tenant_id, 0) + ile
-        aktywne_razem[tenant_id] = aktywne_razem.get(tenant_id, 0) + aktywne
-    for lista in agenci.values():
+        aktywne[tenant_id] = aktywne.get(tenant_id, 0) + ilu_aktywnych
+        nieaktywne[tenant_id] = nieaktywne.get(tenant_id, 0) + (ile - ilu_aktywnych)
+    for lista in rozklad.values():
         lista.sort(key=lambda p: (p["os_family"], p["wersja"]))
+    return rozklad, aktywne, nieaktywne
 
-    opiekunowie = dict(
-        db.execute(select(Owner.tenant_id, func.count(Owner.id)).group_by(Owner.tenant_id)).all()
-    )
-    tokeny = dict(
-        db.execute(
-            select(EnrollmentToken.tenant_id, func.count(EnrollmentToken.id))
-            .where(EnrollmentToken.revoked_at.is_(None))
-            .group_by(EnrollmentToken.tenant_id)
-        ).all()
-    )
-    konta = dict(
-        db.execute(
-            select(PortalUser.tenant_id, func.count(PortalUser.id))
-            .where(PortalUser.tenant_id.is_not(None))
-            .group_by(PortalUser.tenant_id)
-        ).all()
-    )
 
-    wydania = db.execute(
-        select(AgentRelease).order_by(AgentRelease.os_family, AgentRelease.version.desc())
-    ).scalars().all()
-    wersje = {w.id: w for w in wydania}
+def _oficjalne(db: Session, wersje: dict) -> dict:
+    return {
+        cel.os_family: wersje.get(cel.release_id)
+        for cel in db.execute(select(GlobalAgentTarget)).scalars()
+    }
 
-    # Cele aktualizacji: osobno dla kazdego systemu w kazdej firmie.
+
+# --- przeglad ---------------------------------------------------------------
+
+@router.get("", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
+def przeglad(
+    request: Request,
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    rozklad, aktywne, nieaktywne = _statystyki_agentow(db)
+    _, wersje, _ = _wydania(db)
+
     cele: dict[str, dict[str, AgentRelease]] = {}
     for cel in db.execute(select(TenantAgentTarget)).scalars():
         wydanie = wersje.get(cel.release_id)
@@ -172,42 +174,72 @@ def przeglad(
     wiersze = [
         {
             "firma": firma,
-            "maszyny": maszyny_razem.get(firma.id, 0),
-            "aktywne": aktywne_razem.get(firma.id, 0),
-            "agenci": agenci.get(firma.id, []),
+            "aktywne": aktywne.get(firma.id, 0),
+            "nieaktywne": nieaktywne.get(firma.id, 0),
+            "agenci": rozklad.get(firma.id, []),
             "cele": cele.get(firma.id, {}),
-            "opiekunowie": opiekunowie.get(firma.id, 0),
-            "tokeny": tokeny.get(firma.id, 0),
-            "konta": konta.get(firma.id, 0),
         }
         for firma in firmy
     ]
 
-    # Wydania pogrupowane po systemie - do list wyboru w formularzach.
-    wydania_wg_systemu: dict[str, list[AgentRelease]] = {}
-    for wydanie in wydania:
-        wydania_wg_systemu.setdefault(wydanie.os_family, []).append(wydanie)
-
     return render_admin(
-        request,
-        "admin.html",
-        user,
+        request, "admin_przeglad.html", user, "przeglad",
         wiersze=wiersze,
         podsumowanie={
             "firmy": len(firmy),
             "firmy_aktywne": sum(1 for f in firmy if f.is_active),
-            "maszyny": sum(maszyny_razem.values()),
-            "aktywne": sum(aktywne_razem.values()),
+            "aktywne": sum(aktywne.values()),
+            "nieaktywne": sum(nieaktywne.values()),
         },
-        wydania=wydania,
-        wydania_wg_systemu=wydania_wg_systemu,
+        oficjalne=_oficjalne(db, wersje),
         systemy=SYSTEMY,
-        wydany_token=wydany_token,
-        stale_after_hours=settings.stale_after_hours,
+        stale_after_hours=get_settings().stale_after_hours,
     )
 
 
-# --- firmy ------------------------------------------------------------------
+# --- firmy i konta ----------------------------------------------------------
+
+@router.get("/firmy", response_class=HTMLResponse)
+def widok_firm(
+    request: Request,
+    wydany_token: str = "",
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    opiekunowie = dict(
+        db.execute(select(Owner.tenant_id, func.count(Owner.id)).group_by(Owner.tenant_id)).all()
+    )
+    tokeny = dict(
+        db.execute(
+            select(EnrollmentToken.tenant_id, func.count(EnrollmentToken.id))
+            .where(EnrollmentToken.revoked_at.is_(None))
+            .group_by(EnrollmentToken.tenant_id)
+        ).all()
+    )
+    maszyny = dict(
+        db.execute(
+            select(Asset.tenant_id, func.count(Asset.id))
+            .where(Asset.lifecycle == LIFECYCLE_AKTYWNY)
+            .group_by(Asset.tenant_id)
+        ).all()
+    )
+    konta_firm: dict[str, list[PortalUser]] = {}
+    for konto in db.execute(
+        select(PortalUser).where(PortalUser.tenant_id.is_not(None)).order_by(PortalUser.email)
+    ).scalars():
+        konta_firm.setdefault(konto.tenant_id, []).append(konto)
+
+    firmy = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
+    return render_admin(
+        request, "admin_firmy.html", user, "firmy",
+        firmy=firmy,
+        konta_firm=konta_firm,
+        opiekunowie=opiekunowie,
+        tokeny=tokeny,
+        maszyny=maszyny,
+        wydany_token=wydany_token,
+    )
+
 
 @router.post("/tenants")
 def utworz_firme(
@@ -235,7 +267,7 @@ def utworz_firme(
           ip=client_ip(request), actor=user.email)
     db.commit()
     log.info("superadmin %s utworzyl firme %s", user.email, identyfikator)
-    return RedirectResponse("/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/tenants/{tenant_id}/active")
@@ -252,10 +284,8 @@ def przelacz_firme(
     audit(db, None, action="tenant.active_changed", target=firma.slug,
           detail={"is_active": firma.is_active}, ip=client_ip(request), actor=user.email)
     db.commit()
-    return RedirectResponse("/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
 
-
-# --- konta logowania --------------------------------------------------------
 
 @router.post("/tenants/{tenant_id}/users")
 def utworz_konto(
@@ -296,10 +326,27 @@ def utworz_konto(
           detail={"tenant": firma.slug, "role": role}, ip=client_ip(request), actor=user.email)
     db.commit()
     log.info("superadmin %s utworzyl konto %s w firmie %s", user.email, adres, firma.slug)
-    return RedirectResponse("/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
 
 
-# --- tokeny rejestracyjne ---------------------------------------------------
+@router.post("/users/{user_id}/active")
+def przelacz_konto(
+    user_id: str,
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    sprawdz_csrf(user, csrf_token)
+    konto = db.get(PortalUser, user_id)
+    if konto is None or konto.is_superadmin:
+        raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    konto.is_active = not konto.is_active
+    audit(db, None, action="user.active_changed", target=konto.email,
+          detail={"is_active": konto.is_active}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @router.post("/tenants/{tenant_id}/tokens")
 def wydaj_token(
@@ -330,11 +377,47 @@ def wydaj_token(
     db.commit()
     # Wartosc jawna pokazujemy raz - w bazie zostaje wylacznie skrot.
     return RedirectResponse(
-        f"/admin?wydany_token={token.plaintext}", status_code=status.HTTP_303_SEE_OTHER
+        f"/admin/firmy?wydany_token={token.plaintext}", status_code=status.HTTP_303_SEE_OTHER
     )
 
 
 # --- wersje agenta ----------------------------------------------------------
+
+@router.get("/wersje", response_class=HTMLResponse)
+def widok_wersji(
+    request: Request,
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    wszystkie, wersje, wedlug_systemu = _wydania(db)
+
+    cele: dict[str, dict[str, AgentRelease]] = {}
+    for cel in db.execute(select(TenantAgentTarget)).scalars():
+        wydanie = wersje.get(cel.release_id)
+        if wydanie is not None:
+            cele.setdefault(cel.tenant_id, {})[cel.os_family] = wydanie
+
+    rozklad, _, _ = _statystyki_agentow(db)
+    firmy = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
+
+    # Systemy faktycznie obecne u kazdej firmy - nie ma sensu proponowac celu
+    # dla Linuksa firmie, ktora ma same maszyny z Windows.
+    systemy_firmy = {
+        firma.id: sorted({p["os_family"] for p in rozklad.get(firma.id, [])})
+        for firma in firmy
+    }
+
+    return render_admin(
+        request, "admin_wersje.html", user, "wersje",
+        wydania=wszystkie,
+        wydania_wg_systemu=wedlug_systemu,
+        oficjalne=_oficjalne(db, wersje),
+        cele=cele,
+        firmy=firmy,
+        systemy_firmy=systemy_firmy,
+        systemy=SYSTEMY,
+    )
+
 
 @router.post("/releases")
 async def wgraj_wersje(
@@ -363,12 +446,11 @@ async def wgraj_wersje(
     numer = version.strip()
     if not WERSJA_RE.match(numer):
         raise HTTPException(status_code=400, detail="niepoprawny numer wersji")
-    istnieje = db.execute(
+    if db.execute(
         select(AgentRelease).where(
             AgentRelease.version == numer, AgentRelease.os_family == system
         )
-    ).scalar_one_or_none()
-    if istnieje is not None:
+    ).scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=400,
             detail=f"wersja {numer} dla {SYSTEMY[system]['etykieta']} juz istnieje",
@@ -391,8 +473,8 @@ async def wgraj_wersje(
         if rozmiar == 0:
             raise HTTPException(status_code=400, detail="pusty plik")
 
-        # Sygnatura odrzuca pomylke juz tutaj, a nie dopiero na maszynie
-        # klienta, gdzie plik po prostu nie chcialby sie uruchomic.
+        # Sygnatura odrzuca pomylke juz tutaj, a nie dopiero na maszynie klienta,
+        # gdzie plik po prostu nie chcialby sie uruchomic.
         oczekiwana = SYSTEMY[system]["sygnatura"]
         with tymczasowy.open("rb") as sprawdzany:
             if sprawdzany.read(len(oczekiwana)) != oczekiwana:
@@ -426,7 +508,48 @@ async def wgraj_wersje(
           ip=client_ip(request), actor=user.email)
     db.commit()
     log.info("superadmin %s wgral agenta %s dla %s (%s)", user.email, numer, system, odcisk[:16])
-    return RedirectResponse("/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/admin/wersje", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/releases/{release_id}/oficjalna")
+def ustaw_oficjalna(
+    release_id: str,
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Oznacza wersje jako aktywna dla jej systemu.
+
+    Firmy bez wlasnego ustawienia korzystaja wlasnie z niej. Tabela ma
+    UNIQUE(os_family), wiec dwie wersje tego samego systemu nie moga byc
+    oficjalne naraz - podmieniamy wskazanie, zamiast dokladac drugie.
+    """
+    sprawdz_csrf(user, csrf_token)
+    wydanie = db.get(AgentRelease, release_id)
+    if wydanie is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono wersji")
+
+    cel = db.execute(
+        select(GlobalAgentTarget).where(GlobalAgentTarget.os_family == wydanie.os_family)
+    ).scalar_one_or_none()
+    if cel is None:
+        db.add(
+            GlobalAgentTarget(
+                os_family=wydanie.os_family, release_id=wydanie.id, updated_by=user.email
+            )
+        )
+    else:
+        cel.release_id = wydanie.id
+        cel.updated_at = utcnow()
+        cel.updated_by = user.email
+
+    audit(db, None, action="release.official", target=f"{wydanie.version} ({wydanie.os_family})",
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s uczynil %s oficjalna dla %s",
+             user.email, wydanie.version, wydanie.os_family)
+    return RedirectResponse("/admin/wersje", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/releases/{release_id}/delete")
@@ -442,25 +565,33 @@ def usun_wersje(
     if wydanie is None:
         raise HTTPException(status_code=404, detail="nie znaleziono wersji")
 
-    uzywana = db.execute(
-        select(func.count(TenantAgentTarget.id)).where(
-            TenantAgentTarget.release_id == release_id
-        )
-    ).scalar_one() + db.execute(
-        select(func.count(Asset.id)).where(Asset.target_release_id == release_id)
-    ).scalar_one()
+    uzywana = (
+        db.execute(
+            select(func.count(GlobalAgentTarget.id)).where(
+                GlobalAgentTarget.release_id == release_id
+            )
+        ).scalar_one()
+        + db.execute(
+            select(func.count(TenantAgentTarget.id)).where(
+                TenantAgentTarget.release_id == release_id
+            )
+        ).scalar_one()
+        + db.execute(
+            select(func.count(Asset.id)).where(Asset.target_release_id == release_id)
+        ).scalar_one()
+    )
     if uzywana:
         raise HTTPException(
             status_code=400,
-            detail="wersja jest ustawiona jako docelowa - najpierw zmien cel aktualizacji",
+            detail="wersja jest gdzies ustawiona jako docelowa - najpierw zmien cel",
         )
 
     (katalog_wersji() / wydanie.storage_name).unlink(missing_ok=True)
     db.delete(wydanie)
-    audit(db, None, action="release.deleted", target=wydanie.version,
+    audit(db, None, action="release.deleted", target=f"{wydanie.version} ({wydanie.os_family})",
           ip=client_ip(request), actor=user.email)
     db.commit()
-    return RedirectResponse("/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/admin/wersje", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # --- zlecanie aktualizacji --------------------------------------------------
@@ -474,18 +605,12 @@ def widok_aktualizacji(
 ) -> Response:
     firma = znajdz_firme(db, tenant_id)
     maszyny = db.execute(
-        select(Asset).where(Asset.tenant_id == firma.id).order_by(Asset.os_family, Asset.hostname)
+        select(Asset)
+        .where(Asset.tenant_id == firma.id, Asset.lifecycle == LIFECYCLE_AKTYWNY)
+        .order_by(Asset.os_family, Asset.hostname)
     ).scalars().all()
 
-    wydania = db.execute(
-        select(AgentRelease).order_by(AgentRelease.os_family, AgentRelease.version.desc())
-    ).scalars().all()
-    wersje = {w.id: w for w in wydania}
-
-    wydania_wg_systemu: dict[str, list[AgentRelease]] = {}
-    for wydanie in wydania:
-        wydania_wg_systemu.setdefault(wydanie.os_family, []).append(wydanie)
-
+    wszystkie, wersje, wedlug_systemu = _wydania(db)
     cele = {
         cel.os_family: wersje.get(cel.release_id)
         for cel in db.execute(
@@ -493,27 +618,23 @@ def widok_aktualizacji(
         ).scalars()
     }
 
-    # Systemy faktycznie obecne w tej firmie - nie ma sensu pokazywac celu
-    # dla Linuksa firmie, ktora ma same maszyny z Windows.
-    obecne = []
+    obecne: list[str] = []
     for maszyna in maszyny:
         system = (maszyna.os_family or "nieznany").lower()
         if system not in obecne:
             obecne.append(system)
 
     return render_admin(
-        request,
-        "admin_upgrade.html",
-        user,
+        request, "admin_upgrade.html", user, "wersje",
         firma=firma,
         maszyny=maszyny,
         wersje=wersje,
-        wydania=wydania,
-        wydania_wg_systemu=wydania_wg_systemu,
+        wydania=wszystkie,
+        wydania_wg_systemu=wedlug_systemu,
         cele=cele,
+        oficjalne=_oficjalne(db, wersje),
         obecne_systemy=obecne,
         systemy=SYSTEMY,
-        stale_after_hours=get_settings().stale_after_hours,
     )
 
 
@@ -536,6 +657,7 @@ async def zlec_aktualizacje(
     firma = znajdz_firme(db, tenant_id)
     zakres = formularz.get("zakres", "wybrane")
     release_id = (formularz.get("release_id") or "").strip()
+    powrot = formularz.get("powrot") or f"/admin/tenants/{firma.id}/upgrade"
 
     wydanie = None
     if release_id:
@@ -565,9 +687,7 @@ async def zlec_aktualizacje(
         "superadmin %s zlecil wersje %s dla %s w firmie %s",
         user.email, wydanie.version if wydanie else "(brak)", objete, firma.slug,
     )
-    return RedirectResponse(
-        f"/admin/tenants/{firma.id}/upgrade", status_code=status.HTTP_303_SEE_OTHER
-    )
+    return RedirectResponse(powrot, status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _ustaw_cel_firmy(
@@ -582,6 +702,7 @@ def _ustaw_cel_firmy(
     ).scalar_one_or_none()
 
     if wydanie is None:
+        # Brak wlasnego ustawienia znaczy "korzystaj z wersji oficjalnej".
         if cel is not None:
             db.delete(cel)
     elif cel is None:
@@ -605,7 +726,8 @@ def _ustaw_cel_firmy(
         maszyna.upgrade_status = "zlecona" if wydanie else None
         maszyna.upgrade_detail = None
         maszyna.upgrade_updated_at = utcnow()
-    return f"wszystkie maszyny {SYSTEMY[system]['etykieta']} ({len(maszyny)})"
+    etykieta = SYSTEMY.get(system, {}).get("etykieta", system)
+    return f"wszystkie maszyny {etykieta} ({len(maszyny)})"
 
 
 def _ustaw_cel_maszyn(
@@ -635,3 +757,20 @@ def _ustaw_cel_maszyn(
         maszyna.upgrade_detail = None
         maszyna.upgrade_updated_at = utcnow()
     return f"{len(maszyny)} maszyn"
+
+
+# --- audyt globalny ---------------------------------------------------------
+
+@router.get("/audyt", response_class=HTMLResponse)
+def widok_audytu(
+    request: Request,
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    wpisy = db.execute(
+        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(300)
+    ).scalars().all()
+    nazwy_firm = {f.id: f.name for f in db.execute(select(Tenant)).scalars()}
+    return render_admin(
+        request, "admin_audyt.html", user, "audyt", wpisy=wpisy, nazwy_firm=nazwy_firm
+    )

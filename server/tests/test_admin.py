@@ -5,7 +5,14 @@ import hashlib
 import io
 
 from cmdb_server.db import SessionLocal
-from cmdb_server.models import AgentRelease, Asset, EnrollmentToken, PortalUser, Tenant
+from cmdb_server.models import (
+    AgentRelease,
+    Asset,
+    EnrollmentToken,
+    GlobalAgentTarget,
+    PortalUser,
+    Tenant,
+)
 from sqlalchemy import select
 
 from .factories import build_report
@@ -21,7 +28,16 @@ SKROT_AGENTA = hashlib.sha256(PLIK_AGENTA).hexdigest()
 def _superadmin(client, make_user):
     make_user(None, "root@cmdb.pl", "bardzo-dlugie-haslo")
     _login(client, "root@cmdb.pl", "bardzo-dlugie-haslo")
-    return _extract_csrf(client.get("/admin").text)
+    # Strona przegladu jest tylko do czytania - formularze sa na podstronach.
+    return _extract_csrf(client.get("/admin/firmy").text)
+
+
+def _oznacz_oficjalna(client, csrf, release_id):
+    return client.post(
+        f"/admin/releases/{release_id}/oficjalna",
+        data={"csrf_token": csrf},
+        follow_redirects=True,
+    )
 
 
 PLIK_LINUKSOWY = bytes.fromhex("7f") + b"ELF" + b"" + b"agent dla linuksa" * 40
@@ -88,7 +104,8 @@ def test_widok_globalny_pokazuje_wszystkie_firmy(client, tenant_a, tenant_b, mak
     _superadmin(client, make_user)
     strona = client.get("/admin").text
     assert "Firma A" in strona and "Firma B" in strona
-    assert "firm w systemie" in strona
+    assert "agentow aktywnych" in strona
+    assert "agentow nieaktywnych" in strona
 
 
 # --- zakladanie firm, kont i tokenow ---------------------------------------
@@ -435,21 +452,142 @@ def test_cel_linuksowy_nie_dotyczy_maszyn_windows(client, tenant_a, make_user):
 
 
 def test_widok_globalny_pokazuje_wersje_agentow(client, tenant_a, make_user):
-    """Zestawienie ma pokazywac firme, liczbe agentow, aktywnych i wersje."""
+    """Zestawienie ma pokazywac firme, aktywnych, nieaktywnych i wersje."""
     _przygotuj_maszyne(client, tenant_a)
     _superadmin(client, make_user)
     strona = client.get("/admin").text
-    assert "zainstalowanych agentow" in strona
     assert "Wersje agentow" in strona
     assert "0.1.0" in strona          # wersja z raportu testowego
     assert "windows" in strona
 
 
-def test_pulpit_firmy_pokazuje_wersje_agentow(client, tenant_a, make_user):
-    """Administrator firmy widzi wersje pracujace u siebie."""
+def test_wersja_agenta_widoczna_przy_maszynie(client, tenant_a, make_user):
+    """Administrator firmy widzi wersje przy kazdej maszynie, a nie zbiorczo."""
     _przygotuj_maszyne(client, tenant_a)
     make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
     _login(client, "admin@firma-a.pl", "bardzo-dlugie-haslo")
-    strona = client.get("/").text
-    assert "Wersje agenta w firmie" in strona
-    assert "0.1.0" in strona
+
+    lista = client.get("/assets").text
+    assert "agent 0.1.0" in lista
+
+    # Zbiorcze zestawienie zostalo usuniete z pulpitu firmy.
+    assert "Wersje agenta w firmie" not in client.get("/").text
+
+
+# --- trzy poziomy wyboru wersji ---------------------------------------------
+
+def test_wersja_oficjalna_obejmuje_firmy_bez_wlasnego_ustawienia(
+    client, tenant_a, tenant_b, make_user
+):
+    """Sedno mechanizmu: jedna firma na wersji probnej, reszta na oficjalnej."""
+    token_a = _przygotuj_maszyne(client, tenant_a, "maszyna-a-1", "A-01")
+    token_b = _przygotuj_maszyne(client, tenant_b, "maszyna-b-1", "B-01")
+
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.2.0", PLIK_AGENTA, "windows")
+    _wgraj_wersje(client, csrf, "0.3.0-beta", PLIK_AGENTA + b"beta", "windows")
+    with SessionLocal() as db:
+        oficjalna = db.execute(
+            select(AgentRelease.id).where(AgentRelease.version == "0.2.0")
+        ).scalar_one()
+        probna = db.execute(
+            select(AgentRelease.id).where(AgentRelease.version == "0.3.0-beta")
+        ).scalar_one()
+
+    # 0.2.0 jako oficjalna dla Windows, wersja probna tylko dla firmy A.
+    _oznacz_oficjalna(client, csrf, oficjalna)
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], probna)
+
+    oferta_a = client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token_a}"}
+    ).json()
+    oferta_b = client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token_b}"}
+    ).json()
+
+    assert oferta_a["version"] == "0.3.0-beta", "firma z wlasnym ustawieniem dostaje wersje probna"
+    assert oferta_b["version"] == "0.2.0", "pozostale firmy dostaja wersje oficjalna"
+
+
+def test_tylko_jedna_wersja_oficjalna_na_system(client, make_user):
+    """Podmieniamy wskazanie, zamiast dokladac drugie - inaczej rozstrzyganie
+    przestaloby byc jednoznaczne."""
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.2.0", PLIK_AGENTA, "windows")
+    _wgraj_wersje(client, csrf, "0.3.0", PLIK_AGENTA + b"nowsza", "windows")
+    with SessionLocal() as db:
+        pierwsza, druga = [
+            r for r in db.execute(
+                select(AgentRelease.id).order_by(AgentRelease.version)
+            ).scalars()
+        ]
+
+    _oznacz_oficjalna(client, csrf, pierwsza)
+    _oznacz_oficjalna(client, csrf, druga)
+
+    with SessionLocal() as db:
+        cele = db.execute(select(GlobalAgentTarget)).scalars().all()
+        assert len(cele) == 1
+        assert cele[0].release_id == druga
+
+
+def test_wersja_oficjalna_jest_osobna_dla_kazdego_systemu(client, make_user):
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.2.0", PLIK_AGENTA, "windows")
+    _wgraj_wersje(client, csrf, "0.2.0", PLIK_LINUKSOWY, "linux")
+    with SessionLocal() as db:
+        for rid in db.execute(select(AgentRelease.id)).scalars():
+            _oznacz_oficjalna(client, csrf, rid)
+        cele = db.execute(select(GlobalAgentTarget)).scalars().all()
+        assert {c.os_family for c in cele} == {"windows", "linux"}
+
+
+def test_wyczyszczenie_ustawienia_firmy_wraca_do_oficjalnej(client, tenant_a, make_user):
+    token = _przygotuj_maszyne(client, tenant_a)
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.2.0", PLIK_AGENTA, "windows")
+    _wgraj_wersje(client, csrf, "0.9.0", PLIK_AGENTA + b"probna", "windows")
+    with SessionLocal() as db:
+        oficjalna = db.execute(
+            select(AgentRelease.id).where(AgentRelease.version == "0.2.0")
+        ).scalar_one()
+        probna = db.execute(
+            select(AgentRelease.id).where(AgentRelease.version == "0.9.0")
+        ).scalar_one()
+
+    _oznacz_oficjalna(client, csrf, oficjalna)
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], probna)
+    assert client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
+    ).json()["version"] == "0.9.0"
+
+    # Puste pole = "korzystaj z oficjalnej".
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], "")
+    assert client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
+    ).json()["version"] == "0.2.0"
+
+
+def test_ustawienie_maszyny_bije_firme_i_oficjalna(client, tenant_a, make_user):
+    token = _przygotuj_maszyne(client, tenant_a)
+    csrf = _superadmin(client, make_user)
+    for wersja, dodatek in (("0.2.0", b""), ("0.5.0", b"firmowa"), ("0.9.0", b"maszynowa")):
+        _wgraj_wersje(client, csrf, wersja, PLIK_AGENTA + dodatek, "windows")
+    with SessionLocal() as db:
+        mapa = {
+            w.version: w.id for w in db.execute(select(AgentRelease)).scalars()
+        }
+        maszyna = db.execute(select(Asset.id)).scalar_one()
+
+    _oznacz_oficjalna(client, csrf, mapa["0.2.0"])
+    _zlec_dla_firmy(client, csrf, tenant_a["id"], mapa["0.5.0"])
+    client.post(
+        f"/admin/tenants/{tenant_a['id']}/upgrade",
+        data={"zakres": "wybrane", "release_id": mapa["0.9.0"],
+              "asset_id": maszyna, "csrf_token": csrf},
+        follow_redirects=True,
+    )
+
+    assert client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
+    ).json()["version"] == "0.9.0"

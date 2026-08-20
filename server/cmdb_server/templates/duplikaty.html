@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Mozliwe duplikaty - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Mozliwe duplikaty</h1>
+    <p class="muted">Zasoby, ktore wygladaja na te sama maszyne zgloszona wiecej niz raz.</p>
+  </div>
+</div>
+
+{% if grupy %}
+<div class="alert alert-warn">
+  Najczestsza przyczyna to sklonowana maszyna wirtualna — kopia dziedziczy numer
+  seryjny i adresy sprzetowe oryginalu. Nic nie jest kasowane automatycznie:
+  rozwiazaniem jest wycofanie tego zasobu, ktory juz nie istnieje.
+</div>
+
+{% for g in grupy %}
+<section class="panel">
+  <h2>{{ g.rodzaj }}: <code>{{ g.wartosc }}</code></h2>
+  <table class="table">
+    <thead><tr><th>Maszyna</th><th>System</th><th>Pierwszy raport</th><th>Ostatni kontakt</th><th>Agent</th><th></th></tr></thead>
+    <tbody>
+    {% for m in g.maszyny %}
+      <tr>
+        <td class="strong">{{ m.hostname }}</td>
+        <td class="small">{{ m.os_name or m.os_family or '-' }}</td>
+        <td class="small">{{ m.first_seen | dt }}</td>
+        <td class="small">{{ m.last_seen | ago }}</td>
+        <td class="small"><code>{{ m.agent_version or '?' }}</code></td>
+        <td><a class="btn btn-small" href="/assets/{{ m.id }}">Otworz</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+{% else %}
+<section class="panel">
+  <p class="muted">
+    Nie znaleziono zasobow o wspolnym numerze seryjnym ani adresie sprzetowym.
+  </p>
+</section>
+{% endif %}
+{% endblock %}

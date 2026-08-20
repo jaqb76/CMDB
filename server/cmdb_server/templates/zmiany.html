@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Historia zmian - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Historia zmian</h1>
+    <p class="muted">Co i kiedy zmienilo sie na maszynach firmy.</p>
+  </div>
+</div>
+
+<form method="get" action="/zmiany" class="filters">
+  <select name="kategoria">
+    <option value="">wszystkie rodzaje</option>
+    {% for k, ile in kategorie %}
+      <option value="{{ k }}" {% if filtry.kategoria == k %}selected{% endif %}>{{ k }} ({{ ile }})</option>
+    {% endfor %}
+  </select>
+  <select name="dni">
+    {% for d in [7, 30, 90, 365] %}
+      <option value="{{ d }}" {% if filtry.dni == d %}selected{% endif %}>ostatnie {{ d }} dni</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary btn-small">Pokaz</button>
+  <a class="btn btn-small btn-ghost" href="/zmiany">Wyczysc</a>
+</form>
+
+<section class="panel">
+  {% if wiersze %}
+  <table class="table">
+    <thead><tr><th>Kiedy</th><th>Maszyna</th><th>Rodzaj</th><th>Zmiana</th><th>Szczegoly</th></tr></thead>
+    <tbody>
+    {% for z, maszyna in wiersze %}
+      <tr>
+        <td class="small">{{ z.occurred_at | dt }}<div class="muted">{{ z.occurred_at | ago }}</div></td>
+        <td><a href="/assets/{{ maszyna.id }}">{{ maszyna.hostname }}</a></td>
+        <td class="small"><code>{{ z.category }}</code></td>
+        <td>
+          {% if z.action == 'dodano' %}<span class="badge badge-ok">dodano</span>
+          {% elif z.action == 'usunieto' %}<span class="badge badge-danger">usunieto</span>
+          {% else %}<span class="badge badge-warn">zmieniono</span>{% endif %}
+          <span class="small">{{ z.label }}</span>
+        </td>
+        <td class="small muted">
+          {% if z.old_value or z.new_value %}
+            {{ z.old_value or '—' }} &rarr; {{ z.new_value or '—' }}
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">
+    Pokazane maksymalnie 500 najnowszych wpisow. Zmiany powstaja tylko przy realnej
+    roznicy miedzy raportami — cykliczne raporty bez zmian nie tworza wpisow.
+  </p>
+  {% else %}
+    <p class="muted">
+      Brak zmian w wybranym okresie. Pierwszy raport maszyny nie jest rozpisywany
+      na zmiany — liczy sie od drugiego.
+    </p>
+  {% endif %}
+</section>
+{% endblock %}

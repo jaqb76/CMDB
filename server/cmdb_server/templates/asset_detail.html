@@ -4,7 +4,10 @@
 
 <div class="page-head">
   <div>
-    <h1>{{ asset.hostname }}</h1>
+    <h1>
+      {{ asset.hostname }}
+      {% if asset.lifecycle == 'wycofany' %}<span class="badge badge-danger">wycofana</span>{% endif %}
+    </h1>
     <p class="muted">
       {{ asset.fqdn or asset.hostname }}
       {% if asset.domain %} &middot; domena {{ asset.domain }}{% endif %}
@@ -64,6 +67,7 @@
     <button type="button" class="tab-button" data-tab="hardware">Sprzet</button>
     <button type="button" class="tab-button" data-tab="software">Oprogramowanie</button>
     <button type="button" class="tab-button" data-tab="users">Uzytkownicy</button>
+    <button type="button" class="tab-button" data-tab="zmiany">Zmiany</button>
     <button type="button" class="tab-button" data-tab="history">Historia</button>
     <button type="button" class="tab-button" data-tab="raw">JSON</button>
   </div>
@@ -368,6 +372,78 @@
       </table>
     </div>
     {% endif %}
+  </section>
+
+  <section class="tab-panel" data-panel="zmiany">
+    <div class="panel">
+      <h2>Co sie zmienilo na tej maszynie</h2>
+      {% if zmiany %}
+      <table class="table">
+        <thead><tr><th>Kiedy</th><th>Rodzaj</th><th>Zmiana</th><th>Szczegoly</th></tr></thead>
+        <tbody>
+        {% for z in zmiany %}
+          <tr>
+            <td class="small">{{ z.occurred_at | dt }}<div class="muted">{{ z.occurred_at | ago }}</div></td>
+            <td class="small"><code>{{ z.category }}</code></td>
+            <td>
+              {% if z.action == 'dodano' %}<span class="badge badge-ok">dodano</span>
+              {% elif z.action == 'usunieto' %}<span class="badge badge-danger">usunieto</span>
+              {% else %}<span class="badge badge-warn">zmieniono</span>{% endif %}
+              <span class="small">{{ z.label }}</span>
+            </td>
+            <td class="small muted">
+              {% if z.old_value or z.new_value %}{{ z.old_value or '—' }} &rarr; {{ z.new_value or '—' }}{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="muted">
+          Nie odnotowano jeszcze zadnej zmiany. Pierwszy raport maszyny nie jest
+          rozpisywany na zmiany — historia zaczyna sie od drugiego.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>Cykl zycia</h2>
+      {% if asset.lifecycle == 'wycofany' %}
+        <p>
+          Zasob wycofany {{ asset.retired_at | dt }}
+          {% if asset.retired_by %}przez {{ asset.retired_by }}{% endif %}.
+          {% if asset.retired_reason %}<br><span class="muted">Powod: {{ asset.retired_reason }}</span>{% endif %}
+        </p>
+        <p class="muted small">
+          Maszyna nie znika z systemu — zostaje z cala historia, tylko poza domyslnymi
+          listami i zestawieniami.
+        </p>
+        {% if ctx.can_write %}
+        <form method="post" action="/assets/{{ asset.id }}/lifecycle" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="akcja" value="przywroc">
+          <button type="submit" class="btn">Przywroc do uzytku</button>
+        </form>
+        {% endif %}
+      {% else %}
+        <p class="muted small">
+          Wycofanie oznacza, ze maszyna nie jest juz uzywana — znika z list i zestawien,
+          ale zostaje w bazie razem z historia. To nie to samo, co brak kontaktu.
+        </p>
+        {% if ctx.can_write %}
+        <form method="post" action="/assets/{{ asset.id }}/lifecycle" class="row-form"
+              data-confirm="Wycofac maszyne {{ asset.hostname }} z uzytku?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="akcja" value="wycofaj">
+          <div>
+            <label for="powod">Powod</label>
+            <input id="powod" name="powod" maxlength="500" placeholder="np. sprzet oddany do utylizacji">
+          </div>
+          <div><button type="submit" class="btn btn-danger">Wycofaj z uzytku</button></div>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
   </section>
 
   <section class="tab-panel" data-panel="history">

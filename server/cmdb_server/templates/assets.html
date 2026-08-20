@@ -26,6 +26,11 @@
     <option value="online" {% if filters.state == 'online' %}selected{% endif %}>aktywne</option>
     <option value="stale" {% if filters.state == 'stale' %}selected{% endif %}>bez kontaktu</option>
   </select>
+  <select name="lifecycle">
+    <option value="">w uzyciu</option>
+    <option value="wycofany" {% if filters.lifecycle == 'wycofany' %}selected{% endif %}>wycofane{% if liczba_wycofanych %} ({{ liczba_wycofanych }}){% endif %}</option>
+    <option value="wszystkie" {% if filters.lifecycle == 'wszystkie' %}selected{% endif %}>wszystkie</option>
+  </select>
   <button type="submit" class="btn btn-primary btn-small">Filtruj</button>
   <a class="btn btn-small btn-ghost" href="/assets">Wyczysc</a>
 </form>
@@ -44,6 +49,7 @@
     <tr>
       <td>
         <a class="strong" href="/assets/{{ a.id }}">{{ a.hostname }}</a>
+        {% if a.lifecycle == 'wycofany' %}<span class="badge badge-danger">wycofana</span>{% endif %}
         {% if a.serial_number %}<div class="muted small">s/n {{ a.serial_number }}</div>{% endif %}
       </td>
       <td>
@@ -64,6 +70,7 @@
       <td class="small">
         {{ a.last_seen | ago }}
         {% if f.collector_errors %}<span class="badge badge-warn" title="bledy kolektorow">{{ f.collector_errors }}</span>{% endif %}
+        <div class="muted">agent {{ a.agent_version or '?' }}</div>
       </td>
     </tr>
   {% endfor %}

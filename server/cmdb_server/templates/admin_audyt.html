@@ -1,0 +1,33 @@
+{% extends "base_admin.html" %}
+{% block title %}Audyt - administracja CMDB{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Audyt</h1>
+    <p class="muted">Ostatnie 300 zdarzen ze wszystkich firm.</p>
+  </div>
+</div>
+
+<section class="panel">
+  <table class="table">
+    <thead>
+      <tr><th>Kiedy</th><th>Firma</th><th>Kto</th><th>Akcja</th><th>Obiekt</th><th>Adres IP</th><th>Szczegoly</th></tr>
+    </thead>
+    <tbody>
+    {% for e in wpisy %}
+      <tr>
+        <td class="small">{{ e.created_at | dt }}</td>
+        <td class="small">{{ nazwy_firm.get(e.tenant_id, '—') }}</td>
+        <td class="small">{{ e.actor }}</td>
+        <td><code>{{ e.action }}</code></td>
+        <td class="small">{{ e.target or '—' }}</td>
+        <td class="small">{{ e.ip or '—' }}</td>
+        <td class="small muted">{{ e.detail or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="muted">Brak zdarzen.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

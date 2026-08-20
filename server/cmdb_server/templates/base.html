@@ -12,12 +12,15 @@
   <nav class="mainnav">
     <a href="/">Pulpit</a>
     <a href="/assets">Maszyny</a>
+    <a href="/zmiany">Zmiany</a>
     <a href="/owners">Opiekunowie</a>
     <a href="/tokens">Tokeny agentow</a>
     <a href="/audit">Audyt</a>
-    {% if user.is_superadmin %}<a href="/admin" class="nav-admin">Administracja</a>{% endif %}
   </nav>
   <div class="userbox">
+    {% if user.is_superadmin %}
+      <a href="/admin" class="btn btn-small nav-admin">&larr; Administracja</a>
+    {% endif %}
     {% if user.is_superadmin and all_tenants %}
       <form method="get" action="/switch-tenant" class="inline-form">
         <select name="slug" class="tenant-select" data-autosubmit>

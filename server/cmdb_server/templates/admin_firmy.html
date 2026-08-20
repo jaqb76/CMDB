@@ -1,0 +1,137 @@
+{% extends "base_admin.html" %}
+{% block title %}Firmy i konta - administracja CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Firmy i konta</h1>
+    <p class="muted">Zakladanie organizacji, kont logowania i tokenow rejestracyjnych.</p>
+  </div>
+</div>
+
+{% if wydany_token %}
+<div class="alert alert-ok">
+  <div><b>Nowy token rejestracyjny — zapisz go teraz, nie pokazemy go ponownie:</b></div>
+  <code class="token-value">{{ wydany_token }}</code>
+  <div class="small">Ten sam token wpisuje sie na wszystkich maszynach tej firmy.</div>
+</div>
+{% endif %}
+
+<section class="panel">
+  <h2>Organizacje</h2>
+  <table class="table">
+    <thead>
+      <tr><th>Firma</th><th>Maszyny</th><th>Konta logowania</th><th>Opiekun.</th><th>Tokeny</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for f in firmy %}
+      <tr {% if not f.is_active %}class="row-muted"{% endif %}>
+        <td>
+          <span class="strong">{{ f.name }}</span>
+          <div class="muted small"><code>{{ f.slug }}</code></div>
+        </td>
+        <td>{{ maszyny.get(f.id, 0) }}</td>
+        <td class="small">
+          {% for k in konta_firm.get(f.id, []) %}
+            <div>
+              {{ k.email }}
+              <span class="muted">({{ k.role }})</span>
+              {% if not k.is_active %}<span class="badge badge-danger">wylaczone</span>{% endif %}
+              <form method="post" action="/admin/users/{{ k.id }}/active" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn-link">{% if k.is_active %}wylacz{% else %}wlacz{% endif %}</button>
+              </form>
+            </div>
+          {% else %}<span class="muted">brak</span>{% endfor %}
+        </td>
+        <td>{{ opiekunowie.get(f.id, 0) }}</td>
+        <td>{{ tokeny.get(f.id, 0) }}</td>
+        <td>
+          {% if f.is_active %}<span class="badge badge-ok">aktywna</span>
+          {% else %}<span class="badge badge-danger">wylaczona</span>{% endif %}
+        </td>
+        <td class="small">
+          <form method="post" action="/admin/tenants/{{ f.id }}/active" class="inline-form"
+                data-confirm="{% if f.is_active %}Wylaczyc firme {{ f.name }}? Jej agenci przestana byc przyjmowani.{% else %}Wlaczyc firme {{ f.name }}?{% endif %}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-ghost">
+              {% if f.is_active %}Wylacz{% else %}Wlacz{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="muted">Nie zdefiniowano jeszcze zadnej firmy.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<div class="two-col">
+  <section class="panel">
+    <h2>Nowa firma</h2>
+    <form method="post" action="/admin/tenants" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="name">Nazwa</label>
+      <input id="name" name="name" required maxlength="200" placeholder="Firma ABC sp. z o.o.">
+      <label for="slug">Identyfikator</label>
+      <input id="slug" name="slug" required maxlength="63" placeholder="abc"
+             pattern="[a-z0-9][a-z0-9-]{1,62}">
+      <div class="muted small">Male litery, cyfry i myslnik. Uzywany w adresach i logach.</div>
+      <button type="submit" class="btn btn-primary">Utworz firme</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Konto logowania</h2>
+    <form method="post" action="/admin/tenants/PODMIEN/users" class="stack" data-tenant-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="konto_firma">Firma</label>
+      <select id="konto_firma" data-tenant-select required>
+        <option value="">— wybierz —</option>
+        {% for f in firmy %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+      </select>
+      <label for="konto_email">E-mail (login)</label>
+      <input id="konto_email" name="email" type="email" required maxlength="255">
+      <label for="konto_haslo">Haslo</label>
+      <input id="konto_haslo" name="password" type="text" required minlength="12" maxlength="200">
+      <div class="muted small">Minimum 12 znakow. Pokazane jawnie, zeby dalo sie je przekazac klientowi.</div>
+      <label for="konto_nazwa">Imie i nazwisko</label>
+      <input id="konto_nazwa" name="full_name" maxlength="200">
+      <label for="konto_rola">Rola</label>
+      <select id="konto_rola" name="role">
+        <option value="admin">admin — zarzadza tokenami i opiekunami</option>
+        <option value="viewer">viewer — tylko odczyt</option>
+      </select>
+      <button type="submit" class="btn btn-primary">Utworz konto</button>
+    </form>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Token rejestracyjny</h2>
+  <p class="muted small">
+    Jeden token na firme — ten sam wpisuje sie na kazdej maszynie. Po rejestracji
+    maszyna dostaje wlasne poswiadczenie i tokenu juz nie uzywa.
+  </p>
+  <form method="post" action="/admin/tenants/PODMIEN/tokens" class="row-form" data-tenant-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div>
+      <label for="token_firma">Firma</label>
+      <select id="token_firma" data-tenant-select required>
+        <option value="">— wybierz —</option>
+        {% for f in firmy %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="token_nazwa">Nazwa / przeznaczenie</label>
+      <input id="token_nazwa" name="name" required maxlength="200" placeholder="stacje robocze">
+    </div>
+    <div>
+      <label for="token_dni">Waznosc (dni, 0 = bezterminowo)</label>
+      <input id="token_dni" name="expires_days" type="number" min="0" max="3650" value="365">
+    </div>
+    <div><button type="submit" class="btn btn-primary">Wygeneruj</button></div>
+  </form>
+</section>
+{% endblock %}

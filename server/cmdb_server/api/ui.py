@@ -21,8 +21,11 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
+    LIFECYCLE_AKTYWNY,
+    LIFECYCLE_WYCOFANY,
     AgentCredential,
     Asset,
+    AssetChange,
     AuditLog,
     EnrollmentToken,
     InventorySnapshot,
@@ -32,7 +35,7 @@ from ..models import (
     utcnow,
 )
 from ..security import generate_token, issue_csrf_token, sign_session
-from ..services import scoping
+from ..services import duplicates, scoping
 from ..services.auth import (
     LoginRequired,
     authenticate_user,
@@ -275,28 +278,6 @@ def dashboard(
         .group_by(Asset.os_family)
     ).all()
 
-    # Wersje agenta faktycznie pracujace w firmie - administrator firmy widzi
-    # to samo, co superadmin w widoku globalnym, tyle ze dla siebie.
-    wersje_agenta = [
-        {
-            "os_family": system or "nieznany",
-            "wersja": wersja or "nieznana",
-            "ile": ile,
-            "aktywne": int(aktywne or 0),
-        }
-        for system, wersja, ile, aktywne in db.execute(
-            select(
-                Asset.os_family,
-                Asset.agent_version,
-                func.count(Asset.id),
-                func.sum(case((Asset.last_seen >= stale_before, 1), else_=0)),
-            )
-            .where(Asset.tenant_id == ctx.tenant_id)
-            .group_by(Asset.os_family, Asset.agent_version)
-            .order_by(Asset.os_family, Asset.agent_version)
-        ).all()
-    ]
-
     recent = db.execute(
         scoping.assets_query(ctx).order_by(Asset.last_seen.desc()).limit(10)
     ).scalars().all()
@@ -317,7 +298,6 @@ def dashboard(
         stale=stale,
         unassigned=unassigned,
         by_os=by_os,
-        wersje_agenta=wersje_agenta,
         recent=recent,
         changed=changed,
     )
@@ -332,6 +312,7 @@ def asset_list(
     os_family: str = Query("", max_length=32),
     owner: str = Query("", max_length=36),
     state: str = Query("", max_length=16),
+    lifecycle: str = Query("", max_length=16),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -361,6 +342,13 @@ def asset_list(
     elif state == "online":
         stmt = stmt.where(Asset.last_seen >= utcnow() - timedelta(hours=settings.stale_after_hours))
 
+    # Wycofane maszyny znikaja z domyslnej listy, ale zostaja w bazie razem
+    # z cala historia - pokazujemy je na zadanie.
+    if lifecycle == "wycofany":
+        stmt = stmt.where(Asset.lifecycle == LIFECYCLE_WYCOFANY)
+    elif lifecycle != "wszystkie":
+        stmt = stmt.where(Asset.lifecycle == LIFECYCLE_AKTYWNY)
+
     assets = db.execute(stmt.order_by(Asset.hostname)).scalars().all()
     owners = db.execute(scoping.owners_query(ctx)).scalars().all()
     families = db.execute(
@@ -378,7 +366,13 @@ def asset_list(
         assets=assets,
         owners=owners,
         families=families,
-        filters={"q": q, "os_family": os_family, "owner": owner, "state": state},
+        filters={"q": q, "os_family": os_family, "owner": owner,
+                 "state": state, "lifecycle": lifecycle},
+        liczba_wycofanych=db.execute(
+            select(func.count(Asset.id)).where(
+                Asset.tenant_id == ctx.tenant_id, Asset.lifecycle == LIFECYCLE_WYCOFANY
+            )
+        ).scalar_one(),
     )
 
 
@@ -416,6 +410,13 @@ def asset_detail(
         .order_by(AgentCredential.created_at.desc())
     ).scalars().all()
 
+    zmiany = db.execute(
+        select(AssetChange)
+        .where(AssetChange.tenant_id == ctx.tenant_id, AssetChange.asset_id == asset.id)
+        .order_by(AssetChange.occurred_at.desc())
+        .limit(200)
+    ).scalars().all()
+
     payload = current.payload if current else {}
     return render(
         request,
@@ -428,6 +429,7 @@ def asset_detail(
         history=history,
         owners=owners,
         credentials=credentials,
+        zmiany=zmiany,
         payload=payload,
         hardware=payload.get("hardware") or {},
         os_info=payload.get("os") or {},
@@ -536,6 +538,103 @@ def revoke_credential(
     )
     db.commit()
     return RedirectResponse(f"/assets/{asset.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/assets/{asset_id}/lifecycle")
+def zmien_cykl_zycia(
+    asset_id: str,
+    request: Request,
+    akcja: str = Form(...),
+    powod: str = Form(""),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Wycofanie zasobu albo przywrocenie go do uzytku.
+
+    Wycofanie nie kasuje niczego - maszyna znika z domyslnych list, ale
+    zostaje w bazie razem z cala historia. Inwentarz ma pamietac, co bylo,
+    a nie tylko co jest.
+    """
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+
+    asset = scoping.get_asset(db, ctx, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono maszyny")
+
+    if akcja == "wycofaj":
+        asset.lifecycle = LIFECYCLE_WYCOFANY
+        asset.retired_at = utcnow()
+        asset.retired_by = user.email
+        asset.retired_reason = powod.strip() or None
+    elif akcja == "przywroc":
+        asset.lifecycle = LIFECYCLE_AKTYWNY
+        asset.retired_at = None
+        asset.retired_by = None
+        asset.retired_reason = None
+    else:
+        raise HTTPException(status_code=400, detail="nieznana akcja")
+
+    audit(db, ctx, action=f"asset.{akcja}", target=asset.hostname,
+          detail={"powod": powod.strip() or None}, ip=client_ip(request))
+    db.commit()
+    return RedirectResponse(f"/assets/{asset.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/zmiany", response_class=HTMLResponse)
+def historia_zmian(
+    request: Request,
+    kategoria: str = Query("", max_length=20),
+    dni: int = Query(30, ge=1, le=365),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Os czasu zmian w calej firmie.
+
+    To jest wlasciwy powod istnienia CMDB: nie "co jest na maszynach",
+    tylko "co sie zmienilo i kiedy".
+    """
+    od = utcnow() - timedelta(days=dni)
+    stmt = (
+        select(AssetChange, Asset)
+        .join(Asset, Asset.id == AssetChange.asset_id)
+        .where(AssetChange.tenant_id == ctx.tenant_id, AssetChange.occurred_at >= od)
+    )
+    if kategoria:
+        stmt = stmt.where(AssetChange.category == kategoria)
+
+    wiersze = db.execute(stmt.order_by(AssetChange.occurred_at.desc()).limit(500)).all()
+
+    kategorie = db.execute(
+        select(AssetChange.category, func.count(AssetChange.id))
+        .where(AssetChange.tenant_id == ctx.tenant_id, AssetChange.occurred_at >= od)
+        .group_by(AssetChange.category)
+        .order_by(func.count(AssetChange.id).desc())
+    ).all()
+
+    return render(
+        request, "zmiany.html", user, ctx, db,
+        wiersze=wiersze,
+        kategorie=kategorie,
+        filtry={"kategoria": kategoria, "dni": dni},
+    )
+
+
+@router.get("/duplikaty", response_class=HTMLResponse)
+def widok_duplikatow(
+    request: Request,
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zasoby, ktore wygladaja na te sama maszyne zgloszona dwa razy."""
+    return render(
+        request, "duplikaty.html", user, ctx, db,
+        grupy=duplicates.znajdz_duplikaty(db, ctx.tenant_id),
+    )
 
 
 # --- opiekunowie ------------------------------------------------------------

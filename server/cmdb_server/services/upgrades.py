@@ -14,7 +14,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import AgentRelease, AgentUpgradeLog, Asset, TenantAgentTarget, utcnow
+from ..models import (
+    AgentRelease,
+    AgentUpgradeLog,
+    Asset,
+    GlobalAgentTarget,
+    TenantAgentTarget,
+    utcnow,
+)
 
 log = logging.getLogger(__name__)
 
@@ -22,9 +29,13 @@ log = logging.getLogger(__name__)
 def wersja_docelowa(db: Session, asset: Asset) -> AgentRelease | None:
     """Wersja oczekiwana na tej maszynie, albo None.
 
-    Kolejnosc: ustawienie maszyny ma pierwszenstwo przed ustawieniem firmy.
-    Pozwala to wypchnac nowa wersje na kilka maszyn testowych, nie ruszajac
-    reszty floty, a pozniej jednym ruchem objac cala firme.
+    Kolejnosc od najwezszego do najszerszego:
+        1. ustawienie na tej maszynie      - wyjatek, np. jedna maszyna probna
+        2. ustawienie dla firmy            - np. wersja probna w jednej firmie
+        3. wersja oficjalna dla systemu    - wszystkie pozostale firmy
+
+    Dzieki temu da sie trzymac wersje probna w jednej organizacji, podczas
+    gdy reszta pracuje na wersji uznanej za oficjalna.
 
     Niezaleznie od zrodla wydanie MUSI byc zbudowane dla systemu tej maszyny.
     Agent jest osobnym plikiem dla Windows i dla Linuksa - wyslanie nie tego
@@ -50,13 +61,28 @@ def wersja_docelowa(db: Session, asset: Asset) -> AgentRelease | None:
             TenantAgentTarget.os_family == system,
         )
     ).scalar_one_or_none()
+    if cel is not None:
+        wydanie = db.get(AgentRelease, cel.release_id)
+        if wydanie is not None and _pasuje(wydanie, system):
+            return wydanie
+
+    # Firma bez wlasnego ustawienia korzysta z wersji uznanej za oficjalna.
+    # To ten poziom sprawia, ze mozna trzymac wersje probna w jednej firmie,
+    # nie ruszajac pozostalych.
+    return wersja_oficjalna(db, system)
+
+
+def wersja_oficjalna(db: Session, system: str) -> AgentRelease | None:
+    """Wersja oznaczona jako aktywna dla danego systemu."""
+    if not system:
+        return None
+    cel = db.execute(
+        select(GlobalAgentTarget).where(GlobalAgentTarget.os_family == system)
+    ).scalar_one_or_none()
     if cel is None:
         return None
-
     wydanie = db.get(AgentRelease, cel.release_id)
-    if wydanie is not None and _pasuje(wydanie, system):
-        return wydanie
-    return None
+    return wydanie if wydanie is not None and _pasuje(wydanie, system) else None
 
 
 def _pasuje(wydanie: AgentRelease, system: str) -> bool:

@@ -14,7 +14,7 @@ import secrets
 import sys
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from .db import init_db, session_scope
 from .models import Asset, EnrollmentToken, Owner, PortalUser, Tenant, utcnow
@@ -138,6 +138,56 @@ def cmd_owner_add(args: argparse.Namespace) -> None:
         print(f"dodano opiekuna {args.name} <{email}> do firmy {tenant.slug}")
 
 
+def cmd_odtworz_zmiany(args: argparse.Namespace) -> None:
+    """Odtwarza historie zmian z raportow juz zapisanych w bazie.
+
+    Wykrywanie zmian dziala od momentu jego wdrozenia, wiec instalacja, ktora
+    zbierala raporty wczesniej, miala by historie pusta mimo posiadanych
+    danych. Przechodzimy wiec po zapisanych raportach i liczymy roznice
+    wstecz. Operacja jest idempotentna - istniejace wpisy sa najpierw
+    kasowane, wiec ponowne uruchomienie nie zdubluje historii.
+    """
+    from .models import AssetChange, InventorySnapshot
+    from .services.changes import wykryj_zmiany
+
+    with session_scope() as db:
+        maszyny = db.execute(select(Asset).order_by(Asset.hostname)).scalars().all()
+        if not maszyny:
+            print("brak maszyn w bazie")
+            return
+
+        lacznie = 0
+        for maszyna in maszyny:
+            raporty = db.execute(
+                select(InventorySnapshot)
+                .where(InventorySnapshot.asset_id == maszyna.id)
+                .order_by(InventorySnapshot.collected_at)
+            ).scalars().all()
+
+            db.execute(
+                delete(AssetChange).where(AssetChange.asset_id == maszyna.id)
+            )
+
+            wykryte = 0
+            for poprzedni, biezacy in zip(raporty, raporty[1:]):
+                for zmiana in wykryj_zmiany(poprzedni.payload, biezacy.payload):
+                    db.add(
+                        AssetChange(
+                            tenant_id=maszyna.tenant_id,
+                            asset_id=maszyna.id,
+                            snapshot_id=biezacy.id,
+                            occurred_at=biezacy.collected_at,
+                            **zmiana,
+                        )
+                    )
+                    wykryte += 1
+            lacznie += wykryte
+            print(f"  {maszyna.hostname:20} {len(raporty):3} raportow -> {wykryte:4} zmian")
+
+        print()
+        print(f"odtworzono {lacznie} zmian")
+
+
 def cmd_demo_secret(_args: argparse.Namespace) -> None:
     print(secrets.token_urlsafe(48))
 
@@ -181,6 +231,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("gen-secret", help="generuje losowy CMDB_SECRET_KEY").set_defaults(
         func=cmd_demo_secret
     )
+
+    sub.add_parser(
+        "odtworz-zmiany",
+        help="odtwarza historie zmian z raportow juz zapisanych w bazie",
+    ).set_defaults(func=cmd_odtworz_zmiany)
     return parser
 
 

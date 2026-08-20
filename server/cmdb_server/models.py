@@ -28,6 +28,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
+# Cykl zycia zasobu. Wycofanie jest decyzja czlowieka i zostaje w bazie
+# razem z cala historia - zasob znika z domyslnych list, ale nie z systemu.
+LIFECYCLE_AKTYWNY = "aktywny"
+LIFECYCLE_WYCOFANY = "wycofany"
+LIFECYCLE_WSZYSTKIE = (LIFECYCLE_AKTYWNY, LIFECYCLE_WYCOFANY)
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -130,6 +137,26 @@ class EnrollmentToken(Base):
         return True
 
 
+class GlobalAgentTarget(Base):
+    """Wersja agenta uznana za oficjalna - dla firm bez wlasnego ustawienia.
+
+    Osobna tabela zamiast znacznika na wydaniu, bo warunek "tylko jedna
+    oficjalna na system" musi byc niemozliwy do zlamania. Znacznik trzeba by
+    pilnowac kodem, a blad w tym miejscu po cichu psulby rozstrzyganie dla
+    wszystkich firm naraz. UNIQUE(os_family) zalatwia to strukturalnie.
+    """
+
+    __tablename__ = "global_agent_targets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    os_family: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    release_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("agent_releases.id", ondelete="CASCADE"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_by: Mapped[str | None] = mapped_column(String(255))
+
+
 class TenantAgentTarget(Base):
     """Wersja agenta oczekiwana w danej firmie, osobno dla kazdego systemu.
 
@@ -225,6 +252,21 @@ class Asset(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_change_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Cykl zycia zasobu: decyzja czlowieka, a nie stan wyliczany.
+    # "Bez kontaktu" celowo NIE jest tu zapisywane - wynika z last_seen
+    # w chwili patrzenia. Zapisane po godzinie bylo by juz nieprawdziwe
+    # i wymagaloby zadania, ktore je odswieza.
+    lifecycle: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=LIFECYCLE_AKTYWNY, index=True
+    )
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retired_by: Mapped[str | None] = mapped_column(String(255))
+    retired_reason: Mapped[str | None] = mapped_column(Text)
+
+    # Zastapione przez lifecycle. Kolumna zostaje, bo istniejace bazy maja ja
+    # jako NOT NULL bez wartosci domyslnej po stronie silnika - usuniecie
+    # z modelu zepsulo by wstawianie nowych wierszy.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     tenant: Mapped[Tenant] = relationship(back_populates="assets")
@@ -335,6 +377,48 @@ class AgentUpgradeLog(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)  # zlecona|pobrana|ok|blad
     detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AssetChange(Base):
+    """Pojedyncza zmiana wykryta miedzy dwoma raportami maszyny.
+
+    Roznice zapisujemy, zamiast liczyc je na zadanie. Inaczej pytanie
+    "gdzie w zeszlym miesiacu doszlo konto administratora" wymagaloby
+    wczytania i porownania kazdej pary raportow w calej flocie; tutaj jest
+    to jedno zapytanie po indeksie.
+
+    Wpisy powstaja tylko przy realnej zmianie - raport identyczny z poprzednim
+    jest odrzucany wczesniej przez deduplikacje, wiec tabela rosnie w tempie
+    zmian, a nie w tempie raportowania.
+    """
+
+    __tablename__ = "asset_changes"
+    __table_args__ = (
+        Index("ix_change_tenant_time", "tenant_id", "occurred_at"),
+        Index("ix_change_asset_time", "asset_id", "occurred_at"),
+        Index("ix_change_kategoria", "tenant_id", "category"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
+    )
+    snapshot_id: Mapped[str | None] = mapped_column(String(36))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    # hardware | software | users | network | os
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    # dodano | usunieto | zmieniono
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Sciezka w raporcie, np. "software.packages" - do filtrowania.
+    path: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Czytelny opis, np. "7-Zip 23.01" albo "NEWNODE\nowy_admin".
+    label: Mapped[str] = mapped_column(String(400), nullable=False)
+    old_value: Mapped[str | None] = mapped_column(Text)
+    new_value: Mapped[str | None] = mapped_column(Text)
 
 
 class AuditLog(Base):

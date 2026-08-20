@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -18,9 +19,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import Asset, InventorySnapshot, utcnow
+from ..models import Asset, AssetChange, InventorySnapshot, utcnow
 from ..schemas import InventoryReport
+from . import changes
 from .scoping import TenantContext
+
+log = logging.getLogger(__name__)
 
 # Pola zmieniajace sie przy kazdym odczycie - nie moga wywolywac nowego snapshotu.
 VOLATILE_PATHS: tuple[str, ...] = (
@@ -116,10 +120,16 @@ def summarize(payload: dict) -> dict:
     running = sum(1 for s in services if str(s.get("state", "")).lower() in {"running", "active"})
 
     addresses: list[str] = []
+    maki: list[str] = []
     for iface in network.get("interfaces") or []:
         for addr in iface.get("ip_addresses") or []:
             if addr and addr not in addresses:
                 addresses.append(addr)
+        # Adres sprzetowy trafia do podsumowania, bo po nim rozpoznajemy
+        # zduplikowane zasoby - ta sama maszyna zgloszona dwa razy.
+        mak = (iface.get("mac_address") or "").strip().upper()
+        if mak and mak not in maki:
+            maki.append(mak)
 
     return {
         "cpu_model": cpu.get("model"),
@@ -139,6 +149,7 @@ def summarize(payload: dict) -> dict:
         ],
         "sessions": len(users.get("sessions") or []),
         "ip_addresses": addresses[:8],
+        "mac_addresses": maki[:8],
         "last_boot": os_info.get("last_boot"),
         "collector_errors": len(payload.get("errors") or []),
     }
@@ -219,6 +230,11 @@ def store_report(
         # Stan bez zmian - odswiezamy tylko czas ostatniego kontaktu.
         return previous, False
 
+    # Roznice liczymy wzgledem poprzedniego raportu i zapisujemy - dzieki temu
+    # pytanie "gdzie doszlo konto administratora" jest jednym zapytaniem po
+    # indeksie, a nie porownaniem wszystkich raportow w locie.
+    zmiany = changes.wykryj_zmiany(previous.payload if previous else None, payload)
+
     encoded = json.dumps(payload, ensure_ascii=False)
     snapshot = InventorySnapshot(
         tenant_id=ctx.tenant_id,
@@ -230,7 +246,21 @@ def store_report(
         payload=payload,
     )
     db.add(snapshot)
+    db.flush()
     asset.last_change_at = utcnow()
+
+    for zmiana in zmiany:
+        db.add(
+            AssetChange(
+                tenant_id=ctx.tenant_id,
+                asset_id=asset.id,
+                snapshot_id=snapshot.id,
+                occurred_at=collected_at,
+                **zmiana,
+            )
+        )
+    if zmiany:
+        log.info("maszyna %s: %d zmian w konfiguracji", asset.hostname, len(zmiany))
 
     if settings.snapshot_retention > 0:
         db.flush()

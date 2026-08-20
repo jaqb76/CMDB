@@ -1,0 +1,42 @@
+{#
+  Uklad panelu glownego administratora.
+
+  Celowo osobny od ukladu firmowego: superadmin zarzadza systemem, a nie
+  ogląda inwentarz jednej organizacji. Wspolna nawigacja mieszala te dwie
+  role i kazala domyslac sie, w czyim kontekscie sie jest.
+#}
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Administracja - CMDB{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="admin-scope">
+<header class="topbar topbar-admin">
+  <div class="brand"><a href="/admin">CMDB <span class="brand-tag">administracja</span></a></div>
+  <nav class="mainnav">
+    <a href="/admin" {% if strona == 'przeglad' %}class="is-active"{% endif %}>Przeglad</a>
+    <a href="/admin/firmy" {% if strona == 'firmy' %}class="is-active"{% endif %}>Firmy i konta</a>
+    <a href="/admin/wersje" {% if strona == 'wersje' %}class="is-active"{% endif %}>Wersje agentow</a>
+    <a href="/admin/audyt" {% if strona == 'audyt' %}class="is-active"{% endif %}>Audyt</a>
+  </nav>
+  <div class="userbox">
+    <span class="user-email">{{ user.email }}</span>
+    <form method="post" action="/logout" class="inline-form">
+      <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
+    </form>
+  </div>
+</header>
+
+<main class="content">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  CMDB &middot; panel glownego administratora &middot; widok obejmuje wszystkie firmy
+</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>
