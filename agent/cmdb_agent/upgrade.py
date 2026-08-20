@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .proces import flagi_bez_okna, srodowisko_dla_potomka
 from .transport import ApiError, CmdbClient, TransportError
 
 log = logging.getLogger(__name__)
@@ -127,7 +128,10 @@ def _czy_dziala(plik: Path) -> tuple[bool, str]:
             [str(plik), "--version"],
             capture_output=True,
             timeout=60,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=flagi_bez_okna(),
+            # Bez wyczyszczenia zmiennych _PYI_* nowy plik odmawia startu,
+            # bo jego bootloader widzi archiwum procesu nadrzednego.
+            env=srodowisko_dla_potomka(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"{type(exc).__name__}: {exc}"
@@ -212,19 +216,20 @@ def zastosuj(config, state, client: CmdbClient) -> str | None:
 def uruchom_ponownie(argumenty: list[str]) -> int:
     """Uruchamia swiezo zainstalowana wersje, zeby to ona wykonala ten cykl.
 
-    Znacznik --po-aktualizacji chroni przed petla: nowy proces nie sprawdza
-    juz wersji ponownie.
+    Lista argumentow zawiera juz znacznik --po-aktualizacji, ktory chroni
+    przed petla: nowy proces nie sprawdza wersji ponownie.
     """
     plik = wlasny_plik()
     if plik is None:
         return 0
-    polecenie = [str(plik), *argumenty, "--po-aktualizacji"]
+    polecenie = [str(plik), *argumenty]
     log.info("uruchamiam nowa wersje agenta dla tego cyklu")
     try:
         wynik = subprocess.run(
             polecenie,
             timeout=1800,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=flagi_bez_okna(),
+            env=srodowisko_dla_potomka(),
         )
         return wynik.returncode
     except (OSError, subprocess.SubprocessError) as exc:

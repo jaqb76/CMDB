@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ..proces import srodowisko_dla_potomka
+
 log = logging.getLogger(__name__)
 
 TASK_NAME = "CMDB Agent"
@@ -75,17 +77,15 @@ def run_agent(
         command += ["--config", str(config_path)]
     command += args
 
-    env = None
-    if extra_env:
-        env = {**os.environ, **extra_env}
-
     log.debug("uruchamiam: %s", command)
     return subprocess.run(
         command,
         capture_output=True,
         timeout=timeout,
         creationflags=_no_window_flags(),
-        env=env,
+        # Ikona jest spakowana onefile - bez wyczyszczenia zmiennych _PYI_*
+        # uruchamiany agent odmawia startu.
+        env=srodowisko_dla_potomka(extra_env),
     )
 
 
@@ -132,6 +132,7 @@ def trigger_scheduled_task() -> bool:
             capture_output=True,
             timeout=30,
             creationflags=_no_window_flags(),
+            env=srodowisko_dla_potomka(),
         )
         return result.returncode == 0
     except (OSError, subprocess.SubprocessError) as exc:

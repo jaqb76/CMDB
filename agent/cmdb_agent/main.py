@@ -347,12 +347,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _argumenty_cyklu(args) -> list[str]:
-    """Argumenty, ktore nowa wersja ma powtorzyc przy tym samym cyklu."""
+    """Argumenty, ktore nowa wersja ma powtorzyc przy tym samym cyklu.
+
+    Kolejnosc ma znaczenie: --po-aktualizacji jest opcja globalna, wiec musi
+    poprzedzac nazwe polecenia. Doklejona na koncu trafia do podparsera
+    polecenia "run", ktory jej nie zna, i proces konczy sie bledem
+    "unrecognized arguments" - aktualizacja wychodzi wtedy poprawnie,
+    ale obiecany cykl na nowej wersji cicho nie dochodzi do skutku.
+    """
     argumenty: list[str] = []
     if args.config:
         argumenty += ["--config", str(args.config)]
     if args.log_level:
         argumenty += ["--log-level", args.log_level]
+    argumenty.append("--po-aktualizacji")
     argumenty.append("run")
     return argumenty
 

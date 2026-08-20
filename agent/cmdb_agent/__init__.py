@@ -5,5 +5,5 @@ dziala na kazdej maszynie z Pythonem 3.9+ i pakuje sie do jednego pliku .exe
 (PyInstaller) bez ciagniecia zaleznosci na stacje robocze klienta.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 SCHEMA_VERSION = 1

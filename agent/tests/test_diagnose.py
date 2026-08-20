@@ -1,6 +1,7 @@
 """Diagnostyka polaczenia i budzety czasowe rejestracji."""
 from __future__ import annotations
 
+import pathlib
 import socket
 import ssl
 import threading
@@ -239,3 +240,35 @@ def tls_server(tmp_path):
         stop.set()
         thread.join(timeout=3)
         listener.close()
+
+
+# --- ponowne uruchomienie po aktualizacji ------------------------------------
+
+def test_flaga_po_aktualizacji_poprzedza_polecenie():
+    """Regresja: --po-aktualizacji jest opcja globalna. Doklejona na koncu
+    trafiala do podparsera polecenia "run", ktory jej nie zna, i nowa wersja
+    konczyla sie bledem "unrecognized arguments". Aktualizacja wychodzila
+    poprawnie, ale obiecany cykl na nowej wersji cicho nie dochodzil do skutku.
+    """
+    from cmdb_agent.main import _argumenty_cyklu, build_parser
+
+    args = build_parser().parse_args(["--config", "C:/x/agent.conf", "run"])
+    argumenty = _argumenty_cyklu(args)
+
+    assert argumenty.index("--po-aktualizacji") < argumenty.index("run")
+    # ...i tak zlozone argumenty musza dac sie sparsowac przez sam agent.
+    ponowne = build_parser().parse_args(argumenty)
+    assert ponowne.command == "run"
+    assert ponowne.po_aktualizacji is True
+
+
+def test_argumenty_cyklu_przenosza_konfiguracje():
+    from cmdb_agent.main import _argumenty_cyklu, build_parser
+
+    args = build_parser().parse_args(
+        ["--config", "C:/x/agent.conf", "--log-level", "DEBUG", "run"]
+    )
+    argumenty = _argumenty_cyklu(args)
+    ponowne = build_parser().parse_args(argumenty)
+    assert pathlib.Path(ponowne.config) == pathlib.Path('C:/x/agent.conf')
+    assert ponowne.log_level == "DEBUG"
