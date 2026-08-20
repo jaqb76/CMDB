@@ -29,9 +29,12 @@
 param(
     [Parameter(Mandatory = $true)] [string] $ServerUrl,
     [Parameter(Mandatory = $true)] [string] $Token,
-    [string] $AgentExe   = "$PSScriptRoot\..\dist\cmdb-agent.exe",
+    [string] $AgentExe,
     [string] $TrayExe,
-    [string] $InstallDir = "$env:ProgramFiles\CMDB Agent",
+    # ProgramW6432 wskazuje 64-bitowy Program Files takze wtedy, gdy skrypt
+    # uruchomiono z 32-bitowego PowerShella - inaczej agent laduje w
+    # "Program Files (x86)", co dla programu 64-bitowego jest mylace.
+    [string] $InstallDir = "$(if ($env:ProgramW6432) { $env:ProgramW6432 } else { $env:ProgramFiles })\CMDB Agent",
     [string] $DataDir    = "$env:ProgramData\CMDB",
     [string] $CaBundle,
     [string] $PinSha256,
@@ -44,6 +47,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# $PSScriptRoot bywa pusty w bloku param(), a wtedy "$PSScriptRoot\..\dist"
+# rozwija sie do "\..\dist" - czyli katalogu glownego dysku. Sciezki
+# domyslne liczymy dopiero tutaj.
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $AgentExe) { $AgentExe = Join-Path $scriptDir "..\dist\cmdb-agent.exe" }
 
 function Write-Step($text) {
     if (-not $Silent) { Write-Host $text -ForegroundColor Cyan } else { Write-Host $text }
@@ -62,6 +71,25 @@ if ($Token -notmatch '^cmdb_ent_') {
 }
 if (-not (Test-Path $AgentExe)) {
     throw "Nie znaleziono $AgentExe. Zbuduj agenta skryptem build-agent.ps1 albo wskaz plik parametrem -AgentExe."
+}
+
+# Kazdy plik da sie skopiowac pod nazwa .exe, ale nie kazdy da sie uruchomic.
+# Bez tej kontroli skrypt kopiowal np. plik .py, a blad wychodzil dopiero przy
+# probie rejestracji - z komunikatem systemu o "nieprawidlowej aplikacji".
+$naglowek = [System.IO.File]::ReadAllBytes((Resolve-Path $AgentExe).Path) |
+            Select-Object -First 2
+if (($naglowek.Count -lt 2) -or ($naglowek[0] -ne 0x4D) -or ($naglowek[1] -ne 0x5A)) {
+    throw @"
+Plik $AgentExe nie jest programem Windows (brak sygnatury MZ).
+
+Parametr -AgentExe wskazuje na zbudowany cmdb-agent.exe, a nie na plik zrodlowy.
+Zbuduj agenta:
+
+    cd $PSScriptRoot
+    .uild-agent.ps1
+
+a nastepnie uruchom instalacje ponownie bez parametru -AgentExe.
+"@
 }
 
 Write-Step "== Instalacja agenta CMDB =="
@@ -83,6 +111,17 @@ if ($task) {
 $sourceExe = (Resolve-Path $AgentExe).Path
 if ($sourceExe -ne [System.IO.Path]::GetFullPath($targetExe)) {
     Copy-Item $sourceExe $targetExe -Force
+}
+
+# Pozostalosc po instalacji w drugim Program Files (np. po uruchomieniu
+# skryptu z 32-bitowego PowerShella) tylko myli przy diagnozie.
+foreach ($inny in @("$env:ProgramFiles(x86)\CMDB Agent", "${env:ProgramFiles}\CMDB Agent",
+                    "$env:ProgramW6432\CMDB Agent")) {
+    if ($inny -and (Test-Path $inny) -and
+        ([System.IO.Path]::GetFullPath($inny) -ne [System.IO.Path]::GetFullPath($InstallDir))) {
+        Remove-Item $inny -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Step "  usunieto stara instalacje: $inny"
+    }
 }
 if (-not $TrayExe) {
     $candidate = Join-Path (Split-Path $AgentExe -Parent) "cmdb-agent-tray.exe"

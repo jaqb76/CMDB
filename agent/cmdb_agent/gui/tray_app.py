@@ -96,7 +96,7 @@ class TrayApp:
     def open_settings(self) -> None:
         """Ustawienia wymagaja zapisu do katalogu programu, wiec zawsze
         uruchamiamy je jako osobny, podniesiony proces."""
-        if not run_agent_elevated(["configure"]):
+        if not run_agent_elevated(["configure"], gui=True):
             messagebox.showwarning(
                 "Ustawienia",
                 "Zmiana ustawien wymaga uprawnien administratora.\n\n"

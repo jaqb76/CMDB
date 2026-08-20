@@ -35,13 +35,17 @@ def is_admin() -> bool:
         return False
 
 
-def agent_executable() -> tuple[str, list[str]]:
+def agent_executable(gui: bool = False) -> tuple[str, list[str]]:
     """Zwraca (program, argumenty poprzedzajace) do uruchomienia agenta.
 
-    W wersji spakowanej PyInstallerem obok ikony lezy cmdb-agent.exe.
-    W uruchomieniu ze zrodel wracamy do "python -m cmdb_agent.main".
+    gui=True wskazuje plik zawierajacy warstwe graficzna. Ma to znaczenie,
+    bo cmdb-agent.exe budowany jest bez tkintera - chodzi jako SYSTEM na
+    kazdej maszynie i nie ma powodu wozic ze soba bibliotek okienkowych.
+    Okno ustawien otwiera wiec ten sam plik, ktory obsluguje ikone.
     """
     if getattr(sys, "frozen", False):
+        if gui:
+            return sys.executable, []
         candidate = Path(sys.executable).parent / ("cmdb-agent.exe" if is_windows() else "cmdb-agent")
         if candidate.is_file():
             return str(candidate), []
@@ -85,7 +89,9 @@ def run_agent(
     )
 
 
-def run_agent_elevated(args: list[str], config_path: Path | None = None) -> bool:
+def run_agent_elevated(
+    args: list[str], config_path: Path | None = None, gui: bool = False
+) -> bool:
     """Uruchamia agenta z podniesieniem uprawnien (okno UAC).
 
     Zwraca True, jesli uzytkownik zaakceptowal monit. Nie czekamy na wynik -
@@ -96,7 +102,7 @@ def run_agent_elevated(args: list[str], config_path: Path | None = None) -> bool
         result = run_agent(args, config_path)
         return result.returncode == 0
 
-    program, prefix = agent_executable()
+    program, prefix = agent_executable(gui=gui)
     parameters = list(prefix)
     if config_path:
         parameters += ["--config", str(config_path)]

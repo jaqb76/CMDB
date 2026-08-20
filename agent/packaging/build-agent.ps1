@@ -21,7 +21,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $OutputDir = "$PSScriptRoot\..\dist",
+    [string] $OutputDir,
     # Podpisanie pliku jest mocno zalecane: bez niego SmartScreen i czesc
     # systemow EDR beda blokowac uruchomienie agenta.
     [string] $SignCertThumbprint,
@@ -33,7 +33,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$agentRoot = Resolve-Path "$PSScriptRoot\.."
+
+# $PSScriptRoot bywa pusty w bloku param(), a wtedy "$PSScriptRoot\..\dist"
+# rozwija sie do "\..\dist" i pliki laduja w katalogu glownym dysku.
+# Sciezki liczymy dopiero tutaj, gdzie zmienna jest juz ustawiona.
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$agentRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
+if (-not $OutputDir) { $OutputDir = Join-Path $agentRoot "dist" }
+New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+$OutputDir = (Resolve-Path $OutputDir).Path
 
 Write-Host "== Budowanie agenta CMDB ==" -ForegroundColor Cyan
 
@@ -60,7 +68,11 @@ try {
         --specpath "$OutputDir\build" `
         --console `
         --noupx `
-        cmdb_agent\main.py
+        --paths . `
+        --exclude-module tkinter `
+        --exclude-module pystray `
+        --exclude-module PIL `
+        packaging\agent_entry.py
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller zakonczyl sie bledem (cmdb-agent)" }
 
     # 2. Ikona w zasobniku - --windowed, zeby nie migalo okno konsoli.
@@ -119,7 +131,7 @@ if ($Installer) {
     }
     else {
         Write-Host "Buduje instalator..." -ForegroundColor Cyan
-        & $iscc (Join-Path $PSScriptRoot "cmdb-agent.iss")
+        & $iscc (Join-Path $scriptDir "cmdb-agent.iss")
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup zakonczyl sie bledem" }
         $setup = Get-ChildItem (Join-Path $OutputDir "CMDB-Agent-Setup-*.exe") |
                  Sort-Object LastWriteTime -Descending | Select-Object -First 1

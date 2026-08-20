@@ -38,3 +38,6 @@ agent/build/
 .DS_Store
 .idea/
 .vscode/
+
+# Wyniki budowania agenta
+agent/dist/
