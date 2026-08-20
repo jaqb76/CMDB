@@ -74,7 +74,13 @@ def powershell_executable() -> str:
 
 
 def run_powershell(script: str, timeout: int = 180):
-    """Uruchamia skrypt i zwraca sparsowany JSON (dict albo lista)."""
+    """Uruchamia skrypt i zwraca sparsowany JSON (dict albo lista).
+
+    Wynik dekodujemy jako UTF-8. Preambula ustawia [Console]::OutputEncoding,
+    co sprawdzono na Windows 11 z polska strona kodowa: nazwy kont z polskimi
+    znakami ("Gosc", "Konto domyslne") wracaja nietkniete takze przy
+    przekierowaniu stdout do potoku.
+    """
     encoded = base64.b64encode((_PS_PREAMBLE + script).encode("utf-16-le")).decode("ascii")
     stdout = run_command(
         [
@@ -154,7 +160,7 @@ class WindowsCollector(BaseCollector):
                   os_arch       = $os.OSArchitecture;
                   os_install    = (Fmt-Date $os.InstallDate);
                   os_boot       = (Fmt-Date $os.LastBootUpTime);
-                  os_locale     = $os.Locale;
+                  os_locale     = $(try { (Get-Culture).Name } catch { $os.Locale });
                   os_language   = $os.OSLanguage;
                   os_serial     = $os.SerialNumber;
                   os_free_mem   = [string]$os.FreePhysicalMemory;
@@ -309,8 +315,8 @@ class WindowsCollector(BaseCollector):
                  slot = $_.DeviceLocator; bank = $_.BankLabel;
                  capacity = [string]$_.Capacity; speed = $_.Speed;
                  manufacturer = $_.Manufacturer; serial = $_.SerialNumber;
-                 part = $_.PartNumber; type = $_.SMBIOSMemoryType } }) }
-            | ConvertTo-Json -Depth 4 -Compress
+                 part = $_.PartNumber; type = $_.SMBIOSMemoryType } }) } |
+            ConvertTo-Json -Depth 4 -Compress
             """
         )
         modules = []
@@ -344,8 +350,8 @@ class WindowsCollector(BaseCollector):
             $logical = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { @{
                  mount = $_.DeviceID; label = $_.VolumeName; fs = $_.FileSystem;
                  size = [string]$_.Size; free = [string]$_.FreeSpace } });
-            @{ physical = $physical; logical = $logical; media = $media }
-            | ConvertTo-Json -Depth 5 -Compress
+            @{ physical = $physical; logical = $logical; media = $media } |
+            ConvertTo-Json -Depth 5 -Compress
             """
         )
         media_map = result.get("media") or {} if isinstance(result, dict) else {}
@@ -417,8 +423,8 @@ class WindowsCollector(BaseCollector):
                    ips = @($_.IPAddress); gateways = @($_.DefaultIPGateway);
                    dns = @($_.DNSServerSearchOrder); dhcp = $_.DHCPEnabled;
                    dhcp_server = $_.DHCPServer;
-                   up = $(if($meta){$meta.up}else{$true}) } }) }
-            | ConvertTo-Json -Depth 5 -Compress
+                   up = $(if($meta){$meta.up}else{$true}) } }) } |
+            ConvertTo-Json -Depth 5 -Compress
             """
         )
         interfaces = []
@@ -505,8 +511,8 @@ class WindowsCollector(BaseCollector):
             """
             @{ items = @(Get-CimInstance Win32_Service | ForEach-Object { @{
                  name = $_.Name; display = $_.DisplayName; state = $_.State;
-                 start = $_.StartMode; account = $_.StartName; path = $_.PathName } }) }
-            | ConvertTo-Json -Depth 4 -Compress
+                 start = $_.StartMode; account = $_.StartName; path = $_.PathName } }) } |
+            ConvertTo-Json -Depth 4 -Compress
             """
         )
         services = [
@@ -668,18 +674,25 @@ class WindowsCollector(BaseCollector):
             """
         )
         console_user = clean(result.get("console")) if isinstance(result, dict) else None
+        console_key = console_user.lower() if console_user else None
+
+        # Windows zwraca te sama nazwe rozna wielkoscia liter (NEWNODE\jaqb7
+        # kontra NewNode\jaqb7) - bez porownania bez wzgledu na wielkosc
+        # ten sam uzytkownik trafial na liste dwa razy.
         sessions = []
+        seen = set()
         for user in items_of(result):
             name = clean(user)
-            if not name:
+            if not name or name.lower() in seen:
                 continue
+            seen.add(name.lower())
             sessions.append(
                 {
                     "user": name,
-                    "session_type": "konsola" if name == console_user else "sesja",
+                    "session_type": "konsola" if name.lower() == console_key else "sesja",
                 }
             )
-        if console_user and not any(s["user"] == console_user for s in sessions):
+        if console_key and console_key not in seen:
             sessions.append({"user": console_user, "session_type": "konsola"})
         return self.limit(sessions)
 

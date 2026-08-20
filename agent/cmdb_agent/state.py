@@ -11,7 +11,6 @@ import logging
 import os
 import subprocess
 import sys
-import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -44,10 +43,16 @@ class AgentState:
 
 
 def load_state(path: Path) -> AgentState:
-    if not path.is_file():
-        return AgentState()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return AgentState()
+    except PermissionError:
+        # Plik zawiera poswiadczenie maszyny, wiec czyta go tylko SYSTEM
+        # i administratorzy. Dla pozostalych agent zachowuje sie jak
+        # niezarejestrowany - stan i tak pokazuje im plik statusu.
+        log.debug("brak dostepu do %s - biezacy uzytkownik nie odczyta stanu", path)
+        return AgentState()
     except (json.JSONDecodeError, OSError) as exc:
         log.warning("nie udalo sie odczytac stanu (%s) - traktuje jako brak rejestracji", exc)
         return AgentState()
@@ -63,22 +68,49 @@ def load_state(path: Path) -> AgentState:
         return AgentState()
 
 
+class StateWriteError(RuntimeError):
+    """Nie udalo sie zapisac stanu - zwykle brak uprawnien."""
+
+
 def save_state(path: Path, state: AgentState) -> None:
+    """Zapisuje stan atomowo, z dostepem tylko dla SYSTEM i administratorow.
+
+    Katalog zawezamy PRZED zapisem, zeby plik tymczasowy z poswiadczeniem
+    odziedziczyl restrykcyjne uprawnienia juz w chwili powstania - nie ma
+    wtedy okna, w ktorym token lezy szeroko dostepny.
+
+    Nie uzywamy tempfile.mkstemp: gdy proces nie ma prawa zapisu w katalogu,
+    mkstemp na Windows nie zglasza bledu, tylko ponawia probe do 10 000 razy
+    (os.access sprawdza atrybut "tylko do odczytu", a nie liste ACL). Agent
+    sprawia wtedy wrazenie zawieszonego. Jedna proba przez os.open daje
+    natychmiastowy, zrozumialy blad.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     _harden_directory(path.parent)
 
-    # Zapis atomowy: plik tymczasowy w tym samym katalogu + rename.
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".agent-state-")
-    tmp_path = Path(tmp_name)
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
-        if os.name == "posix":
-            os.fchmod(fd, 0o600)
+        tmp_path.unlink(missing_ok=True)
+        fd = os.open(tmp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except PermissionError as exc:
+        raise StateWriteError(
+            f"brak uprawnien do zapisu w {path.parent}. Katalog z poswiadczeniem "
+            "agenta jest zastrzezony dla SYSTEM i administratorow - uruchom "
+            "agenta jako administrator albo przez zadanie harmonogramu."
+        ) from exc
+    except OSError as exc:
+        raise StateWriteError(
+            f"nie moge utworzyc pliku tymczasowego w {path.parent}: {exc}"
+        ) from exc
+
+    try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(asdict(state), handle, indent=2)
         os.replace(tmp_path, path)
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
+
     _harden_file(path)
 
 

@@ -70,6 +70,11 @@ class AgentConfig:
     data_dir: Path = field(default_factory=default_data_dir)
     log_level: str = "INFO"
 
+    # Ustawiane, gdy plik konfiguracyjny istnieje, ale biezacy uzytkownik nie
+    # ma do niego dostepu - agent dziala dalej na wartosciach domyslnych,
+    # a polecenie moze o tym poinformowac.
+    config_access_denied: Path | None = None
+
     @property
     def state_path(self) -> Path:
         return self.data_dir / "agent-state.json"
@@ -117,12 +122,25 @@ def load_config(config_path: Path | None = None, overrides: dict | None = None) 
     config = AgentConfig()
     path = config_path or default_config_path()
 
-    if path.is_file():
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raw_text = None
+    except PermissionError:
+        # Sytuacja normalna na Windows: agent.conf zawiera token firmowy, wiec
+        # instalator zaweza do niego dostep do SYSTEM i administratorow.
+        # Zwykly uzytkownik uruchamiajacy 'show' czy 'status' ma dostac
+        # zrozumiala informacje, a nie slad stosu.
+        config.config_access_denied = path
+        raw_text = None
+    except OSError as exc:
+        raise ValueError(f"nie moge odczytac pliku konfiguracyjnego {path}: {exc}") from exc
+
+    if raw_text is not None:
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            _apply(config, json.loads(raw_text))
         except json.JSONDecodeError as exc:
             raise ValueError(f"niepoprawny plik konfiguracyjny {path}: {exc}") from exc
-        _apply(config, raw)
 
     env_values = {
         field_name: os.environ[env_name]

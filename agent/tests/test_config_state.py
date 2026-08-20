@@ -4,11 +4,12 @@ from __future__ import annotations
 import json
 import os
 import stat
+import time
 
 import pytest
 
 from cmdb_agent.config import AgentConfig, load_config
-from cmdb_agent.state import AgentState, load_state, save_state
+from cmdb_agent.state import AgentState, StateWriteError, load_state, save_state
 
 
 def test_http_server_url_is_rejected():
@@ -61,6 +62,12 @@ def test_precedence_file_then_env_then_cli(tmp_path, monkeypatch):
 
 
 def test_state_round_trip_and_permissions(tmp_path):
+    """Zapis i odczyt stanu, z uprawnieniami zawezonymi do wlasciciela.
+
+    Na Windows katalog jest zastrzegany dla SYSTEM i administratorow, wiec
+    zwykly uzytkownik dostaje czytelny blad zamiast zapisu - to zamierzone,
+    bo w pliku lezy poswiadczenie maszyny.
+    """
     path = tmp_path / "sub" / "agent-state.json"
     state = AgentState(
         agent_token="cmdb_agt_abcdefghijkl_sekret",
@@ -68,7 +75,13 @@ def test_state_round_trip_and_permissions(tmp_path):
         tenant_slug="firma",
         machine_id="win-uuid-1",
     )
-    save_state(path, state)
+
+    try:
+        save_state(path, state)
+    except StateWriteError as exc:
+        assert os.name == "nt", "na POSIX zapis do wlasnego katalogu musi sie udac"
+        assert "administrator" in str(exc).lower()
+        return
 
     loaded = load_state(path)
     assert loaded.agent_token == state.agent_token
@@ -79,6 +92,19 @@ def test_state_round_trip_and_permissions(tmp_path):
         mode = stat.S_IMODE(path.stat().st_mode)
         assert mode == 0o600, oct(mode)
         assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+
+
+def test_save_state_fails_fast_without_permissions(tmp_path):
+    """Regresja: przy braku uprawnien tempfile.mkstemp na Windows nie zglaszal
+    bledu, tylko ponawial probe do 10 000 razy - agent wygladal na zawieszony.
+    Zapis ma sie konczyc natychmiast, powodzeniem albo czytelnym bledem."""
+    path = tmp_path / "sub" / "agent-state.json"
+    started = time.monotonic()
+    try:
+        save_state(path, AgentState(agent_token="t", asset_id="a"))
+    except StateWriteError:
+        pass
+    assert time.monotonic() - started < 5.0, "zapis stanu trwal podejrzanie dlugo"
 
 
 def test_corrupted_state_is_treated_as_not_enrolled(tmp_path):

@@ -17,6 +17,11 @@ server/.quickstart/
 .env
 *.env.local
 
+# Raporty diagnostyczne zawieraja realny inwentarz maszyny:
+# konta, SID-y, adresy MAC, liste oprogramowania. Nie do repozytorium.
+raport-testowy.json
+raport*.json
+
 # Agent: stan i poswiadczenia (NIGDY do repozytorium)
 agent-state.json
 agent/dist/

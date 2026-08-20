@@ -26,7 +26,7 @@ from .config import AgentConfig, default_config_path, load_config
 from .report import build_report, report_hash, report_size
 from . import status
 from .spool import load_report, pending_reports, spool_report
-from .state import AgentState, load_state, save_state
+from .state import AgentState, StateWriteError, load_state, save_state
 from .transport import ApiError, CertificatePinError, CmdbClient, TransportError
 
 log = logging.getLogger("cmdb_agent")
@@ -355,6 +355,17 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(args.config, overrides)
     setup_logging(config)
 
+    if config.config_access_denied is not None:
+        log.warning(
+            "brak dostepu do %s - plik zawiera token firmowy i jest zastrzezony "
+            "dla SYSTEM i administratorow",
+            config.config_access_denied,
+        )
+        log.warning(
+            "dziala na ustawieniach domyslnych; aby uzyc zapisanej konfiguracji, "
+            "uruchom wiersz polecen jako administrator"
+        )
+
     if args.command == "show":
         return do_show(config, getattr(args, "out", None))
 
@@ -392,6 +403,9 @@ def main(argv: list[str] | None = None) -> int:
     except TransportError as exc:
         log.error("brak lacznosci z serwerem: %s", exc)
         return 3
+    except StateWriteError as exc:
+        log.error("%s", exc)
+        return 1
     except Exception as exc:  # w dzienniku agenta lepszy komunikat niz goly traceback
         log.exception("nieoczekiwany blad agenta: %s", exc)
         return 1
