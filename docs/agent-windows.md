@@ -245,12 +245,22 @@ przed zapisaniem konfiguracji) i w menu ikony w zasobniku.
 
 Trzy przyczyny, które to najczęściej wyłapuje:
 
-| Objaw w `doctor` | Przyczyna | Co zrobić |
-|---|---|---|
-| TCP: „brak odpowiedzi" po pełnym limicie | zapora odrzuca pakiety po cichu | reguła w Zaporze Windows po stronie serwera |
-| TCP na IPv6 nieudane, IPv4 udane | `localhost` rozwiązuje się na `::1`, serwer słucha tylko IPv4 | wpisz adres IPv4 wprost: `https://127.0.0.1:8443` |
-| TLS: „certyfikat niezaufany" | certyfikat self-signed | wskaż plik CA (`--ca-bundle` / pole w oknie) |
-| TLS: „nie obejmuje nazwy" | użyta nazwa nie jest w certyfikacie | użyj nazwy lub adresu z certyfikatu |
+Wynik ma trzy poziomy: `OK`, `UWAGA` (działa, ale coś kosztuje czas)
+i `BŁĄD` (nie działa). O werdykcie decydują wyłącznie błędy — nieudana próba
+na jeden z kilku adresów nie jest awarią, bo klient przechodzi do następnego.
+
+| Objaw w `doctor` | Poziom | Przyczyna | Co zrobić |
+|---|---|---|---|
+| TCP: „brak odpowiedzi" po pełnym limicie | BŁĄD | zapora odrzuca pakiety po cichu | reguła w Zaporze Windows po stronie serwera |
+| TCP na IPv6 nieudane, IPv4 udane | UWAGA | `localhost` rozwiązuje się też na `::1`, serwer słucha tylko IPv4 | wpisz adres IPv4 wprost: `https://127.0.0.1:8443` |
+| TCP: wszystkie adresy odmawiają | BŁĄD | serwer nie działa lub zły port | sprawdź, czy serwer wystartował |
+| TLS: „certyfikat niezaufany" | BŁĄD | certyfikat self-signed | wskaż plik CA (`--ca-bundle` / pole w oknie) |
+| TLS: „nie obejmuje nazwy" | BŁĄD | użyta nazwa nie jest w certyfikacie | użyj nazwy lub adresu z certyfikatu |
+
+Przypadek z IPv6 wygląda niegroźnie, ale na Windows odrzucenie połączenia na
+`::1` potrafi kosztować ~2 s — i to przy **każdym** żądaniu, bo agent za każdym
+razem próbuje najpierw IPv6. `doctor` podaje zmierzone opóźnienie, jeśli
+przekracza pół sekundy.
 
 ### Pozostałe polecenia
 

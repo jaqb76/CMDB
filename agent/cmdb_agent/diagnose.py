@@ -28,16 +28,36 @@ from .transport import build_ssl_context
 PROBE_TIMEOUT = 5.0
 
 
+OK = "ok"
+WARN = "warn"
+ERROR = "error"
+
+_MARKS = {OK: "OK   ", WARN: "UWAGA", ERROR: "BLAD "}
+
+
 @dataclass
 class Step:
     name: str
-    ok: bool
+    status: str
     detail: str
     seconds: float
 
+    @property
+    def ok(self) -> bool:
+        return self.status == OK
+
+    @property
+    def is_error(self) -> bool:
+        """Tylko to przesadza o werdykcie.
+
+        Nieudana proba na jednym z kilku adresow nie jest bledem, jesli inny
+        adres dziala - klient i tak przechodzi do kolejnego. Traktowanie jej
+        jak awarii dawalo werdykt "polaczenie nie dziala" mimo dzialajacego
+        polaczenia."""
+        return self.status == ERROR
+
     def render(self) -> str:
-        mark = "OK  " if self.ok else "BLAD"
-        return f"  [{mark}] {self.name:<34} {self.seconds:6.2f} s  {self.detail}"
+        return f"  [{_MARKS[self.status]}] {self.name:<34} {self.seconds:6.2f} s  {self.detail}"
 
 
 def _timed(func):
@@ -54,13 +74,13 @@ def resolve(host: str, port: int) -> tuple[list[tuple], Step]:
 
     result, error, seconds = _timed(do)
     if error is not None:
-        return [], Step("Rozwiazanie nazwy", False, f"{type(error).__name__}: {error}", seconds)
+        return [], Step("Rozwiazanie nazwy", ERROR, f"{type(error).__name__}: {error}", seconds)
 
     families = []
     for family, _, _, _, sockaddr in result:
         label = "IPv6" if family == socket.AF_INET6 else "IPv4"
         families.append(f"{sockaddr[0]} ({label})")
-    return result, Step("Rozwiazanie nazwy", True, ", ".join(families), seconds)
+    return result, Step("Rozwiazanie nazwy", OK, ", ".join(families), seconds)
 
 
 def probe_tcp(addrinfo: list[tuple]) -> tuple[tuple | None, list[Step]]:
@@ -82,17 +102,17 @@ def probe_tcp(addrinfo: list[tuple]) -> tuple[tuple | None, list[Step]]:
 
         _, error, seconds = _timed(do)
         if error is None:
-            steps.append(Step(name, True, "polaczono", seconds))
+            steps.append(Step(name, OK, "polaczono", seconds))
             if working is None:
                 working = (family, socktype, proto, sockaddr)
         elif isinstance(error, socket.timeout):
             steps.append(
-                Step(name, False, "brak odpowiedzi - zapora odrzuca pakiety po cichu", seconds)
+                Step(name, ERROR, "brak odpowiedzi - zapora odrzuca pakiety po cichu", seconds)
             )
         elif isinstance(error, ConnectionRefusedError):
-            steps.append(Step(name, False, "odmowa - nikt nie nasluchuje na tym adresie", seconds))
+            steps.append(Step(name, ERROR, "odmowa - nikt nie nasluchuje na tym adresie", seconds))
         else:
-            steps.append(Step(name, False, f"{type(error).__name__}: {error}", seconds))
+            steps.append(Step(name, ERROR, f"{type(error).__name__}: {error}", seconds))
     return working, steps
 
 
@@ -109,7 +129,7 @@ def probe_tls(host: str, sockaddr, family, ca_bundle: str | None) -> Step:
     if error is None:
         version, cert = result
         subject = dict(x[0] for x in cert.get("subject", ())) if cert else {}
-        return Step("Uzgodnienie TLS", True, f"{version}, CN={subject.get('commonName', '?')}", seconds)
+        return Step("Uzgodnienie TLS", OK, f"{version}, CN={subject.get('commonName', '?')}", seconds)
 
     if isinstance(error, ssl.SSLCertVerificationError):
         # Rozrozniamy przyczyny - inaczej odsylamy uzytkownika po zly plik CA,
@@ -121,8 +141,8 @@ def probe_tls(host: str, sockaddr, family, ca_bundle: str | None) -> Step:
             detail = "certyfikat serwera wygasl"
         else:
             detail = "certyfikat niezaufany - wskaz plik CA serwera (--ca-bundle)"
-        return Step("Uzgodnienie TLS", False, detail, seconds)
-    return Step("Uzgodnienie TLS", False, f"{type(error).__name__}: {error}", seconds)
+        return Step("Uzgodnienie TLS", ERROR, detail, seconds)
+    return Step("Uzgodnienie TLS", ERROR, f"{type(error).__name__}: {error}", seconds)
 
 
 def probe_health(base_url: str, ca_bundle: str | None) -> Step:
@@ -137,10 +157,10 @@ def probe_health(base_url: str, ca_bundle: str | None) -> Step:
 
     result, error, seconds = _timed(do)
     if error is None:
-        return Step("Odpowiedz serwera CMDB", True, f"schema_version={result.get('schema_version')}", seconds)
+        return Step("Odpowiedz serwera CMDB", OK, f"schema_version={result.get('schema_version')}", seconds)
     if isinstance(error, urllib.error.HTTPError):
-        return Step("Odpowiedz serwera CMDB", False, f"HTTP {error.code}", seconds)
-    return Step("Odpowiedz serwera CMDB", False, f"{type(error).__name__}: {error}", seconds)
+        return Step("Odpowiedz serwera CMDB", ERROR, f"HTTP {error.code}", seconds)
+    return Step("Odpowiedz serwera CMDB", ERROR, f"{type(error).__name__}: {error}", seconds)
 
 
 def run_diagnostics(server_url: str, ca_bundle: str | None = None) -> tuple[list[Step], list[str]]:
@@ -153,9 +173,9 @@ def run_diagnostics(server_url: str, ca_bundle: str | None = None) -> tuple[list
     hints: list[str] = []
 
     if parsed.scheme != "https":
-        steps.append(Step("Adres serwera", False, "agent wymaga https://", 0.0))
+        steps.append(Step("Adres serwera", ERROR, "agent wymaga https://", 0.0))
         return steps, ["Popraw adres serwera - agent nie wysyla danych po http."]
-    steps.append(Step("Adres serwera", True, f"{host}:{port}", 0.0))
+    steps.append(Step("Adres serwera", OK, f"{host}:{port}", 0.0))
 
     addrinfo, resolve_step = resolve(host, port)
     steps.append(resolve_step)
@@ -164,17 +184,31 @@ def run_diagnostics(server_url: str, ca_bundle: str | None = None) -> tuple[list
         return steps, hints
 
     working, tcp_steps = probe_tcp(addrinfo)
+
+    # Jesli ktorykolwiek adres dziala, nieudane proby na pozostale nie sa
+    # awaria - klient przechodzi do kolejnego adresu z listy. Kosztuja jednak
+    # czas przy KAZDYM zadaniu, wiec zglaszamy je jako ostrzezenie.
+    wasted = 0.0
+    if working is not None:
+        for step in tcp_steps:
+            if step.status == ERROR:
+                step.status = WARN
+                wasted = max(wasted, step.seconds)
     steps.extend(tcp_steps)
 
-    failed_v6 = [s for s in tcp_steps if not s.ok and "IPv6" in s.name]
-    ok_v4 = [s for s in tcp_steps if s.ok and "IPv4" in s.name]
-    if failed_v6 and ok_v4:
-        hints.append(
-            "Nazwa rozwiazuje sie takze na IPv6, gdzie serwer nie nasluchuje. "
-            "Wpisz w agencie adres IPv4 wprost (np. https://127.0.0.1:8443), "
-            "zeby uniknac czekania na nieudana probe."
+    skipped = [s for s in tcp_steps if s.status == WARN]
+    if skipped:
+        families = ", ".join(s.name.replace("Polaczenie TCP ", "") for s in skipped)
+        hint = (
+            f"Nazwa rozwiazuje sie takze na {families}, gdzie serwer nie nasluchuje. "
+            "Polaczenie dziala, ale agent traci czas na nieudana probe"
         )
-    if any(not s.ok and "zapora" in s.detail for s in tcp_steps):
+        if wasted >= 0.5:
+            hint += f" - okolo {wasted:.1f} s przy kazdym zadaniu"
+        hint += ". Wpisz adres IPv4 wprost (np. https://127.0.0.1:8443), zeby to pominac."
+        hints.append(hint)
+
+    if any(s.status == ERROR and "zapora" in s.detail for s in tcp_steps):
         hints.append(
             "Brak odpowiedzi na TCP zwykle oznacza regule zapory odrzucajaca pakiety. "
             "Sprawdz Zapore Windows Defender po stronie serwera."
@@ -212,9 +246,16 @@ def render_report(server_url: str, ca_bundle: str | None = None) -> tuple[str, b
     lines = [f"\nDiagnostyka polaczenia z {server_url}\n"]
     lines += [step.render() for step in steps]
 
-    healthy = all(step.ok for step in steps)
+    healthy = not any(step.is_error for step in steps)
+    warned = any(step.status == WARN for step in steps)
+
     lines.append("")
-    lines.append("  Wynik: polaczenie sprawne." if healthy else "  Wynik: polaczenie NIE dziala.")
+    if not healthy:
+        lines.append("  Wynik: polaczenie NIE dziala.")
+    elif warned:
+        lines.append("  Wynik: polaczenie dziala, ale da sie je przyspieszyc.")
+    else:
+        lines.append("  Wynik: polaczenie sprawne.")
     for hint in hints:
         lines.append(f"\n  Podpowiedz: {hint}")
     lines.append("")

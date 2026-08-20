@@ -102,11 +102,57 @@ def test_healthy_connection_passes_every_step(tls_server, monkeypatch):
     # Serwer testowy konczy na TLS - krok HTTP pomijamy.
     monkeypatch.setattr(
         diagnose, "probe_health",
-        lambda url, ca: diagnose.Step("Odpowiedz serwera CMDB", True, "schema_version=1", 0.01),
+        lambda url, ca: diagnose.Step("Odpowiedz serwera CMDB", diagnose.OK, "schema_version=1", 0.01),
     )
     steps, hints = diagnose.run_diagnostics(f"https://127.0.0.1:{port}", ca_path)
     assert all(step.ok for step in steps), [s.render() for s in steps if not s.ok]
     assert hints == []
+
+
+def test_working_ipv4_is_not_reported_as_failure(tls_server, monkeypatch):
+    """Regresja ze zgloszenia: nazwa rozwiazywala sie na ::1 i 127.0.0.1,
+    proba na IPv6 konczyla sie odmowa, a mimo dzialajacego IPv4, TLS-a
+    i odpowiedzi serwera diagnostyka orzekala 'polaczenie NIE dziala'.
+    Klient przechodzi do kolejnego adresu, wiec to ostrzezenie, nie awaria."""
+    host, port, ca_path = tls_server
+    real_getaddrinfo = socket.getaddrinfo
+
+    def fake_getaddrinfo(*args, **kwargs):
+        ipv4 = real_getaddrinfo("127.0.0.1", port, proto=socket.IPPROTO_TCP)
+        ipv6 = [(socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("::1", port, 0, 0))]
+        return ipv6 + ipv4          # tak jak Windows: IPv6 pierwsze
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(
+        diagnose, "probe_health",
+        lambda url, ca: diagnose.Step("Odpowiedz serwera CMDB", diagnose.OK, "schema_version=1", 0.01),
+    )
+
+    steps, hints = diagnose.run_diagnostics(f"https://localhost:{port}", ca_path)
+
+    ipv6_step = [s for s in steps if "IPv6" in s.name]
+    assert ipv6_step and ipv6_step[0].status == diagnose.WARN
+    assert not any(step.is_error for step in steps), [s.render() for s in steps if s.is_error]
+    assert any("dziala" in h for h in hints)
+
+    report, healthy = diagnose.render_report(f"https://localhost:{port}", ca_path)
+    assert healthy is True
+    assert "NIE dziala" not in report
+    assert "UWAGA" in report
+
+
+def test_all_addresses_failing_is_still_an_error(monkeypatch):
+    """Degradacja dotyczy tylko sytuacji, w ktorej cos faktycznie dziala."""
+    monkeypatch.setattr(diagnose, "PROBE_TIMEOUT", 0.3)
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+
+    steps, _ = diagnose.run_diagnostics(f"https://127.0.0.1:{port}")
+    assert any(step.is_error for step in steps)
+    _, healthy = diagnose.render_report(f"https://127.0.0.1:{port}")
+    assert healthy is False
 
 
 def test_report_renders_and_reports_health():
@@ -140,7 +186,10 @@ def tls_server(tmp_path):
         .not_valid_before(now - datetime.timedelta(minutes=5))
         .not_valid_after(now + datetime.timedelta(days=1))
         .add_extension(
-            x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]),
+            x509.SubjectAlternativeName([
+                x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+                x509.DNSName("localhost"),
+            ]),
             critical=False,
         )
         .sign(key, hashes.SHA256())
