@@ -25,7 +25,9 @@ Przydatne przełączniki:
 | Przełącznik | Znaczenie |
 |---|---|
 | `--interval 4` | co ile godzin raportować (domyślnie 4) |
-| `--ca-bundle /ścieżka/ca.pem` | własne PKI zamiast systemowego magazynu |
+| `--ca-bundle /ścieżka/ca.pem` | własne PKI lub certyfikat self-signed zamiast systemowego magazynu |
+
+Certyfikat podany w `--ca-bundle` jest **kopiowany** do `/etc/cmdb-agent/ca.pem`, więc plik źródłowy (np. kopia w katalogu domowym albo w `/tmp`) można po instalacji skasować — agent go już nie potrzebuje.
 | `--no-processes` | nie zbieraj listy procesów |
 
 ## Cykl pracy

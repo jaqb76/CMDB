@@ -42,11 +42,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- warunki wstepne --------------------------------------------------------
-[[ $EUID -eq 0 ]] || blad "skrypt wymaga uprawnien roota (uzyj sudo) - agent czyta dane systemowe i zaklada usluge"
+# Argumenty sprawdzamy przed uprawnieniami: na ich zweryfikowanie sudo nie jest
+# potrzebne, a inaczej ktos bez sudo i bez adresu poprawialby bledy dwa razy.
 [[ -n "$SERWER" ]] || blad "podaj --server https://..."
 [[ -n "$TOKEN" ]] || blad "podaj --token cmdb_ent_..."
 [[ "$SERWER" == https://* ]] || blad "adres serwera musi zaczynac sie od https:// - agent nie wysyla danych po nieszyfrowanym polaczeniu"
 [[ "$TOKEN" == cmdb_ent_* ]] || blad "to nie wyglada na token rejestracyjny - powinien zaczynac sie od 'cmdb_ent_'"
+[[ -z "$CA_BUNDLE" || -f "$CA_BUNDLE" ]] || blad "nie znajduje pliku CA: $CA_BUNDLE"
+
+[[ $EUID -eq 0 ]] || blad "skrypt wymaga uprawnien roota (uzyj sudo) - agent czyta dane systemowe i zaklada usluge"
 
 command -v systemctl >/dev/null || blad "brak systemd - uruchamiaj agenta z crona: cmdb-agent run"
 PYTHON="$(command -v python3 || true)"
@@ -83,6 +87,19 @@ install -d -m 0700 "$KATALOG_DANYCH"
 # Status czyta zwykly uzytkownik, wiec trafia do osobnego podkatalogu -
 # w konfiguracji jest token firmowy, ktorego nikt poza rootem widziec nie ma.
 install -d -m 0755 "$KATALOG_DANYCH/public"
+
+# Certyfikat kopiujemy do siebie, zamiast zapisywac w konfiguracji sciezke
+# do pliku podanego przy instalacji. Ten plik bywa kopia w katalogu domowym
+# albo w /tmp - skasowanie go po instalacji zatrzymaloby agenta przy
+# nastepnym przebiegu, i to bledem o brakujacym pliku, a nie o certyfikacie.
+if [[ -n "$CA_BUNDLE" ]]; then
+    CEL_CA="$KATALOG_KONFIGURACJI/ca.pem"
+    if [[ "$(readlink -f "$CA_BUNDLE")" != "$(readlink -f "$CEL_CA" 2>/dev/null || echo brak)" ]]; then
+        install -m 0644 "$CA_BUNDLE" "$CEL_CA"
+    fi
+    CA_BUNDLE="$CEL_CA"
+    echo "    certyfikat CA  : $CEL_CA"
+fi
 
 KONFIGURACJA="$KATALOG_KONFIGURACJI/agent.conf"
 {
