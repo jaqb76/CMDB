@@ -34,6 +34,8 @@ CHASSIS_TYPES = {
 
 
 DRZEWO = Path("/proc/device-tree")
+# Separator lancuchow w drzewie urzadzen (bajt zerowy).
+ZEROWY = chr(0)
 
 
 def read_text(path: str | Path, default: str = "") -> str:
@@ -43,15 +45,70 @@ def read_text(path: str | Path, default: str = "") -> str:
         return default
 
 
+# Nazwy producentow z drzewa urzadzen sa skrotami ("brcm", "raspberrypi").
+# Nie da sie ich rozwinac algorytmicznie - to po prostu ustalone identyfikatory.
+PRODUCENCI_DT = {
+    "raspberrypi": "Raspberry Pi",
+    "brcm": "Broadcom",
+    "rockchip": "Rockchip",
+    "amlogic": "Amlogic",
+    "allwinner": "Allwinner",
+    "nvidia": "NVIDIA",
+    "qcom": "Qualcomm",
+    "ti": "Texas Instruments",
+    "fsl": "NXP",
+    "marvell": "Marvell",
+    "samsung": "Samsung",
+}
+
+
 def czytaj_drzewo(nazwa: str) -> str | None:
-    """Wartosc z drzewa urzadzen - tak identyfikuja sie plyty ARM.
+    """Pojedyncza wartosc z drzewa urzadzen - tak identyfikuja sie plyty ARM.
 
     DMI (/sys/class/dmi/id) to firmware x86; na Raspberry Pi i innych plytach
     ARM nie istnieje, wiec producent, model i numer seryjny trzeba czytac
-    stad. Pliki drzewa urzadzen koncza sie bajtem zerowym.
+    stad. Lancuchy w drzewie urzadzen sa zakonczone bajtem zerowym.
+    """
+    wartosci = czytaj_drzewo_lista(nazwa)
+    return wartosci[0] if wartosci else None
+
+
+def czytaj_drzewo_lista(nazwa: str) -> list[str]:
+    """Wartosci z wlasciwosci drzewa urzadzen bedacej lista lancuchow.
+
+    Wlasciwosc "compatible" zawiera kilka nazw ROZDZIELONYCH bajtem zerowym,
+    od najbardziej szczegolowej do najogolniejszej, np. "raspberrypi,5-model-b"
+    i "brcm,bcm2712". Usuwanie tych bajtow zamiast dzielenia po nich sklejalo
+    je w jeden nieczytelny ciag - w bazie ladowalo "raspberrypi,5-model-bbrcm,bcm2712".
     """
     wartosc = read_text(DRZEWO / nazwa)
-    return clean(wartosc.replace(chr(0), "").strip()) if wartosc else None
+    if not wartosc:
+        return []
+    czesci = (clean(czesc.strip()) for czesc in wartosc.split(ZEROWY))
+    return [czesc for czesc in czesci if czesc]
+
+
+def nazwa_producenta(identyfikator: str | None) -> str | None:
+    """Producent z identyfikatora w postaci "producent,model"."""
+    if not identyfikator or "," not in identyfikator:
+        return None
+    return PRODUCENCI_DT.get(identyfikator.split(",", 1)[0].lower())
+
+
+def opis_ukladu(compatible: list[str]) -> str | None:
+    """Czytelna nazwa ukladu SoC z listy "compatible".
+
+    Ostatni wpis jest najogolniejszy i to on opisuje uklad, a nie plyte:
+    dla Raspberry Pi 5 lista to ["raspberrypi,5-model-b", "brcm,bcm2712"].
+    """
+    if not compatible:
+        return None
+    uklad = compatible[-1]
+    producent, _, model = uklad.partition(",")
+    czytelny = PRODUCENCI_DT.get(producent.lower())
+    if not czytelny or not model:
+        return uklad
+    return f"{czytelny} {model.upper()}"
 
 
 def dane_cpuinfo() -> dict[str, str]:
@@ -134,12 +191,17 @@ class LinuxCollector(BaseCollector):
         numer = clean(read_text(DMI / "product_serial"))
 
         model_drzewa = czytaj_drzewo("model")
+        compatible = czytaj_drzewo_lista("compatible")
         if not product:
             # "Raspberry Pi 4 Model B Rev 1.4"
             product = model_drzewa or clean(cpuinfo.get("Model"))
-        if not vendor and model_drzewa:
-            # Producent nie jest podawany osobno - bierzemy pierwszy czlon modelu.
-            vendor = model_drzewa.split()[0] if model_drzewa.split() else None
+        if not vendor:
+            # Producent nie jest podawany osobno. Identyfikator z "compatible"
+            # ("raspberrypi,5-model-b") jest wiarygodniejszy niz zgadywanie
+            # z nazwy modelu - z "Raspberry Pi 5" pierwszy czlon to "Raspberry".
+            vendor = nazwa_producenta(compatible[0] if compatible else None)
+            if not vendor and model_drzewa:
+                vendor = model_drzewa.split()[0] or None
         if not numer:
             numer = czytaj_drzewo("serial-number") or clean(cpuinfo.get("Serial"))
 
@@ -150,7 +212,7 @@ class LinuxCollector(BaseCollector):
             "uuid": clean(read_text(DMI / "product_uuid")),
             "chassis": CHASSIS_TYPES.get(to_int(read_text(DMI / "chassis_type"))),
             "system_type": platform.machine(),
-            "board": clean(cpuinfo.get("Hardware")) or czytaj_drzewo("compatible"),
+            "board": clean(cpuinfo.get("Hardware")) or (", ".join(compatible) or None),
             "virtualization": self._detect_virtualization(vendor, product),
         }
 
@@ -214,13 +276,17 @@ class LinuxCollector(BaseCollector):
             cpuinfo = dane_cpuinfo()
             model = (
                 clean(cpuinfo.get("Hardware"))
-                or czytaj_drzewo("compatible")
+                or opis_ukladu(czytaj_drzewo_lista("compatible"))
                 or platform.machine()
             )
 
         return {
             "model": model,
-            "physical_cores": len(core_ids) or None,
+            # Na ARM /proc/cpuinfo nie podaje "physical id" ani "core id", wiec
+            # zbior jest pusty. Te rdzenie istnieja - po prostu nie ma tam
+            # informacji o wielowatkowosci, a bez niej liczba logicznych jest
+            # najlepszym dostepnym przyblizeniem.
+            "physical_cores": len(core_ids) or logical or os.cpu_count(),
             "logical_cores": logical or os.cpu_count(),
             "max_clock_mhz": max_mhz,
             "architecture": platform.machine(),
@@ -260,7 +326,7 @@ class LinuxCollector(BaseCollector):
             )
 
         logical = []
-        for line in read_text("/proc/mounts").splitlines():
+        for line in self._tablica_montowan().splitlines():
             parts = line.split()
             if len(parts) < 3:
                 continue
@@ -286,6 +352,20 @@ class LinuxCollector(BaseCollector):
                 }
             )
         return {"physical_disks": self.limit(physical), "logical_disks": self.limit(logical)}
+
+    def _tablica_montowan(self) -> str:
+        """Tablica montowan systemu, a nie ta widziana przez samego agenta.
+
+        Usluga agenta dziala z PrivateTmp i ReadWritePaths, wiec we wlasnej
+        przestrzeni nazw widzi dodatkowe montowania podpiete pod /tmp i pod
+        swoj katalog danych. Trafialy one do inwentarza jako osobne wolumeny
+        na tym samym dysku - czyli jako cos, czego na maszynie nie ma.
+
+        /proc/1/mounts to tablica procesu init, czyli faktyczny obraz systemu.
+        Gdy jest nieczytelna (agent bez roota, nietypowy kontener), zostaje
+        widok wlasny - lepszy niz brak danych.
+        """
+        return read_text("/proc/1/mounts") or read_text("/proc/mounts")
 
     def collect_os(self) -> dict:
         release = {}

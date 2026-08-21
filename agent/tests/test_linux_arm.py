@@ -69,9 +69,13 @@ def test_numer_seryjny_z_drzewa_urzadzen(raspberry):
     assert raspberry.collect_system()["serial_number"] == "100000003d1f9c21"
 
 
-def test_producent_wywiedziony_z_modelu(raspberry):
-    """Plyty ARM nie podaja producenta osobno."""
-    assert raspberry.collect_system()["manufacturer"] == "Raspberry"
+def test_producent_wywiedziony_z_identyfikatora(raspberry):
+    """Plyty ARM nie podaja producenta osobno.
+
+    Bierzemy go z identyfikatora "raspberrypi,4-model-b", a nie z nazwy
+    modelu - z "Raspberry Pi 4 Model B" pierwszy czlon to samo "Raspberry".
+    """
+    assert raspberry.collect_system()["manufacturer"] == "Raspberry Pi"
 
 
 def test_plyta_rozpoznana(raspberry):
@@ -127,3 +131,88 @@ def test_maszyna_x86_nadal_uzywa_dmi(monkeypatch):
     assert system["model"] == "OptiPlex 7090"
     assert system["serial_number"] == "SN-DELL-1"
     assert system["chassis"] == "Desktop"
+
+
+# --- Raspberry Pi 5: wlasciwosc "compatible" z kilkoma wpisami --------------
+#
+# Prawdziwe dane z Pi 5. Wlasciwosc "compatible" zawiera kilka nazw
+# ROZDZIELONYCH bajtem zerowym, od najbardziej szczegolowej do najogolniejszej.
+# Usuwanie tych bajtow zamiast dzielenia po nich sklejalo je w jeden ciag
+# i do bazy trafialo "raspberrypi,5-model-bbrcm,bcm2712".
+
+CPUINFO_PI5 = """processor\t: 0
+BogoMIPS\t: 108.00
+CPU implementer\t: 0x41
+CPU part\t: 0xd0b
+
+processor\t: 1
+processor\t: 2
+processor\t: 3
+
+Revision\t: d04170
+Serial\t\t: 05a350ebd1b50841
+Model\t\t: Raspberry Pi 5 Model B Rev 1.0
+"""
+
+DRZEWO_PI5 = {
+    "model": "Raspberry Pi 5 Model B Rev 1.0" + chr(0),
+    "serial-number": "05a350ebd1b50841" + chr(0),
+    "compatible": "raspberrypi,5-model-b" + chr(0) + "brcm,bcm2712" + chr(0),
+}
+
+
+@pytest.fixture
+def raspberry5(monkeypatch):
+    """Pi 5: brak DMI, brak pola Hardware w cpuinfo, lista w "compatible"."""
+    def fake_read_text(sciezka, default=""):
+        tekst = str(sciezka).replace("\\", "/")
+        if "/sys/class/dmi/" in tekst:
+            return default
+        if "/proc/cpuinfo" in tekst:
+            return CPUINFO_PI5
+        for nazwa, wartosc in DRZEWO_PI5.items():
+            if tekst.endswith(f"device-tree/{nazwa}"):
+                return wartosc
+        return default
+
+    monkeypatch.setattr(kolektor, "read_text", fake_read_text)
+    monkeypatch.setattr(kolektor.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(kolektor.shutil, "which", lambda _: None)
+    return kolektor.LinuxCollector(AgentConfig())
+
+
+def test_lista_compatible_nie_jest_sklejana(raspberry5):
+    """Sedno bledu: wpisy byly laczone w jeden nieczytelny ciag."""
+    assert kolektor.czytaj_drzewo_lista("compatible") == [
+        "raspberrypi,5-model-b",
+        "brcm,bcm2712",
+    ]
+
+
+def test_plyta_wymienia_oba_wpisy(raspberry5):
+    board = raspberry5.collect_system()["board"]
+    assert board == "raspberrypi,5-model-b, brcm,bcm2712"
+    assert "bbrcm" not in board, "wpisy zostaly sklejone"
+
+
+def test_procesor_opisany_ukladem_a_nie_plyta(raspberry5):
+    """Ostatni wpis "compatible" opisuje uklad, nie plyte."""
+    assert raspberry5.collect_cpu()["model"] == "Broadcom BCM2712"
+
+
+def test_producent_pi5(raspberry5):
+    assert raspberry5.collect_system()["manufacturer"] == "Raspberry Pi"
+
+
+def test_rdzenie_fizyczne_nie_sa_puste_na_arm(raspberry5):
+    """Na ARM cpuinfo nie ma "physical id" ani "core id". Te rdzenie istnieja -
+    zwracanie None sugerowaloby maszyne bez procesora."""
+    cpu = raspberry5.collect_cpu()
+    assert cpu["logical_cores"] == 4
+    assert cpu["physical_cores"] == 4
+
+
+def test_zaden_bajt_zerowy_nie_przechodzi(raspberry5):
+    for wartosc in raspberry5.collect_system().values():
+        if isinstance(wartosc, str):
+            assert chr(0) not in wartosc

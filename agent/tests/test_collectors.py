@@ -108,3 +108,67 @@ def test_value_conversions():
     assert to_bool(None, default=True) is True
     assert percent(50, 200) == 25.0
     assert percent(1, 0) is None
+
+
+# --- tablica montowan a piaskownica systemd ---------------------------------
+
+class _Statvfs:
+    """Minimalny wynik os.statvfs - tylko pola uzywane przez kolektor."""
+
+    f_blocks = 1000
+    f_frsize = 4096
+    f_bavail = 500
+
+def test_wolumeny_czytane_z_tablicy_systemu(monkeypatch, tmp_path):
+    """Usluga agenta dziala z PrivateTmp i ReadWritePaths, wiec we wlasnej
+    przestrzeni nazw widzi montowania, ktorych na maszynie nie ma. Trafialy
+    do inwentarza jako osobne wolumeny na tym samym dysku."""
+    from cmdb_agent.collectors import linux as kolektor
+    from cmdb_agent.config import AgentConfig
+
+    WIDOK_SYSTEMU = "/dev/nvme0n1p2 / ext4 rw 0 0\n"
+    WIDOK_AGENTA = (
+        WIDOK_SYSTEMU
+        + "/dev/nvme0n1p2 /tmp ext4 rw 0 0\n"
+        + "/dev/nvme0n1p2 /var/lib/cmdb-agent ext4 rw 0 0\n"
+    )
+
+    def fake_read_text(sciezka, default=""):
+        tekst = str(sciezka).replace("\\", "/")
+        if tekst.endswith("/proc/1/mounts"):
+            return WIDOK_SYSTEMU
+        if tekst.endswith("/proc/mounts"):
+            return WIDOK_AGENTA
+        return default
+
+    monkeypatch.setattr(kolektor, "read_text", fake_read_text)
+    monkeypatch.setattr(kolektor.glob, "glob", lambda _: [])
+    # os.statvfs nie istnieje na Windows, wiec podstawiamy wlasna atrape.
+    monkeypatch.setattr(kolektor.os, "statvfs", lambda _: _Statvfs(), raising=False)
+
+    wolumeny = kolektor.LinuxCollector(AgentConfig()).collect_storage()["logical_disks"]
+    punkty = [w["mount"] for w in wolumeny]
+    assert punkty == ["/"], f"montowania z piaskownicy trafily do inwentarza: {punkty}"
+
+
+def test_bez_dostepu_do_tablicy_systemu_zostaje_widok_wlasny(monkeypatch):
+    """Agent bez roota nie odczyta /proc/1/mounts. Lepiej pokazac widok
+    wlasny niz nie pokazac nic."""
+    from cmdb_agent.collectors import linux as kolektor
+    from cmdb_agent.config import AgentConfig
+
+    def fake_read_text(sciezka, default=""):
+        tekst = str(sciezka).replace("\\", "/")
+        if tekst.endswith("/proc/1/mounts"):
+            return ""                      # brak uprawnien
+        if tekst.endswith("/proc/mounts"):
+            return "/dev/sda1 / ext4 rw 0 0\n"
+        return default
+
+    monkeypatch.setattr(kolektor, "read_text", fake_read_text)
+    monkeypatch.setattr(kolektor.glob, "glob", lambda _: [])
+    # os.statvfs nie istnieje na Windows, wiec podstawiamy wlasna atrape.
+    monkeypatch.setattr(kolektor.os, "statvfs", lambda _: _Statvfs(), raising=False)
+
+    wolumeny = kolektor.LinuxCollector(AgentConfig()).collect_storage()["logical_disks"]
+    assert [w["mount"] for w in wolumeny] == ["/"]
