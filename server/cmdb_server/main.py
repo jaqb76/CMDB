@@ -73,32 +73,38 @@ SCIEZKA_ZDROWIA = "/api/v1/health"
 
 
 def _odswiez_paczke_agenta(settings) -> None:
-    """Odswieza paczke zrodel agenta, jesli obok leza jego zrodla.
+    """Przygotowuje paczke zrodel agenta do wydawania po HTTPS.
 
-    W repozytorium to wygoda: po zmianie w agencie serwer wyda nowa paczke bez
-    pamietania o osobnym poleceniu. W obrazie produkcyjnym zrodel nie ma -
-    paczka jest tam budowana przy tworzeniu obrazu i ta funkcja nic nie robi.
+    Dwie osobne sprawy, ktore latwo pomylic:
+
+    1. BUDOWANIE paczki ma sens tylko tam, gdzie leza zrodla agenta, czyli
+       w repozytorium. W obrazie produkcyjnym zrodel nie ma - paczka jest tam
+       budowana przy tworzeniu obrazu.
+    2. REJESTRACJA paczki jako wydania musi sie dziac ZAWSZE, niezaleznie od
+       tego, skad paczka pochodzi. Dopoki nie ma jej w magazynie wydan,
+       instalacja jednym poleceniem zwraca 503 - a wlasnie tak zachowywal sie
+       obraz produkcyjny, w ktorym plik lezal na dysku, ale nikt go nie wpisal.
     """
-    if not settings.agent_source_dir:
-        return
     from .services import pakiet
 
-    metadane = pakiet.zbuduj_jesli_trzeba(
-        Path(settings.agent_source_dir), pakiet.katalog_paczki()
-    )
+    katalog = pakiet.katalog_paczki()
+    metadane = None
+    if settings.agent_source_dir:
+        metadane = pakiet.zbuduj_jesli_trzeba(Path(settings.agent_source_dir), katalog)
+    else:
+        metadane = pakiet.opis(katalog)
+
     if metadane is None:
         log.warning(
-            "nie ma paczki zrodel agenta - instalacja po HTTPS bedzie zwracac blad"
+            "nie ma paczki zrodel agenta w %s - instalacja po HTTPS bedzie "
+            "zwracac blad", katalog,
         )
         return
 
-    # Paczka trafia do magazynu wydan, zeby podlegala tym samym regulom co plik
-    # dla Windows - z ustawianiem wersji aktywnej i wersja probna per firma.
     from .db import SessionLocal
 
     with SessionLocal() as db:
-        pakiet.zarejestruj(db, metadane, pakiet.katalog_paczki(),
-                           Path(settings.release_dir))
+        pakiet.zarejestruj(db, metadane, katalog, Path(settings.release_dir))
 
 
 def create_app() -> FastAPI:

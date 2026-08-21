@@ -574,3 +574,67 @@ def test_pozostale_api_nadal_wymaga_https(client, tenant_a, monkeypatch):
         follow_redirects=False,
     )
     assert odpowiedz.status_code == 403
+
+
+# --- obraz produkcyjny ------------------------------------------------------
+#
+# W obrazie produkcyjnym nie ma zrodel agenta - paczka jest budowana przy
+# tworzeniu obrazu i tylko lezy na dysku. Rejestracja jej jako wydania musi
+# sie mimo to odbyc, inaczej instalacja jednym poleceniem zwraca 503.
+
+def _paczka_bez_zrodel(tmp_path, monkeypatch):
+    """Odtwarza uklad z obrazu: paczka jest, zrodel nie ma."""
+    from cmdb_server.config import get_settings
+
+    zrodla = Path(__file__).resolve().parent.parent.parent / "agent"
+    if not (zrodla / "cmdb_agent").is_dir():
+        pytest.skip("zrodla agenta niedostepne")
+    katalog = tmp_path / "agent-pakiet"
+    metadane = pakiet.zbuduj(zrodla, katalog)
+    monkeypatch.setattr(pakiet, "katalog_paczki", lambda: katalog)
+    monkeypatch.setattr(get_settings(), "agent_source_dir", "")
+    return metadane
+
+
+def test_paczka_z_obrazu_jest_rejestrowana(client, tmp_path, monkeypatch):
+    from cmdb_server.config import get_settings
+    from cmdb_server.main import _odswiez_paczke_agenta
+
+    metadane = _paczka_bez_zrodel(tmp_path, monkeypatch)
+    _odswiez_paczke_agenta(get_settings())
+
+    with SessionLocal() as db:
+        wydanie = db.execute(
+            select(AgentRelease).where(AgentRelease.arch == pakiet.ARCH_ZRODLA)
+        ).scalar_one()
+    assert wydanie.version == metadane["version"]
+
+
+def test_instalacja_dziala_na_swiezym_serwerze(client, tenant_a, tmp_path, monkeypatch):
+    """Sedno: swiezo postawiony serwer musi wydac agenta bez zadnych krokow
+    recznych. Wczesniej zwracal 503, bo paczka lezala na dysku niewpisana."""
+    from cmdb_server.config import get_settings
+    from cmdb_server.main import _odswiez_paczke_agenta
+
+    _paczka_bez_zrodel(tmp_path, monkeypatch)
+    _odswiez_paczke_agenta(get_settings())
+
+    odpowiedz = client.get(
+        "/download/agent-linux.tar.gz", headers=_naglowek(tenant_a["token"])
+    )
+    assert odpowiedz.status_code == 200, odpowiedz.text
+
+
+def test_ponowny_start_nie_dubluje_wydania(client, tmp_path, monkeypatch):
+    from cmdb_server.config import get_settings
+    from cmdb_server.main import _odswiez_paczke_agenta
+
+    _paczka_bez_zrodel(tmp_path, monkeypatch)
+    _odswiez_paczke_agenta(get_settings())
+    _odswiez_paczke_agenta(get_settings())
+
+    with SessionLocal() as db:
+        ile = len(db.execute(
+            select(AgentRelease).where(AgentRelease.arch == pakiet.ARCH_ZRODLA)
+        ).scalars().all())
+    assert ile == 1
