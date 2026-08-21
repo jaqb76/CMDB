@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import io
+from pathlib import Path
+
+import pytest
 
 from cmdb_server.db import SessionLocal
 from cmdb_server.models import (
@@ -879,3 +882,47 @@ def test_odrzuca_plik_ktorego_architektury_nie_rozpoznajemy(client, make_user):
         follow_redirects=False,
     )
     assert odpowiedz.status_code == 400
+
+
+# --- widocznosc agenta dla Linuksa ------------------------------------------
+#
+# Agent dla Linuksa jest wydawany jako zrodla, a nie plik wykonywalny, wiec
+# nie ma go w magazynie wydan. Strona pokazywala przez to same wydania
+# windowsowe i sprawiala wrazenie, ze agenta dla Linuksa w ogole nie ma.
+
+def test_strona_wersji_pokazuje_paczke_zrodel(client, make_user, tmp_path, monkeypatch):
+    from cmdb_server.services import pakiet
+
+    zrodla = Path(__file__).resolve().parent.parent.parent / "agent"
+    if not (zrodla / "cmdb_agent").is_dir():
+        pytest.skip("zrodla agenta niedostepne")
+    katalog = tmp_path / "paczka"
+    metadane = pakiet.zbuduj(zrodla, katalog)
+    monkeypatch.setattr(pakiet, "katalog_paczki", lambda: katalog)
+
+    _superadmin(client, make_user)
+    strona = client.get("/admin/wersje").text
+
+    assert "Agent dla Linuksa" in strona
+    assert metadane["version"] in strona
+    assert metadane["sha256"] in strona
+
+
+def test_wiersz_linuksa_tlumaczy_zamiast_straszyc(client, make_user):
+    """Dla Windows brak wersji oficjalnej znaczy "nikt nie bedzie
+    aktualizowany". Dla Linuksa znaczy co innego - agent ze zrodel i tak
+    nie przyjmuje polecen aktualizacji."""
+    _superadmin(client, make_user)
+    strona = client.get("/admin/wersje").text
+
+    assert "agent dla Linuksa instaluje sie ze zrodel" in strona
+
+
+def test_brak_paczki_jest_zglaszany_wprost(client, make_user, tmp_path, monkeypatch):
+    from cmdb_server.services import pakiet
+
+    monkeypatch.setattr(pakiet, "katalog_paczki", lambda: tmp_path / "pusto")
+    _superadmin(client, make_user)
+    strona = client.get("/admin/wersje").text
+
+    assert "Nie przygotowano paczki zrodel" in strona

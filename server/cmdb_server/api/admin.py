@@ -49,7 +49,7 @@ from ..models import (
 )
 from ..security import check_csrf_token, generate_token, hash_password, issue_csrf_token
 from ..services.auth import client_ip, require_superadmin
-from ..services import architektura, ustawienia
+from ..services import architektura, pakiet, ustawienia
 from ..services.scoping import audit
 from .ui import templates
 
@@ -564,6 +564,10 @@ def widok_wersji(
         firmy=firmy,
         systemy_firmy=systemy_firmy,
         systemy=SYSTEMY,
+        # Agent dla Linuksa jest wydawany jako zrodla, a nie plik
+        # wykonywalny, wiec nie ma go w magazynie wydan. Bez pokazania go
+        # tutaj strona sugerowalaby, ze zadnego agenta dla Linuksa nie ma.
+        paczka_zrodel=pakiet.opis(pakiet.katalog_paczki()),
     )
 
 

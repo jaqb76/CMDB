@@ -28,7 +28,11 @@
         <td class="strong">{{ dane.etykieta }}</td>
         <td>
           {% if of %}<code class="strong">{{ of.version }}</code>
-          {% else %}<span class="muted">nie ustawiono — firmy bez wlasnego wyboru nie beda aktualizowane</span>{% endif %}
+          {% elif system == 'linux' %}
+            <span class="muted">nie dotyczy — agent dla Linuksa instaluje sie ze zrodel</span>
+          {% else %}
+            <span class="muted">nie ustawiono — firmy bez wlasnego wyboru nie beda aktualizowane</span>
+          {% endif %}
         </td>
         <td class="small">{{ of.created_by if of else '—' }}</td>
         <td class="small">{{ (of.created_at | dt) if of else '—' }}</td>
@@ -39,7 +43,47 @@
 </section>
 
 <section class="panel">
+  <h2>Agent dla Linuksa (zrodla)</h2>
+  <p class="muted small">
+    Na Linuksie agent instaluje sie ze zrodel, nie z pliku wykonywalnego:
+    PyInstaller nie kompiluje na inna architekture, wiec jeden plik nie
+    obsluzylby zarazem serwerow x86 i Raspberry Pi. Ta paczka nie jest wiec
+    wydaniem w powyzszym znaczeniu i nie ustawia sie jej jako aktywnej —
+    serwer wydaje zawsze te wersje, ktora ma.
+  </p>
+  {% if paczka_zrodel %}
+  <table class="table">
+    <tbody>
+      <tr><th style="width:220px">Wersja</th>
+          <td><code class="strong">{{ paczka_zrodel.version }}</code></td></tr>
+      <tr><th>Rozmiar</th><td>{{ paczka_zrodel.size_bytes | bytes }}</td></tr>
+      <tr><th>SHA-256</th><td class="small"><code>{{ paczka_zrodel.sha256 }}</code></td></tr>
+      <tr><th>Zbudowano</th><td class="small">{{ paczka_zrodel.built_at | dt }}</td></tr>
+      <tr><th>Instalacja</th>
+          <td class="small"><code>curl -fsSL &lt;adres&gt;/download/install.sh | sudo bash -s -- --token ...</code></td></tr>
+    </tbody>
+  </table>
+  <p class="muted small">
+    Agent uruchomiony ze zrodel <b>nie aktualizuje sie sam</b> — nie ma
+    pojedynczego pliku do podmiany. Maszyne aktualizuje sie ponownym
+    uruchomieniem tego samego polecenia.
+  </p>
+  {% else %}
+  <div class="alert alert-error">
+    Nie przygotowano paczki zrodel — instalacja jednym poleceniem zwroci blad.
+    Buduje sie ja po stronie serwera:
+    <code>python -m cmdb_server.pakiet ../agent</code>
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
   <h2>Wgrane wersje</h2>
+  <p class="muted small">
+    Pliki wykonywalne rozsylane mechanizmem samoaktualizacji. Wersje dla
+    Linuksa mozna tu wgrac, ale musi byc zbudowana na maszynie o tej samej
+    architekturze co maszyny docelowe.
+  </p>
   {% if wydania %}
   <table class="table">
     <thead>
