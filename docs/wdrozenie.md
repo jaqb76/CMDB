@@ -31,12 +31,18 @@ cd deploy
 cp .env.example .env
 ```
 
-Uzupełnij `.env`:
+Uzupełnij `.env` — trzy pierwsze wartości są **wymagane**, bez nich
+`docker compose up` przerwie start:
 
 ```bash
 POSTGRES_PASSWORD=$(openssl rand -base64 32)
 CMDB_SECRET_KEY=$(openssl rand -base64 48)
+CMDB_PUBLIC_URL=https://cmdb.twoja-firma.pl
 ```
+
+`CMDB_PUBLIC_URL` trafia do skryptu instalacyjnego wydawanego agentom.
+Za nginx serwer widzi adres kontenera, więc nie da się go odgadnąć z żądania —
+zły adres oznacza instalację wskazującą w nicość.
 
 Umieść certyfikat w `deploy/certs/` jako `fullchain.pem` i `privkey.pem`,
 po czym:
@@ -54,6 +60,10 @@ Usługi:
 | `server` | FastAPI + uvicorn (4 procesy) | tylko sieć kontenerów |
 | `db` | PostgreSQL 16, wolumen `pgdata` | tylko sieć kontenerów |
 
+Dwa wolumeny trwałe: `pgdata` (baza) i `releases` (wgrane wersje agenta).
+Bez tego drugiego wersje znikałyby przy każdym odtworzeniu kontenera,
+a wskazania wersji aktywnej zostawałyby bez plików.
+
 Ani baza, ani serwer aplikacji nie są wystawione poza sieć kontenerów —
 ruch z zewnątrz wchodzi wyłącznie przez nginx.
 
@@ -69,6 +79,37 @@ docker compose exec server python -m cmdb_server.cli token-issue \
 
 Ostatnie polecenie wypisuje token rejestracyjny — **zapisz go od razu**,
 w bazie zostaje wyłącznie skrót. Kolejne tokeny można wydawać w panelu.
+
+Potrzebne jest jeszcze konto **superadmina** — to ono zarządza wersjami
+agentów, danymi o podatnościach i wszystkimi firmami naraz:
+
+```bash
+docker compose exec server python -m cmdb_server.cli user-create     --email admin@twoja-firma.pl --superadmin
+```
+
+Hasło zostanie zapytane interaktywnie.
+
+### Instalacja agentów
+
+Serwer sam wydaje agenta po HTTPS — na maszynach nie trzeba niczego klonować
+ani kopiować:
+
+```bash
+# Linux (Ubuntu, Debian, Raspberry Pi) - na maszynie docelowej
+curl -fsSL https://cmdb.twoja-firma.pl/download/install.sh   | sudo bash -s -- --token cmdb_ent_...
+```
+
+Gotowe polecenia, wraz z wersją Windows, czekają w panelu w zakładce
+**Instalacja agenta**. Paczka źródeł dla Linuksa jest budowana przy tworzeniu
+obrazu, więc działa od pierwszego uruchomienia.
+
+### Dostęp wychodzący
+
+Serwer potrzebuje wychodzącego HTTPS wyłącznie do pobierania danych
+o podatnościach (Debian Security Tracker, baza USN Ubuntu — łącznie ~130 MB
+przy odświeżeniu). Bez niego wszystko inne działa, a strona podatności pokazuje
+stan „nieznany”. Agenci **nigdy** nie są odpytywani przez serwer — łączność
+jest zawsze jednostronna, od agenta do serwera.
 
 ## Zmienne konfiguracyjne serwera
 
@@ -168,8 +209,14 @@ docker compose exec -T db pg_dump -U cmdb cmdb | gzip > cmdb-$(date +%F).sql.gz
 gunzip -c cmdb-2026-08-19.sql.gz | docker compose exec -T db psql -U cmdb -d cmdb
 ```
 
+```bash
+# wgrane wersje agenta (wolumen releases)
+docker run --rm -v deploy_releases:/dane -v "$PWD:/kopia" alpine     tar czf /kopia/releases-$(date +%F).tar.gz -C /dane .
+```
+
 Poza bazą warto zabezpieczyć `deploy/.env` (klucz sesji — jego utrata
-wylogowuje wszystkich) oraz `deploy/certs`.
+wylogowuje wszystkich), `deploy/certs` oraz wolumen `releases`. Wpisów
+o podatnościach kopiować nie trzeba — odtwarza je odświeżenie kanałów.
 
 ## Utrzymanie
 
