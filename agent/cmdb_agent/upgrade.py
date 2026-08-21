@@ -218,9 +218,6 @@ def zastosuj(config, state, client: CmdbClient) -> str | None:
     """
     biezacy = wlasny_plik()
     korzen = katalog_instalacji() if biezacy is None else None
-    if biezacy is None and korzen is None:
-        log.debug("agent nie dziala z instalacji - aktualizacja pomijana")
-        return None
 
     if biezacy is not None:
         posprzataj_poprzednia(biezacy)
@@ -229,15 +226,26 @@ def zastosuj(config, state, client: CmdbClient) -> str | None:
     if oferta is None:
         return None
 
-    # Rodzaj wydania decyduje o sposobie instalacji. Podmiana katalogu plikiem
-    # wykonywalnym - albo odwrotnie - zostawilaby maszyne bez dzialajacego
-    # agenta, wiec niezgodnosc odrzucamy, zanim cokolwiek pobierzemy.
+    # Powod, dla ktorego wskazanej wersji nie da sie zainstalowac. Zglaszamy go
+    # serwerowi zamiast po cichu nic nie robic: bez tego w panelu widac tylko,
+    # ze maszyna uporczywie zostaje na starej wersji, i nie wiadomo dlaczego.
     zrodla = oferta.get("kind") == RODZAJ_ZRODLA
-    if zrodla and korzen is None:
-        log.warning("serwer wskazuje paczke zrodel, a agent dziala z pliku - pomijam")
-        return None
-    if not zrodla and korzen is not None:
-        log.warning("serwer wskazuje plik wykonywalny, a agent dziala ze zrodel - pomijam")
+    przeszkoda = None
+    if biezacy is None and korzen is None:
+        przeszkoda = (
+            "agent nie dziala z instalacji zalozonej instalatorem - "
+            "uruchom ponownie install-agent.sh"
+        )
+    elif zrodla and korzen is None:
+        # Podmiana katalogu plikiem wykonywalnym - albo odwrotnie - zostawilaby
+        # maszyne bez dzialajacego agenta.
+        przeszkoda = "serwer wskazuje paczke zrodel, a agent dziala z pliku wykonywalnego"
+    elif not zrodla and korzen is not None:
+        przeszkoda = "serwer wskazuje plik wykonywalny, a agent jest zainstalowany ze zrodel"
+
+    if przeszkoda:
+        log.warning("nie moge zainstalowac wersji %s: %s", oferta["version"], przeszkoda)
+        _zglos(client, state.agent_token, oferta["version"], "odrzucona", przeszkoda)
         return None
 
     if korzen is not None:

@@ -183,3 +183,72 @@ def test_pobieranie_odrzuca_archiwum_ktore_nie_jest_archiwum(tmp_path, monkeypat
     }
     with pytest.raises(upgrade.UpgradeError, match="nie jest archiwum"):
         upgrade._pobierz_i_sprawdz(KlientAtrapa(), "token", oferta, cel)
+
+
+# --- widocznosc przyczyny ---------------------------------------------------
+#
+# Milczace pominiecie aktualizacji jest gorsze niz blad: w panelu widac tylko,
+# ze maszyna uporczywie zostaje na starej wersji, i nie wiadomo dlaczego.
+
+class _KlientAtrapa:
+    def __init__(self, oferta):
+        self.oferta = oferta
+        self.zgloszenia = []
+
+    def get_json(self, sciezka, token):
+        return self.oferta
+
+    def post_json(self, sciezka, token, dane):
+        self.zgloszenia.append(dane)
+        return {}
+
+
+class _StanAtrapa:
+    agent_token = "cmdb_agt_test"
+
+
+def _zastosuj(monkeypatch, klient, frozen=False, korzen=None):
+    monkeypatch.setattr(upgrade, "wlasny_plik", lambda: Path("/tmp/agent.exe") if frozen else None)
+    monkeypatch.setattr(upgrade, "katalog_instalacji", lambda: korzen)
+    monkeypatch.setattr(upgrade, "sprawdz_oferte", lambda c, t: klient.oferta)
+    zgloszone = []
+    monkeypatch.setattr(
+        upgrade, "_zglos",
+        lambda c, t, wersja, status, detal=None: zgloszone.append((wersja, status, detal)),
+    )
+    upgrade.zastosuj(None, _StanAtrapa(), klient)
+    return zgloszone
+
+
+def test_agent_bez_instalacji_zglasza_powod(monkeypatch):
+    """Dokladnie przypadek agenta zainstalowanego starszym instalatorem,
+    ktory nie zakladal jeszcze znacznika."""
+    klient = _KlientAtrapa({"version": "0.5.2", "kind": upgrade.RODZAJ_ZRODLA})
+    zgloszone = _zastosuj(monkeypatch, klient)
+
+    assert len(zgloszone) == 1
+    wersja, status, detal = zgloszone[0]
+    assert (wersja, status) == ("0.5.2", "odrzucona")
+    assert "install-agent.sh" in detal, "komunikat ma mowic, co zrobic"
+
+
+def test_plik_wykonywalny_nie_bierze_paczki_zrodel(monkeypatch):
+    klient = _KlientAtrapa({"version": "0.5.2", "kind": upgrade.RODZAJ_ZRODLA})
+    zgloszone = _zastosuj(monkeypatch, klient, frozen=True)
+
+    assert zgloszone[0][1] == "odrzucona"
+    assert "paczke zrodel" in zgloszone[0][2]
+
+
+def test_instalacja_ze_zrodel_nie_bierze_pliku(monkeypatch, tmp_path):
+    klient = _KlientAtrapa({"version": "0.5.2", "kind": "plik"})
+    zgloszone = _zastosuj(monkeypatch, klient, korzen=tmp_path)
+
+    assert zgloszone[0][1] == "odrzucona"
+    assert "plik wykonywalny" in zgloszone[0][2]
+
+
+def test_brak_oferty_nie_generuje_szumu(monkeypatch):
+    """Gdy serwer niczego nie oczekuje, nie ma czego zglaszac."""
+    klient = _KlientAtrapa(None)
+    assert _zastosuj(monkeypatch, klient) == []
