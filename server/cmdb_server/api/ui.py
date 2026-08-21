@@ -174,6 +174,7 @@ def render(
         "request": request,
         "user": user,
         "ctx": ctx,
+        "motyw": motyw_z_ciasteczka(request),
         "csrf_token": issue_csrf_token(user.id),
         "all_tenants": tenants,
         # Prog braku kontaktu moze byc ustawiony per firma - szablony maja
@@ -184,6 +185,21 @@ def render(
         **extra,
     }
     return templates.TemplateResponse(request, template, payload)
+
+
+# Dozwolone wartosci ciasteczka motywu. Pusta - motyw z ustawien systemu.
+MOTYWY = {"jasny", "ciemny"}
+
+
+def motyw_z_ciasteczka(request: Request) -> str:
+    """Wybrany motyw, wstawiany do atrybutu data-theme.
+
+    Renderuje go serwer, a nie JavaScript: inaczej przy kazdym wejsciu
+    mignelaby wersja jasna, zanim skrypt zdazy ustawic atrybut. Wartosc
+    trafia wprost do HTML, wiec przepuszczamy wylacznie znane nazwy.
+    """
+    wybrany = (request.cookies.get("cmdb_motyw") or "").strip().lower()
+    return wybrany if wybrany in MOTYWY else ""
 
 
 def _require_write(ctx: TenantContext) -> None:
@@ -197,7 +213,10 @@ def _require_write(ctx: TenantContext) -> None:
 def login_form(request: Request, user: PortalUser | None = Depends(current_user)) -> Response:
     if user is not None:
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse(request, "login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(
+        request, "login.html",
+        {"request": request, "error": None, "motyw": motyw_z_ciasteczka(request)},
+    )
 
 
 @router.post("/login")
@@ -215,7 +234,8 @@ def login_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"request": request, "error": "Nieprawidlowy e-mail lub haslo."},
+            {"request": request, "error": "Nieprawidlowy e-mail lub haslo.",
+             "motyw": motyw_z_ciasteczka(request)},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 

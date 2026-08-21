@@ -14,8 +14,16 @@
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* Motyw ciemny w dwoch wariantach. Lista barw jest powtorzona, bo CSS nie
+   pozwala polaczyc zapytania medialnego z selektorem atrybutu w jednej regule.
+
+   1. Ustawienie systemu - o ile uzytkownik nie wybral jawnie jasnego.
+   2. Jawny wybor uzytkownika - ma pierwszenstwo przed ustawieniem systemu.
+
+   Atrybut data-theme wstawia SERWER na podstawie ciasteczka. Gdyby robil to
+   dopiero JavaScript, przy kazdym wejsciu mignelaby wersja jasna. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="jasny"]) {
     --bg: #14171c; --surface: #1c2028; --border: #2e343e; --text: #e6e8ec;
     --muted: #97a0af; --accent: #5b9bf5; --accent-contrast: #0d1117;
     --ok-bg: #17331f; --ok-fg: #7fd39a;
@@ -23,6 +31,19 @@
     --danger-bg: #3a1a1a; --danger-fg: #f08a8a;
   }
 }
+
+:root[data-theme="ciemny"] {
+  --bg: #14171c; --surface: #1c2028; --border: #2e343e; --text: #e6e8ec;
+  --muted: #97a0af; --accent: #5b9bf5; --accent-contrast: #0d1117;
+  --ok-bg: #17331f; --ok-fg: #7fd39a;
+  --warn-bg: #37300f; --warn-fg: #e2c464;
+  --danger-bg: #3a1a1a; --danger-fg: #f08a8a;
+}
+
+/* Formularze i obrazy dziedzicza schemat, wiec pola tekstowe, listy rozwijane
+   i paski przewijania nie zostaja jasne w ciemnym motywie. */
+:root[data-theme="ciemny"] { color-scheme: dark; }
+:root[data-theme="jasny"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -219,3 +240,23 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 /* Braki poprawek bezpieczenstwa to jedyna liczba na karcie maszyny, ktora
    moze oznaczac realne zagrozenie - odrozniamy ja od zwyklego ostrzezenia. */
 .card-danger .card-value { color: var(--danger-fg); }
+
+
+/* --- przelacznik motywu --- */
+.motyw {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 6px 10px;
+}
+.motyw:hover { color: var(--text); border-color: var(--accent); }
+/* Widoczna jest tylko ikona odpowiadajaca aktualnemu ustawieniu. */
+.motyw .motyw-ikona { display: none; }
+:root:not([data-theme]) .motyw .motyw-auto,
+:root[data-theme="jasny"] .motyw .motyw-jasny,
+:root[data-theme="ciemny"] .motyw .motyw-ciemny { display: inline; }

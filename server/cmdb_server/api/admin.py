@@ -52,7 +52,7 @@ from ..security import check_csrf_token, generate_token, hash_password, issue_cs
 from ..services.auth import client_ip, require_superadmin
 from ..services import architektura, cve, pakiet, ustawienia
 from ..services.scoping import audit
-from .ui import templates
+from .ui import motyw_z_ciasteczka, templates
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -116,6 +116,7 @@ def render_admin(request: Request, template: str, user: PortalUser, strona: str,
         "user": user,
         "strona": strona,
         "csrf_token": issue_csrf_token(user.id),
+        "motyw": motyw_z_ciasteczka(request),
         **extra,
     }
     return templates.TemplateResponse(request, template, payload)

@@ -127,3 +127,52 @@ def test_raw_json_endpoint_returns_full_payload(client, tenant_a, make_user):
     assert payload["identity"]["hostname"] == "SRV-PLIKI"
     assert payload["software"]["packages"][0]["name"].startswith("7-Zip")
     assert payload["users"]["local_accounts"][1]["name"] == "jkowalski"
+
+
+# --- motyw ------------------------------------------------------------------
+#
+# Ciemny motyw dzialal wczesniej wylacznie wedlug ustawienia systemu. Wybor
+# uzytkownika wstawia SERWER do atrybutu data-theme - gdyby robil to dopiero
+# JavaScript, przy kazdym wejsciu mignelaby wersja jasna.
+
+def test_bez_ciasteczka_motyw_idzie_za_systemem(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "motyw@firma.pl", "haslo-do-testow-123")
+    _login(client, "motyw@firma.pl", "haslo-do-testow-123")
+
+    strona = client.get("/").text
+    assert 'data-theme' not in strona, "brak wyboru = decyduje ustawienie systemu"
+
+
+def test_wybrany_motyw_trafia_do_html(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "motyw@firma.pl", "haslo-do-testow-123")
+    _login(client, "motyw@firma.pl", "haslo-do-testow-123")
+    client.cookies.set("cmdb_motyw", "ciemny")
+
+    assert 'data-theme="ciemny"' in client.get("/").text
+
+
+def test_obca_wartosc_ciasteczka_jest_ignorowana(client, tenant_a, make_user):
+    """Wartosc trafia wprost do HTML, wiec przepuszczamy wylacznie znane nazwy."""
+    make_user(tenant_a["id"], "motyw@firma.pl", "haslo-do-testow-123")
+    _login(client, "motyw@firma.pl", "haslo-do-testow-123")
+    client.cookies.set("cmdb_motyw", '"><script>alert(1)</script>')
+
+    strona = client.get("/").text
+    assert "<script>alert(1)</script>" not in strona
+    assert "data-theme" not in strona
+
+
+def test_logowanie_tez_honoruje_motyw(client):
+    """Inaczej po wylogowaniu motyw by znikal."""
+    client.cookies.set("cmdb_motyw", "ciemny")
+    assert 'data-theme="ciemny"' in client.get("/login").text
+
+
+def test_przelacznik_jest_w_obu_panelach(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "motyw@firma.pl", "haslo-do-testow-123")
+    _login(client, "motyw@firma.pl", "haslo-do-testow-123")
+    assert "data-motyw" in client.get("/").text
+
+    make_user(None, "root@motyw.pl", "haslo-do-testow-123")
+    _login(client, "root@motyw.pl", "haslo-do-testow-123")
+    assert "data-motyw" in client.get("/admin").text

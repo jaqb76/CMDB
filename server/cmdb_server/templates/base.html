@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pl">
+<html lang="pl"{% if motyw %} data-theme="{{ motyw }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,6 +19,12 @@
     <a href="/audit">Audyt</a>
   </nav>
   <div class="userbox">
+    <button type="button" class="motyw" data-motyw
+            title="Motyw: automatyczny / jasny / ciemny">
+      <span class="motyw-ikona motyw-auto">auto</span>
+      <span class="motyw-ikona motyw-jasny">jasny</span>
+      <span class="motyw-ikona motyw-ciemny">ciemny</span>
+    </button>
     {% if user.is_superadmin %}
       <a href="/admin" class="btn btn-small nav-admin">&larr; Administracja</a>
     {% endif %}

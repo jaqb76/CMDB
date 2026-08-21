@@ -80,4 +80,32 @@
   document.querySelectorAll("select[data-autosubmit]").forEach(function (select) {
     select.addEventListener("change", function () { select.form.submit(); });
   });
+
+  // Przelacznik motywu: system -> jasny -> ciemny -> system.
+  //
+  // Wybor trzymamy w ciasteczku, a nie w localStorage, bo atrybut data-theme
+  // wstawia serwer przy renderowaniu strony - dzieki temu przy wejsciu nie
+  // miga wersja jasna, zanim JavaScript zdazy cokolwiek zrobic.
+  var KOLEJNOSC = ["", "jasny", "ciemny"];
+
+  document.querySelectorAll("[data-motyw]").forEach(function (przycisk) {
+    przycisk.addEventListener("click", function () {
+      var obecny = document.documentElement.getAttribute("data-theme") || "";
+      var nastepny = KOLEJNOSC[(KOLEJNOSC.indexOf(obecny) + 1) % KOLEJNOSC.length];
+
+      if (nastepny) {
+        document.documentElement.setAttribute("data-theme", nastepny);
+      } else {
+        document.documentElement.removeAttribute("data-theme");
+      }
+
+      // Rok waznosci; SameSite=Lax wystarcza, bo to zwykla preferencja widoku.
+      var atrybuty = "; path=/; max-age=31536000; SameSite=Lax";
+      if (location.protocol === "https:") {
+        atrybuty += "; Secure";
+      }
+      document.cookie = "cmdb_motyw=" + nastepny + atrybuty;
+    });
+  });
+
 })();

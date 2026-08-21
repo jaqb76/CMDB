@@ -6,7 +6,7 @@
   role i kazala domyslac sie, w czyim kontekscie sie jest.
 #}
 <!doctype html>
-<html lang="pl">
+<html lang="pl"{% if motyw %} data-theme="{{ motyw }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -24,6 +24,12 @@
     <a href="/admin/audyt" {% if strona == 'audyt' %}class="is-active"{% endif %}>Audyt</a>
   </nav>
   <div class="userbox">
+    <button type="button" class="motyw" data-motyw
+            title="Motyw: automatyczny / jasny / ciemny">
+      <span class="motyw-ikona motyw-auto">auto</span>
+      <span class="motyw-ikona motyw-jasny">jasny</span>
+      <span class="motyw-ikona motyw-ciemny">ciemny</span>
+    </button>
     <span class="user-email">{{ user.email }}</span>
     <form method="post" action="/logout" class="inline-form">
       <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
