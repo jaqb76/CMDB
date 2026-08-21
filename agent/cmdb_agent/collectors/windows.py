@@ -214,6 +214,9 @@ class WindowsCollector(BaseCollector):
             "fqdn": fqdn,
             "domain": domain,
             "os_family": self.os_family,
+            # Agent dla x86-64 nie uruchomi sie na ARM i odwrotnie - serwer
+            # musi wiedziec, ktory plik wolno tej maszynie zaproponowac.
+            "arch": platform.machine().lower(),
         }
 
     # --- kroki ------------------------------------------------------------

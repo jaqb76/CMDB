@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Asset, AssetChange, InventorySnapshot, Tenant, utcnow
 from ..schemas import InventoryReport
-from . import changes, ustawienia
+from . import architektura, changes, ustawienia
 from .scoping import TenantContext
 
 log = logging.getLogger(__name__)
@@ -182,6 +182,7 @@ def apply_identity(asset: Asset, report: InventoryReport, payload: dict) -> None
     asset.fqdn = _first(identity.fqdn, asset.fqdn)
     asset.domain = _first(identity.domain, asset.domain)
     asset.os_family = identity.os_family
+    asset.arch = _first(architektura.normalizuj(identity.arch), asset.arch)
     asset.os_name = _first(os_info.get("name"), os_info.get("caption"), asset.os_name)
     asset.os_version = _first(os_info.get("version"), asset.os_version)
     asset.manufacturer = _first(system.get("manufacturer"), asset.manufacturer)

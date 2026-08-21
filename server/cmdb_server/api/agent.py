@@ -25,7 +25,7 @@ from ..schemas import (
 )
 from ..security import generate_token
 from ..services.auth import client_ip, require_agent, require_enrollment_token
-from ..services import upgrades, ustawienia
+from ..services import architektura, upgrades, ustawienia
 from ..services.inventory import store_report
 from ..services.scoping import TenantContext, audit
 
@@ -70,6 +70,7 @@ def enroll(
             fqdn=payload.identity.fqdn,
             domain=payload.identity.domain,
             os_family=payload.identity.os_family,
+            arch=architektura.normalizuj(payload.identity.arch),
             agent_version=payload.agent_version,
             tags=[],
             facts={},

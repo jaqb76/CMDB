@@ -80,7 +80,7 @@
         <select id="wersja_wybrane" name="release_id">
           <option value="">— nie aktualizuj (kasuje ustawienie) —</option>
           {% for w in wydania %}
-            <option value="{{ w.id }}">{{ w.os_family }} · {{ w.version }}</option>
+            <option value="{{ w.id }}">{{ w.os_family }} / {{ w.arch }} · {{ w.version }}</option>
           {% endfor %}
         </select>
         <div class="muted small">
@@ -109,7 +109,7 @@
             {% if m.target_release_id %}<div class="muted small">ustawienie wlasne</div>{% endif %}
           </td>
           <td class="small">
-            <code>{{ system }}</code>
+            <code>{{ system }}</code> <code>{{ m.arch or '?' }}</code>
             <div class="muted">{{ m.os_name or '' }}</div>
           </td>
           <td class="small"><code>{{ m.agent_version or '?' }}</code></td>

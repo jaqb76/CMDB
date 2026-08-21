@@ -22,6 +22,7 @@ from ..models import (
     TenantAgentTarget,
     utcnow,
 )
+from . import architektura
 
 log = logging.getLogger(__name__)
 
@@ -47,12 +48,13 @@ def wersja_docelowa(db: Session, asset: Asset) -> AgentRelease | None:
         wydanie = db.get(AgentRelease, asset.target_release_id)
         if wydanie is None:
             log.warning("maszyna %s wskazuje nieistniejaca wersje agenta", asset.hostname)
-        elif _pasuje(wydanie, system):
+        elif _pasuje(wydanie, asset):
             return wydanie
         else:
             log.warning(
-                "maszyna %s (%s) ma ustawiona wersje dla %s - pomijam",
-                asset.hostname, system or "?", wydanie.os_family,
+                "maszyna %s (%s/%s) ma ustawiona wersje dla %s/%s - pomijam",
+                asset.hostname, system or "?", asset.arch or "?",
+                wydanie.os_family, wydanie.arch,
             )
 
     cel = db.execute(
@@ -63,17 +65,18 @@ def wersja_docelowa(db: Session, asset: Asset) -> AgentRelease | None:
     ).scalar_one_or_none()
     if cel is not None:
         wydanie = db.get(AgentRelease, cel.release_id)
-        if wydanie is not None and _pasuje(wydanie, system):
+        if wydanie is not None and _pasuje(wydanie, asset):
             return wydanie
 
     # Firma bez wlasnego ustawienia korzysta z wersji uznanej za oficjalna.
     # To ten poziom sprawia, ze mozna trzymac wersje probna w jednej firmie,
     # nie ruszajac pozostalych.
-    return wersja_oficjalna(db, system)
+    return wersja_oficjalna(db, asset)
 
 
-def wersja_oficjalna(db: Session, system: str) -> AgentRelease | None:
-    """Wersja oznaczona jako aktywna dla danego systemu."""
+def wersja_oficjalna(db: Session, asset: Asset) -> AgentRelease | None:
+    """Wersja oznaczona jako aktywna dla systemu tej maszyny."""
+    system = (asset.os_family or "").lower()
     if not system:
         return None
     cel = db.execute(
@@ -82,15 +85,25 @@ def wersja_oficjalna(db: Session, system: str) -> AgentRelease | None:
     if cel is None:
         return None
     wydanie = db.get(AgentRelease, cel.release_id)
-    return wydanie if wydanie is not None and _pasuje(wydanie, system) else None
+    return wydanie if wydanie is not None and _pasuje(wydanie, asset) else None
 
 
-def _pasuje(wydanie: AgentRelease, system: str) -> bool:
-    """Ostatnia bariera przed wyslaniem pliku dla niewlasciwego systemu."""
-    if not system:
-        # Maszyna, ktora nie zglosila systemu, nie dostaje niczego.
+def _pasuje(wydanie: AgentRelease, asset: Asset) -> bool:
+    """Ostatnia bariera przed wyslaniem pliku, ktorego maszyna nie uruchomi.
+
+    Sprawdzamy system ORAZ architekture. Sama rodzina systemu nie wystarcza:
+    ELF dla x86-64 i dla ARM64 to oba "linux", a Raspberry Pi nie uruchomi
+    pliku zbudowanego na serwerze x86.
+
+    Maszyna, ktora nie zglosila systemu albo architektury, nie dostaje nic -
+    starszy agent lepiej niech zostanie na swojej wersji, niz ma pobrac plik,
+    ktorego nie da sie wykonac.
+    """
+    system = (asset.os_family or "").lower()
+    arch = architektura.normalizuj(asset.arch)
+    if not system or not arch:
         return False
-    return (wydanie.os_family or "").lower() == system
+    return (wydanie.os_family or "").lower() == system and (wydanie.arch or "") == arch
 
 
 def czy_wymaga_aktualizacji(asset: Asset, wydanie: AgentRelease | None) -> bool:

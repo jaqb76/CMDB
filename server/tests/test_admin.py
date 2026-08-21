@@ -19,9 +19,29 @@ from .factories import build_report
 from .test_agent_api import enroll
 from .test_tenant_isolation import _extract_csrf, _login
 
-# Minimalny plik z sygnatura programu Windows - tyle wystarczy do sprawdzenia
-# sciezki wgrywania, weryfikacji skrotu i wydawania pliku agentowi.
-PLIK_AGENTA = b"MZ" + b"\x90\x00\x03" + b"testowa zawartosc agenta" * 40
+def _plik_pe(maszyna: int = 0x8664, wypelniacz: bytes = b"") -> bytes:
+    """Minimalny, ale poprawny strukturalnie plik PE.
+
+    Serwer odczytuje architekture z naglowka COFF, wiec atrapa musi miec
+    prawdziwe przesuniecie do naglowka PE (spod adresu 0x3C) i pole Machine.
+    """
+    naglowek = bytearray(b"MZ" + bytes(0x3E))
+    naglowek[0x3C:0x40] = (0x40).to_bytes(4, "little")
+    naglowek += b"PE" + bytes(2) + maszyna.to_bytes(2, "little")
+    return bytes(naglowek) + b"testowa zawartosc agenta" * 40 + wypelniacz
+
+
+def _plik_elf(maszyna: int = 0xB7, wypelniacz: bytes = b"") -> bytes:
+    """Minimalny plik ELF. Domyslnie ARM64 - taki jak agent na Raspberry Pi."""
+    naglowek = bytearray(bytes.fromhex("7f") + b"ELF")
+    naglowek += bytes([2, 1, 1]) + bytes(9)
+    naglowek += (2).to_bytes(2, "little")
+    naglowek += maszyna.to_bytes(2, "little")
+    naglowek += bytes(32)
+    return bytes(naglowek) + b"agent dla linuksa" * 40 + wypelniacz
+
+
+PLIK_AGENTA = _plik_pe()
 SKROT_AGENTA = hashlib.sha256(PLIK_AGENTA).hexdigest()
 
 
@@ -40,7 +60,8 @@ def _oznacz_oficjalna(client, csrf, release_id):
     )
 
 
-PLIK_LINUKSOWY = bytes.fromhex("7f") + b"ELF" + b"" + b"agent dla linuksa" * 40
+PLIK_LINUKSOWY = _plik_elf()          # ARM64 - taki agent trafia na Raspberry Pi
+PLIK_LINUKSOWY_X86 = _plik_elf(0x3E)  # x86-64
 SKROT_LINUKSOWY = hashlib.sha256(PLIK_LINUKSOWY).hexdigest()
 
 
@@ -485,7 +506,7 @@ def test_wersja_oficjalna_obejmuje_firmy_bez_wlasnego_ustawienia(
 
     csrf = _superadmin(client, make_user)
     _wgraj_wersje(client, csrf, "0.2.0", PLIK_AGENTA, "windows")
-    _wgraj_wersje(client, csrf, "0.3.0-beta", PLIK_AGENTA + b"beta", "windows")
+    _wgraj_wersje(client, csrf, "0.3.0-beta", _plik_pe(wypelniacz=b"beta"), "windows")
     with SessionLocal() as db:
         oficjalna = db.execute(
             select(AgentRelease.id).where(AgentRelease.version == "0.2.0")
@@ -514,7 +535,7 @@ def test_tylko_jedna_wersja_oficjalna_na_system(client, make_user):
     przestaloby byc jednoznaczne."""
     csrf = _superadmin(client, make_user)
     _wgraj_wersje(client, csrf, "0.2.0", PLIK_AGENTA, "windows")
-    _wgraj_wersje(client, csrf, "0.3.0", PLIK_AGENTA + b"nowsza", "windows")
+    _wgraj_wersje(client, csrf, "0.3.0", _plik_pe(wypelniacz=b"nowsza"), "windows")
     with SessionLocal() as db:
         pierwsza, druga = [
             r for r in db.execute(
@@ -546,7 +567,7 @@ def test_wyczyszczenie_ustawienia_firmy_wraca_do_oficjalnej(client, tenant_a, ma
     token = _przygotuj_maszyne(client, tenant_a)
     csrf = _superadmin(client, make_user)
     _wgraj_wersje(client, csrf, "0.2.0", PLIK_AGENTA, "windows")
-    _wgraj_wersje(client, csrf, "0.9.0", PLIK_AGENTA + b"probna", "windows")
+    _wgraj_wersje(client, csrf, "0.9.0", _plik_pe(wypelniacz=b"probna"), "windows")
     with SessionLocal() as db:
         oficjalna = db.execute(
             select(AgentRelease.id).where(AgentRelease.version == "0.2.0")
@@ -572,7 +593,7 @@ def test_ustawienie_maszyny_bije_firme_i_oficjalna(client, tenant_a, make_user):
     token = _przygotuj_maszyne(client, tenant_a)
     csrf = _superadmin(client, make_user)
     for wersja, dodatek in (("0.2.0", b""), ("0.5.0", b"firmowa"), ("0.9.0", b"maszynowa")):
-        _wgraj_wersje(client, csrf, wersja, PLIK_AGENTA + dodatek, "windows")
+        _wgraj_wersje(client, csrf, wersja, _plik_pe(wypelniacz=dodatek), "windows")
     with SessionLocal() as db:
         mapa = {
             w.version: w.id for w in db.execute(select(AgentRelease)).scalars()
@@ -736,3 +757,125 @@ def test_odrzuca_bezsensowne_wartosci_ustawien(client, tenant_a, make_user):
             f"/admin/tenants/{tenant_a['id']}/ustawienia", data=dane, follow_redirects=False
         )
         assert odpowiedz.status_code == 400, f"{pole}={wartosc} powinno byc odrzucone"
+
+
+# --- architektura procesora -------------------------------------------------
+
+def _maszyna_arm(client, tenant, machine_id="raspberry-pi-1", hostname="PI-01"):
+    """Raspberry Pi zglaszajacy sie jako linux/aarch64."""
+    token = client.post(
+        "/api/v1/agents/enroll",
+        headers={"Authorization": f"Bearer {tenant['token']}"},
+        json={
+            "machine_id": machine_id,
+            "identity": {"hostname": hostname, "os_family": "linux", "arch": "aarch64"},
+            "agent_version": "0.5.0",
+        },
+    ).json()["agent_token"]
+    raport = build_report(machine_id=machine_id, hostname=hostname)
+    raport["identity"]["os_family"] = "linux"
+    raport["identity"]["arch"] = "aarch64"
+    client.post("/api/v1/inventory", headers={"Authorization": f"Bearer {token}"}, json=raport)
+    return token
+
+
+def test_architektura_odczytana_z_naglowka_pliku(client, make_user):
+    """Czytamy naglowek, a nie deklaracje wgrywajacego - naglowek jest faktem."""
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.0", PLIK_LINUKSOWY, "linux")          # ARM64
+    _wgraj_wersje(client, csrf, "0.5.0", PLIK_LINUKSOWY_X86, "linux")      # x86-64
+
+    with SessionLocal() as db:
+        architektury = {
+            w.arch for w in db.execute(
+                select(AgentRelease).where(AgentRelease.os_family == "linux")
+            ).scalars()
+        }
+        assert architektury == {"aarch64", "x86_64"}
+
+
+def test_raspberry_nie_dostanie_agenta_dla_x86(client, tenant_a, make_user):
+    """Sedno zabezpieczenia: ELF dla x86-64 i dla ARM64 to oba "linux",
+    ale Pi nie uruchomi pliku zbudowanego na serwerze x86."""
+    token = _maszyna_arm(client, tenant_a)
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.0", PLIK_LINUKSOWY_X86, "linux")
+    with SessionLocal() as db:
+        x86 = db.execute(
+            select(AgentRelease.id).where(AgentRelease.arch == "x86_64")
+        ).scalar_one()
+
+    _oznacz_oficjalna(client, csrf, x86)
+
+    oferta = client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
+    ).json()
+    assert oferta["available"] is False, "maszyna ARM nie moze dostac pliku dla x86"
+    assert client.get(
+        "/api/v1/agent/release", headers={"Authorization": f"Bearer {token}"}
+    ).status_code == 404
+
+
+def test_raspberry_dostaje_agenta_dla_arm(client, tenant_a, make_user):
+    token = _maszyna_arm(client, tenant_a)
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.0", PLIK_LINUKSOWY, "linux")     # ARM64
+    with SessionLocal() as db:
+        arm = db.execute(
+            select(AgentRelease.id).where(AgentRelease.arch == "aarch64")
+        ).scalar_one()
+
+    _oznacz_oficjalna(client, csrf, arm)
+
+    oferta = client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
+    ).json()
+    assert oferta["available"] is True
+    assert oferta["version"] == "0.5.0"
+    assert client.get(
+        "/api/v1/agent/release", headers={"Authorization": f"Bearer {token}"}
+    ).status_code == 200
+
+
+def test_ta_sama_wersja_dla_dwoch_architektur(client, make_user):
+    """0.5.0 dla ARM64 i 0.5.0 dla x86-64 to dwa rozne pliki tego samego wydania."""
+    csrf = _superadmin(client, make_user)
+    assert _wgraj_wersje(client, csrf, "0.5.0", PLIK_LINUKSOWY, "linux").status_code == 303
+    assert _wgraj_wersje(client, csrf, "0.5.0", PLIK_LINUKSOWY_X86, "linux").status_code == 303
+    # ...ale ten sam plik dla tej samej architektury juz nie.
+    assert _wgraj_wersje(client, csrf, "0.5.0", PLIK_LINUKSOWY, "linux").status_code == 400
+
+
+def test_maszyna_bez_zgloszonej_architektury_nie_dostaje_nic(client, tenant_a, make_user):
+    """Starszy agent lepiej niech zostanie na swojej wersji, niz ma pobrac
+    plik, ktorego nie da sie wykonac."""
+    token = client.post(
+        "/api/v1/agents/enroll",
+        headers={"Authorization": f"Bearer {tenant_a['token']}"},
+        json={
+            "machine_id": "stary-agent-01",
+            "identity": {"hostname": "STARY", "os_family": "windows"},   # bez arch
+            "agent_version": "0.1.0",
+        },
+    ).json()["agent_token"]
+
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.0", PLIK_AGENTA, "windows")
+    with SessionLocal() as db:
+        wydanie = db.execute(select(AgentRelease.id)).scalar_one()
+    _oznacz_oficjalna(client, csrf, wydanie)
+
+    assert client.get(
+        "/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"}
+    ).json()["available"] is False
+
+
+def test_odrzuca_plik_ktorego_architektury_nie_rozpoznajemy(client, make_user):
+    csrf = _superadmin(client, make_user)
+    odpowiedz = client.post(
+        "/admin/releases",
+        data={"version": "0.5.0", "os_family": "windows", "notes": "", "csrf_token": csrf},
+        files={"plik": ("agent.exe", io.BytesIO(b"MZ" + b"\x00" * 100), "application/octet-stream")},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 400

@@ -22,6 +22,9 @@ class MachineIdentity(BaseModel):
     fqdn: str | None = Field(default=None, max_length=255)
     domain: str | None = Field(default=None, max_length=255)
     os_family: str = Field(max_length=32)
+    # Starsze agenty tego nie przysylaja - wtedy zostaje None i maszyna nie
+    # dostaje propozycji aktualizacji, zamiast dostac plik nie do uruchomienia.
+    arch: str | None = Field(default=None, max_length=16)
 
     @field_validator("hostname")
     @classmethod

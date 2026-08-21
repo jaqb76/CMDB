@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
@@ -90,6 +91,7 @@ def _dodaj_brakujace_kolumny() -> None:
 
     inspector = inspect(engine)
     istniejace_tabele = set(inspector.get_table_names())
+    dodane: set[tuple[str, str]] = set()
 
     for tabela in models.Base.metadata.sorted_tables:
         if tabela.name not in istniejace_tabele:
@@ -118,6 +120,55 @@ def _dodaj_brakujace_kolumny() -> None:
             with engine.begin() as conn:
                 conn.execute(text(f"ALTER TABLE {tabela.name} ADD COLUMN {definicja}"))
             log.info("dodano brakujaca kolumne %s.%s", tabela.name, kolumna.name)
+            dodane.add((tabela.name, kolumna.name))
+
+    if ("agent_releases", "arch") in dodane:
+        _uzupelnij_architekture_wydan()
+
+
+def _uzupelnij_architekture_wydan() -> None:
+    """Ustawia architekture wgranym wczesniej wydaniom, czytajac ich pliki.
+
+    Kolumna dokladana jest z wartoscia domyslna, bo inaczej nie da sie jej
+    dodac do tabeli z danymi. Domyslna wartosc jest jednak tylko zgadywaniem:
+    wydanie dla ARM zostaloby oznaczone jako x86_64 i serwer zaproponowalby
+    je Raspberry Pi jako plik nie do uruchomienia - czyli dokladnie ta awaria,
+    ktorej rozroznianie architektur ma zapobiegac. Naglowek pliku jest faktem,
+    wiec odczytujemy go i poprawiamy zapis.
+    """
+    from sqlalchemy import select, update
+
+    from . import models
+    from .config import get_settings
+    from .services import architektura
+
+    katalog = Path(get_settings().release_dir)
+    poprawione = 0
+    with Session(engine) as db:
+        wydania = db.execute(
+            select(models.AgentRelease.id, models.AgentRelease.storage_name,
+                   models.AgentRelease.version, models.AgentRelease.arch)
+        ).all()
+        for identyfikator, nazwa_pliku, wersja, zapisana in wydania:
+            wykryta = architektura.wykryj_z_pliku(katalog / nazwa_pliku)
+            if wykryta is None:
+                log.warning(
+                    "nie moge odczytac architektury wydania %s - zostaje %s, "
+                    "wgraj plik ponownie jesli to wydanie dla innej architektury",
+                    wersja, zapisana,
+                )
+                continue
+            if wykryta != zapisana:
+                db.execute(
+                    update(models.AgentRelease)
+                    .where(models.AgentRelease.id == identyfikator)
+                    .values(arch=wykryta)
+                )
+                log.info("wydanie %s: architektura %s -> %s", wersja, zapisana, wykryta)
+                poprawione += 1
+        db.commit()
+    if poprawione:
+        log.info("poprawiono architekture %d wydan", poprawione)
 
 
 def _domyslna_wartosc(kolumna) -> str | None:

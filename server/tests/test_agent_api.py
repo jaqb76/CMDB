@@ -16,7 +16,7 @@ def enroll(client, token: str, machine_id: str = "win-machine-0001", hostname: s
         headers={"Authorization": f"Bearer {token}"},
         json={
             "machine_id": machine_id,
-            "identity": {"hostname": hostname, "os_family": "windows"},
+            "identity": {"hostname": hostname, "os_family": "windows", "arch": "amd64"},
             "agent_version": "0.1.0",
         },
     )

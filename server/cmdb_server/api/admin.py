@@ -49,7 +49,7 @@ from ..models import (
 )
 from ..security import check_csrf_token, generate_token, hash_password, issue_csrf_token
 from ..services.auth import client_ip, require_superadmin
-from ..services import ustawienia
+from ..services import architektura, ustawienia
 from ..services.scoping import audit
 from .ui import templates
 
@@ -556,6 +556,7 @@ def widok_wersji(
 
     return render_admin(
         request, "admin_wersje.html", user, "wersje",
+        etykiety_arch=architektura.ETYKIETY,
         wydania=wszystkie,
         wydania_wg_systemu=wedlug_systemu,
         oficjalne=_oficjalne(db, wersje),
@@ -623,6 +624,16 @@ async def wgraj_wersje(
         wykryta = str(metadane.get("version") or "").strip()
         numer = wykryta or podany
 
+        # Architekture czytamy z naglowka pliku - to fakt, a nie deklaracja.
+        # Bez tego wersja zbudowana na serwerze x86 trafialaby na kazde
+        # Raspberry Pi jako plik nie do uruchomienia.
+        arch = architektura.wykryj_z_pliku(tymczasowy)
+        if arch is None:
+            raise HTTPException(
+                status_code=400,
+                detail="nie rozpoznaje architektury pliku - czy to na pewno program?",
+            )
+
         if not numer:
             raise HTTPException(
                 status_code=400,
@@ -647,16 +658,19 @@ async def wgraj_wersje(
             )
         if db.execute(
             select(AgentRelease).where(
-                AgentRelease.version == numer, AgentRelease.os_family == system
+                AgentRelease.version == numer,
+                AgentRelease.os_family == system,
+                AgentRelease.arch == arch,
             )
         ).scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=400,
-                detail=f"wersja {numer} dla {SYSTEMY[system]['etykieta']} juz istnieje",
+                detail=f"wersja {numer} dla {SYSTEMY[system]['etykieta']} "
+                       f"({architektura.etykieta(arch)}) juz istnieje",
             )
 
         odcisk = skrot.hexdigest()
-        nazwa_w_magazynie = f"{system}-{odcisk}.bin"
+        nazwa_w_magazynie = f"{system}-{arch}-{odcisk}.bin"
         tymczasowy.replace(katalog / nazwa_w_magazynie)
     except Exception:
         tymczasowy.unlink(missing_ok=True)
@@ -666,6 +680,7 @@ async def wgraj_wersje(
         AgentRelease(
             version=numer,
             os_family=system,
+            arch=arch,
             filename=plik.filename or f"cmdb-agent-{numer}",
             storage_name=nazwa_w_magazynie,
             sha256=odcisk,
@@ -674,12 +689,12 @@ async def wgraj_wersje(
             created_by=user.email,
         )
     )
-    audit(db, None, action="release.uploaded", target=f"{numer} ({system})",
-          detail={"sha256": odcisk, "size": rozmiar, "os_family": system},
+    audit(db, None, action="release.uploaded", target=f"{numer} ({system}/{arch})",
+          detail={"sha256": odcisk, "size": rozmiar, "os_family": system, "arch": arch},
           ip=client_ip(request), actor=user.email)
     db.commit()
-    log.info("superadmin %s wgral agenta %s dla %s (%s, wersja %s)",
-             user.email, numer, system, odcisk[:16],
+    log.info("superadmin %s wgral agenta %s dla %s/%s (%s, wersja %s)",
+             user.email, numer, system, arch, odcisk[:16],
              "odczytana z pliku" if wykryta else "podana recznie")
     return RedirectResponse("/admin/wersje", status_code=status.HTTP_303_SEE_OTHER)
 

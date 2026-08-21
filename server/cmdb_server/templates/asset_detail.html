@@ -80,7 +80,7 @@
           <dt>Nazwa</dt><dd>{{ os_info.name or asset.os_name or '-' }}</dd>
           <dt>Wersja / build</dt><dd>{{ os_info.version or '-' }}{% if os_info.build %} ({{ os_info.build }}){% endif %}</dd>
           <dt>Edycja</dt><dd>{{ os_info.edition or '-' }}</dd>
-          <dt>Architektura</dt><dd>{{ os_info.architecture or '-' }}</dd>
+          <dt>Architektura</dt><dd>{{ os_info.architecture or '-' }}{% if asset.arch %} <code class="small">{{ asset.arch }}</code>{% endif %}</dd>
           <dt>Zainstalowany</dt><dd>{{ os_info.install_date or '-' }}</dd>
           <dt>Ostatni start</dt><dd>{{ os_info.last_boot or '-' }}</dd>
           <dt>Jezyk / strefa</dt><dd>{{ os_info.locale or '-' }} {{ os_info.timezone or '' }}</dd>

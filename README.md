@@ -124,6 +124,24 @@ Ikona działa jako zwykły użytkownik i tylko czyta plik statusu — nigdy nie
 sięga do poświadczenia agenta. Szczegóły i wdrożenie masowe (GPO, Intune, SCCM):
 [`docs/agent-windows.md`](docs/agent-windows.md).
 
+## Instalacja agenta na Linuksie (w tym Raspberry Pi)
+
+Agent nie ma zależności poza biblioteką standardową Pythona, więc na Linuksie
+instaluje się go wprost ze źródeł — nic nie trzeba budować:
+
+```bash
+sudo ./agent/packaging/install-agent.sh --server https://cmdb.firma.pl --token cmdb_ent_...
+```
+
+Skrypt zakłada usługę i timer systemd (agent jest jednorazowy, nie rezydentny),
+rejestruje maszynę i wysyła pierwszy raport. Na Raspberry Pi dane o modelu i
+numerze seryjnym pochodzą z `/proc/device-tree` i `/proc/cpuinfo`, bo DMI tam
+nie istnieje.
+
+Wydanie agenta opisane jest parą **system + architektura**, a architekturę
+serwer odczytuje z nagłówka pliku — dzięki temu build dla x86-64 nigdy nie
+trafi na ARM. Szczegóły: [`docs/agent-linux.md`](docs/agent-linux.md).
+
 ## Wielofirmowość i tokeny
 
 Rejestracja agenta jest dwustopniowa:
@@ -147,6 +165,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | [`docs/architektura.md`](docs/architektura.md) | model danych, przepływ raportu, deduplikacja, dodawanie kolejnych systemów |
 | [`docs/bezpieczenstwo.md`](docs/bezpieczenstwo.md) | model zagrożeń, tokeny, TLS, izolacja firm, dane wrażliwe |
 | [`docs/agent-windows.md`](docs/agent-windows.md) | co i jak agent zbiera, instalacja, wdrożenie masowe, diagnostyka |
+| [`docs/agent-linux.md`](docs/agent-linux.md) | instalacja na Ubuntu/Raspberry Pi, systemd, architektury procesorów |
 | [`docs/wdrozenie.md`](docs/wdrozenie.md) | docker compose, TLS, kopie zapasowe, utrzymanie |
 
 ## Testy

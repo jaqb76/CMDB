@@ -29,6 +29,7 @@ def build_report(
             "fqdn": f"{hostname.lower()}.firma.local",
             "domain": "firma.local",
             "os_family": "windows",
+            "arch": "amd64",
         },
         "hardware": {
             "system": {

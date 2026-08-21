@@ -33,11 +33,38 @@ CHASSIS_TYPES = {
 }
 
 
+DRZEWO = Path("/proc/device-tree")
+
+
 def read_text(path: str | Path, default: str = "") -> str:
     try:
         return Path(path).read_text(encoding="utf-8", errors="replace").strip()
     except (OSError, PermissionError):
         return default
+
+
+def czytaj_drzewo(nazwa: str) -> str | None:
+    """Wartosc z drzewa urzadzen - tak identyfikuja sie plyty ARM.
+
+    DMI (/sys/class/dmi/id) to firmware x86; na Raspberry Pi i innych plytach
+    ARM nie istnieje, wiec producent, model i numer seryjny trzeba czytac
+    stad. Pliki drzewa urzadzen koncza sie bajtem zerowym.
+    """
+    wartosc = read_text(DRZEWO / nazwa)
+    return clean(wartosc.replace(chr(0), "").strip()) if wartosc else None
+
+
+def dane_cpuinfo() -> dict[str, str]:
+    """Pola z /proc/cpuinfo wystepujace poza x86: Model, Hardware, Serial."""
+    dane: dict[str, str] = {}
+    for linia in read_text("/proc/cpuinfo").splitlines():
+        if ":" not in linia:
+            continue
+        klucz, _, wartosc = linia.partition(":")
+        klucz, wartosc = klucz.strip(), wartosc.strip()
+        if klucz in {"Model", "Hardware", "Serial", "Revision", "model name"} and wartosc:
+            dane.setdefault(klucz, wartosc)
+    return dane
 
 
 class LinuxCollector(BaseCollector):
@@ -68,6 +95,9 @@ class LinuxCollector(BaseCollector):
             "fqdn": fqdn if "." in fqdn else None,
             "domain": domain,
             "os_family": self.os_family,
+            # Agent dla x86-64 nie uruchomi sie na ARM i odwrotnie - serwer
+            # musi wiedziec, ktory plik wolno tej maszynie zaproponowac.
+            "arch": platform.machine().lower(),
         }
 
     def steps(self) -> list[Step]:
@@ -91,15 +121,36 @@ class LinuxCollector(BaseCollector):
         return steps
 
     def collect_system(self) -> dict:
+        """Identyfikacja plyty.
+
+        Kolejnosc zrodel wynika z tego, gdzie co istnieje: DMI na sprzecie
+        x86, drzewo urzadzen na plytach ARM (Raspberry Pi), /proc/cpuinfo
+        jako ostatnia deska ratunku - tam Pi podaje model i numer seryjny.
+        """
+        cpuinfo = dane_cpuinfo()
+
         vendor = clean(read_text(DMI / "sys_vendor"))
         product = clean(read_text(DMI / "product_name"))
+        numer = clean(read_text(DMI / "product_serial"))
+
+        model_drzewa = czytaj_drzewo("model")
+        if not product:
+            # "Raspberry Pi 4 Model B Rev 1.4"
+            product = model_drzewa or clean(cpuinfo.get("Model"))
+        if not vendor and model_drzewa:
+            # Producent nie jest podawany osobno - bierzemy pierwszy czlon modelu.
+            vendor = model_drzewa.split()[0] if model_drzewa.split() else None
+        if not numer:
+            numer = czytaj_drzewo("serial-number") or clean(cpuinfo.get("Serial"))
+
         return {
             "manufacturer": vendor,
             "model": product,
-            "serial_number": clean(read_text(DMI / "product_serial")),
+            "serial_number": numer,
             "uuid": clean(read_text(DMI / "product_uuid")),
             "chassis": CHASSIS_TYPES.get(to_int(read_text(DMI / "chassis_type"))),
             "system_type": platform.machine(),
+            "board": clean(cpuinfo.get("Hardware")) or czytaj_drzewo("compatible"),
             "virtualization": self._detect_virtualization(vendor, product),
         }
 
@@ -156,6 +207,16 @@ class LinuxCollector(BaseCollector):
         boost = read_text("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")
         if boost:
             max_mhz = to_int(int(boost) // 1000)
+
+        if not model:
+            # Na aarch64 /proc/cpuinfo nie podaje "model name". Bierzemy to,
+            # czym plyta sie przedstawia, a w ostatecznosci sama architekture.
+            cpuinfo = dane_cpuinfo()
+            model = (
+                clean(cpuinfo.get("Hardware"))
+                or czytaj_drzewo("compatible")
+                or platform.machine()
+            )
 
         return {
             "model": model,

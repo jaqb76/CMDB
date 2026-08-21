@@ -231,6 +231,7 @@ class Asset(Base):
     fqdn: Mapped[str | None] = mapped_column(String(255))
     domain: Mapped[str | None] = mapped_column(String(255))
     os_family: Mapped[str | None] = mapped_column(String(32), index=True)
+    arch: Mapped[str | None] = mapped_column(String(16), index=True)
     os_name: Mapped[str | None] = mapped_column(String(200))
     os_version: Mapped[str | None] = mapped_column(String(100))
     manufacturer: Mapped[str | None] = mapped_column(String(200))
@@ -351,7 +352,7 @@ class AgentRelease(Base):
 
     __tablename__ = "agent_releases"
     __table_args__ = (
-        UniqueConstraint("version", "os_family", name="uq_release_version_os"),
+        UniqueConstraint("version", "os_family", "arch", name="uq_release_version_os_arch"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -360,6 +361,10 @@ class AgentRelease(Base):
     # uruchomi sie na Linuksie i odwrotnie. Wersja bez tego rozroznienia
     # pozwalalaby wyslac maszynie plik, ktorego nie ma jak wykonac.
     os_family: Mapped[str] = mapped_column(String(32), nullable=False, default="windows", index=True)
+    # Rodzina systemu nie wystarcza: ELF dla x86-64 i dla ARM64 to oba "linux",
+    # a plik zbudowany dla jednej architektury nie uruchomi sie na drugiej.
+    # Odczytywane z naglowka pliku, nie z deklaracji wgrywajacego.
+    arch: Mapped[str] = mapped_column(String(16), nullable=False, default="x86_64", index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     # Nazwa pliku w magazynie serwera (skrot + rozszerzenie).
     storage_name: Mapped[str] = mapped_column(String(128), nullable=False)
