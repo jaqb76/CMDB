@@ -260,12 +260,42 @@ def test_ubuntu_nie_daje_falszywego_alarmu(kanal_ubuntu):
 # --- stan nieznany ----------------------------------------------------------
 
 def test_nierozpoznana_dystrybucja_to_stan_nieznany():
+    """Dystrybucja, dla ktorej nie mamy danych - zadnego zgadywania."""
     with SessionLocal() as db:
-        wynik = cve.dopasuj(db, {"os": {"name": "Debian GNU/Linux 12 (bookworm)"},
+        wynik = cve.dopasuj(db, {"os": {"name": "Fedora Linux 40"},
                                  "software": {"packages": [_pakiet("curl", "1.0")]}})
     assert wynik["status"] == "nieznany"
     assert wynik["count"] is None, "nie wiemy - nie wolno pokazac zera"
     assert "nie rozpoznaje dystrybucji" in wynik["detail"]
+
+
+# --- rozpoznanie wydania ----------------------------------------------------
+#
+# Agenci starsi niz 0.5.4 nie przysylaja VERSION_CODENAME. Odczytujemy je
+# wtedy z nazwy systemu, ale tylko tam, gdzie jest jednoznaczna - zla nazwa
+# kodowa oznaczalaby porownanie z danymi innego wydania.
+
+@pytest.mark.parametrize(
+    "system, oczekiwane",
+    [
+        # Agent podaje wprost - to ma pierwszenstwo.
+        ({"distro_id": "debian", "codename": "trixie", "name": "cokolwiek"},
+         ("debian", "trixie")),
+        # Debian ma nazwe kodowa wprost w nawiasie.
+        ({"name": "Debian GNU/Linux 12 (bookworm)"}, ("debian", "bookworm")),
+        # Wersja Ubuntu wyznacza nazwe przez stala tabele.
+        ({"name": "Ubuntu 22.04.5 LTS", "version": "22.04"}, ("ubuntu", "jammy")),
+        ({"name": "Ubuntu 24.04 LTS", "version": "24.04"}, ("ubuntu", "noble")),
+        # Nieznane wydanie Ubuntu - lepiej nic niz zle dane.
+        ({"name": "Ubuntu 30.10", "version": "30.10"}, None),
+        # Debian bez nazwy kodowej w nazwie.
+        ({"name": "Debian GNU/Linux"}, None),
+        ({"name": "Fedora Linux 40"}, None),
+        ({}, None),
+    ],
+)
+def test_rozpoznanie_wydania(system, oczekiwane):
+    assert cve.wydanie_maszyny({"os": system}) == oczekiwane
 
 
 def test_brak_pobranych_danych_to_stan_nieznany():
