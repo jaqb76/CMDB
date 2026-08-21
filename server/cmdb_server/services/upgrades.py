@@ -88,6 +88,48 @@ def wersja_oficjalna(db: Session, asset: Asset) -> AgentRelease | None:
     return wydanie if wydanie is not None and _pasuje(wydanie, asset) else None
 
 
+def wersja_dla_firmy(
+    db: Session, tenant_id: str, os_family: str, arch: str = "x86_64"
+) -> AgentRelease | None:
+    """Wersja obowiazujaca w firmie dla danego systemu - bez konkretnej maszyny.
+
+    Uzywane przy pobieraniu instalatora: maszyny jeszcze nie ma w bazie, wiec
+    nie da sie odpytac o wersje docelowa dla niej. Zostaja dwa szersze poziomy:
+    ustawienie firmy, a w razie jego braku wersja oficjalna.
+    """
+    system = (os_family or "").lower()
+    if not system:
+        return None
+
+    cel = db.execute(
+        select(TenantAgentTarget).where(
+            TenantAgentTarget.tenant_id == tenant_id,
+            TenantAgentTarget.os_family == system,
+        )
+    ).scalar_one_or_none()
+    if cel is not None:
+        wydanie = db.get(AgentRelease, cel.release_id)
+        if wydanie is not None and _zgodne(wydanie, system, arch):
+            return wydanie
+
+    cel = db.execute(
+        select(GlobalAgentTarget).where(GlobalAgentTarget.os_family == system)
+    ).scalar_one_or_none()
+    if cel is None:
+        return None
+    wydanie = db.get(AgentRelease, cel.release_id)
+    return wydanie if wydanie is not None and _zgodne(wydanie, system, arch) else None
+
+
+def _zgodne(wydanie: AgentRelease, os_family: str, arch: str | None) -> bool:
+    """Czy wydanie pasuje do pary system + architektura."""
+    system = (os_family or "").lower()
+    znormalizowana = architektura.normalizuj(arch)
+    if not system or not znormalizowana:
+        return False
+    return (wydanie.os_family or "").lower() == system and (wydanie.arch or "") == znormalizowana
+
+
 def _pasuje(wydanie: AgentRelease, asset: Asset) -> bool:
     """Ostatnia bariera przed wyslaniem pliku, ktorego maszyna nie uruchomi.
 
@@ -99,11 +141,7 @@ def _pasuje(wydanie: AgentRelease, asset: Asset) -> bool:
     starszy agent lepiej niech zostanie na swojej wersji, niz ma pobrac plik,
     ktorego nie da sie wykonac.
     """
-    system = (asset.os_family or "").lower()
-    arch = architektura.normalizuj(asset.arch)
-    if not system or not arch:
-        return False
-    return (wydanie.os_family or "").lower() == system and (wydanie.arch or "") == arch
+    return _zgodne(wydanie, asset.os_family or "", asset.arch)
 
 
 def czy_wymaga_aktualizacji(asset: Asset, wydanie: AgentRelease | None) -> bool:

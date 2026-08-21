@@ -39,6 +39,21 @@ class Settings(BaseSettings):
     # PyInstallerem agent z interfejsem ma okolo 30 MB.
     max_release_bytes: int = 128 * 1024 * 1024
 
+    # Publiczny adres serwera, wpisywany w wydawany skrypt instalacyjny.
+    # Za posrednikiem (nginx) adres z zadania bywa adresem kontenera, wiec
+    # zgadywanie go z naglowkow konczyloby sie instalacja wskazujaca w nicosc.
+    public_url: str = ""
+
+    # Katalog ze zrodlami agenta - jest tylko w repozytorium, nie w obrazie
+    # produkcyjnym. Gdy istnieje, serwer sam odswieza paczke do pobrania.
+    agent_source_dir: str = ""
+
+    # Katalog z paczka zrodel agenta. Domyslnie ten sam co magazyn wydan, ale
+    # w obrazie produkcyjnym musi byc osobny: wydania wgrywa administrator
+    # i zyja w wolumenie, a paczka jest czescia obrazu i zmienia sie razem
+    # z kodem. Pusty wolumen podmontowany na magazyn wydan przyslonilby ja.
+    agent_bundle_dir: str = ""
+
     # Po ilu godzinach bez kontaktu maszyna jest oznaczana jako "stale".
     stale_after_hours: int = 48
 

@@ -287,6 +287,11 @@ def main() -> int:
     os.environ.setdefault("CMDB_SECRET_KEY", ensure_secret())
     os.environ.setdefault("CMDB_ENV", "dev")
     os.environ.setdefault("CMDB_REQUIRE_HTTPS", "true")
+    # Zrodla agenta leza obok - dzieki temu serwer sam odswieza paczke
+    # do pobrania i instalacja jednym poleceniem dziala od razu.
+    zrodla_agenta = Path(__file__).resolve().parent.parent / "agent"
+    if (zrodla_agenta / "cmdb_agent").is_dir():
+        os.environ.setdefault("CMDB_AGENT_SOURCE_DIR", str(zrodla_agenta))
 
     addresses = ensure_certificate()
     print(f"  baza danych       : {DB_PATH}")

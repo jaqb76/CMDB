@@ -35,7 +35,7 @@ from ..models import (
     utcnow,
 )
 from ..security import generate_token, issue_csrf_token, sign_session
-from ..services import duplicates, scoping, ustawienia
+from ..services import duplicates, pakiet, scoping, upgrades, ustawienia
 from ..services.auth import (
     LoginRequired,
     authenticate_user,
@@ -47,6 +47,7 @@ from ..services.auth import (
     verify_csrf,
 )
 from ..services.scoping import TenantContext, audit
+from . import download
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -719,6 +720,27 @@ def owner_delete(
 
 
 # --- tokeny rejestracyjne ---------------------------------------------------
+
+@router.get("/pobierz", response_class=HTMLResponse)
+def strona_pobierania(
+    request: Request,
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Gotowe polecenia instalacyjne dla maszyn tej firmy.
+
+    Tokenu nie da sie tu wypisac - w bazie sa wylacznie jego skroty, a wartosc
+    jawna pokazujemy raz, przy wydaniu. Zamiast tego jest miejsce na wklejenie
+    i odsylacz do strony tokenow.
+    """
+    return render(
+        request, "pobierz.html", user, ctx, db,
+        adres_serwera=download.adres_publiczny(request),
+        paczka_linux=pakiet.opis(pakiet.katalog_paczki()),
+        wydanie_windows=upgrades.wersja_dla_firmy(db, ctx.tenant_id, "windows"),
+    )
+
 
 @router.get("/tokens", response_class=HTMLResponse)
 def token_list(

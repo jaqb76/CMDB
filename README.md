@@ -126,12 +126,17 @@ sięga do poświadczenia agenta. Szczegóły i wdrożenie masowe (GPO, Intune, S
 
 ## Instalacja agenta na Linuksie (w tym Raspberry Pi)
 
-Agent nie ma zależności poza biblioteką standardową Pythona, więc na Linuksie
-instaluje się go wprost ze źródeł — nic nie trzeba budować:
+Jedno polecenie na maszynie docelowej — bez klonowania repozytorium i bez
+budowania czegokolwiek:
 
 ```bash
-sudo ./agent/packaging/install-agent.sh --server https://cmdb.firma.pl --token cmdb_ent_...
+curl -fsSL https://cmdb.firma.pl/download/install.sh \
+  | sudo bash -s -- --token cmdb_ent_...
 ```
+
+Serwer wydaje źródła agenta po HTTPS (za tokenem firmowym), skrypt sprawdza ich
+skrót SHA-256 i uruchamia instalator. Gotowe polecenie czeka w panelu, w
+zakładce **Instalacja agenta**.
 
 Skrypt zakłada usługę i timer systemd (agent jest jednorazowy, nie rezydentny),
 rejestruje maszynę i wysyła pierwszy raport. Na Raspberry Pi dane o modelu i

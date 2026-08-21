@@ -81,10 +81,10 @@ def _guard_throttle(ip: str) -> None:
         )
 
 
-def require_enrollment_token(
-    request: Request, db: Session = Depends(get_db)
+def _sprawdz_token_firmowy(
+    request: Request, db: Session
 ) -> tuple[EnrollmentToken, Tenant]:
-    """Token firmowy - akceptowany wylacznie na endpoincie enrollmentu."""
+    """Sam kontrola tokenu firmowego, bez odnotowywania uzycia."""
     ip = client_ip(request)
     _guard_throttle(ip)
     token = _bearer(request)
@@ -106,9 +106,29 @@ def require_enrollment_token(
     if tenant is None or not tenant.is_active:
         raise _reject(ip, "firma nieaktywna")
 
+    return row, tenant
+
+
+def require_enrollment_token(
+    request: Request, db: Session = Depends(get_db)
+) -> tuple[EnrollmentToken, Tenant]:
+    """Token firmowy - akceptowany wylacznie na endpoincie enrollmentu."""
+    row, tenant = _sprawdz_token_firmowy(request, db)
     row.last_used_at = utcnow()
     row.use_count += 1
     return row, tenant
+
+
+def require_enrollment_token_do_pobrania(
+    request: Request, db: Session = Depends(get_db)
+) -> tuple[EnrollmentToken, Tenant]:
+    """Token firmowy przy pobieraniu instalatora.
+
+    Ten sam token, ale licznika uzyc nie ruszamy: liczy on zarejestrowane
+    maszyny, a pobranie pliku maszyna moze powtorzyc kilka razy, zanim
+    instalacja sie powiedzie. Wliczanie tego zafalszowaloby obraz floty.
+    """
+    return _sprawdz_token_firmowy(request, db)
 
 
 def require_agent(

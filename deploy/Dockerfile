@@ -13,6 +13,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY server/ /app/
 
+# Paczka zrodel agenta dla Linuksa. Wbudowujemy ja w obraz, bo maszyny
+# docelowe pobieraja agenta z serwera - inaczej kazda z nich musialaby
+# klonowac repozytorium. Zrodla agenta sa potrzebne wylacznie w tym kroku
+# i nie zostaja w obrazie.
+# Katalog jest osobny od magazynu wydan: wydania wgrywa administrator i zyja
+# w wolumenie, a paczka jest czescia obrazu i zmienia sie razem z kodem.
+# Wspolny katalog oznaczalby, ze pusty wolumen przyslania paczke z obrazu.
+ENV CMDB_AGENT_BUNDLE_DIR=/app/agent-pakiet
+COPY agent/ /tmp/agent/
+RUN python -m cmdb_server.pakiet /tmp/agent --do "$CMDB_AGENT_BUNDLE_DIR"     && rm -rf /tmp/agent
+
 # Serwer nie potrzebuje roota - uruchamiamy jako zwykly uzytkownik.
 RUN useradd --system --create-home --uid 10001 cmdb && chown -R cmdb:cmdb /app
 USER cmdb

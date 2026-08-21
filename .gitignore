@@ -41,3 +41,8 @@ agent/build/
 
 # Wyniki budowania agenta
 agent/dist/
+
+# Paczka zrodel agenta jest artefaktem pochodnym - buduje sie ja z tego repo
+# poleceniem: python -m cmdb_server.pakiet ../agent
+server/releases/cmdb-agent-zrodla.tar.gz
+server/releases/cmdb-agent-zrodla.json

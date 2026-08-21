@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .api import admin as admin_api
 from .api import agent as agent_api
+from .api import download as download_api
 from .api import ui as ui_api
 from .config import get_settings
 from .db import init_db
@@ -62,8 +63,29 @@ async def lifespan(app: FastAPI):
     settings.validate_for_runtime()
     _silence_windows_disconnect_noise()
     init_db()
+    _odswiez_paczke_agenta(settings)
     log.info("CMDB wystartowal (env=%s, db=%s)", settings.env, settings.database_url.split("@")[-1])
     yield
+
+
+def _odswiez_paczke_agenta(settings) -> None:
+    """Odswieza paczke zrodel agenta, jesli obok leza jego zrodla.
+
+    W repozytorium to wygoda: po zmianie w agencie serwer wyda nowa paczke bez
+    pamietania o osobnym poleceniu. W obrazie produkcyjnym zrodel nie ma -
+    paczka jest tam budowana przy tworzeniu obrazu i ta funkcja nic nie robi.
+    """
+    if not settings.agent_source_dir:
+        return
+    from .services import pakiet
+
+    metadane = pakiet.zbuduj_jesli_trzeba(
+        Path(settings.agent_source_dir), pakiet.katalog_paczki()
+    )
+    if metadane is None:
+        log.warning(
+            "nie ma paczki zrodel agenta - instalacja po HTTPS bedzie zwracac blad"
+        )
 
 
 def create_app() -> FastAPI:
@@ -81,6 +103,7 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.include_router(agent_api.router)
+    app.include_router(download_api.router)
     app.include_router(admin_api.router)
     app.include_router(ui_api.router)
 
@@ -96,7 +119,11 @@ def create_app() -> FastAPI:
         if settings.require_https:
             proto = request.headers.get("x-forwarded-proto", request.url.scheme)
             if proto != "https":
-                if request.url.path.startswith("/api/"):
+                # Zadania z tokenem nie przekierowujemy, tylko odrzucamy:
+                # naglowek juz doszedl po czystym HTTP, wiec token juz wyciekl
+                # i przekierowanie niczego nie ratuje - jedynie ukrywa problem.
+                niesie_token = "authorization" in request.headers
+                if request.url.path.startswith("/api/") or niesie_token:
                     return JSONResponse(
                         {"detail": "wymagane polaczenie HTTPS"},
                         status_code=status.HTTP_403_FORBIDDEN,

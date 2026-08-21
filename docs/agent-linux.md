@@ -10,8 +10,24 @@ Wymagania: Python 3.9+ (Ubuntu 22.04 ma 3.10, 24.04 ma 3.12), systemd, `sudo`.
 
 ## Instalacja
 
+Jedno polecenie na maszynie docelowej — nic nie trzeba klonowac ani budowac:
+
 ```bash
-git clone https://github.com/jaqb76/CMDB.git
+curl -fsSL https://cmdb.firma.pl/download/install.sh \
+  | sudo bash -s -- --token cmdb_ent_...
+```
+
+Skrypt pobiera z serwera zrodla agenta, **sprawdza ich skrot SHA-256** i
+uruchamia wlasciwy instalator. Adres serwera jest w skrypcie wpisany przez
+sam serwer, wiec nie podaje sie go drugi raz. Gotowe polecenie z panelu:
+zakladka **Instalacja agenta**.
+
+Paczka wymaga tokenu firmowego — tego samego, ktorym maszyna sie rejestruje.
+Kto go nie ma, nie pobierze agenta.
+
+Jesli wolisz zrobic to recznie albo pracujesz na kopii repozytorium:
+
+```bash
 cd CMDB/agent/packaging
 sudo ./install-agent.sh --server https://cmdb.firma.pl --token cmdb_ent_...
 ```
@@ -26,9 +42,9 @@ Przydatne przełączniki:
 |---|---|
 | `--interval 4` | co ile godzin raportować (domyślnie 4) |
 | `--ca-bundle /ścieżka/ca.pem` | własne PKI lub certyfikat self-signed zamiast systemowego magazynu |
+| `--no-processes` | nie zbieraj listy procesów |
 
 Certyfikat podany w `--ca-bundle` jest **kopiowany** do `/etc/cmdb-agent/ca.pem`, więc plik źródłowy (np. kopia w katalogu domowym albo w `/tmp`) można po instalacji skasować — agent go już nie potrzebuje.
-| `--no-processes` | nie zbieraj listy procesów |
 
 ## Cykl pracy
 
@@ -57,9 +73,12 @@ pojedynczego pliku wykonywalnego do podmiany. Aktualizuje się go tak, jak
 zainstalowano:
 
 ```bash
-cd CMDB && git pull
-sudo ./agent/packaging/install-agent.sh --server https://cmdb.firma.pl --token cmdb_ent_...
+curl -fsSL https://cmdb.firma.pl/download/install.sh \
+  | sudo bash -s -- --token cmdb_ent_...
 ```
+
+Serwer wyda wtedy aktualna paczke, a instalator nadpisze `/opt/cmdb-agent`
+i przeladuje usluge.
 
 Samoaktualizacja z panelu serwera dotyczy wersji zbudowanych PyInstallerem.
 Jeśli chcesz jej używać na Linuksie, zbuduj agenta **na maszynie o tej samej
@@ -105,3 +124,43 @@ o cron:
 
 Alternatywnie `cmdb-agent loop` działa w pętli z ustawionym interwałem —
 wygodne w kontenerze, gdzie proces i tak ma żyć na pierwszym planie.
+
+## Certyfikat self-signed
+
+Przy certyfikacie wystawionym przez publiczne urzedy (Let's Encrypt) polecenia
+dzialaja bez zmian. Certyfikatowi **self-signed** maszyna docelowa nie ma
+powodu ufac i pobieranie sie nie powiedzie.
+
+Certyfikat trzeba wtedy dostarczyc **poza tym kanalem** — pobranie go z tego
+samego serwera, ktoremu jeszcze nie ufamy, niczego nie dowodzi. Skopiuj plik
+raz, np. przez `scp`, i wskaz go przy instalacji:
+
+```bash
+curl -fsSL --cacert /sciezka/ca.pem https://cmdb.firma.pl/download/install.sh \
+  | sudo bash -s -- --token cmdb_ent_... --ca-bundle /sciezka/ca.pem
+```
+
+Instalator kopiuje certyfikat do `/etc/cmdb-agent/ca.pem`, wiec plik zrodlowy
+mozna potem usunac.
+
+## Co serwer wydaje
+
+| Adres | Dostep | Zawartosc |
+|---|---|---|
+| `GET /download/install.sh` | publiczny | skrypt startowy z wpisanym adresem serwera |
+| `GET /download/agent-linux.tar.gz` | token firmowy | zrodla agenta + instalator |
+| `GET /download/agent-windows.exe` | token firmowy | wersja dla Windows obowiazujaca te firme |
+
+Skrypt startowy jest publiczny, bo nie ma w nim nic tajnego, a wymaganie tokenu
+oznaczaloby podawanie go dwa razy w jednym poleceniu. Wlasciwe pliki agenta
+wymagaja tokenu.
+
+Paczka jest **deterministyczna**: te same zrodla daja bajt w bajt ten sam plik,
+a wiec i ten sam skrot. Buduje sie ja po stronie serwera:
+
+```bash
+python -m cmdb_server.pakiet ../agent
+```
+
+W obrazie Dockera dzieje sie to przy jego tworzeniu, bo katalog `server/` nie
+zawiera zrodel agenta.
