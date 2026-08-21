@@ -71,6 +71,13 @@ install -d -m 0755 "$KATALOG_PROGRAMU"
 rm -rf "${KATALOG_PROGRAMU:?}/cmdb_agent"
 cp -r "$ZRODLA/cmdb_agent" "$KATALOG_PROGRAMU/"
 find "$KATALOG_PROGRAMU" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+
+# Znacznik odrozniajacy instalacje od czyjejs kopii repozytorium. Agent
+# podmienia swoj katalog przy aktualizacji tylko wtedy, gdy ten plik istnieje -
+# bez tego uruchomienie ze zrodel w katalogu roboczym konczyloby sie
+# nadpisaniem czyjejs pracy.
+date -u +"%Y-%m-%dT%H:%M:%SZ" > "$KATALOG_PROGRAMU/.cmdb-instalacja"
+
 echo "    program        : $KATALOG_PROGRAMU"
 
 cat > /usr/local/bin/cmdb-agent <<LAUNCHER

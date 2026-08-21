@@ -125,6 +125,47 @@ def _dodaj_brakujace_kolumny() -> None:
     if ("agent_releases", "arch") in dodane:
         _uzupelnij_architekture_wydan()
 
+    _popraw_unikalnosc_wydan()
+
+
+def _popraw_unikalnosc_wydan() -> None:
+    """Wymienia stare ograniczenie unikalnosci wersji agenta.
+
+    Pierwotnie wydanie bylo identyfikowane samym numerem wersji, bo agent byl
+    tylko dla Windows. Dzis wydanie to numer PLUS system PLUS architektura -
+    ta sama wersja 0.5.2 istnieje jako plik dla Windows i jako paczka zrodel
+    dla Linuksa, a wydania dla ARM i x86 to dwa rozne pliki.
+
+    Migracja pomostowa doklada kolumny, ale nie rusza ograniczen, wiec bazy
+    zalozone wczesniej nadal odrzucaly druga wersje o tym samym numerze -
+    i to bledem o naruszeniu unikalnosci, ktory wygladal jak awaria serwera.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "agent_releases" not in set(inspector.get_table_names()):
+        return
+
+    indeksy = {i["name"]: i for i in inspector.get_indexes("agent_releases")}
+    stary = indeksy.get("ix_agent_releases_version")
+    nowy = "uq_release_version_os_arch"
+
+    if stary is not None and stary.get("unique"):
+        with engine.begin() as conn:
+            conn.execute(text("DROP INDEX ix_agent_releases_version"))
+            conn.execute(text("CREATE INDEX ix_agent_releases_version ON agent_releases (version)"))
+        log.info("wymieniono ograniczenie unikalnosci wersji agenta na wersje+system+architekture")
+        indeksy.pop("ix_agent_releases_version", None)
+
+    if nowy not in indeksy:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {nowy} "
+                    "ON agent_releases (version, os_family, arch)"
+                )
+            )
+
 
 def _uzupelnij_architekture_wydan() -> None:
     """Ustawia architekture wgranym wczesniej wydaniom, czytajac ich pliki.

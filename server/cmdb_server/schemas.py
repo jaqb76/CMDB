@@ -100,6 +100,11 @@ class UpgradeOffer(BaseModel):
     sha256: str | None = None
     size_bytes: int | None = None
     current_version: str | None = None
+    # "plik" albo "zrodla". Instalacja ze zrodel to podmiana katalogu, a pliku
+    # - podmiana jednego pliku; agent musi wiedziec, co pobiera, ZANIM zacznie.
+    # Starsze agenty tego pola nie znaja i pomijaja je - a zrodel i tak nie
+    # dostana, bo zglaszaja sie jako uruchomione z pliku.
+    kind: str = "plik"
 
 
 class UpgradeResult(BaseModel):

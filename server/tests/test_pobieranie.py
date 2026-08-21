@@ -24,13 +24,22 @@ PLIK_PROBNY = _plik_pe(wypelniacz=b"wersja probna")
 
 @pytest.fixture()
 def paczka(tmp_path, monkeypatch):
-    """Paczka zrodel agenta zbudowana z prawdziwych zrodel w repozytorium."""
+    """Paczka zrodel zbudowana z prawdziwych zrodel i wpisana do magazynu wydan.
+
+    Paczka jest pelnoprawnym wydaniem, tak samo jak plik dla Windows - serwer
+    wydaje ja wedlug ustawien firmy, a nie wprost z dysku.
+    """
+    from cmdb_server.config import get_settings
+
     zrodla = Path(__file__).resolve().parent.parent.parent / "agent"
     if not (zrodla / "cmdb_agent").is_dir():
         pytest.skip("zrodla agenta niedostepne")
     katalog = tmp_path / "paczka"
     metadane = pakiet.zbuduj(zrodla, katalog)
     monkeypatch.setattr(pakiet, "katalog_paczki", lambda: katalog)
+
+    with SessionLocal() as db:
+        pakiet.zarejestruj(db, metadane, katalog, Path(get_settings().release_dir))
     return metadane
 
 
@@ -139,9 +148,9 @@ def test_wycofany_token_nie_pobierze(client, tenant_a, paczka):
     ).status_code == 401
 
 
-def test_brak_paczki_daje_czytelny_blad(client, tenant_a, tmp_path, monkeypatch):
-    """Instalacja ma powiedziec, co jest nie tak, a nie wywalic sie bledem 500."""
-    monkeypatch.setattr(pakiet, "katalog_paczki", lambda: tmp_path / "pusto")
+def test_brak_paczki_daje_czytelny_blad(client, tenant_a):
+    """Instalacja ma powiedziec, co jest nie tak, a nie wywalic sie bledem 500.
+    Bez fixture "paczka" w magazynie nie ma zadnego wydania dla Linuksa."""
     odpowiedz = client.get("/download/agent-linux.tar.gz", headers=_naglowek(tenant_a["token"]))
     assert odpowiedz.status_code == 503
     assert "nie zostala przygotowana" in odpowiedz.json()["detail"]
@@ -378,3 +387,156 @@ def test_skrypty_w_repozytorium_maja_lf():
         if ".git" not in sciezka.parts and chr(13).encode() in sciezka.read_bytes()
     ]
     assert not winne, f"skrypty z CRLF nie zadzialaja na Linuksie: {winne}"
+
+
+# --- paczka zrodel jako pelnoprawne wydanie ---------------------------------
+#
+# O to chodzilo: jedna paczka obsluguje kazda architekture (agent stoi na samej
+# bibliotece standardowej), a mimo to podlega tym samym regulom co plik dla
+# Windows - wersji aktywnej i wersji probnej per firma.
+
+def _wydanie_zrodel(wersja: str = "0.9.9"):
+    """Wpisuje do magazynu dodatkowa paczke zrodel o wskazanej wersji."""
+    import hashlib
+    from cmdb_server.config import get_settings
+    from cmdb_server.models import AgentRelease
+
+    katalog = Path(get_settings().release_dir)
+    katalog.mkdir(parents=True, exist_ok=True)
+    tresc = f"paczka {wersja}".encode()
+    odcisk = hashlib.sha256(tresc).hexdigest()
+    (katalog / f"linux-zrodla-{odcisk}.tar.gz").write_bytes(tresc)
+
+    with SessionLocal() as db:
+        wydanie = AgentRelease(
+            version=wersja, os_family="linux", arch=pakiet.ARCH_ZRODLA,
+            filename=f"cmdb-agent-{wersja}.tar.gz",
+            storage_name=f"linux-zrodla-{odcisk}.tar.gz",
+            sha256=odcisk, size_bytes=len(tresc), created_by="test",
+        )
+        db.add(wydanie)
+        db.commit()
+        return wydanie.id
+
+
+def test_paczka_pasuje_do_kazdej_architektury(client, tenant_a, paczka, make_user):
+    """Sedno wyboru: jedna paczka dla Raspberry Pi i dla serwera x86.
+    Wymaganie zgodnosci architektury odcieloby ja od wszystkich maszyn."""
+    csrf = _superadmin(client, make_user)
+    with SessionLocal() as db:
+        wydanie = db.execute(
+            select(AgentRelease.id).where(AgentRelease.arch == pakiet.ARCH_ZRODLA)
+        ).scalar_one()
+    _oznacz_oficjalna(client, csrf, wydanie)
+
+    for maszyna, arch in (("pi-aarch64-001", "aarch64"), ("serwer-x86-001", "x86_64")):
+        token = client.post(
+            "/api/v1/agents/enroll",
+            headers=_naglowek(tenant_a["token"]),
+            json={"machine_id": maszyna,
+                  "identity": {"hostname": maszyna, "os_family": "linux", "arch": arch},
+                  "agent_version": "0.1.0"},
+        ).json()["agent_token"]
+
+        oferta = client.get("/api/v1/agent/version", headers=_naglowek(token)).json()
+        assert oferta["available"] is True, f"{arch} nie dostal paczki"
+        assert oferta["kind"] == "zrodla"
+
+
+def test_oferta_mowi_czym_jest_wydanie(client, tenant_a, make_user):
+    """Podmiana katalogu plikiem wykonywalnym - albo odwrotnie - zostawilaby
+    maszyne bez dzialajacego agenta. Agent musi wiedziec, co pobiera."""
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.0", PLIK_AGENTA, "windows")
+    with SessionLocal() as db:
+        wydanie = db.execute(
+            select(AgentRelease.id).where(AgentRelease.os_family == "windows")
+        ).scalar_one()
+    _oznacz_oficjalna(client, csrf, wydanie)
+
+    token = client.post(
+        "/api/v1/agents/enroll",
+        headers=_naglowek(tenant_a["token"]),
+        json={"machine_id": "stacja-windows-01",
+              "identity": {"hostname": "WIN-01", "os_family": "windows", "arch": "amd64"},
+              "agent_version": "0.1.0"},
+    ).json()["agent_token"]
+
+    assert client.get("/api/v1/agent/version", headers=_naglowek(token)).json()["kind"] == "plik"
+
+
+def test_wersja_probna_dziala_takze_dla_linuksa(client, tenant_a, tenant_b, paczka, make_user):
+    csrf = _superadmin(client, make_user)
+    with SessionLocal() as db:
+        oficjalna = db.execute(
+            select(AgentRelease.id).where(AgentRelease.arch == pakiet.ARCH_ZRODLA)
+        ).scalar_one()
+    _oznacz_oficjalna(client, csrf, oficjalna)
+    probna = _wydanie_zrodel("0.9.9")
+
+    client.post(
+        f"/admin/tenants/{tenant_a['id']}/upgrade",
+        data={"zakres": "firma", "os_family": "linux", "release_id": probna,
+              "csrf_token": csrf, "powrot": "/admin/wersje"},
+        follow_redirects=False,
+    )
+
+    wersja_a = client.get(
+        "/download/agent-linux.tar.gz", headers=_naglowek(tenant_a["token"])
+    ).headers["x-cmdb-version"]
+    wersja_b = client.get(
+        "/download/agent-linux.tar.gz", headers=_naglowek(tenant_b["token"])
+    ).headers["x-cmdb-version"]
+
+    assert wersja_a == "0.9.9"
+    assert wersja_b == paczka["version"], "firma bez wlasnego ustawienia zostaje na oficjalnej"
+
+
+def test_wgranie_paczki_przez_panel(client, make_user, tmp_path):
+    """Paczke mozna wgrac tak samo jak plik dla Windows - rozpoznajemy ja po
+    zawartosci, a nie po nazwie pliku."""
+    zrodla = Path(__file__).resolve().parent.parent.parent / "agent"
+    if not (zrodla / "cmdb_agent").is_dir():
+        pytest.skip("zrodla agenta niedostepne")
+    katalog = tmp_path / "budowa"
+    metadane = pakiet.zbuduj(zrodla, katalog)
+    zawartosc = pakiet.sciezka_archiwum(katalog).read_bytes()
+
+    csrf = _superadmin(client, make_user)
+    odpowiedz = client.post(
+        "/admin/releases",
+        data={"version": "", "os_family": "linux", "notes": "", "csrf_token": csrf},
+        files={"plik": ("cmdb-agent.tar.gz", io.BytesIO(zawartosc), "application/gzip")},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 303, odpowiedz.text
+
+    with SessionLocal() as db:
+        wydanie = db.execute(
+            select(AgentRelease).where(AgentRelease.arch == pakiet.ARCH_ZRODLA)
+        ).scalar_one()
+    assert wydanie.version == metadane["version"]
+    assert wydanie.storage_name.endswith(".tar.gz")
+
+
+def test_obce_archiwum_jest_odrzucane(client, make_user):
+    """Sprawdzamy zawartosc, bo maszyna docelowa dostanie dokladnie to,
+    co tu wpuscimy."""
+    import tarfile as tar_mod
+
+    bufor = io.BytesIO()
+    with tar_mod.open(fileobj=bufor, mode="w:gz") as tar:
+        dane = b"cokolwiek"
+        info = tar_mod.TarInfo("obcy/plik.txt")
+        info.size = len(dane)
+        tar.addfile(info, io.BytesIO(dane))
+
+    csrf = _superadmin(client, make_user)
+    odpowiedz = client.post(
+        "/admin/releases",
+        data={"version": "0.1.0", "os_family": "linux", "notes": "", "csrf_token": csrf},
+        files={"plik": ("obce.tar.gz", io.BytesIO(bufor.getvalue()), "application/gzip")},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 400
+    assert "paczka zrodel agenta" in odpowiedz.text

@@ -22,7 +22,7 @@ from ..models import (
     TenantAgentTarget,
     utcnow,
 )
-from . import architektura
+from . import architektura, pakiet
 
 log = logging.getLogger(__name__)
 
@@ -124,10 +124,31 @@ def wersja_dla_firmy(
 def _zgodne(wydanie: AgentRelease, os_family: str, arch: str | None) -> bool:
     """Czy wydanie pasuje do pary system + architektura."""
     system = (os_family or "").lower()
-    znormalizowana = architektura.normalizuj(arch)
-    if not system or not znormalizowana:
+    if not system or (wydanie.os_family or "").lower() != system:
         return False
-    return (wydanie.os_family or "").lower() == system and (wydanie.arch or "") == znormalizowana
+
+    # Paczka zrodel nie jest zbudowana pod zadna architekture - agent stoi na
+    # samej bibliotece standardowej, wiec ta sama paczka dziala na Raspberry Pi
+    # i na serwerze x86. Wymaganie zgodnosci architektury odcinaloby ja od
+    # wszystkich maszyn.
+    if (wydanie.arch or "") == pakiet.ARCH_ZRODLA:
+        return True
+
+    znormalizowana = architektura.normalizuj(arch)
+    if not znormalizowana:
+        return False
+    return (wydanie.arch or "") == znormalizowana
+
+
+def czy_zrodla(wydanie: AgentRelease | None) -> bool:
+    """Czy wydanie jest paczka zrodel, a nie plikiem wykonywalnym.
+
+    Agent musi to wiedziec, zanim cokolwiek pobierze: instalacja ze zrodel
+    to podmiana katalogu, a instalacja pliku - podmiana jednego pliku.
+    Pomylenie tych dwoch rzeczy konczy sie maszyna z agentem nie do
+    uruchomienia.
+    """
+    return wydanie is not None and (wydanie.arch or "") == pakiet.ARCH_ZRODLA
 
 
 def _pasuje(wydanie: AgentRelease, asset: Asset) -> bool:

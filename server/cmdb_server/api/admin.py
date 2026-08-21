@@ -613,30 +613,43 @@ async def wgraj_wersje(
         if rozmiar == 0:
             raise HTTPException(status_code=400, detail="pusty plik")
 
-        # Sygnatura odrzuca pomylke juz tutaj, a nie dopiero na maszynie klienta,
-        # gdzie plik po prostu nie chcialby sie uruchomic.
-        oczekiwana = SYSTEMY[system]["sygnatura"]
-        with tymczasowy.open("rb") as sprawdzany:
-            if sprawdzany.read(len(oczekiwana)) != oczekiwana:
+        # Agent dla Linuksa moze byc paczka zrodel zamiast pliku wykonywalnego.
+        # Jedna taka paczka obsluguje kazda architekture, bo agent stoi na samej
+        # bibliotece standardowej - stad osobna "architektura" o nazwie zrodla.
+        if system == "linux" and pakiet.czy_paczka_zrodel(tymczasowy):
+            try:
+                wykryta = pakiet.sprawdz_paczke(tymczasowy)
+            except pakiet.BrakZrodel as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            arch = pakiet.ARCH_ZRODLA
+            numer = wykryta or podany
+            wykryty_system = "linux"
+        else:
+            # Sygnatura odrzuca pomylke juz tutaj, a nie dopiero na maszynie
+            # klienta, gdzie plik po prostu nie chcialby sie uruchomic.
+            oczekiwana = SYSTEMY[system]["sygnatura"]
+            with tymczasowy.open("rb") as sprawdzany:
+                if sprawdzany.read(len(oczekiwana)) != oczekiwana:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"plik nie jest programem dla {SYSTEMY[system]['etykieta']} "
+                               f"({SYSTEMY[system]['opis']})",
+                    )
+
+            metadane = odczytaj_metadane(tymczasowy) or {}
+            wykryta = str(metadane.get("version") or "").strip()
+            numer = wykryta or podany
+            wykryty_system = str(metadane.get("os_family") or "").strip().lower()
+
+            # Architekture czytamy z naglowka pliku - to fakt, a nie deklaracja.
+            # Bez tego wersja zbudowana na serwerze x86 trafialaby na kazde
+            # Raspberry Pi jako plik nie do uruchomienia.
+            arch = architektura.wykryj_z_pliku(tymczasowy)
+            if arch is None:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"plik nie jest programem dla {SYSTEMY[system]['etykieta']} "
-                           f"({SYSTEMY[system]['opis']})",
+                    detail="nie rozpoznaje architektury pliku - czy to na pewno program?",
                 )
-
-        metadane = odczytaj_metadane(tymczasowy) or {}
-        wykryta = str(metadane.get("version") or "").strip()
-        numer = wykryta or podany
-
-        # Architekture czytamy z naglowka pliku - to fakt, a nie deklaracja.
-        # Bez tego wersja zbudowana na serwerze x86 trafialaby na kazde
-        # Raspberry Pi jako plik nie do uruchomienia.
-        arch = architektura.wykryj_z_pliku(tymczasowy)
-        if arch is None:
-            raise HTTPException(
-                status_code=400,
-                detail="nie rozpoznaje architektury pliku - czy to na pewno program?",
-            )
 
         if not numer:
             raise HTTPException(
@@ -653,7 +666,6 @@ async def wgraj_wersje(
                 status_code=400,
                 detail=f"plik zglasza wersje {wykryta}, a podano {podany}",
             )
-        wykryty_system = str(metadane.get("os_family") or "").strip().lower()
         if wykryty_system and wykryty_system != system:
             raise HTTPException(
                 status_code=400,
@@ -674,7 +686,8 @@ async def wgraj_wersje(
             )
 
         odcisk = skrot.hexdigest()
-        nazwa_w_magazynie = f"{system}-{arch}-{odcisk}.bin"
+        rozszerzenie = "tar.gz" if arch == pakiet.ARCH_ZRODLA else "bin"
+        nazwa_w_magazynie = f"{system}-{arch}-{odcisk}.{rozszerzenie}"
         tymczasowy.replace(katalog / nazwa_w_magazynie)
     except Exception:
         tymczasowy.unlink(missing_ok=True)

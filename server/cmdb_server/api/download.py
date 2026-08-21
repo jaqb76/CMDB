@@ -23,7 +23,9 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..models import EnrollmentToken, Tenant
+from sqlalchemy import select
+
+from ..models import AgentRelease, EnrollmentToken, Tenant
 from ..services import pakiet, upgrades
 from ..services.auth import require_enrollment_token_do_pobrania
 
@@ -64,6 +66,7 @@ def skrypt_instalacyjny(request: Request) -> PlainTextResponse:
 
 @router.get("/agent-linux.tar.gz")
 def paczka_linux(
+    db: Session = Depends(get_db),
     auth: tuple[EnrollmentToken, Tenant] = Depends(require_enrollment_token_do_pobrania),
 ) -> FileResponse:
     """Zrodla agenta dla Linuksa.
@@ -74,23 +77,42 @@ def paczka_linux(
     dziala wszedzie tam, gdzie jest Python.
     """
     _, tenant = auth
-    katalog = pakiet.katalog_paczki()
-    metadane = pakiet.opis(katalog)
-    if metadane is None:
-        log.error("brak paczki zrodel agenta w %s", katalog)
+    # Wersja obowiazujaca te firme - tak samo jak przy pliku dla Windows.
+    wydanie = upgrades.wersja_dla_firmy(db, tenant.id, "linux", pakiet.ARCH_ZRODLA)
+    if wydanie is None:
+        # Nikt nie ustawil jeszcze polityki. Instalacje nowej maszyny lepiej
+        # przeprowadzic na najnowszej dostepnej wersji, niz odmowic - o tym,
+        # do czego maszyna sie PO instalacji aktualizuje, decyduje juz
+        # ustawienie firmy albo wersja aktywna.
+        wydanie = db.execute(
+            select(AgentRelease)
+            .where(AgentRelease.os_family == "linux",
+                   AgentRelease.arch == pakiet.ARCH_ZRODLA)
+            .order_by(AgentRelease.created_at.desc())
+        ).scalars().first()
+    if wydanie is None:
+        log.error("brak paczki zrodel agenta w magazynie wydan")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="paczka agenta dla Linuksa nie zostala przygotowana na tym serwerze",
         )
 
-    log.info("firma %s pobiera zrodla agenta %s", tenant.slug, metadane["version"])
+    sciezka = upgrades.sciezka_pliku(wydanie)
+    if not sciezka.is_file():
+        log.error("brak pliku paczki %s w magazynie (%s)", wydanie.version, sciezka)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="plik paczki jest niedostepny na serwerze",
+        )
+
+    log.info("firma %s pobiera zrodla agenta %s", tenant.slug, wydanie.version)
     return FileResponse(
-        path=pakiet.sciezka_archiwum(katalog),
+        path=sciezka,
         media_type="application/gzip",
-        filename=f"cmdb-agent-{metadane['version']}.tar.gz",
+        filename=wydanie.filename,
         headers={
-            "X-CMDB-SHA256": metadane["sha256"],
-            "X-CMDB-Version": metadane["version"],
+            "X-CMDB-SHA256": wydanie.sha256,
+            "X-CMDB-Version": wydanie.version,
             "Cache-Control": "no-store",
         },
     )

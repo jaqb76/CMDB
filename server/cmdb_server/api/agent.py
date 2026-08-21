@@ -190,6 +190,7 @@ def _oferta_aktualizacji(db: Session, asset: Asset) -> UpgradeOffer:
         sha256=wydanie.sha256,
         size_bytes=wydanie.size_bytes,
         current_version=asset.agent_version,
+        kind="zrodla" if upgrades.czy_zrodla(wydanie) else "plik",
     )
 
 

@@ -86,6 +86,15 @@ def _odswiez_paczke_agenta(settings) -> None:
         log.warning(
             "nie ma paczki zrodel agenta - instalacja po HTTPS bedzie zwracac blad"
         )
+        return
+
+    # Paczka trafia do magazynu wydan, zeby podlegala tym samym regulom co plik
+    # dla Windows - z ustawianiem wersji aktywnej i wersja probna per firma.
+    from .db import SessionLocal
+
+    with SessionLocal() as db:
+        pakiet.zarejestruj(db, metadane, pakiet.katalog_paczki(),
+                           Path(settings.release_dir))
 
 
 def create_app() -> FastAPI:

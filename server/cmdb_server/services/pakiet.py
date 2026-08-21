@@ -202,3 +202,116 @@ def zbuduj_jesli_trzeba(katalog_zrodel: Path, katalog_wydan: Path) -> dict | Non
     except (BrakZrodel, OSError) as exc:
         log.warning("nie udalo sie zbudowac paczki zrodel agenta: %s", exc)
         return opis(katalog_wydan)
+
+
+# --- paczka jako wydanie ----------------------------------------------------
+
+ARCH_ZRODLA = "zrodla"
+SYGNATURA_GZIP = bytes([0x1F, 0x8B])
+
+# Bez limitu rozpakowany tar moze byc dowolnie wiekszy od archiwum. Paczka
+# zrodel ma kilkadziesiat kB, wiec 32 MB to zapas z ogromnym marginesem,
+# a jednoczesnie zapora przed archiwum-bomba.
+LIMIT_ROZPAKOWANY = 32 * 1024 * 1024
+
+
+def czy_paczka_zrodel(sciezka: Path) -> bool:
+    """Czy plik wyglada na archiwum gzip."""
+    try:
+        with sciezka.open("rb") as plik:
+            return plik.read(2) == SYGNATURA_GZIP
+    except OSError:
+        return False
+
+
+def sprawdz_paczke(sciezka: Path) -> str:
+    """Sprawdza, czy archiwum jest paczka zrodel agenta, i zwraca jej wersje.
+
+    Sprawdzamy zawartosc, a nie nazwe pliku: wgrywajacy moze sie pomylic,
+    a maszyna docelowa dostanie dokladnie to, co tu wpuscimy. Numer wersji
+    czytamy ze zrodel w archiwum - tak samo jak przy pliku wykonywalnym
+    czytamy go z dopisanych metadanych.
+    """
+    wymagane = {
+        f"{KATALOG_W_ARCHIWUM}/cmdb_agent/__init__.py",
+        f"{KATALOG_W_ARCHIWUM}/packaging/install-agent.sh",
+    }
+    try:
+        with tarfile.open(sciezka, "r:gz") as archiwum:
+            nazwy = set()
+            laczny = 0
+            for wpis in archiwum:
+                # Sciezki wychodzace poza katalog paczki to klasyczna droga
+                # do nadpisania czegokolwiek na maszynie docelowej.
+                if wpis.name.startswith("/") or ".." in Path(wpis.name).parts:
+                    raise BrakZrodel(f"archiwum zawiera podejrzana sciezke: {wpis.name}")
+                if not (wpis.isfile() or wpis.isdir()):
+                    raise BrakZrodel(f"archiwum zawiera wpis, ktory nie jest plikiem: {wpis.name}")
+                laczny += wpis.size
+                if laczny > LIMIT_ROZPAKOWANY:
+                    raise BrakZrodel("rozpakowane archiwum jest za duze")
+                nazwy.add(wpis.name)
+
+            brakujace = wymagane - nazwy
+            if brakujace:
+                raise BrakZrodel(
+                    "to nie jest paczka zrodel agenta - brakuje: "
+                    + ", ".join(sorted(brakujace))
+                )
+
+            wpis = archiwum.extractfile(f"{KATALOG_W_ARCHIWUM}/cmdb_agent/__init__.py")
+            tresc = wpis.read().decode("utf-8", errors="replace") if wpis else ""
+    except tarfile.TarError as exc:
+        raise BrakZrodel(f"nie moge odczytac archiwum: {exc}") from exc
+    except OSError as exc:
+        raise BrakZrodel(f"nie moge otworzyc archiwum: {exc}") from exc
+
+    dopasowanie = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', tresc, re.MULTILINE)
+    if dopasowanie is None:
+        raise BrakZrodel("w paczce nie ma numeru wersji agenta")
+    return dopasowanie.group(1)
+
+
+def zarejestruj(db, metadane: dict, katalog_paczki: Path, katalog_wydan: Path):
+    """Wpisuje zbudowana paczke do magazynu wydan, jesli jeszcze jej tam nie ma.
+
+    Dzieki temu paczka podlega tym samym regulom co plik dla Windows: mozna ja
+    ustawic jako aktywna, przypisac jednej firmie wersje probna, a agenty
+    aktualizuja sie do wskazanej wersji, a nie do tej, ktora akurat lezy
+    na dysku serwera.
+
+    Rozpoznajemy po skrocie, wiec ponowne uruchomienie serwera niczego nie
+    duplikuje, a przebudowana paczka o tej samej wersji jest nowym wydaniem.
+    """
+    from sqlalchemy import select
+
+    from ..models import AgentRelease
+
+    odcisk = metadane["sha256"]
+    istniejace = db.execute(
+        select(AgentRelease).where(AgentRelease.sha256 == odcisk)
+    ).scalar_one_or_none()
+    if istniejace is not None:
+        return istniejace
+
+    nazwa = f"linux-{ARCH_ZRODLA}-{odcisk}.tar.gz"
+    katalog_wydan.mkdir(parents=True, exist_ok=True)
+    docelowy = katalog_wydan / nazwa
+    if not docelowy.exists():
+        docelowy.write_bytes(sciezka_archiwum(katalog_paczki).read_bytes())
+
+    wydanie = AgentRelease(
+        version=metadane["version"],
+        os_family="linux",
+        arch=ARCH_ZRODLA,
+        filename=f"cmdb-agent-{metadane['version']}.tar.gz",
+        storage_name=nazwa,
+        sha256=odcisk,
+        size_bytes=metadane["size_bytes"],
+        notes="paczka zrodel zbudowana na serwerze",
+        created_by="system",
+    )
+    db.add(wydanie)
+    db.commit()
+    log.info("zarejestrowano paczke zrodel agenta %s jako wydanie", metadane["version"])
+    return wydanie

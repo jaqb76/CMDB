@@ -884,13 +884,15 @@ def test_odrzuca_plik_ktorego_architektury_nie_rozpoznajemy(client, make_user):
     assert odpowiedz.status_code == 400
 
 
-# --- widocznosc agenta dla Linuksa ------------------------------------------
+# --- agent dla Linuksa jako wydanie -----------------------------------------
 #
-# Agent dla Linuksa jest wydawany jako zrodla, a nie plik wykonywalny, wiec
-# nie ma go w magazynie wydan. Strona pokazywala przez to same wydania
-# windowsowe i sprawiala wrazenie, ze agenta dla Linuksa w ogole nie ma.
+# Na Linuksie agent jest paczka zrodel, nie plikiem wykonywalnym: PyInstaller
+# nie kompiluje na inna architekture. Paczka musi mimo to podlegac tym samym
+# regulom co plik dla Windows, inaczej maszyn linuksowych nie da sie
+# aktualizowac z panelu.
 
-def test_strona_wersji_pokazuje_paczke_zrodel(client, make_user, tmp_path, monkeypatch):
+def _zarejestruj_paczke(tmp_path, monkeypatch):
+    from cmdb_server.config import get_settings
     from cmdb_server.services import pakiet
 
     zrodla = Path(__file__).resolve().parent.parent.parent / "agent"
@@ -899,23 +901,45 @@ def test_strona_wersji_pokazuje_paczke_zrodel(client, make_user, tmp_path, monke
     katalog = tmp_path / "paczka"
     metadane = pakiet.zbuduj(zrodla, katalog)
     monkeypatch.setattr(pakiet, "katalog_paczki", lambda: katalog)
+    with SessionLocal() as db:
+        pakiet.zarejestruj(db, metadane, katalog, Path(get_settings().release_dir))
+    return metadane
 
+
+def test_paczka_zrodel_jest_widoczna_jako_wydanie(client, make_user, tmp_path, monkeypatch):
+    metadane = _zarejestruj_paczke(tmp_path, monkeypatch)
     _superadmin(client, make_user)
     strona = client.get("/admin/wersje").text
 
     assert "Agent dla Linuksa" in strona
     assert metadane["version"] in strona
-    assert metadane["sha256"] in strona
+    assert "zrodla" in strona, "paczka musi byc widoczna jako architektura zrodla"
 
 
-def test_wiersz_linuksa_tlumaczy_zamiast_straszyc(client, make_user):
-    """Dla Windows brak wersji oficjalnej znaczy "nikt nie bedzie
-    aktualizowany". Dla Linuksa znaczy co innego - agent ze zrodel i tak
-    nie przyjmuje polecen aktualizacji."""
+def test_paczke_zrodel_da_sie_ustawic_jako_aktywna(client, make_user, tmp_path, monkeypatch):
+    """O to chodzilo: maszyny linuksowe maja byc sterowane z panelu tak samo
+    jak windowsowe."""
+    _zarejestruj_paczke(tmp_path, monkeypatch)
+    csrf = _superadmin(client, make_user)
+
+    with SessionLocal() as db:
+        wydanie = db.execute(
+            select(AgentRelease.id).where(AgentRelease.os_family == "linux")
+        ).scalar_one()
+
+    _oznacz_oficjalna(client, csrf, wydanie)
+
+    with SessionLocal() as db:
+        cel = db.execute(
+            select(GlobalAgentTarget).where(GlobalAgentTarget.os_family == "linux")
+        ).scalar_one()
+        assert cel.release_id == wydanie
+
+
+def test_etykieta_tlumaczy_czym_jest_architektura_zrodla(client, make_user, tmp_path, monkeypatch):
+    _zarejestruj_paczke(tmp_path, monkeypatch)
     _superadmin(client, make_user)
-    strona = client.get("/admin/wersje").text
-
-    assert "agent dla Linuksa instaluje sie ze zrodel" in strona
+    assert "kazda architektura" in client.get("/admin/wersje").text
 
 
 def test_brak_paczki_jest_zglaszany_wprost(client, make_user, tmp_path, monkeypatch):
@@ -923,6 +947,4 @@ def test_brak_paczki_jest_zglaszany_wprost(client, make_user, tmp_path, monkeypa
 
     monkeypatch.setattr(pakiet, "katalog_paczki", lambda: tmp_path / "pusto")
     _superadmin(client, make_user)
-    strona = client.get("/admin/wersje").text
-
-    assert "Nie przygotowano paczki zrodel" in strona
+    assert "nie zbudowal paczki zrodel" in client.get("/admin/wersje").text

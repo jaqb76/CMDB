@@ -29,6 +29,9 @@ ETYKIETY = {
     "aarch64": "ARM64 (Raspberry Pi 4/5, serwery ARM)",
     "arm": "ARM 32-bit (starsze Raspberry Pi)",
     "x86": "x86 (32-bit Intel/AMD)",
+    # Paczka zrodel nie jest zbudowana pod zadna architekture - agent stoi na
+    # samej bibliotece standardowej, wiec dziala wszedzie tam, gdzie jest Python.
+    "zrodla": "zrodla (kazda architektura)",
 }
 
 # Wartosci pola e_machine w naglowku ELF.
