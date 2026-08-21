@@ -44,22 +44,64 @@ def adres_publiczny(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
+def _skrypt(nazwa: str) -> str:
+    """Tresc skryptu startowego.
+
+    W obrazie produkcyjnym skrypty leza obok kodu serwera. W repozytorium
+    czesc z nich zyje w katalogu agenta - stamtad je bierzemy, zeby nie
+    trzymac dwoch kopii tego samego pliku.
+    """
+    kandydaci = [
+        KATALOG_BOOTSTRAP / nazwa,
+        Path(__file__).resolve().parents[3] / "agent" / "packaging" / nazwa,
+    ]
+    zrodlo = get_settings().agent_source_dir
+    if zrodlo:
+        kandydaci.insert(1, Path(zrodlo) / "packaging" / nazwa)
+
+    for sciezka in kandydaci:
+        try:
+            return sciezka.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    log.error("brak skryptu startowego %s (szukano w: %s)", nazwa, kandydaci)
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=f"skrypt {nazwa} jest niedostepny na tym serwerze",
+    )
+
+
 @router.get("/install.sh", response_class=PlainTextResponse)
 def skrypt_instalacyjny(request: Request) -> PlainTextResponse:
     """Skrypt startowy dla Linuksa, z wpisanym adresem tego serwera."""
-    sciezka = KATALOG_BOOTSTRAP / "install.sh"
-    try:
-        tresc = sciezka.read_text(encoding="utf-8")
-    except OSError as exc:
-        log.error("brak skryptu startowego (%s): %s", sciezka, exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="skrypt instalacyjny jest niedostepny",
-        ) from exc
-
     return PlainTextResponse(
-        content=tresc.replace(ZNACZNIK_ADRESU, adres_publiczny(request)),
+        content=_skrypt("install.sh").replace(ZNACZNIK_ADRESU, adres_publiczny(request)),
         media_type="text/x-shellscript; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/install.ps1", response_class=PlainTextResponse)
+def skrypt_instalacyjny_windows(request: Request) -> PlainTextResponse:
+    """Skrypt startowy dla Windows, z wpisanym adresem tego serwera.
+
+    Windows nie mial odpowiednika install.sh: pod /download/agent-windows.exe
+    lezy SAM AGENT, bo to jego podmienia samoaktualizacja. Uruchomiony wprost
+    wypisywal tylko skladnie i nie instalowal niczego.
+    """
+    return PlainTextResponse(
+        content=_skrypt("install.ps1").replace(ZNACZNIK_ADRESU, adres_publiczny(request)),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/install-agent.ps1", response_class=PlainTextResponse)
+def wlasciwy_instalator_windows() -> PlainTextResponse:
+    """Wlasciwy instalator dla Windows, pobierany przez skrypt startowy."""
+    return PlainTextResponse(
+        content=_skrypt("install-agent.ps1"),
+        media_type="text/plain; charset=utf-8",
         headers={"Cache-Control": "no-store"},
     )
 

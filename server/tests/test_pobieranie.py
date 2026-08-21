@@ -638,3 +638,54 @@ def test_ponowny_start_nie_dubluje_wydania(client, tmp_path, monkeypatch):
             select(AgentRelease).where(AgentRelease.arch == pakiet.ARCH_ZRODLA)
         ).scalars().all())
     assert ile == 1
+
+
+# --- instalacja na Windows --------------------------------------------------
+#
+# Pod /download/agent-windows.exe lezy SAM AGENT, bo to jego podmienia
+# samoaktualizacja. Uruchomiony wprost wypisuje tylko skladnie i nie instaluje
+# niczego - Windows potrzebuje wiec wlasnego skryptu startowego, tak jak Linux.
+
+def test_skrypt_startowy_windows_jest_publiczny(client):
+    odpowiedz = client.get("/download/install.ps1")
+    assert odpowiedz.status_code == 200
+    assert "param(" in odpowiedz.text
+
+
+def test_skrypt_windows_ma_wpisany_adres_serwera(client):
+    tresc = client.get("/download/install.ps1").text
+    assert "@@ADRES_SERWERA@@" not in tresc, "znacznik nie zostal podmieniony"
+    assert '$Server = "http' in tresc
+
+
+def test_wlasciwy_instalator_windows_jest_wydawany(client):
+    """Skrypt startowy pobiera go z serwera, wiec musi byc osiagalny."""
+    odpowiedz = client.get("/download/install-agent.ps1")
+    assert odpowiedz.status_code == 200
+    assert "ServerUrl" in odpowiedz.text
+    assert "AgentExe" in odpowiedz.text
+
+
+def test_skrypt_windows_sprawdza_skrot_pobranego_agenta(client):
+    """Bez tego uszkodzony plik zostalby zainstalowany jako agent."""
+    tresc = client.get("/download/install.ps1").text
+    assert "X-CMDB-SHA256" in tresc
+    assert "Get-FileHash" in tresc
+
+
+def test_skrypt_windows_wymusza_tls12(client):
+    """PowerShell 5.1 negocjuje domyslnie TLS 1.0, ktorego serwer nie przyjmie."""
+    assert "Tls12" in client.get("/download/install.ps1").text
+
+
+def test_brakujacy_skrypt_daje_czytelny_blad(client, monkeypatch):
+    from cmdb_server.api import download
+
+    monkeypatch.setattr(download, "KATALOG_BOOTSTRAP", Path("/nie/ma/takiego"))
+    monkeypatch.setattr(download, "_skrypt", download._skrypt.__wrapped__
+                        if hasattr(download._skrypt, "__wrapped__") else download._skrypt)
+    # Podmieniamy wszystkie miejsca, w ktorych skrypt moglby lezec.
+    monkeypatch.setattr(Path, "read_text", lambda self, **kw: (_ for _ in ()).throw(OSError()))
+    odpowiedz = client.get("/download/install.ps1")
+    assert odpowiedz.status_code == 503
+    assert "niedostepny" in odpowiedz.json()["detail"]

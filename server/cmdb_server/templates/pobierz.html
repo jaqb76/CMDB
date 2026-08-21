@@ -60,20 +60,42 @@
   {% if wydanie_windows %}
   <p class="muted small">
     Wersja obowiazujaca w tej firmie: <code class="strong">{{ wydanie_windows.version }}</code>
-    ({{ wydanie_windows.arch }}). Pobierz plik i uruchom go na maszynie docelowej:
+    ({{ wydanie_windows.arch }}). W PowerShellu <b>jako administrator</b>:
   </p>
-  <pre class="code-block">curl.exe -fL -H "Authorization: Bearer TWOJ_TOKEN" `
-  -o CMDB-Agent-Setup.exe {{ adres_serwera }}/download/agent-windows.exe
+  <pre class="code-block">iwr {{ adres_serwera }}/download/install.ps1 -OutFile install.ps1
+.\install.ps1 -Token TWOJ_TOKEN</pre>
 
-.\CMDB-Agent-Setup.exe</pre>
   <p class="muted small">
-    Kreator pyta o adres serwera i token. Do wdrozenia masowego (GPO, Intune, SCCM)
-    instalator przyjmuje <code>-ServerUrl</code>, <code>-Token</code> i <code>-Silent</code>.
+    Skrypt pobiera agenta, sprawdza jego skrot SHA-256, instaluje go w
+    <code>Program Files</code>, zapisuje konfiguracje i zaklada zadanie
+    harmonogramu dzialajace jako SYSTEM.
   </p>
+  <p class="muted small">
+    Skryptu nie da sie podac potokiem do <code>iex</code> — PowerShell nie
+    przyjmuje wtedy parametrow, a token trzeba jakos przekazac. Stad zapis
+    do pliku.
+  </p>
+
+  <h3>Przydatne przelaczniki</h3>
+  <pre class="code-block">-IntervalHours 4        # co ile godzin raportowac (domyslnie 4)
+-CaBundle C:\ca.pem     # wlasne PKI lub certyfikat self-signed
+-NoProcessList          # nie zbieraj listy procesow
+-NoTray                 # bez ikony w zasobniku
+-Silent                 # bez komunikatow, do GPO/Intune</pre>
+
+  <div class="alert alert-warn">
+    <b>Sam plik agenta</b> jest pod
+    <code>{{ adres_serwera }}/download/agent-windows.exe</code>, ale to
+    <b>nie jest instalator</b> — tego pliku uzywa mechanizm samoaktualizacji.
+    Uruchomiony wprost wypisze tylko skladnie polecen.
+  </div>
   {% else %}
   <div class="alert alert-warn">
-    Dla tej firmy nie ustawiono wersji agenta dla Windows. Ustawia to
-    administrator serwera na stronie wersji agentow.
+    Dla tej firmy nie ustawiono wersji agenta dla Windows, wiec instalacja
+    zwroci blad. Plik dla Windows buduje sie na maszynie z Windows
+    (<code>build-agent.ps1</code>) i wgrywa w administracji, w sekcji
+    <b>Wersje agentow</b> — w przeciwienstwie do paczki dla Linuksa nie jest
+    wbudowany w serwer.
   </div>
   {% endif %}
 </section>

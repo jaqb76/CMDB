@@ -101,6 +101,20 @@ Szczegóły: [`docs/wdrozenie.md`](docs/wdrozenie.md).
 
 ## Instalacja agenta na Windows
 
+Najprościej prosto z serwera — w PowerShellu jako administrator:
+
+```powershell
+iwr https://cmdb.firma.pl/download/install.ps1 -OutFile install.ps1
+.\install.ps1 -Token cmdb_ent_...
+```
+
+Skrypt pobiera agenta, sprawdza jego skrót SHA-256 i zakłada zadanie
+harmonogramu. Wymaga wcześniejszego wgrania wersji dla Windows w panelu —
+plik dla Windows, w odróżnieniu od paczki dla Linuksa, nie jest wbudowany
+w serwer.
+
+Wariant z kreatorem graficznym:
+
 ```powershell
 # na maszynie budującej (raz) — powstaje CMDB-Agent-Setup-0.1.0.exe
 .\agent\packaging\build-agent.ps1 -Installer

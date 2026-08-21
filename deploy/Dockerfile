@@ -22,7 +22,10 @@ COPY server/ /app/
 # Wspolny katalog oznaczalby, ze pusty wolumen przyslania paczke z obrazu.
 ENV CMDB_AGENT_BUNDLE_DIR=/app/agent-pakiet
 COPY agent/ /tmp/agent/
-RUN python -m cmdb_server.pakiet /tmp/agent --do "$CMDB_AGENT_BUNDLE_DIR"     && rm -rf /tmp/agent
+# Skrypty instalacyjne dla Windows serwer wydaje po HTTPS, wiec musza zostac
+# w obrazie - reszta zrodel agenta jest potrzebna wylacznie do zbudowania
+# paczki i po tym kroku znika.
+RUN python -m cmdb_server.pakiet /tmp/agent --do "$CMDB_AGENT_BUNDLE_DIR"     && cp /tmp/agent/packaging/install.ps1 /tmp/agent/packaging/install-agent.ps1           /app/cmdb_server/bootstrap/     && rm -rf /tmp/agent
 
 # Serwer nie potrzebuje roota - uruchamiamy jako zwykly uzytkownik.
 RUN useradd --system --create-home --uid 10001 cmdb && chown -R cmdb:cmdb /app
