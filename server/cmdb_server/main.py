@@ -68,6 +68,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Endpoint zywotnosci: bez tokenu, bez danych, odpytywany lokalnie.
+SCIEZKA_ZDROWIA = "/api/v1/health"
+
+
 def _odswiez_paczke_agenta(settings) -> None:
     """Odswieza paczke zrodel agenta, jesli obok leza jego zrodla.
 
@@ -125,7 +129,10 @@ def create_app() -> FastAPI:
 
         # 1. Wymuszenie HTTPS - agenci wysylaja tokeny w naglowku, wiec czysty
         #    HTTP nie moze byc nawet przekierowany dla API (token juz wyciekl).
-        if settings.require_https:
+        if settings.require_https and request.url.path != SCIEZKA_ZDROWIA:
+            # Sprawdzenie zywotnosci idzie po HTTP z wnetrza kontenera, przed
+            # nginx - nie niesie tokenu ani danych, wiec wymaganie od niego
+            # HTTPS oznaczaloby kontener na zawsze uznawany za niesprawny.
             proto = request.headers.get("x-forwarded-proto", request.url.scheme)
             if proto != "https":
                 # Zadania z tokenem nie przekierowujemy, tylko odrzucamy:

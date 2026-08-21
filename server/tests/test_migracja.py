@@ -120,3 +120,86 @@ def test_migracja_jest_idempotentna(stara_baza, monkeypatch):
     silnik = _migruj(plik_bazy, monkeypatch)     # drugi start serwera
 
     assert _architektury(silnik) == {"0.4.0": "aarch64"}
+
+
+# --- rownoczesny start procesow roboczych -----------------------------------
+#
+# Serwer produkcyjny dziala w kilku procesach i kazdy wykonuje init_db przy
+# starcie. Bez blokady wszystkie naraz stwierdzaja brak tabel i probuja je
+# utworzyc: jeden wygrywa, reszta dostaje "duplicate key value violates
+# unique constraint pg_type_typname_nsp_index" i nie wstaje.
+
+class _UstawieniaAtrapa:
+    """is_postgres jest wlasciwoscia tylko do odczytu, wiec podstawiamy calosc."""
+
+    def __init__(self, is_postgres: bool):
+        self.is_postgres = is_postgres
+
+
+class _PolaczenieAtrapa:
+    def __init__(self, dziennik):
+        self.dziennik = dziennik
+
+    def execute(self, polecenie, parametry=None):
+        self.dziennik.append((str(polecenie), parametry))
+        return None
+
+    def commit(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def test_schemat_tworzony_pod_blokada_na_postgresie(monkeypatch):
+    import cmdb_server.db as modul
+
+    dziennik = []
+    monkeypatch.setattr(modul, "_settings", _UstawieniaAtrapa(True))
+    monkeypatch.setattr(modul.engine, "connect", lambda: _PolaczenieAtrapa(dziennik))
+    monkeypatch.setattr(modul, "_utworz_schemat", lambda: dziennik.append(("SCHEMAT", None)))
+
+    modul.init_db()
+
+    kolejnosc = [w[0] for w in dziennik]
+    assert "pg_advisory_lock" in kolejnosc[0], "blokada musi byc przed tworzeniem"
+    assert kolejnosc[1] == "SCHEMAT"
+    assert "pg_advisory_unlock" in kolejnosc[2], "blokade trzeba zwolnic"
+    assert dziennik[0][1] == dziennik[2][1], "ten sam klucz przy zajeciu i zwolnieniu"
+
+
+def test_blokada_zwalniana_takze_po_bledzie(monkeypatch):
+    """Nieudana migracja nie moze zostawic blokady - kolejne procesy czekalyby
+    na nia w nieskonczonosc."""
+    import cmdb_server.db as modul
+
+    dziennik = []
+    monkeypatch.setattr(modul, "_settings", _UstawieniaAtrapa(True))
+    monkeypatch.setattr(modul.engine, "connect", lambda: _PolaczenieAtrapa(dziennik))
+
+    def padnij():
+        raise RuntimeError("migracja padla")
+
+    monkeypatch.setattr(modul, "_utworz_schemat", padnij)
+
+    with pytest.raises(RuntimeError):
+        modul.init_db()
+
+    assert any("pg_advisory_unlock" in w[0] for w in dziennik)
+
+
+def test_sqlite_nie_uzywa_blokady_doradczej(monkeypatch):
+    """Blokada doradcza to konstrukcja Postgresa - na SQLite wywolanie jej
+    zakonczyloby sie bledem skladni."""
+    import cmdb_server.db as modul
+
+    dziennik = []
+    monkeypatch.setattr(modul, "_settings", _UstawieniaAtrapa(False))
+    monkeypatch.setattr(modul.engine, "connect", lambda: _PolaczenieAtrapa(dziennik))
+    monkeypatch.setattr(modul, "_utworz_schemat", lambda: dziennik.append(("SCHEMAT", None)))
+
+    modul.init_db()
+    assert dziennik == [("SCHEMAT", None)]

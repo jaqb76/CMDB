@@ -540,3 +540,37 @@ def test_obce_archiwum_jest_odrzucane(client, make_user):
     )
     assert odpowiedz.status_code == 400
     assert "paczka zrodel agenta" in odpowiedz.text
+
+
+# --- sprawdzenie zywotnosci -------------------------------------------------
+
+def test_health_dziala_po_http_mimo_wymogu_https(client, monkeypatch):
+    """Docker odpytuje ten endpoint po HTTP z wnetrza kontenera, przed nginx.
+
+    Gdy podlegal wymogowi HTTPS, kazde sprawdzenie konczylo sie kodem 403
+    i kontener byl na zawsze uznawany za niesprawny - mimo ze serwer dzialal.
+    """
+    from cmdb_server.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "require_https", True)
+    odpowiedz = client.get(
+        "/api/v1/health",
+        headers={"X-Forwarded-Proto": "http"},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 200
+    assert odpowiedz.json()["status"] == "ok"
+
+
+def test_pozostale_api_nadal_wymaga_https(client, tenant_a, monkeypatch):
+    """Zwolnienie dotyczy wylacznie zywotnosci - reszta API niesie tokeny."""
+    from cmdb_server.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "require_https", True)
+    odpowiedz = client.get(
+        "/api/v1/agent/version",
+        headers={"Authorization": f"Bearer {tenant_a['token']}",
+                 "X-Forwarded-Proto": "http"},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 403

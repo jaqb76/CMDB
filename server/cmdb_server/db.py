@@ -63,9 +63,47 @@ def session_scope() -> Iterator[Session]:
         db.close()
 
 
+# Dowolna stala - liczy sie tylko to, ze wszystkie procesy uzywaja tej samej.
+KLUCZ_BLOKADY_SCHEMATU = 0x434D4442  # "CMDB"
+
+
 def init_db() -> None:
-    """Tworzy schemat. Docelowo zastapione migracjami Alembic."""
+    """Tworzy schemat. Docelowo zastapione migracjami Alembic.
+
+    Serwer produkcyjny dziala w kilku procesach roboczych i KAZDY z nich
+    wykonuje te funkcje przy starcie. Bez blokady wszystkie sprawdzaja naraz,
+    ze tabel nie ma, i wszystkie probuja je utworzyc - jeden proces wygrywa,
+    reszta dostaje "duplicate key value violates unique constraint
+    pg_type_typname_nsp_index" i nie wstaje. Kontener wowczas pada i wstaje
+    ponownie, a przy drugim starcie tabele juz sa, wiec awaria wyglada na
+    jednorazowa - mimo ze wroci przy kazdej zmianie schematu.
+
+    Blokada doradcza Postgresa jest trzymana na poziomie polaczenia, wiec
+    obejmuje caly przebieg tworzenia schematu, a nie pojedyncza transakcje.
+    """
+    from sqlalchemy import text
+
     from . import models  # noqa: F401  (rejestracja mapperow)
+
+    if not _settings.is_postgres:
+        # SQLite: jeden proces, blokada pliku wystarcza.
+        _utworz_schemat()
+        return
+
+    with engine.connect() as conn:
+        conn.execute(text("SELECT pg_advisory_lock(:klucz)"),
+                     {"klucz": KLUCZ_BLOKADY_SCHEMATU})
+        conn.commit()
+        try:
+            _utworz_schemat()
+        finally:
+            conn.execute(text("SELECT pg_advisory_unlock(:klucz)"),
+                         {"klucz": KLUCZ_BLOKADY_SCHEMATU})
+            conn.commit()
+
+
+def _utworz_schemat() -> None:
+    from . import models  # noqa: F401
 
     models.Base.metadata.create_all(bind=engine)
     _dodaj_brakujace_kolumny()
