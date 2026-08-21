@@ -39,6 +39,7 @@ from ..models import (
     AgentRelease,
     Asset,
     AuditLog,
+    CveFeed,
     EnrollmentToken,
     GlobalAgentTarget,
     Owner,
@@ -49,7 +50,7 @@ from ..models import (
 )
 from ..security import check_csrf_token, generate_token, hash_password, issue_csrf_token
 from ..services.auth import client_ip, require_superadmin
-from ..services import architektura, pakiet, ustawienia
+from ..services import architektura, cve, pakiet, ustawienia
 from ..services.scoping import audit
 from .ui import templates
 
@@ -569,6 +570,48 @@ def widok_wersji(
         # tutaj strona sugerowalaby, ze zadnego agenta dla Linuksa nie ma.
         paczka_zrodel=pakiet.opis(pakiet.katalog_paczki()),
     )
+
+
+@router.get("/podatnosci", response_class=HTMLResponse)
+def strona_podatnosci(
+    request: Request,
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Stan kanalow danych o podatnosciach i wydania w uzyciu we flocie."""
+    kanaly = db.execute(select(CveFeed).order_by(CveFeed.source, CveFeed.release)).scalars().all()
+    return render_admin(
+        request, "admin_podatnosci.html", user, "podatnosci",
+        kanaly=kanaly,
+        wydania=cve.wydania_we_flocie(db),
+        przestarzaly_po=cve.PRZESTARZALY_PO_GODZINACH,
+    )
+
+
+@router.post("/podatnosci/odswiez")
+def odswiez_podatnosci(
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Pobiera kanaly dla wydan faktycznie uzywanych we flocie.
+
+    Pobieramy tylko to, co jest w uzyciu - kanal Debiana ma 86 MB, a dane dla
+    wydania, ktorego nikt nie uzywa, sa czystym obciazeniem.
+    """
+    sprawdz_csrf(user, csrf_token)
+    wydania = cve.wydania_we_flocie(db)
+    podsumowanie = cve.odswiez(
+        db,
+        wydania_debian=wydania.get("debian", set()),
+        wydania_ubuntu=wydania.get("ubuntu", set()),
+    )
+    audit(db, None, action="cve.refreshed", target=", ".join(sorted(podsumowanie)),
+          detail=podsumowanie, ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s odswiezyl kanaly podatnosci: %s", user.email, podsumowanie)
+    return RedirectResponse("/admin/podatnosci", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/releases")

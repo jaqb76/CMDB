@@ -1,0 +1,97 @@
+{% extends "base_admin.html" %}
+{% block title %}Podatnosci - administracja CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Dane o podatnosciach</h1>
+    <p class="muted">Kanaly, z ktorych zestawiamy inwentarz z lukami bezpieczenstwa.</p>
+  </div>
+  <form method="post" action="/admin/podatnosci/odswiez">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-primary">Odswiez teraz</button>
+  </form>
+</div>
+
+<div class="alert alert-warn">
+  <b>Zrodlem sa dane samych dystrybucji, nie baza NVD.</b>
+  Debian i Ubuntu lataja wstecznie, nie zmieniajac numeru wersji: pakiet
+  <code>22.08.8-6+deb12u1</code> zawiera poprawke, o ktorej numer upstream
+  <code>22.08.8</code> nic nie mowi. Porownywanie wersji z NVD dawaloby lawine
+  falszywych alarmow — wiarygodna odpowiedz ma tylko ta dystrybucja, ktora
+  poprawke wydala.
+</div>
+
+<section class="panel">
+  <h2>Stan kanalow</h2>
+  {% if kanaly %}
+  <table class="table">
+    <thead>
+      <tr><th>Zrodlo</th><th>Wydanie</th><th>Stan</th><th>Wpisow</th>
+          <th>Pobrano</th><th>Uwagi</th></tr>
+    </thead>
+    <tbody>
+    {% for k in kanaly %}
+      <tr>
+        <td><code>{{ k.source }}</code></td>
+        <td class="strong">{{ k.release }}</td>
+        <td>
+          {% if k.status != 'ok' %}<span class="badge badge-danger">blad</span>
+          {% else %}<span class="badge badge-ok">ok</span>{% endif %}
+        </td>
+        <td>{{ k.entries }}</td>
+        <td class="small">
+          {{ k.fetched_at | dt }}
+          <div class="muted">{{ k.fetched_at | ago }}</div>
+        </td>
+        <td class="small muted">{{ k.detail or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">
+    Nie pobrano jeszcze zadnych danych. Do czasu pobrania maszyny pokazuja stan
+    <b>nieznany</b> — a nie „brak podatnosci”, bo tego nie wiemy.
+  </p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Wydania w uzyciu we flocie</h2>
+  <p class="muted small">
+    Pobieramy dane wylacznie dla tych wydan. Kanal Debiana ma 86 MB, wiec wpisy
+    dla wydania, ktorego nikt nie uzywa, byly by czystym obciazeniem.
+  </p>
+  {% if wydania %}
+  <ul class="chips">
+    {% for zrodlo, lista in wydania.items() %}
+      {% for wydanie in lista | sort %}
+        <li class="chip">{{ zrodlo }} / {{ wydanie }}</li>
+      {% endfor %}
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">
+    Zadna maszyna nie zglosila jeszcze rozpoznawalnej dystrybucji. Identyfikator
+    i nazwe kodowa wydania podaje agent od wersji 0.5.4 — starsze przysylaja
+    tylko nazwe wyswietlana, z ktorej dalo by sie je jedynie zgadywac.
+  </p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Czego to nie zastapi</h2>
+  <p class="muted small">
+    Raport mowi „zainstalowana wersja jest starsza niz ta z poprawka na CVE-X”.
+    Nie sprawdza konfiguracji, nie bada uslug sieciowych i nie wie, czy podatny
+    pakiet jest w ogole uruchamiany. Do pelnej oceny sluzy skaner podatnosci —
+    to zestawienie odpowiada na wezsze, ale konkretne pytanie: czego brakuje.
+  </p>
+  <p class="muted small">
+    Wydania Ubuntu z przyrostkiem <code>+esm</code> pochodza z rozszerzonego
+    wsparcia (Ubuntu Pro). Poprawka istnieje, ale bez subskrypcji moze nie byc
+    dostepna do zainstalowania.
+  </p>
+</section>
+{% endblock %}

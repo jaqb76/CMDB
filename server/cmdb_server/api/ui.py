@@ -35,7 +35,7 @@ from ..models import (
     utcnow,
 )
 from ..security import generate_token, issue_csrf_token, sign_session
-from ..services import duplicates, pakiet, scoping, upgrades, ustawienia
+from ..services import cve, duplicates, pakiet, scoping, upgrades, ustawienia
 from ..services.auth import (
     LoginRequired,
     authenticate_user,
@@ -437,6 +437,10 @@ def asset_detail(
     ).scalars().all()
 
     payload = current.payload if current else {}
+    # Podatnosci liczymy przy wyswietleniu, a nie przy przyjeciu raportu:
+    # dane o lukach zmieniaja sie niezaleznie od maszyny, wiec wynik zapisany
+    # tydzien temu bylby nieaktualny mimo braku zmian na samej maszynie.
+    podatnosci = cve.dopasuj(db, payload) if payload else None
     return render(
         request,
         "asset_detail.html",
@@ -445,6 +449,7 @@ def asset_detail(
         db,
         asset=asset,
         snapshot=current,
+        podatnosci=podatnosci,
         history=history,
         owners=owners,
         credentials=credentials,

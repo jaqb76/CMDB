@@ -172,6 +172,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | [`docs/agent-windows.md`](docs/agent-windows.md) | co i jak agent zbiera, instalacja, wdrożenie masowe, diagnostyka |
 | [`docs/agent-linux.md`](docs/agent-linux.md) | instalacja na Ubuntu/Raspberry Pi, systemd, architektury procesorów |
 | [`docs/aktualizacje.md`](docs/aktualizacje.md) | brakujące poprawki, źródła danych per system, czego to nie jest |
+| [`docs/podatnosci.md`](docs/podatnosci.md) | badanie CVE, dane dystrybucji, porównywanie wersji dpkg |
 | [`docs/wdrozenie.md`](docs/wdrozenie.md) | docker compose, TLS, kopie zapasowe, utrzymanie |
 
 ## Testy

@@ -448,3 +448,60 @@ class AuditLog(Base):
     detail: Mapped[dict | None] = mapped_column(JSONType)
     ip: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+# --- podatnosci -------------------------------------------------------------
+
+class CveFeed(Base):
+    """Stan kanalu danych o podatnosciach.
+
+    Wiek danych jest czescia wyniku, dokladnie tak samo jak przy brakujacych
+    aktualizacjach. "Brak znanych podatnosci" wedlug kanalu sprzed trzech
+    miesiecy nie znaczy "maszyna bezpieczna" - znaczy "nie wiemy". Bez tego
+    zapisu nie dalo by sie tego rozroznic.
+    """
+
+    __tablename__ = "cve_feeds"
+    __table_args__ = (UniqueConstraint("source", "release", name="uq_cve_feed_source_release"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    # "debian", "ubuntu" albo "msrc".
+    source: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    # Nazwa kodowa wydania ("bookworm", "jammy") albo "windows" dla MSRC.
+    release: Mapped[str] = mapped_column(String(64), nullable=False)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    entries: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # "ok" albo "blad" - pobranie moglo sie nie udac, a stare dane zostaja.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")
+    detail: Mapped[str | None] = mapped_column(Text)
+
+
+class CveEntry(Base):
+    """Pojedyncze "pakiet P w wydaniu W jest podatny na C ponizej wersji V".
+
+    Klucz jest po pakiecie ZRODLOWYM, bo tak indeksuja dane dystrybucje.
+    Zainstalowane sa pakiety binarne, wiec agent podaje jedno i drugie.
+    """
+
+    __tablename__ = "cve_entries"
+    __table_args__ = (
+        Index("ix_cve_lookup", "source", "release", "package"),
+        UniqueConstraint("source", "release", "package", "cve", name="uq_cve_entry"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    release: Mapped[str] = mapped_column(String(64), nullable=False)
+    package: Mapped[str] = mapped_column(String(255), nullable=False)
+    cve: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    # Wersja, w ktorej luke naprawiono. Puste znaczy, ze poprawki jeszcze nie
+    # ma - wtedy podatna jest kazda zainstalowana wersja.
+    fixed_version: Mapped[str | None] = mapped_column(String(128))
+    # "resolved" (jest poprawka) albo "open" (nie ma jeszcze poprawki).
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="resolved")
+    severity: Mapped[str | None] = mapped_column(String(32))
+    # Powod, dla ktorego dystrybucja nie wyda poprawki - najczesciej
+    # "Minor issue". Takie wpisy sa prawdziwe, ale nie sa do zrobienia:
+    # zmieszane z reszta utopilyby to, na co administrator moze zareagowac.
+    no_fix_reason: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)

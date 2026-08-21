@@ -401,6 +401,14 @@ class LinuxCollector(BaseCollector):
             "uptime_seconds": uptime,
             "locale": os.environ.get("LANG"),
             "kernel": platform.release(),
+            # Identyfikator dystrybucji i nazwa kodowa wydania. Bez nich nie da
+            # sie dobrac wlasciwego kanalu danych o podatnosciach: ta sama
+            # wersja pakietu jest zalatana w bookworm, a podatna w bullseye.
+            # Z nazwy w stylu "Debian GNU/Linux 12 (bookworm)" da sie je tylko
+            # zgadywac, a zgadywanie odpowiada tu za falszywe alarmy.
+            "distro_id": clean(release.get("ID")),
+            "distro_like": clean(release.get("ID_LIKE")),
+            "codename": clean(release.get("VERSION_CODENAME")),
         }
 
     def collect_network(self) -> list:
@@ -488,8 +496,13 @@ class LinuxCollector(BaseCollector):
 
     def collect_packages(self) -> list:
         managers = [
-            (["dpkg-query", "-W", "-f=${Package}\\t${Version}\\t${Maintainer}\\n"], "dpkg"),
-            (["rpm", "-qa", "--qf", "%{NAME}\\t%{VERSION}-%{RELEASE}\\t%{VENDOR}\\n"], "rpm"),
+            # Pakiet zrodlowy jest tu po to, zeby dalo sie zestawic inwentarz
+            # z danymi o podatnosciach: Debian indeksuje je po pakiecie
+            # zrodlowym ("openssl"), a zainstalowane sa pakiety binarne
+            # ("libssl3"). Bez tego wiekszosc podatnosci nie zostalaby
+            # dopasowana.
+            (["dpkg-query", "-W", "-f=${Package}\\t${Version}\\t${Maintainer}\\t${source:Package}\\t${source:Version}\\n"], "dpkg"),
+            (["rpm", "-qa", "--qf", "%{NAME}\\t%{VERSION}-%{RELEASE}\\t%{VENDOR}\\t%{SOURCERPM}\\n"], "rpm"),
             (["pacman", "-Q"], "pacman"),
         ]
         for command, source in managers:
@@ -505,11 +518,28 @@ class LinuxCollector(BaseCollector):
                 fields = line.split("\t") if "\t" in line else line.split(None, 1)
                 if not fields or not fields[0].strip():
                     continue
+                nazwa = fields[0].strip()
+                zrodlowy = fields[3].strip() if len(fields) > 3 else ""
+                if source == "rpm" and zrodlowy:
+                    # SOURCERPM to pelna nazwa pliku, np.
+                    # "openssl-3.0.7-24.el9.src.rpm" - zostawiamy sama nazwe.
+                    zrodlowy = zrodlowy.rsplit("-", 2)[0] if "-" in zrodlowy else zrodlowy
                 packages.append(
                     {
-                        "name": fields[0].strip(),
+                        "name": nazwa,
                         "version": fields[1].strip() if len(fields) > 1 else None,
                         "publisher": fields[2].strip() if len(fields) > 2 else None,
+                        # Puste dla pakietow, ktore same sa zrodlem - wtedy
+                        # nazwa binarna i zrodlowa sa te same.
+                        "source_package": zrodlowy or nazwa,
+                        # Wersja ZRODLOWA, nie binarna. Dane o podatnosciach
+                        # podaja wersje zrodlowa, a binaria z jednego zrodla
+                        # miewaja rozne schematy wersji - porownanie ich ze
+                        # soba dawaloby falszywe alarmy.
+                        "source_version": (
+                            fields[4].strip() if len(fields) > 4 else None
+                        )
+                        or (fields[1].strip() if len(fields) > 1 else None),
                         "source": source,
                     }
                 )

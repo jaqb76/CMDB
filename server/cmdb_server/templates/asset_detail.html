@@ -67,6 +67,7 @@
     <button type="button" class="tab-button" data-tab="hardware">Sprzet</button>
     <button type="button" class="tab-button" data-tab="software">Oprogramowanie</button>
     <button type="button" class="tab-button" data-tab="aktualizacje">Aktualizacje</button>
+    <button type="button" class="tab-button" data-tab="podatnosci">Podatnosci</button>
     <button type="button" class="tab-button" data-tab="users">Uzytkownicy</button>
     <button type="button" class="tab-button" data-tab="zmiany">Zmiany</button>
     <button type="button" class="tab-button" data-tab="history">Historia</button>
@@ -393,6 +394,109 @@
         zainstalowanych poprawek — sa one czescia wersji pakietow, widocznych
         w zakladce Oprogramowanie.
       </p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="tab-panel" data-panel="podatnosci">
+    <div class="panel">
+      <h2>Znane podatnosci</h2>
+
+      {% if not podatnosci or podatnosci.status != 'ok' %}
+        <div class="alert alert-warn">
+          <b>Nie wiemy.</b>
+          {{ (podatnosci.detail if podatnosci else '') or 'Brak danych dla tej maszyny.' }}
+          <div class="small">
+            To nie znaczy, ze maszyna jest bezpieczna — znaczy, ze nie sprawdzilismy.
+          </div>
+        </div>
+
+      {% else %}
+        <div class="cards">
+          <div class="card {% if podatnosci.fixable_count %}card-danger{% endif %}">
+            <div class="card-value">{{ podatnosci.fixable_count }}</div>
+            <div class="card-label">do zrobienia — poprawka istnieje</div>
+          </div>
+          <div class="card {% if podatnosci.open_count %}card-warn{% endif %}">
+            <div class="card-value">{{ podatnosci.open_count }}</div>
+            <div class="card-label">bez poprawki</div>
+          </div>
+          <div class="card">
+            <div class="card-value">{{ podatnosci.minor_count }}</div>
+            <div class="card-label">uznane przez dystrybucje za drobne</div>
+          </div>
+          <div class="card">
+            <div class="card-value" style="font-size:18px">{{ podatnosci.source }}</div>
+            <div class="card-label">
+              dane sprzed {{ podatnosci.feed_age_hours }} h
+            </div>
+          </div>
+        </div>
+
+        {% if podatnosci.feed_age_hours and podatnosci.feed_age_hours > 168 %}
+        <div class="alert alert-warn">
+          <b>Dane o podatnosciach maja
+          {{ (podatnosci.feed_age_hours / 24) | round(0, 'floor') | int }} dni.</b>
+          Luki opublikowane pozniej nie sa tu uwzglednione. Odswiez kanaly
+          w <a href="/admin/podatnosci">administracji</a>.
+        </div>
+        {% endif %}
+
+        {% if podatnosci.entries %}
+        <input type="search" class="table-filter" data-filter-for="cve-table"
+               placeholder="Filtruj po CVE albo pakiecie...">
+        <table class="table" id="cve-table">
+          <thead>
+            <tr><th>CVE</th><th>Pakiet</th><th>Zainstalowana</th>
+                <th>Poprawka w</th><th>Stan</th></tr>
+          </thead>
+          <tbody>
+          {% for p in podatnosci.entries %}
+            <tr>
+              <td class="small">
+                <code>{{ p.cve }}</code>
+                {% if p.severity and p.severity != 'not yet assigned' %}
+                  <div class="muted">{{ p.severity }}</div>
+                {% endif %}
+              </td>
+              <td class="small">
+                {{ p.package }}
+                {% if p.source_package != p.package %}
+                  <div class="muted">zrodlo: {{ p.source_package }}</div>
+                {% endif %}
+              </td>
+              <td class="small muted"><code>{{ p.compared_version }}</code></td>
+              <td class="small">
+                {% if p.fixed_version %}<code>{{ p.fixed_version }}</code>
+                {% else %}<span class="muted">brak poprawki</span>{% endif %}
+              </td>
+              <td class="small">
+                {% if p.status == 'resolved' %}
+                  <span class="badge badge-danger">do zrobienia</span>
+                {% elif p.no_fix_reason %}
+                  <span class="badge">drobne</span>
+                  <div class="muted">{{ p.no_fix_reason }}</div>
+                {% else %}
+                  <span class="badge badge-warn">bez poprawki</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="alert alert-ok">
+          Sprawdzono wobec {{ podatnosci.feed_entries }} wpisow — nie znaleziono
+          znanych podatnosci.
+        </div>
+        {% endif %}
+
+        <p class="muted small">
+          Porownujemy wersje <b>zrodlowa</b> pakietu z wersja, w ktorej
+          dystrybucja wydala poprawke. To nie jest skanowanie podatnosci: nie
+          sprawdzamy konfiguracji ani tego, czy podatny pakiet jest w ogole
+          uruchamiany.
+        </p>
       {% endif %}
     </div>
   </section>
