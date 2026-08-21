@@ -7,10 +7,16 @@
     <h1>Dane o podatnosciach</h1>
     <p class="muted">Kanaly, z ktorych zestawiamy inwentarz z lukami bezpieczenstwa.</p>
   </div>
-  <form method="post" action="/admin/podatnosci/odswiez">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="btn btn-primary">Odswiez teraz</button>
-  </form>
+  <div class="row-form">
+    <form method="post" action="/admin/podatnosci/odswiez" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-primary">Odswiez kanaly</button>
+    </form>
+    <form method="post" action="/admin/podatnosci/oceny" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn">Pobierz oceny CVSS</button>
+    </form>
+  </div>
 </div>
 
 <div class="alert alert-warn">
@@ -78,6 +84,27 @@
     tylko nazwe wyswietlana, z ktorej dalo by sie je jedynie zgadywac.
   </p>
   {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Oceny CVSS</h2>
+  <p class="muted small">
+    Dane dystrybucji mowia, czy pakiet jest podatny, ale nie podaja wagi
+    w skali CVSS — Debian ma wlasna skale, Ubuntu nie podaje zadnej. Oceny
+    pochodza z NVD i sa buforowane na stale: dla wydanego CVE zmieniaja sie
+    rzadko.
+  </p>
+  <p class="muted small">
+    Pobieramy je wylacznie dla podatnosci <b>faktycznie znalezionych</b> na
+    maszynach. Kanal Debiana ma kilkadziesiat tysiecy wpisow, a maszyn dotyczy
+    kilkaset — sciaganie reszty to zapytania o luki, ktorych u nikogo nie ma.
+  </p>
+  <p class="muted small">
+    NVD dopuszcza 5 zapytan na 30 sekund, wiec pierwszy przebieg obejmuje do
+    200 podatnosci; kolejne klikniecie dobiera nastepna porcje. Ustawienie
+    <code>CMDB_NVD_API_KEY</code> podnosi limit do 50 na 30 sekund —
+    klucz jest bezplatny.
+  </p>
 </section>
 
 <section class="panel">

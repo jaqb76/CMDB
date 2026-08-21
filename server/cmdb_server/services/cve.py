@@ -29,7 +29,9 @@ import bz2
 import json
 import logging
 import re
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import timedelta
 
@@ -370,7 +372,33 @@ def dopasuj(db: Session, payload: dict) -> dict:
                 }
             )
 
-    znalezione.sort(key=lambda z: (z["status"] != "open", z["cve"]), reverse=False)
+    # Oceny doklejamy jednym zapytaniem - z bufora, bez ruchu sieciowego.
+    from ..models import CveScore
+
+    oceny = {}
+    if znalezione:
+        oceny = {
+            o.cve: o
+            for o in db.execute(
+                select(CveScore).where(CveScore.cve.in_({z["cve"] for z in znalezione}))
+            ).scalars()
+        }
+    for z in znalezione:
+        ocena = oceny.get(z["cve"])
+        z["base_score"] = ocena.base_score if ocena else None
+        z["cvss_severity"] = ocena.severity if ocena else None
+        z["vector"] = ocena.vector if ocena else None
+        z["link"] = odnosnik(f"{source}/{release}", z["cve"])
+
+    # Najpierw to, co da sie naprawic, potem najgrozniejsze. Podatnosc bez
+    # oceny lezy na koncu swojej grupy, a nie udaje najlagodniejszej.
+    znalezione.sort(
+        key=lambda z: (
+            z["status"] != "resolved",
+            -(z["base_score"] if z["base_score"] is not None else -1),
+            z["cve"],
+        )
+    )
     wiek = None
     pobrano = as_utc(stan.fetched_at)
     if pobrano:
@@ -414,6 +442,17 @@ def _wynik(status: str, detail: str | None, entries: list | None = None,
         "minor_count": (
             sum(1 for p in pozycje if p.get("no_fix_reason")) if status == STATUS_OK else None
         ),
+        # Do naprawienia i powazne wedlug CVSS - to jest lista, od ktorej
+        # zaczyna sie prace.
+        "critical_count": (
+            sum(1 for p in pozycje
+                if p["status"] == "resolved" and (p.get("base_score") or 0) >= 7.0)
+            if status == STATUS_OK else None
+        ),
+        "bez_oceny": (
+            sum(1 for p in pozycje if p.get("base_score") is None)
+            if status == STATUS_OK else None
+        ),
         "entries": pozycje,
     }
 
@@ -440,3 +479,144 @@ def wydania_we_flocie(db: Session) -> dict[str, set[str]]:
             source, release = wydanie
             wynik.setdefault(source, set()).add(release)
     return wynik
+
+
+# --- oceny CVSS -------------------------------------------------------------
+
+ADRES_NVD = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+# NVD dopuszcza 5 zapytan na 30 sekund bez klucza i 50 z kluczem. Odstepy
+# trzymamy z zapasem - przekroczenie limitu konczy sie odmowa na kilka minut,
+# czyli strata wieksza niz zysk z pospiechu.
+ODSTEP_BEZ_KLUCZA = 6.5
+ODSTEP_Z_KLUCZEM = 0.7
+
+# Ile ocen pobieramy w jednym przebiegu. Bez limitu pierwsze uruchomienie
+# na duzej flocie trwaloby godzine, a administrator nie wiedzialby, czy cos
+# sie dzieje. Kolejne klikniecie dobiera nastepna porcje.
+LIMIT_NA_PRZEBIEG = 200
+
+# Strony opisujace podatnosc. Dystrybucja wie, co zrobila z konkretnym
+# pakietem; NVD opisuje sama luke.
+ODNOSNIKI = {
+    "debian": "https://security-tracker.debian.org/tracker/{cve}",
+    "ubuntu": "https://ubuntu.com/security/{cve}",
+}
+ODNOSNIK_NVD = "https://nvd.nist.gov/vuln/detail/{cve}"
+
+
+def odnosnik(source: str | None, cve: str) -> str:
+    """Adres strony opisujacej podatnosc u danej dystrybucji."""
+    wzorzec = ODNOSNIKI.get((source or "").split("/")[0], ODNOSNIK_NVD)
+    return wzorzec.format(cve=cve)
+
+
+def _ocena_z_odpowiedzi(dane: dict) -> dict | None:
+    """Wyciaga ocene bazowa z odpowiedzi NVD.
+
+    Bierzemy najnowsza dostepna wersje CVSS - starsze wydania maja tylko 2.0,
+    nowsze 3.1 albo 4.0, a mieszanie ich w jednej kolumnie dawaloby liczby
+    nieporownywalne miedzy soba bez podania wersji.
+    """
+    podatnosci = dane.get("vulnerabilities") or []
+    if not podatnosci:
+        return None
+    wpis = podatnosci[0].get("cve") or {}
+    metryki = wpis.get("metrics") or {}
+    for klucz in ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+        for pozycja in metryki.get(klucz) or []:
+            cvss = pozycja.get("cvssData") or {}
+            wynik = cvss.get("baseScore")
+            if wynik is None:
+                continue
+            return {
+                "base_score": float(wynik),
+                "severity": (cvss.get("baseSeverity") or pozycja.get("baseSeverity") or "").upper()
+                or None,
+                "vector": cvss.get("vectorString"),
+                "published": (wpis.get("published") or "")[:10] or None,
+            }
+    return None
+
+
+def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
+                  limit: int = LIMIT_NA_PRZEBIEG) -> dict:
+    """Uzupelnia brakujace oceny CVSS. Zwraca podsumowanie przebiegu."""
+    from ..models import CveScore
+
+    znane = set(
+        db.execute(select(CveScore.cve).where(CveScore.cve.in_(cves))).scalars()
+    )
+    brakujace = [c for c in dict.fromkeys(cves) if c not in znane]
+    do_pobrania = brakujace[:limit]
+
+    naglowki = dict(NAGLOWKI)
+    if klucz_api:
+        naglowki["apiKey"] = klucz_api
+    odstep = ODSTEP_Z_KLUCZEM if klucz_api else ODSTEP_BEZ_KLUCZA
+
+    pobrane = puste = bledy = 0
+    for numer, cve in enumerate(do_pobrania):
+        if numer:
+            time.sleep(odstep)
+        try:
+            zadanie = urllib.request.Request(
+                f"{ADRES_NVD}?cveId={urllib.parse.quote(cve)}", headers=naglowki
+            )
+            with urllib.request.urlopen(zadanie, timeout=60) as odpowiedz:
+                dane = json.loads(odpowiedz.read())
+        except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
+            log.warning("nie udalo sie pobrac oceny %s: %s", cve, exc)
+            bledy += 1
+            # Przerywamy po serii bledow - to zwykle limit zapytan albo brak
+            # lacznosci, a dalsze proby tylko go pogleboia.
+            if bledy >= 5:
+                log.warning("przerywam pobieranie ocen po %d bledach", bledy)
+                break
+            continue
+
+        ocena = _ocena_z_odpowiedzi(dane)
+        if ocena is None:
+            # Zapamietujemy takze brak wyniku - inaczej przy kazdym odswiezeniu
+            # pytalibysmy o te same, nieopisane jeszcze podatnosci.
+            db.add(CveScore(cve=cve, found=False))
+            puste += 1
+        else:
+            db.add(CveScore(cve=cve, found=True, **ocena))
+            pobrane += 1
+    db.commit()
+
+    return {
+        "pobrane": pobrane,
+        "bez_oceny": puste,
+        "bledy": bledy,
+        "pozostalo": max(0, len(brakujace) - len(do_pobrania)),
+    }
+
+
+def cve_we_flocie(db: Session) -> list[str]:
+    """Podatnosci faktycznie dopasowane do maszyn - i tylko dla nich pobieramy
+    oceny. Kanal Debiana ma 45 tysiecy wpisow, maszyny dotyczy kilkaset."""
+    from ..models import Asset, InventorySnapshot
+
+    znalezione: list[str] = []
+    widziane: set[str] = set()
+    podzapytanie = (
+        select(InventorySnapshot.payload, InventorySnapshot.asset_id)
+        .join(Asset, Asset.id == InventorySnapshot.asset_id)
+        .where(Asset.os_family == "linux")
+        .order_by(InventorySnapshot.collected_at.desc())
+    )
+    obsluzone: set[str] = set()
+    for payload, asset_id in db.execute(podzapytanie):
+        if asset_id in obsluzone:
+            continue        # tylko najnowszy raport kazdej maszyny
+        obsluzone.add(asset_id)
+        wynik = dopasuj(db, payload or {})
+        if wynik["status"] != STATUS_OK:
+            continue
+        for pozycja in wynik["entries"]:
+            if pozycja["cve"] not in widziane:
+                widziane.add(pozycja["cve"])
+                znalezione.append(pozycja["cve"])
+    return znalezione

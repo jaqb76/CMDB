@@ -413,9 +413,13 @@
 
       {% else %}
         <div class="cards">
-          <div class="card {% if podatnosci.fixable_count %}card-danger{% endif %}">
+          <div class="card {% if podatnosci.critical_count %}card-danger{% endif %}">
+            <div class="card-value">{{ podatnosci.critical_count }}</div>
+            <div class="card-label">powazne (CVSS ≥ 7) z gotowa poprawka</div>
+          </div>
+          <div class="card {% if podatnosci.fixable_count %}card-warn{% endif %}">
             <div class="card-value">{{ podatnosci.fixable_count }}</div>
-            <div class="card-label">do zrobienia — poprawka istnieje</div>
+            <div class="card-label">wszystkie do zrobienia</div>
           </div>
           <div class="card {% if podatnosci.open_count %}card-warn{% endif %}">
             <div class="card-value">{{ podatnosci.open_count }}</div>
@@ -447,16 +451,28 @@
                placeholder="Filtruj po CVE albo pakiecie...">
         <table class="table" id="cve-table">
           <thead>
-            <tr><th>CVE</th><th>Pakiet</th><th>Zainstalowana</th>
+            <tr><th>CVE</th><th>Ocena</th><th>Pakiet</th><th>Zainstalowana</th>
                 <th>Poprawka w</th><th>Stan</th></tr>
           </thead>
           <tbody>
           {% for p in podatnosci.entries %}
             <tr>
               <td class="small">
-                <code>{{ p.cve }}</code>
+                <a href="{{ p.link }}" target="_blank" rel="noopener noreferrer">
+                  <code>{{ p.cve }}</code></a>
                 {% if p.severity and p.severity != 'not yet assigned' %}
                   <div class="muted">{{ p.severity }}</div>
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if p.base_score is not none %}
+                  <span class="badge {{ 'badge-danger' if p.base_score >= 7
+                                        else ('badge-warn' if p.base_score >= 4 else '') }}">
+                    {{ '%.1f' | format(p.base_score) }} {{ p.cvss_severity }}
+                  </span>
+                  {% if p.vector %}<div class="muted" style="font-size:11px">{{ p.vector }}</div>{% endif %}
+                {% else %}
+                  <span class="muted">—</span>
                 {% endif %}
               </td>
               <td class="small">
@@ -489,6 +505,14 @@
           Sprawdzono wobec {{ podatnosci.feed_entries }} wpisow — nie znaleziono
           znanych podatnosci.
         </div>
+        {% endif %}
+
+        {% if podatnosci.bez_oceny %}
+        <p class="muted small">
+          {{ podatnosci.bez_oceny }} podatnosci nie ma jeszcze oceny CVSS —
+          pobiera sie je w <a href="/admin/podatnosci">administracji</a>.
+          Dane dystrybucji ocen nie zawieraja, wiec pochodza z osobnego zrodla.
+        </p>
         {% endif %}
 
         <p class="muted small">

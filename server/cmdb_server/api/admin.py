@@ -614,6 +614,31 @@ def odswiez_podatnosci(
     return RedirectResponse("/admin/podatnosci", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/podatnosci/oceny")
+def pobierz_oceny_cvss(
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Uzupelnia oceny CVSS dla podatnosci znalezionych na maszynach.
+
+    Pobieramy je z NVD, bo dane dystrybucji ich nie zawieraja - Debian ma
+    wlasna skale, Ubuntu nie podaje zadnej. Tylko dla podatnosci faktycznie
+    dopasowanych: sciaganie ocen dla calego kanalu to dziesiatki tysiecy
+    zapytan po to, by opisac luki, ktorych u nikogo nie ma.
+    """
+    sprawdz_csrf(user, csrf_token)
+    podsumowanie = cve.pobierz_oceny(
+        db, cve.cve_we_flocie(db), klucz_api=get_settings().nvd_api_key
+    )
+    audit(db, None, action="cve.scores", target=str(podsumowanie.get("pobrane")),
+          detail=podsumowanie, ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s pobral oceny CVSS: %s", user.email, podsumowanie)
+    return RedirectResponse("/admin/podatnosci", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/releases")
 async def wgraj_wersje(
     request: Request,

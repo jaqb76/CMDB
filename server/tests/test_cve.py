@@ -363,3 +363,157 @@ def test_nieudane_pobranie_nie_kasuje_starych_danych(kanal_debian, monkeypatch):
     assert wpisy, "wpisy musza zostac"
     assert stan.status == "blad"
     assert "brak lacznosci" in stan.detail
+
+
+# --- oceny CVSS -------------------------------------------------------------
+
+ODPOWIEDZ_NVD = {
+    "vulnerabilities": [{"cve": {
+        "id": "CVE-2025-10148",
+        "published": "2025-09-10T14:15:00.000",
+        "metrics": {
+            "cvssMetricV31": [{"cvssData": {
+                "baseScore": 6.5, "baseSeverity": "MEDIUM",
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
+            }}],
+            "cvssMetricV2": [{"cvssData": {"baseScore": 4.3, "vectorString": "AV:N/AC:M"}}],
+        },
+    }}]
+}
+
+
+def _podstaw_nvd(monkeypatch, odpowiedzi):
+    """Podstawia NVD i usuwa odstepy - testy nie moga czekac po 6 sekund."""
+    kolejka = list(odpowiedzi)
+
+    class _Odpowiedz:
+        def __init__(self, dane):
+            self.dane = json.dumps(dane).encode()
+
+        def read(self):
+            return self.dane
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    def otworz(zadanie, timeout=0):
+        if not kolejka:
+            raise OSError("brak dalszych odpowiedzi")
+        return _Odpowiedz(kolejka.pop(0))
+
+    monkeypatch.setattr(cve.urllib.request, "urlopen", otworz)
+    monkeypatch.setattr(cve.time, "sleep", lambda _: None)
+
+
+def test_ocena_pobrana_i_zapamietana(monkeypatch):
+    from cmdb_server.models import CveScore
+
+    _podstaw_nvd(monkeypatch, [ODPOWIEDZ_NVD])
+    with SessionLocal() as db:
+        podsumowanie = cve.pobierz_oceny(db, ["CVE-2025-10148"])
+        ocena = db.get(CveScore, "CVE-2025-10148")
+
+    assert podsumowanie["pobrane"] == 1
+    assert ocena.base_score == 6.5
+    assert ocena.severity == "MEDIUM"
+    assert ocena.vector.startswith("CVSS:3.1/")
+
+
+def test_bierzemy_najnowsza_wersje_cvss(monkeypatch):
+    """Mieszanie CVSS 2.0 i 3.1 w jednej kolumnie dawaloby liczby
+    nieporownywalne miedzy soba."""
+    from cmdb_server.models import CveScore
+
+    _podstaw_nvd(monkeypatch, [ODPOWIEDZ_NVD])
+    with SessionLocal() as db:
+        cve.pobierz_oceny(db, ["CVE-2025-10148"])
+        assert db.get(CveScore, "CVE-2025-10148").base_score == 6.5
+
+
+def test_brak_oceny_tez_jest_zapamietywany(monkeypatch):
+    """Inaczej przy kazdym odswiezeniu pytalibysmy o te same, nieopisane
+    jeszcze podatnosci - a limit NVD to 5 zapytan na 30 sekund."""
+    from cmdb_server.models import CveScore
+
+    _podstaw_nvd(monkeypatch, [{"vulnerabilities": []}])
+    with SessionLocal() as db:
+        podsumowanie = cve.pobierz_oceny(db, ["CVE-2099-0001"])
+        ocena = db.get(CveScore, "CVE-2099-0001")
+
+    assert podsumowanie["bez_oceny"] == 1
+    assert ocena is not None and ocena.found is False
+    assert ocena.base_score is None
+
+
+def test_znane_oceny_nie_sa_pobierane_ponownie(monkeypatch):
+    _podstaw_nvd(monkeypatch, [ODPOWIEDZ_NVD])
+    with SessionLocal() as db:
+        cve.pobierz_oceny(db, ["CVE-2025-10148"])
+
+    # Druga proba bez zadnej odpowiedzi w kolejce - gdyby pytala, wybuchlaby.
+    _podstaw_nvd(monkeypatch, [])
+    with SessionLocal() as db:
+        podsumowanie = cve.pobierz_oceny(db, ["CVE-2025-10148"])
+    assert podsumowanie["pobrane"] == 0
+
+
+def test_przebieg_jest_ograniczony(monkeypatch):
+    """Bez limitu pierwsze uruchomienie na duzej flocie trwaloby godzine."""
+    _podstaw_nvd(monkeypatch, [ODPOWIEDZ_NVD, ODPOWIEDZ_NVD, ODPOWIEDZ_NVD])
+    with SessionLocal() as db:
+        podsumowanie = cve.pobierz_oceny(
+            db, ["CVE-2025-0001", "CVE-2025-0002", "CVE-2025-0003"], limit=2
+        )
+    assert podsumowanie["pozostalo"] == 1
+
+
+def test_seria_bledow_przerywa_pobieranie(monkeypatch):
+    """Zwykle oznacza wyczerpany limit zapytan - dalsze proby tylko go pogleboia."""
+    monkeypatch.setattr(cve.time, "sleep", lambda _: None)
+
+    def padnij(zadanie, timeout=0):
+        raise OSError("429 Too Many Requests")
+
+    monkeypatch.setattr(cve.urllib.request, "urlopen", padnij)
+    with SessionLocal() as db:
+        podsumowanie = cve.pobierz_oceny(db, [f"CVE-2025-{n:04d}" for n in range(50)])
+    assert podsumowanie["bledy"] == 5, "po piatym bledzie przerywamy"
+
+
+# --- prezentacja ------------------------------------------------------------
+
+def test_odnosnik_prowadzi_do_strony_dystrybucji():
+    """Dystrybucja opisuje, co zrobila z konkretnym pakietem - to jest
+    uzyteczniejsze niz sam opis luki."""
+    assert cve.odnosnik("debian/bookworm", "CVE-2025-1") == \
+        "https://security-tracker.debian.org/tracker/CVE-2025-1"
+    assert cve.odnosnik("ubuntu/jammy", "CVE-2025-1") == \
+        "https://ubuntu.com/security/CVE-2025-1"
+    assert "nvd.nist.gov" in cve.odnosnik("cokolwiek", "CVE-2025-1")
+
+
+def test_znaleziska_niosa_ocene_i_odnosnik(kanal_debian, monkeypatch):
+    _podstaw_nvd(monkeypatch, [ODPOWIEDZ_NVD])
+    with SessionLocal() as db:
+        cve.pobierz_oceny(db, ["CVE-2025-10148"])
+        wynik = cve.dopasuj(db, _raport([_pakiet("curl", "7.88.1-10+deb12u14")]))
+
+    znalezione = wynik["entries"][0]
+    assert znalezione["base_score"] == 6.5
+    assert znalezione["cvss_severity"] == "MEDIUM"
+    assert znalezione["link"].endswith("CVE-2025-10148")
+    assert wynik["critical_count"] == 0, "6.5 to nie jest powazna wedlug progu 7.0"
+
+
+def test_podatnosc_bez_oceny_nie_udaje_lagodnej(kanal_debian):
+    """Sortujemy po wadze - brak oceny nie moze wypchnac podatnosci na koniec
+    listy tak, jakby byla najlagodniejsza."""
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport([_pakiet("curl", "7.88.1-10+deb12u14")]))
+
+    znalezione = wynik["entries"][0]
+    assert znalezione["base_score"] is None
+    assert wynik["bez_oceny"] == 1

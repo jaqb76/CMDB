@@ -14,6 +14,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -505,3 +506,29 @@ class CveEntry(Base):
     # zmieszane z reszta utopilyby to, na co administrator moze zareagowac.
     no_fix_reason: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
+
+
+class CveScore(Base):
+    """Ocena CVSS pojedynczej podatnosci.
+
+    Dane dystrybucji mowia, czy pakiet jest podatny, ale nie podaja wagi w skali
+    CVSS - Debian ma wlasna skale "urgency", Ubuntu nie podaje zadnej. Ocena
+    pochodzi wiec z NVD i jest tu buforowana na stale: dla wydanego CVE zmienia
+    sie rzadko, a limit zapytan do NVD wynosi 5 na 30 sekund.
+
+    Pobieramy oceny wylacznie dla podatnosci faktycznie dopasowanych do maszyn.
+    Sciaganie ich dla calego kanalu oznaczaloby dziesiatki tysiecy zapytan po to,
+    by opisac luki, ktorych u nikogo nie ma.
+    """
+
+    __tablename__ = "cve_scores"
+
+    cve: Mapped[str] = mapped_column(String(32), primary_key=True)
+    base_score: Mapped[float | None] = mapped_column(Float)
+    severity: Mapped[str | None] = mapped_column(String(16), index=True)
+    vector: Mapped[str | None] = mapped_column(String(128))
+    published: Mapped[str | None] = mapped_column(String(32))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Pusty wynik tez zapamietujemy - inaczej przy kazdym odswiezeniu pytalibysmy
+    # o te same CVE, ktorych NVD nie zna (np. swieze, jeszcze nieopisane).
+    found: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

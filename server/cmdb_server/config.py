@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # z kodem. Pusty wolumen podmontowany na magazyn wydan przyslonilby ja.
     agent_bundle_dir: str = ""
 
+    # Klucz do NVD. Bez niego limit wynosi 5 zapytan na 30 sekund, z nim 50 -
+    # przy wiekszej flocie roznica miedzy kilkoma minutami a godzina.
+    # Bezplatny: https://nvd.nist.gov/developers/request-an-api-key
+    nvd_api_key: str = ""
+
     # Po ilu godzinach bez kontaktu maszyna jest oznaczana jako "stale".
     stale_after_hours: int = 48
 

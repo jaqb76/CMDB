@@ -57,6 +57,37 @@ ze źródła `e2fsprogs` powstaje binarny `comerr-dev` w wersji `2.1-1.46.5-…`
 Porównanie ich ze sobą dawało poprawkę rzekomo nowszą niż zainstalowana wersja,
 czyli fałszywy alarm na pakiecie, który był aktualny.
 
+## Oceny CVSS i odnośniki
+
+Dane dystrybucji mówią, **czy** pakiet jest podatny, ale nie podają wagi
+w skali CVSS — Debian ma własną skalę `urgency`, Ubuntu nie podaje żadnej.
+Ocena („Base Score: 6.5 MEDIUM") pochodzi więc z NVD i jest buforowana na
+stałe: dla wydanego CVE zmienia się rzadko.
+
+Pobieramy oceny **wyłącznie dla podatności faktycznie znalezionych** na
+maszynach. Kanał Debiana ma 45 tys. wpisów, a flotę dotyczy kilkaset —
+ściąganie reszty to zapytania o luki, których u nikogo nie ma.
+
+NVD dopuszcza **5 zapytań na 30 sekund**, więc jeden przebieg obejmuje do 200
+podatności, a kolejne kliknięcie dobiera następną porcję. Bezpłatny klucz
+podnosi limit do 50 na 30 sekund:
+
+```bash
+CMDB_NVD_API_KEY=...    # https://nvd.nist.gov/developers/request-an-api-key
+```
+
+Brak oceny **nie jest** traktowany jak ocena niska: taka podatność ląduje na
+końcu swojej grupy, a nie udaje najłagodniejszej, a panel pokazuje, ile ocen
+jeszcze brakuje.
+
+Odnośnik przy każdym CVE prowadzi do strony **dystrybucji**, nie do NVD —
+`security-tracker.debian.org` albo `ubuntu.com/security` opisują, co dana
+dystrybucja zrobiła z konkretnym pakietem, co jest praktyczniejsze niż sam
+opis luki.
+
+Kafelek **„poważne (CVSS ≥ 7) z gotową poprawką"** to lista, od której zaczyna
+się pracę: rzeczy jednocześnie groźne i możliwe do naprawienia od ręki.
+
 ## Odświeżanie
 
 Ręcznie, przyciskiem na stronie **Podatności**. Pobieramy dane wyłącznie dla
