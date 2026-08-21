@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import io
 import json
 import logging
 import re
@@ -112,6 +113,23 @@ def _pliki(katalog_zrodel: Path) -> list[tuple[Path, str]]:
     return sorted(zebrane, key=lambda para: para[1])
 
 
+def _zawartosc(sciezka: Path, nazwa: str) -> bytes:
+    """Zawartosc pliku gotowa do spakowania.
+
+    Skryptom powloki narzucamy zakonczenia LF. Na Windows git domyslnie
+    wystawia w kopii roboczej CRLF, a wtedy pierwsza linia rozpakowanego
+    skryptu konczy sie znakiem powrotu karetki - i system szuka
+    interpretera o nazwie 'bash' z tym znakiem na koncu. Paczka ma byc
+    poprawna niezaleznie od tego, jak wyglada czyjas kopia robocza.
+    """
+    dane = sciezka.read_bytes()
+    if nazwa.endswith(".sh"):
+        # CRLF -> LF. Zapis przez chr(), bo dosowny odwrotny ukosnik
+        # bywa zjadany po drodze przy edycji tego pliku.
+        dane = dane.replace((chr(13) + chr(10)).encode(), chr(10).encode())
+    return dane
+
+
 def zbuduj(katalog_zrodel: Path, katalog_wydan: Path) -> dict:
     """Buduje paczke zrodel i zapisuje ja w magazynie wydan."""
     katalog_zrodel = Path(katalog_zrodel)
@@ -137,8 +155,9 @@ def zbuduj(katalog_zrodel: Path, katalog_wydan: Path) -> dict:
                     info.uname = info.gname = "root"
                     # Skrypt instalacyjny musi zostac wykonywalny po rozpakowaniu.
                     info.mode = 0o755 if nazwa.endswith(".sh") else 0o644
-                    with sciezka.open("rb") as zawartosc:
-                        tar.addfile(info, zawartosc)
+                    dane = _zawartosc(sciezka, nazwa)
+                    info.size = len(dane)
+                    tar.addfile(info, io.BytesIO(dane))
 
     dane = tymczasowy.read_bytes()
     skrot = hashlib.sha256(dane).hexdigest()

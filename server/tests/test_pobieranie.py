@@ -320,3 +320,61 @@ def test_strona_mowi_wprost_gdy_brak_paczki(client, tenant_a, make_user, tmp_pat
     strona = client.get("/pobierz")
     assert strona.status_code == 200
     assert "nie przygotowano paczki" in strona.text
+
+
+# --- zakonczenia linii ------------------------------------------------------
+#
+# Na Windows git domyslnie wystawia w kopii roboczej CRLF. Paczka budowana jest
+# wprost z plikow na dysku, wiec bez normalizacji na maszyne docelowa trafialby
+# skrypt, ktorego pierwsza linia konczy sie znakiem powrotu karetki - a Linux
+# szuka wtedy interpretera o nazwie "bash" z tym znakiem i odmawia startu.
+
+def _z_crlf(dane: bytes) -> bytes:
+    return dane.replace(chr(10).encode(), (chr(13) + chr(10)).encode())
+
+
+def test_paczka_ma_skrypty_z_zakonczeniami_lf(client, tenant_a, paczka):
+    odpowiedz = client.get("/download/agent-linux.tar.gz", headers=_naglowek(tenant_a["token"]))
+    with tarfile.open(fileobj=io.BytesIO(odpowiedz.content)) as archiwum:
+        skrypt = archiwum.extractfile("cmdb-agent/packaging/install-agent.sh").read()
+
+    assert chr(13).encode() not in skrypt, "skrypt z CRLF nie uruchomi sie na Linuksie"
+    assert skrypt.startswith(b"#!/usr/bin/env bash" + chr(10).encode())
+
+
+def test_zrodla_z_crlf_daja_paczke_z_lf(tmp_path):
+    """Sedno zabezpieczenia: nawet gdy kopia robocza ma CRLF, paczka ma LF."""
+    zrodla = tmp_path / "agent"
+    (zrodla / "cmdb_agent").mkdir(parents=True)
+    (zrodla / "packaging").mkdir()
+    (zrodla / "cmdb_agent" / "__init__.py").write_text(
+        '__version__ = "1.0.0"\n', encoding="utf-8"
+    )
+    (zrodla / "packaging" / "install-agent.sh").write_bytes(
+        _z_crlf(b"#!/usr/bin/env bash\necho gotowe\n")
+    )
+
+    katalog = tmp_path / "cel"
+    pakiet.zbuduj(zrodla, katalog)
+
+    with tarfile.open(pakiet.sciezka_archiwum(katalog)) as archiwum:
+        skrypt = archiwum.extractfile("cmdb-agent/packaging/install-agent.sh").read()
+    assert skrypt == b"#!/usr/bin/env bash\necho gotowe\n"
+
+
+def test_wydawany_skrypt_startowy_ma_lf(client):
+    """Ten sam problem dotyczy skryptu wydawanego pod /download/install.sh."""
+    tresc = client.get("/download/install.sh").content
+    assert chr(13).encode() not in tresc
+
+
+def test_skrypty_w_repozytorium_maja_lf():
+    """Wychwytuje przypadkowe zapisanie skryptu z CRLF - np. edytorem
+    ustawionym na zakonczenia windowsowe."""
+    korzen = Path(__file__).resolve().parent.parent.parent
+    winne = [
+        sciezka.relative_to(korzen).as_posix()
+        for sciezka in korzen.rglob("*.sh")
+        if ".git" not in sciezka.parts and chr(13).encode() in sciezka.read_bytes()
+    ]
+    assert not winne, f"skrypty z CRLF nie zadzialaja na Linuksie: {winne}"

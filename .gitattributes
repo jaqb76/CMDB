@@ -1,0 +1,19 @@
+# Domyslnie git sam rozpoznaje pliki tekstowe i normalizuje je w repozytorium.
+* text=auto
+
+# Skrypty powloki MUSZA miec zakonczenia LF takze w kopii roboczej.
+# Na Windows core.autocrlf=true wystawia je jako CRLF, a wtedy pierwsza linia
+# to "#!/usr/bin/env bash" ze znakiem powrotu karetki na koncu - Linux szuka
+# wtedy interpretera o takiej wlasnie nazwie i konczy sie bledem
+# "No such file or directory". Te pliki jada na maszyny docelowe.
+*.sh text eol=lf
+
+# Skrypty PowerShell zostaja z CRLF - to ich naturalne srodowisko.
+*.ps1 text eol=crlf
+
+# Pliki binarne: bez zadnej konwersji.
+*.exe binary
+*.bin binary
+*.tar.gz binary
+*.png binary
+*.ico binary
