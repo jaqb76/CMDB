@@ -215,3 +215,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
   word-break: break-all;
   overflow-x: auto;
 }
+
+/* Braki poprawek bezpieczenstwa to jedyna liczba na karcie maszyny, ktora
+   moze oznaczac realne zagrozenie - odrozniamy ja od zwyklego ostrzezenia. */
+.card-danger .card-value { color: var(--danger-fg); }

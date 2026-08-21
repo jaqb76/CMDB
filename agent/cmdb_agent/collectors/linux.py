@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .base import BaseCollector, Step
+from . import poprawki
 from .common import CommandError, clean, percent, run_command, to_int
 
 log = logging.getLogger(__name__)
@@ -175,7 +176,15 @@ class LinuxCollector(BaseCollector):
             steps.append(("software.services", self.collect_services))
         if self.config.collect_processes:
             steps.append(("software.processes", self.collect_processes))
+        if self.config.collect_pending_updates:
+            steps.append(("software.updates_pending", self.collect_pending_updates))
         return steps
+
+    def collect_pending_updates(self) -> dict:
+        """Aktualizacje czekajace na instalacje, z wyroznieniem poprawek
+        bezpieczenstwa. Czytamy lokalny indeks pakietow - bez odswiezania go,
+        bo agent ma maszyne inwentaryzowac, a nie zmieniac jej stan."""
+        return poprawki.braki_linux()
 
     def collect_system(self) -> dict:
         """Identyfikacja plyty.

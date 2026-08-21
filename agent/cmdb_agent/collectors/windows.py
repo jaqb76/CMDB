@@ -24,6 +24,7 @@ import platform
 import socket
 
 from .base import BaseCollector, Step
+from . import poprawki
 from .common import CommandError, clean, percent, run_command, to_bool, to_int
 
 log = logging.getLogger(__name__)
@@ -57,6 +58,12 @@ SECURITY_GROUPS = {
 }
 
 # Preambula wspolna dla kazdego skryptu.
+# Wyszukiwanie brakujacych aktualizacji odpytuje Windows Update albo WSUS
+# i bywa dlugie - kilkanascie sekund na maszynie po swiezej aktualizacji,
+# kilka minut na zaniedbanej. Limit pozostalych krokow (180 s) ucinalby ten
+# krok tam, gdzie jego wynik jest najbardziej potrzebny.
+WINDOWS_UPDATE_TIMEOUT = 420
+
 _PS_PREAMBLE = (
     "$ErrorActionPreference='Stop';"
     "$ProgressPreference='SilentlyContinue';"
@@ -241,6 +248,8 @@ class WindowsCollector(BaseCollector):
             steps.append(("software.services", self.collect_services))
         if self.config.collect_updates:
             steps.append(("software.updates", self.collect_updates))
+        if self.config.collect_pending_updates:
+            steps.append(("software.updates_pending", self.collect_pending_updates))
         if self.config.collect_processes:
             steps.append(("software.processes", self.collect_processes))
         return steps
@@ -552,6 +561,82 @@ class WindowsCollector(BaseCollector):
         ]
         updates.sort(key=lambda u: u["installed_on"] or "", reverse=True)
         return self.limit(updates)
+
+    def collect_pending_updates(self) -> dict:
+        """Aktualizacje czekajace na instalacje, wedlug uslugi Windows Update.
+
+        Win32_QuickFixEngineering mowi tylko, co JEST zainstalowane. Do oceny
+        bezpieczenstwa potrzebne jest to, czego BRAKUJE, a to wie wylacznie
+        agent Windows Update - ten sam, ktorego uzywa panel sterowania.
+
+        Wyszukiwanie jest kosztowne: odpytuje Windows Update albo WSUS i
+        potrafi trwac od kilkunastu sekund do kilku minut. Dlatego limit czasu
+        jest tu znacznie wyzszy niz przy pozostalych krokach, a niepowodzenie
+        nie psuje calego raportu - konczy sie stanem "nieznany".
+
+        Rozroznienie miedzy pusta lista a stanem "nieznany" jest istotne:
+        pierwsze znaczy "sprawdzone, nic nie brakuje", drugie "nie udalo sie
+        sprawdzic". W narzedziu do oceny bezpieczenstwa zlanie ich w jedno
+        uspokajaloby zamiast ostrzegac.
+        """
+        skrypt = """
+            $wynik = @{ status = 'nieznany'; detail = $null; items = @() };
+            try {
+              $sesja = New-Object -ComObject Microsoft.Update.Session;
+              $szukacz = $sesja.CreateUpdateSearcher();
+              $znalezione = $szukacz.Search("IsInstalled=0 and IsHidden=0 and Type='Software'");
+              $wynik.items = @($znalezione.Updates | ForEach-Object {
+                @{ id = (@($_.KBArticleIDs) -join ',');
+                   title = $_.Title;
+                   severity = $_.MsrcSeverity;
+                   categories = (@($_.Categories | ForEach-Object { $_.Name }) -join '|') } });
+              $wynik.status = 'ok';
+            } catch {
+              $wynik.detail = $_.Exception.Message;
+            }
+            $wynik | ConvertTo-Json -Depth 5 -Compress
+            """
+        try:
+            odpowiedz = run_powershell(skrypt, timeout=WINDOWS_UPDATE_TIMEOUT)
+        except CommandError as exc:
+            return poprawki.wynik(
+                "windows-update", poprawki.STATUS_NIEZNANY,
+                f"wyszukiwanie aktualizacji nie powiodlo sie: {exc}",
+            )
+
+        if not isinstance(odpowiedz, dict) or odpowiedz.get("status") != "ok":
+            detal = None
+            if isinstance(odpowiedz, dict):
+                detal = clean(odpowiedz.get("detail"))
+            return poprawki.wynik(
+                "windows-update", poprawki.STATUS_NIEZNANY,
+                detal or "usluga Windows Update nie zwrocila wyniku",
+            )
+
+        braki = []
+        for pozycja in odpowiedz.get("items") or []:
+            tytul = clean(pozycja.get("title"))
+            if not tytul:
+                continue
+            kategorie = (clean(pozycja.get("categories")) or "").lower()
+            waga = clean(pozycja.get("severity"))
+            identyfikator = clean(pozycja.get("id"))
+            braki.append(
+                {
+                    # MsrcSeverity wypelnia sie wylacznie dla biuletynow
+                    # bezpieczenstwa, wiec sama jego obecnosc juz o tym mowi.
+                    "id": f"KB{identyfikator}" if identyfikator else tytul,
+                    "title": tytul,
+                    "current_version": None,
+                    "new_version": None,
+                    "source_repo": None,
+                    "security": bool(waga) or "security" in kategorie,
+                    "severity": waga,
+                }
+            )
+        braki.sort(key=lambda b: (not b["security"], b["title"].lower()))
+        return poprawki.wynik("windows-update", poprawki.STATUS_OK,
+                              entries=self.limit(braki))
 
     def collect_processes(self) -> list:
         result = run_powershell(

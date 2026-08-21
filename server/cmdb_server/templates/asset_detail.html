@@ -66,6 +66,7 @@
     <button type="button" class="tab-button is-active" data-tab="overview">Przeglad</button>
     <button type="button" class="tab-button" data-tab="hardware">Sprzet</button>
     <button type="button" class="tab-button" data-tab="software">Oprogramowanie</button>
+    <button type="button" class="tab-button" data-tab="aktualizacje">Aktualizacje</button>
     <button type="button" class="tab-button" data-tab="users">Uzytkownicy</button>
     <button type="button" class="tab-button" data-tab="zmiany">Zmiany</button>
     <button type="button" class="tab-button" data-tab="history">Historia</button>
@@ -275,20 +276,6 @@
       {% else %}<p class="muted">Brak danych.</p>{% endif %}
     </div>
 
-    {% if updates %}
-    <div class="panel">
-      <h2>Aktualizacje / poprawki <span class="muted">({{ updates | length }})</span></h2>
-      <table class="table">
-        <thead><tr><th>Identyfikator</th><th>Opis</th><th>Zainstalowano</th></tr></thead>
-        <tbody>
-        {% for u in updates %}
-          <tr><td><code>{{ u.id }}</code></td><td class="small">{{ u.description or '-' }}</td><td class="small">{{ u.installed_on or '-' }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-
     {% if processes %}
     <div class="panel">
       <h2>Procesy w chwili raportu <span class="muted">({{ processes | length }})</span></h2>
@@ -302,6 +289,112 @@
       </table>
     </div>
     {% endif %}
+  </section>
+
+  <section class="tab-panel" data-panel="aktualizacje">
+    {% set updates = software.updates or [] %}
+    {% set braki = software.updates_pending %}
+
+    <div class="panel">
+      <h2>Brakujace aktualizacje</h2>
+
+      {% if not braki %}
+        <p class="muted">
+          Ten agent nie sprawdza brakujacych aktualizacji. Wykrywanie dodano w
+          wersji 0.5.2 — starsze agenty przysylaja wylacznie liste zainstalowanych
+          poprawek.
+        </p>
+
+      {% elif braki.status != 'ok' %}
+        <div class="alert alert-warn">
+          <b>Nie udalo sie sprawdzic.</b>
+          {{ braki.detail or 'Brak szczegolow.' }}
+          <div class="small">
+            To nie znaczy, ze maszyna jest aktualna — znaczy, ze nie wiemy.
+          </div>
+        </div>
+
+      {% else %}
+        <div class="cards">
+          <div class="card {% if braki.security_count %}card-danger{% endif %}">
+            <div class="card-value">{{ braki.security_count }}</div>
+            <div class="card-label">poprawek bezpieczenstwa</div>
+          </div>
+          <div class="card {% if braki.count %}card-warn{% endif %}">
+            <div class="card-value">{{ braki.count }}</div>
+            <div class="card-label">wszystkich brakow</div>
+          </div>
+          <div class="card">
+            <div class="card-value" style="font-size:18px">{{ braki.source }}</div>
+            <div class="card-label">sprawdzono {{ braki.checked_at | ago }}</div>
+          </div>
+        </div>
+
+        {% if braki.index_age_hours is not none and braki.index_age_hours > 168 %}
+        <div class="alert alert-warn">
+          <b>Indeks pakietow ma {{ (braki.index_age_hours / 24) | round(0, 'floor') | int }} dni.</b>
+          Agent swiadomie go nie odswieza, bo to zmienialoby stan maszyny. Przy tak
+          starym indeksie wynik moze nie obejmowac poprawek wydanych pozniej.
+        </div>
+        {% endif %}
+
+        {% if braki.entries %}
+        <table class="table">
+          <thead>
+            <tr><th>Rodzaj</th><th>Identyfikator</th><th>Opis</th>
+                <th>Wersja obecna</th><th>Nowa</th><th>Zrodlo</th></tr>
+          </thead>
+          <tbody>
+          {% for b in braki.entries %}
+            <tr>
+              <td>
+                {% if b.security %}<span class="badge badge-danger">bezpieczenstwo</span>
+                {% else %}<span class="badge">zwykla</span>{% endif %}
+                {% if b.severity %}<div class="muted small">{{ b.severity }}</div>{% endif %}
+              </td>
+              <td class="small"><code>{{ b.id }}</code></td>
+              <td class="small">{{ b.title }}</td>
+              <td class="small muted">{{ b.current_version or '—' }}</td>
+              <td class="small">{{ b.new_version or '—' }}</td>
+              <td class="small muted">{{ b.source_repo or '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="alert alert-ok">
+          Sprawdzono — nic nie brakuje.
+          <span class="small">Stan na {{ braki.checked_at | dt }}.</span>
+        </div>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>Zainstalowane poprawki <span class="muted">({{ updates | length }})</span></h2>
+      {% if updates %}
+      <input type="search" class="table-filter" data-filter-for="updates-table"
+             placeholder="Filtruj po identyfikatorze...">
+      <table class="table" id="updates-table">
+        <thead><tr><th>Identyfikator</th><th>Opis</th><th>Zainstalowano</th></tr></thead>
+        <tbody>
+        {% for u in updates %}
+          <tr>
+            <td><code>{{ u.id }}</code></td>
+            <td class="small">{{ u.description or '—' }}</td>
+            <td class="small">{{ u.installed_on or '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">
+        Brak danych. Systemy z rodziny Linux nie prowadza osobnej listy
+        zainstalowanych poprawek — sa one czescia wersji pakietow, widocznych
+        w zakladce Oprogramowanie.
+      </p>
+      {% endif %}
+    </div>
   </section>
 
   <section class="tab-panel" data-panel="users">

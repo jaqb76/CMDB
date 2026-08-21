@@ -64,6 +64,10 @@ class AgentConfig:
     collect_processes: bool = True
     collect_services: bool = True
     collect_updates: bool = True
+    # Wykrywanie BRAKUJACYCH poprawek. Na Linuksie to odczyt z lokalnego
+    # indeksu pakietow - szybkie i bez ruchu sieciowego. Na Windows oznacza
+    # odpytanie uslugi Windows Update, ktore potrafi trwac kilka minut.
+    collect_pending_updates: bool = True
     # Maksymalna liczba pozycji na liste - zabezpieczenie przed gigantycznym raportem.
     max_items_per_section: int = 5000
 
@@ -115,7 +119,8 @@ _INT_FIELDS = {
     "max_retries",
     "max_items_per_section",
 }
-_BOOL_FIELDS = {"collect_processes", "collect_services", "collect_updates"}
+_BOOL_FIELDS = {"collect_processes", "collect_services", "collect_updates",
+                "collect_pending_updates"}
 
 
 def load_config(config_path: Path | None = None, overrides: dict | None = None) -> AgentConfig:

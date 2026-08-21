@@ -37,6 +37,12 @@ VOLATILE_PATHS: tuple[str, ...] = (
     "hardware.storage.logical_disks[].free_percent",
     "software.processes",
     "users.sessions",
+    # Znacznik sprawdzenia i wiek indeksu zmieniaja sie przy KAZDYM raporcie.
+    # Bez pominiecia ich kazdy raport wygladalby na zmiane i deduplikacja
+    # przestalaby dzialac - baza rosnaczaby o pelny raport co cykl, mimo ze
+    # na maszynie nic sie nie stalo.
+    "software.updates_pending.checked_at",
+    "software.updates_pending.index_age_hours",
     "errors",
 )
 

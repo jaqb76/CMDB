@@ -8,7 +8,7 @@ ktora czytalaby maszyny bez filtra tenant_id.
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
@@ -63,17 +63,32 @@ def _missing(value) -> bool:
     return value is None or isinstance(value, Undefined)
 
 
+def _na_date(value):
+    """Daty z raportow agenta sa w JSON-ie napisami ISO, a nie datami.
+
+    Filtry dostawaly wiec raz obiekt daty (kolumny bazy), a raz napis
+    (tresc raportu) - i na napisie wywracaly sie bledem o brakujacym
+    tzinfo. Rozpoznajemy oba przypadki tutaj, zamiast w kazdym szablonie.
+    """
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return value
+
+
 def _fmt_dt(value) -> str:
     if _missing(value):
         return "-"
-    value = naive_utc(value)
+    value = naive_utc(_na_date(value))
     return value.strftime("%Y-%m-%d %H:%M UTC") if value else "-"
 
 
 def _fmt_ago(value) -> str:
     if _missing(value):
         return "nigdy"
-    value = naive_utc(value)
+    value = naive_utc(_na_date(value))
     if not value:
         return "nigdy"
     delta = utcnow() - value

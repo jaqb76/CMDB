@@ -15,6 +15,24 @@ class CommandError(RuntimeError):
 
 def run_command(args: list[str], timeout: int = 120, check: bool = True) -> str:
     """Uruchamia proces bez powloki i zwraca stdout jako tekst."""
+    stdout, kod, stderr = _uruchom(args, timeout)
+    if check and kod != 0:
+        raise CommandError(f"{args[0]} zakonczyl sie kodem {kod}: {stderr.strip()[:300]}")
+    return stdout
+
+
+def run_command_with_code(args: list[str], timeout: int = 120) -> tuple[str, int]:
+    """Stdout wraz z kodem wyjscia.
+
+    Nie kazdy kod rozny od zera oznacza blad: "dnf check-update" zwraca 100,
+    gdy sa aktualizacje do zainstalowania, a "apt-get -s" rozroznia kodami
+    brak blokady od faktycznej awarii. Bez kodu nie da sie tego odczytac.
+    """
+    stdout, kod, _ = _uruchom(args, timeout)
+    return stdout, kod
+
+
+def _uruchom(args: list[str], timeout: int) -> tuple[str, int, str]:
     creationflags = 0
     if sys.platform == "win32":
         # Bez migajacego okna konsoli, gdy agent chodzi jako zadanie interaktywne.
@@ -31,11 +49,11 @@ def run_command(args: list[str], timeout: int = 120, check: bool = True) -> str:
     except subprocess.TimeoutExpired as exc:
         raise CommandError(f"{args[0]} przekroczyl limit {timeout} s") from exc
 
-    stdout = completed.stdout.decode("utf-8", errors="replace")
-    if check and completed.returncode != 0:
-        stderr = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise CommandError(f"{args[0]} zakonczyl sie kodem {completed.returncode}: {stderr[:300]}")
-    return stdout
+    return (
+        completed.stdout.decode("utf-8", errors="replace"),
+        completed.returncode,
+        completed.stderr.decode("utf-8", errors="replace"),
+    )
 
 
 def to_int(value, default=None):
