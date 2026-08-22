@@ -689,3 +689,88 @@ def test_brakujacy_skrypt_daje_czytelny_blad(client, monkeypatch):
     odpowiedz = client.get("/download/install.ps1")
     assert odpowiedz.status_code == 503
     assert "niedostepny" in odpowiedz.json()["detail"]
+
+
+# --- rejestracja paczki: powtorzenia i wyscig -------------------------------
+#
+# Funkcje wykonuje kazdy proces roboczy przy starcie. Na PostgreSQL z czterema
+# procesami konczylo sie to bledem "duplicate key value violates unique
+# constraint uq_release_version_os_arch" i kontener nie wstawal.
+
+def test_przebudowana_paczka_o_tej_samej_wersji_nie_wywala_startu(tmp_path, monkeypatch):
+    """Ograniczenie unikalnosci obejmuje wersje, nie skrot. Szukanie po skrocie
+    nie znajdowalo wpisu i proba wstawienia konczyla sie bledem."""
+    from cmdb_server.config import get_settings
+
+    zrodla = Path(__file__).resolve().parent.parent.parent / "agent"
+    if not (zrodla / "cmdb_agent").is_dir():
+        pytest.skip("zrodla agenta niedostepne")
+
+    katalog = tmp_path / "paczka"
+    metadane = pakiet.zbuduj(zrodla, katalog)
+    wydania = Path(get_settings().release_dir)
+
+    with SessionLocal() as db:
+        pakiet.zarejestruj(db, metadane, katalog, wydania)
+
+    # Ta sama wersja, inna zawartosc - dokladnie sytuacja po zmianie w agencie
+    # bez podbicia numeru.
+    przebudowana = dict(metadane, sha256="b" * 64, size_bytes=metadane["size_bytes"] + 1)
+    with SessionLocal() as db:
+        wydanie = pakiet.zarejestruj(db, przebudowana, katalog, wydania)
+
+    assert wydanie.sha256 == "b" * 64, "wpis musi opisywac plik, ktory faktycznie wydajemy"
+    with SessionLocal() as db:
+        ile = len(db.execute(
+            select(AgentRelease).where(AgentRelease.arch == pakiet.ARCH_ZRODLA)
+        ).scalars().all())
+    assert ile == 1
+
+
+def test_kolizja_miedzy_procesami_nie_jest_bledem(tmp_path, monkeypatch):
+    """Cztery procesy robocze sprawdzaja i wstawiaja rownoczesnie. Wygrywa
+    jeden, pozostale maja dostac istniejacy wiersz, a nie wyjatek."""
+    from sqlalchemy.exc import IntegrityError
+
+    from cmdb_server.config import get_settings
+    from cmdb_server.models import AgentRelease as Wydanie
+
+    zrodla = Path(__file__).resolve().parent.parent.parent / "agent"
+    if not (zrodla / "cmdb_agent").is_dir():
+        pytest.skip("zrodla agenta niedostepne")
+    katalog = tmp_path / "paczka"
+    metadane = pakiet.zbuduj(zrodla, katalog)
+    wydania = Path(get_settings().release_dir)
+
+    # Pierwszy proces zdazyl przed nami: wiersz powstaje juz po naszym
+    # sprawdzeniu, a przed naszym zapisem.
+    with SessionLocal() as db:
+        pierwszy = True
+
+        class _Sesja:
+            def __init__(self, prawdziwa):
+                self._db = prawdziwa
+
+            def execute(self, *a, **kw):
+                return self._db.execute(*a, **kw)
+
+            def add(self, obiekt):
+                self._db.add(obiekt)
+
+            def rollback(self):
+                self._db.rollback()
+
+            def commit(self):
+                nonlocal pierwszy
+                if pierwszy:
+                    pierwszy = False
+                    self._db.rollback()
+                    with SessionLocal() as inny:
+                        pakiet.zarejestruj(inny, metadane, katalog, wydania)
+                    raise IntegrityError("duplicate key", None, Exception())
+                self._db.commit()
+
+        wynik = pakiet.zarejestruj(_Sesja(db), metadane, katalog, wydania)
+
+    assert wynik is not None, "przegrany wyscig ma zwrocic istniejacy wpis"
+    assert wynik.version == metadane["version"]

@@ -280,19 +280,32 @@ def zarejestruj(db, metadane: dict, katalog_paczki: Path, katalog_wydan: Path):
     aktualizuja sie do wskazanej wersji, a nie do tej, ktora akurat lezy
     na dysku serwera.
 
-    Rozpoznajemy po skrocie, wiec ponowne uruchomienie serwera niczego nie
-    duplikuje, a przebudowana paczka o tej samej wersji jest nowym wydaniem.
+    Szukamy po WERSJI, nie po skrocie. Ograniczenie unikalnosci obejmuje
+    wersje, system i architekture, wiec paczka przebudowana pod tym samym
+    numerem ma inny skrot, ale nadal koliduje - wyszukiwanie po skrocie jej
+    nie znajdowalo i proba wstawienia konczyla sie bledem przy starcie serwera.
+
+    Funkcje wykonuje kazdy proces roboczy przy starcie, wiec sprawdzenie
+    i wstawienie moga sie przepleść miedzy procesami. Kolizje przechwytujemy
+    zamiast jej zapobiegac: jest rzadka, a blokada na czas zapisu pliku
+    byla by kosztowniejsza niz ponowne odczytanie wiersza.
     """
     from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
 
     from ..models import AgentRelease
 
+    wersja = metadane["version"]
     odcisk = metadane["sha256"]
-    istniejace = db.execute(
-        select(AgentRelease).where(AgentRelease.sha256 == odcisk)
-    ).scalar_one_or_none()
-    if istniejace is not None:
-        return istniejace
+
+    def znajdz():
+        return db.execute(
+            select(AgentRelease).where(
+                AgentRelease.os_family == "linux",
+                AgentRelease.arch == ARCH_ZRODLA,
+                AgentRelease.version == wersja,
+            )
+        ).scalar_one_or_none()
 
     nazwa = f"linux-{ARCH_ZRODLA}-{odcisk}.tar.gz"
     katalog_wydan.mkdir(parents=True, exist_ok=True)
@@ -300,18 +313,40 @@ def zarejestruj(db, metadane: dict, katalog_paczki: Path, katalog_wydan: Path):
     if not docelowy.exists():
         docelowy.write_bytes(sciezka_archiwum(katalog_paczki).read_bytes())
 
-    wydanie = AgentRelease(
-        version=metadane["version"],
-        os_family="linux",
-        arch=ARCH_ZRODLA,
-        filename=f"cmdb-agent-{metadane['version']}.tar.gz",
-        storage_name=nazwa,
-        sha256=odcisk,
-        size_bytes=metadane["size_bytes"],
-        notes="paczka zrodel zbudowana na serwerze",
-        created_by="system",
+    istniejace = znajdz()
+    if istniejace is not None:
+        if istniejace.sha256 != odcisk:
+            # Ta sama wersja, inna zawartosc - paczke przebudowano bez zmiany
+            # numeru. Wydajemy to, co faktycznie lezy na dysku, wiec zapis
+            # musi za tym nadazyc, inaczej agent dostalby skrot nie do pary.
+            log.info("paczka zrodel %s zmieniona - aktualizuje wpis wydania", wersja)
+            istniejace.storage_name = nazwa
+            istniejace.sha256 = odcisk
+            istniejace.size_bytes = metadane["size_bytes"]
+            db.commit()
+        return istniejace
+
+    db.add(
+        AgentRelease(
+            version=wersja,
+            os_family="linux",
+            arch=ARCH_ZRODLA,
+            filename=f"cmdb-agent-{wersja}.tar.gz",
+            storage_name=nazwa,
+            sha256=odcisk,
+            size_bytes=metadane["size_bytes"],
+            notes="paczka zrodel zbudowana na serwerze",
+            created_by="system",
+        )
     )
-    db.add(wydanie)
-    db.commit()
-    log.info("zarejestrowano paczke zrodel agenta %s jako wydanie", metadane["version"])
-    return wydanie
+    try:
+        db.commit()
+    except IntegrityError:
+        # Inny proces roboczy zdazyl pierwszy - to nie jest blad, tylko wyscig
+        # o zapis tej samej wartosci.
+        db.rollback()
+        log.debug("paczke zrodel %s zarejestrowal inny proces", wersja)
+        return znajdz()
+
+    log.info("zarejestrowano paczke zrodel agenta %s jako wydanie", wersja)
+    return znajdz()
