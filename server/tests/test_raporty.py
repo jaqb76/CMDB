@@ -720,3 +720,80 @@ def test_kolumny_ukladaja_sie_w_trzy_kolumny():
             / "cmdb_server" / "static" / "app.css").read_text(encoding="utf-8")
     fragment = styl.split(".kolumny-siatka {")[1].split("}")[0]
     assert "repeat(3," in fragment
+
+
+# --- wykresy kolowe w panelu -------------------------------------------------
+
+def test_widok_rysuje_wykres_kolowy(client, tenant_a, make_user):
+    """Strona nie renderuje juz wersji pocztowej - ta miala jasne tlo wpisane
+    w atrybuty i slupki zamiast wykresu kolowego."""
+    _maszyna(client, tenant_a, "SRV-KOLO", "maszyna-kolo-001")
+    make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
+    _login(client, "raporty@firma.pl", HASLO)
+
+    strona = client.get("/raporty/widok/sprzet").text
+    assert "wykres-kolowy" in strona
+    assert "stroke-dasharray" in strona
+    # Legenda z liczba i udzialem, jak w tabeli obok wykresu.
+    assert "wykres-legenda" in strona
+    assert "Udzial" in strona
+    # Zadnych barw wpisanych w atrybuty - te nie znaja motywu ciemnego.
+    assert "color:#1c2024" not in strona
+    assert "background:#f5f6f8" not in strona
+
+
+def test_podglad_pokazuje_wersje_pocztowa(client, tenant_a, make_user):
+    """Podglad ma celowo pokazywac to, co dostanie adresat, razem
+    z ograniczeniami klientow poczty."""
+    _maszyna(client, tenant_a, "SRV-MAIL", "maszyna-mail-001")
+    make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
+    _login(client, "raporty@firma.pl", HASLO)
+
+    podglad = client.get("/raporty/podglad/sprzet").text
+    assert "color:#1c2024" in podglad
+    assert "<svg" not in podglad, "klienty poczty nie renderuja SVG"
+
+
+def test_pierscien_zamyka_pelny_obwod():
+    """Suma dlugosci segmentow ma dawac caly obwod - inaczej w pierscieniu
+    zostaje szczelina albo segmenty na siebie nachodza."""
+    from cmdb_server.services import wykresy
+
+    wynik = wykresy.pierscien([("a", 3), ("b", 5), ("c", 11)])
+    dlugosci = sum(float(s["dasharray"].split()[0]) for s in wynik["segmenty"])
+    assert abs(dlugosci - wynik["obwod"]) < 0.01
+    assert sum(s["udzial"] for s in wynik["segmenty"]) == 100.0
+
+
+def test_pierscien_bez_danych_nie_rysuje_pustego_kola():
+    """Pusty pierscien sugerowalby, ze wszystkie wartosci sa zerowe."""
+    from cmdb_server.services import wykresy
+
+    assert wykresy.pierscien([])["segmenty"] == []
+    assert wykresy.pierscien([("a", 0), ("b", 0)])["segmenty"] == []
+
+
+def test_pierscien_laczy_nadmiar_kategorii():
+    """Kilkanascie kawalkow przestaje byc czytelne, a barwy zaczynaja sie
+    powtarzac - wtedy dwa rozne segmenty wygladaja jak jeden."""
+    from cmdb_server.services import wykresy
+
+    wynik = wykresy.pierscien([(f"poz-{n}", 20 - n) for n in range(15)])
+    assert len(wynik["segmenty"]) <= len(wykresy.PALETA)
+    assert wynik["segmenty"][-1]["etykieta"] == wykresy.POZOSTALE
+    # Laczenie nie moze gubic zadnej maszyny.
+    assert wynik["suma"] == sum(20 - n for n in range(15))
+
+
+def test_waga_podatnosci_ma_rozne_barwy():
+    """W wersji pocztowej krytyczne i wysokie maja ten sam czerwony - na
+    pierscieniu bylyby nieodroznialne."""
+    from cmdb_server.services import wykresy
+
+    wynik = wykresy.z_paskow(
+        [{"etykieta": "krytyczne (9+)", "wartosc": 2},
+         {"etykieta": "wysokie (7-9)", "wartosc": 3}],
+        wykresy.PALETA_WAGI,
+    )
+    barwy = {s["barwa"] for s in wynik["segmenty"]}
+    assert len(barwy) == 2

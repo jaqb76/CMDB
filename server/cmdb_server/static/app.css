@@ -313,5 +313,79 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 
 /* Tresc raportu ma wpisane style pod klienty poczty - w panelu wystarczy
    zapewnic jej przewijanie w poziomie, gdy kolumn jest duzo. */
-.raport-tresc { overflow-x: auto; }
-.raport-tresc > div { max-width: none !important; }
+/* --- tresc raportu w panelu --- */
+/* Wersja pocztowa ma styl wpisany w atrybuty, bo klienty poczty wycinaja
+   sekcje <style>. Strona renderuje raport wlasnym szablonem, wiec korzysta
+   z tych samych zmiennych motywu co reszta panelu. */
+
+.kafelki {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px; margin: 0 0 22px;
+}
+@media (max-width: 700px) { .kafelki { grid-template-columns: 1fr; } }
+.kafelek {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; background: var(--surface);
+}
+.kafelek-wartosc { font-size: 30px; font-weight: 700; line-height: 1.05; }
+.kafelek-opis { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.kafelek-alarm .kafelek-wartosc { color: var(--danger-fg); }
+
+.wykres-blok { margin: 0 0 26px; }
+.wykres-blok h3 {
+  font-size: 14px; margin: 0 0 8px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); font-weight: 600;
+}
+
+/* Wykres i legenda obok siebie; na waskim ekranie legenda schodzi pod rysunek,
+   bo scisnieta do polowy szerokosci lamie kazda dluzsza nazwe systemu. */
+.wykres-uklad {
+  display: flex; gap: 24px; align-items: center; flex-wrap: wrap;
+}
+.wykres-kolowy { width: 170px; height: 170px; flex: none; }
+.wykres-suma {
+  text-anchor: middle; font-size: 30px; font-weight: 700; fill: var(--text);
+}
+.wykres-jednostka {
+  text-anchor: middle; font-size: 11px; fill: var(--muted);
+}
+.wykres-legenda { flex: 1 1 320px; min-width: 260px; }
+.wykres-legenda th, .wykres-legenda td { padding: 5px 8px; }
+.lp-barwa { width: 22px; }
+.probka {
+  display: inline-block; width: 11px; height: 11px; border-radius: 3px;
+  vertical-align: middle;
+}
+
+/* Liczby czyta sie porownujac je pionowo, wiec musza byc wyrownane do prawej
+   i pisane cyframi o jednakowej szerokosci. */
+.lp { text-align: right; font-variant-numeric: tabular-nums; }
+
+.wartosc-alarm { color: var(--danger-fg); font-weight: 700; }
+.wartosc-uwaga { color: var(--warn-fg); font-weight: 700; }
+.nazwa-maszyny { width: 24%; }
+.wartosc-zestawienia { width: 14%; white-space: nowrap; }
+
+/* Pasek przy wartosciach procentowych. Rysowany wzgledem pelnej skali (100%),
+   a nie wzgledem najwiekszej pozycji: przy zajetosci dysku "polowa paska"
+   ma znaczyc polowe dysku, a nie polowe najgorszego wyniku w zestawieniu. */
+.pasek {
+  display: inline-block; width: 140px; height: 8px; border-radius: 4px;
+  background: var(--border); margin-right: 10px; vertical-align: middle;
+  overflow: hidden;
+}
+.pasek-wypelnienie {
+  display: block; height: 100%; background: var(--accent); border-radius: 4px;
+}
+.pasek-wypelnienie.pasek-uwaga { background: var(--warn-fg); }
+.pasek-wypelnienie.pasek-alarm { background: var(--danger-fg); }
+
+.uwaga-raportu {
+  font-size: 12px; color: var(--warn-fg); margin: 16px 0 0;
+  padding: 10px 12px; border-left: 3px solid var(--warn-fg);
+  background: color-mix(in srgb, var(--warn-fg) 8%, transparent);
+}
+
+/* Tabela maszyn bywa szersza niz panel - przewija sie sama, zamiast rozpychac
+   cala strone w poziomie. */
+.tabela-przewijana { overflow-x: auto; }

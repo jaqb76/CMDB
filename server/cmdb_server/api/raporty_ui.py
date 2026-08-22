@@ -16,10 +16,10 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import DefinicjaRaportu, PortalUser, Tenant, UstawieniaPoczty
-from ..services import poczta, raporty, sekrety
+from ..services import poczta, raporty, sekrety, wykresy
 from ..services.auth import client_ip, require_user, verify_csrf
 from ..services.scoping import TenantContext, audit
-from .ui import render, resolve_tenant
+from .ui import render, resolve_tenant, templates
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["raporty"])
@@ -238,10 +238,12 @@ def podglad_raportu(
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Podglad tresci raportu bez wysylania go komukolwiek.
+    """Podglad WIADOMOSCI, tak jak zobaczy ja adresat.
 
-    Ta sama tresc idzie potem poczta - podglad, ktory rozni sie od wysylki,
-    bylby gorszy niz jego brak.
+    To celowo wersja pocztowa, a nie ta ze strony: przed rozeslaniem raportu
+    warto zobaczyc dokladnie to, co dostana ludzie, razem z ograniczeniami
+    klientow poczty. Widok w panelu (/raporty/widok) rysuje te same liczby
+    ladniej, bo przegladarka nie ma tych ograniczen.
     """
     if rodzaj not in raporty.RODZAJE:
         raise HTTPException(status_code=404, detail="nieznany rodzaj raportu")
@@ -352,7 +354,14 @@ def widok_raportu(
 
     tenant = db.get(Tenant, ctx.tenant_id)
     raport = raporty.zbuduj(db, tenant, rodzaj, wybor)
-    tresc, _ = raporty.renderuj(raport)
+    # Strona renderuje sie wlasnym szablonem, a nie tym od poczty. Wiadomosc
+    # musi miec styl wpisany w atrybuty i tabele zamiast siatki, bo klienty
+    # poczty wycinaja sekcje <style> i nie renderuja SVG. Wtloczenie tego
+    # samego kodu w panel dawalo jasne tlo w ciemnym motywie i wykresy
+    # slupkowe zamiast kolowych. Liczby pochodza z tego samego zrodla.
+    tresc = templates.get_template("raport_tresc.html").render(
+        raport=raport, wykresy=wykresy
+    )
 
     return render(
         request, "raport_widok.html", user, ctx, db,

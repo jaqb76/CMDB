@@ -1,0 +1,276 @@
+{#
+  Tresc raportu w panelu.
+
+  Osobno od raport.html, bo wiadomosc i strona maja rozne ograniczenia.
+  Klient poczty wycina sekcje <style> i nie renderuje SVG, wiec tam zostaja
+  tabele ze stylem wpisanym w atrybuty. Przegladarka nie ma zadnego z tych
+  ograniczen, wiec dostaje prawdziwe wykresy kolowe i wspolny arkusz stylow -
+  ten sam, ktory zna motyw ciemny.
+
+  Liczby pochodza z tego samego zrodla co w wiadomosci; rozni sie wylacznie
+  sposob narysowania.
+#}
+
+{% macro pierscien(dane, tytul, jednostka) %}
+  {% if dane.segmenty %}
+  <section class="wykres-blok">
+    <h3>{{ tytul }}</h3>
+    <div class="wykres-uklad">
+      <svg class="wykres-kolowy" viewBox="0 0 {{ dane.bok }} {{ dane.bok }}"
+           role="img" aria-label="{{ tytul }}">
+        <g transform="rotate(-90 {{ dane.srodek }} {{ dane.srodek }})">
+          {% for s in dane.segmenty %}
+          <circle cx="{{ dane.srodek }}" cy="{{ dane.srodek }}" r="{{ dane.promien }}"
+                  fill="none" stroke="{{ s.barwa }}" stroke-width="{{ dane.grubosc }}"
+                  stroke-dasharray="{{ s.dasharray }}"
+                  stroke-dashoffset="{{ s.dashoffset }}">
+            <title>{{ s.etykieta }}: {{ s.wartosc }} ({{ s.udzial }}%)</title>
+          </circle>
+          {% endfor %}
+        </g>
+        <text x="{{ dane.srodek }}" y="{{ dane.srodek - 2 }}"
+              class="wykres-suma">{{ dane.suma }}</text>
+        <text x="{{ dane.srodek }}" y="{{ dane.srodek + 16 }}"
+              class="wykres-jednostka">{{ jednostka }}</text>
+      </svg>
+
+      <table class="table wykres-legenda">
+        <thead>
+          <tr><th></th><th>Pozycja</th><th class="lp">Liczba</th><th class="lp">Udzial</th></tr>
+        </thead>
+        <tbody>
+        {% for s in dane.segmenty %}
+          <tr>
+            <td class="lp-barwa"><span class="probka" style="background:{{ s.barwa }}"></span></td>
+            <td>{{ s.etykieta }}</td>
+            <td class="lp strong">{{ s.wartosc }}</td>
+            <td class="lp muted">{{ s.udzial }}%</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+{% endmacro %}
+
+{% macro kafelek(wartosc, opis, alarm=false) %}
+  <div class="kafelek {% if alarm and wartosc %}kafelek-alarm{% endif %}">
+    <div class="kafelek-wartosc">{{ wartosc }}</div>
+    <div class="kafelek-opis">{{ opis }}</div>
+  </div>
+{% endmacro %}
+
+{% set d = raport.dane %}
+
+{# --- podatnosci --- #}
+{% if raport.rodzaj == 'podatnosci' %}
+  <div class="kafelki">
+    {{ kafelek(d.powazne, 'powazne (CVSS >= 7) z gotowa poprawka', true) }}
+    {{ kafelek(d.do_zrobienia, 'wszystkie do zrobienia') }}
+    {{ kafelek(d.bez_poprawki, 'znane, bez dostepnej poprawki') }}
+  </div>
+
+  {{ pierscien(wykresy.z_paskow(d.wykres_wagi, wykresy.PALETA_WAGI),
+               'Podzial wedlug wagi', 'podatnosci') }}
+
+  {% if d.najgorsze %}
+  <section class="wykres-blok">
+    <h3>Maszyny wymagajace uwagi</h3>
+    <table class="table">
+      <thead>
+        <tr><th>Maszyna</th><th class="lp">Powazne</th>
+            <th class="lp">Do zrobienia</th><th class="lp">Bez poprawki</th></tr>
+      </thead>
+      <tbody>
+      {% for w in d.najgorsze %}
+        <tr>
+          <td class="strong">{{ w.maszyna.hostname }}</td>
+          <td class="lp {% if w.wynik.critical_count %}wartosc-alarm{% endif %}">
+            {{ w.wynik.critical_count }}</td>
+          <td class="lp">{{ w.wynik.fixable_count }}</td>
+          <td class="lp">{{ w.wynik.open_count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if d.nieznane %}
+  <p class="uwaga-raportu">
+    Dla {{ d.nieznane | length }} maszyn nie znamy stanu podatnosci - to nie
+    znaczy, ze sa bezpieczne, tylko ze nie udalo sie ich sprawdzic.
+  </p>
+  {% endif %}
+
+{# --- sprzet --- #}
+{% elif raport.rodzaj == 'sprzet' %}
+  <div class="kafelki">
+    {{ kafelek(d.liczba, 'maszyn w ewidencji') }}
+    {{ kafelek(d.bez_kontaktu, 'bez kontaktu ponad 48 h', true) }}
+    {{ kafelek(d.bez_opiekuna, 'bez przypisanego opiekuna') }}
+  </div>
+
+  {{ pierscien(wykresy.z_paskow(d.wykres_systemy), 'System operacyjny', 'maszyn') }}
+  {{ pierscien(wykresy.z_paskow(d.wykres_producenci), 'Producent', 'maszyn') }}
+  {{ pierscien(wykresy.z_paskow(d.wykres_agenci), 'Wersja agenta', 'maszyn') }}
+
+{# --- gwarancje --- #}
+{% elif raport.rodzaj == 'gwarancje' %}
+  <div class="kafelki">
+    {{ kafelek(d.po_terminie | length, 'gwarancja juz wygasla', true) }}
+    {{ kafelek(d.koncza_sie | length, 'konczy sie w ' ~ d.horyzont ~ ' dni', true) }}
+    {{ kafelek(d.na_gwarancji, 'objetych wsparciem') }}
+  </div>
+
+  {{ pierscien(wykresy.z_paskow(d.wykres), 'Stan gwarancji', 'maszyn') }}
+
+  {% if d.koncza_sie %}
+  <section class="wykres-blok">
+    <h3>Konczy sie w najblizszych {{ d.horyzont }} dniach</h3>
+    <table class="table">
+      <thead><tr><th>Maszyna</th><th>Model</th><th>Dostawca</th><th>Gwarancja do</th></tr></thead>
+      <tbody>
+      {% for m in d.koncza_sie %}
+        <tr>
+          <td class="strong">{{ m.hostname }}</td>
+          <td>{{ m.model or '-' }}</td>
+          <td>{{ m.vendor or '-' }}</td>
+          <td class="strong">{{ m.warranty_until }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if d.po_terminie %}
+  <section class="wykres-blok">
+    <h3>Po terminie</h3>
+    <table class="table">
+      <thead><tr><th>Maszyna</th><th>Model</th><th>Wygasla</th></tr></thead>
+      <tbody>
+      {% for m in d.po_terminie[:40] %}
+        <tr>
+          <td class="strong">{{ m.hostname }}</td>
+          <td>{{ m.model or '-' }}</td>
+          <td class="wartosc-alarm">{{ m.warranty_until }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if d.bez_danych %}
+  <p class="uwaga-raportu">
+    {{ d.bez_danych | length }} maszyn nie ma wpisanej daty gwarancji. Brak daty
+    nie znaczy, ze gwarancji nie ma - znaczy, ze nikt jej nie uzupelnil.
+  </p>
+  {% endif %}
+
+{# --- wykorzystanie zasobow --- #}
+{% elif raport.rodzaj == 'wykorzystanie' %}
+  {% macro dziesiatka(pozycje, tytul, podpis) %}
+    {% if pozycje %}
+    <section class="wykres-blok">
+      <h3>{{ tytul }}</h3>
+      <p class="muted small">{{ podpis }}</p>
+      <table class="table">
+        <tbody>
+        {% for p in pozycje %}
+          <tr>
+            <td class="strong nazwa-maszyny">{{ p.maszyna.hostname }}</td>
+            <td class="lp wartosc-zestawienia">
+              <b class="{% if p.alarm %}wartosc-alarm{% elif p.uwaga %}wartosc-uwaga{% endif %}">
+                {{ p.wartosc }} {{ p.jednostka }}</b>
+            </td>
+            <td>
+              {% if p.jednostka == '%' %}
+              <span class="pasek"><span
+                class="pasek-wypelnienie{% if p.alarm %} pasek-alarm{% elif p.uwaga %} pasek-uwaga{% endif %}"
+                style="width:{{ p.wartosc }}%"></span></span>
+              {% endif %}
+              <span class="muted small">{{ p.opis }}</span>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+  {% endmacro %}
+
+  <p class="muted">
+    Zbadano {{ d.zbadanych }} maszyn. Kazde zestawienie pokazuje najwyzej
+    dziesiec pozycji - lista, ktora nie miesci sie na ekranie, przestaje byc
+    lista rzeczy do zrobienia.
+  </p>
+
+  {{ dziesiatka(d.pamiec, 'Najwieksze zajecie pamieci',
+     'Stan w chwili raportu. Wyroznione powyzej ' ~ d.prog_uwagi ~ '%.') }}
+  {{ dziesiatka(d.dyski, 'Najpelniejsze dyski',
+     'Najbardziej zapelniony wolumen kazdej maszyny - nie srednia, bo pelny dysk systemowy i pusty dysk danych to nie jest polowa problemu.') }}
+  {{ dziesiatka(d.procesor, 'Najwieksze obciazenie procesora',
+     'Uwaga: obciazenie to tempo, a agent raportuje raz na kilka godzin. Na Linuksie jest to srednia z 15 minut, na Windows probka z chwili raportu.') }}
+  {{ dziesiatka(d.podatnosci, 'Najwiecej podatnosci do zrobienia',
+     'Podatnosci z dostepna poprawka - czyli te, na ktore mozna zareagowac.') }}
+  {{ dziesiatka(d.aktualizacje, 'Najwiecej brakujacych aktualizacji',
+     'Wedlug menedzera pakietow albo uslugi Windows Update.') }}
+  {{ dziesiatka(d.restarty, 'Najdluzej bez ponownego uruchomienia',
+     'Powyzej ' ~ d.dni_bez_restartu ~ ' dni. Czesc poprawek jadra i bibliotek zaczyna dzialac dopiero po restarcie.') }}
+  {{ dziesiatka(d.administratorzy, 'Najwiecej kont administratorow',
+     'Konta z uprawnieniami administratora lokalnego - im wiecej, tym szersza powierzchnia ataku.') }}
+
+  {% if d.bez_kontaktu %}
+  <section class="wykres-blok">
+    <h3>Bez kontaktu</h3>
+    <p class="muted small">
+      Dla tych maszyn dane sa nieaktualne - zestawienia powyzej ich nie opisuja.
+    </p>
+    <table class="table">
+      <tbody>
+      {% for p in d.bez_kontaktu %}
+        <tr>
+          <td class="strong nazwa-maszyny">{{ p.maszyna.hostname }}</td>
+          <td class="lp wartosc-zestawienia">
+            <b class="wartosc-alarm">{{ p.wartosc }} {{ p.jednostka }}</b></td>
+          <td class="muted small">{{ p.opis }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+{% endif %}
+
+{% if raport.wiersze and raport.kolumny %}
+<section class="wykres-blok">
+  <h3>Maszyny ({{ raport.wiersze | length }})</h3>
+  <div class="tabela-przewijana">
+    <table class="table">
+      <thead>
+        <tr>
+          {% for k in raport.kolumny %}
+            <th class="{% if k.typ == 'liczba' %}lp{% endif %}">{{ k.etykieta }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for w in raport.wiersze %}
+        <tr>
+          {% for c in w.komorki %}
+            <td class="{% if c.kolumna.typ == 'liczba' %}lp {% endif %}{% if c.kolumna.alarm and c.wartosc %}wartosc-alarm{% endif %}">
+              {% if c.wartosc is none or c.wartosc == '' %}
+                <span class="muted">-</span>
+              {% else %}{{ c.wartosc }}{% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
