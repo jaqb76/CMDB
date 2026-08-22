@@ -700,7 +700,7 @@ class WindowsCollector(BaseCollector):
     def collect_administrators(self) -> list:
         """Grupa wskazana po SID S-1-5-32-544 - nazwa jest zalezna od jezyka systemu."""
         members = self._group_members("S-1-5-32-544")
-        return self.limit(members)
+        return self.limit(members or [])
 
     def collect_groups(self) -> list:
         groups = []
@@ -712,26 +712,55 @@ class WindowsCollector(BaseCollector):
             except Exception as exc:
                 self.record_error(f"users.groups[{label}]", f"{type(exc).__name__}: {exc}")
                 continue
+            # None znaczy "grupy nie ma w tej edycji Windows" - to nie jest
+            # blad, tylko opis maszyny. Pusta lista znaczy "grupa jest, ale
+            # nikogo w niej nie ma" i tez nie ma czego pokazywac.
             if members:
                 groups.append({"name": label, "sid": sid, "members": [m["name"] for m in members]})
         return groups
 
-    def _group_members(self, group_sid: str) -> list:
-        result = run_powershell(
-            f"""
-            $sid = New-Object System.Security.Principal.SecurityIdentifier('{group_sid}');
-            $name = $sid.Translate([System.Security.Principal.NTAccount]).Value.Split('\\')[-1];
-            $group = [ADSI]"WinNT://./$name,group";
+    def _group_members(self, group_sid: str) -> list | None:
+        """Czlonkowie grupy wskazanej przez SID albo None, gdy grupy nie ma.
+
+        Nazwa grupy zalezy od jezyka systemu, wiec wskazujemy ja przez SID
+        i dopiero na maszynie tlumaczymy na nazwe. Czesc grup wbudowanych nie
+        istnieje w kazdej edycji Windows - "Uzytkownicy pulpitu zdalnego"
+        i "Operatorzy kopii zapasowych" sa nieobecne w wydaniu Home. Tlumaczenie
+        ich SID-u konczy sie wtedy wyjatkiem, ktory trafial do raportu jako blad
+        kolektora, choc opisuje wylacznie to, czego na tej maszynie nie ma.
+
+        Rozroznienie jest istotne: brak grupy to fakt, a nieudany odczyt grupy
+        istniejacej to blad wart zgloszenia. Zwracamy None w pierwszym
+        przypadku, a wyjatek przepuszczamy w drugim.
+        """
+        skrypt = """
+            $wynik = @{ istnieje = $false; group = $null; items = @() };
+            try {
+              $sid = New-Object System.Security.Principal.SecurityIdentifier('@@SID@@');
+              $nazwa = $sid.Translate([System.Security.Principal.NTAccount]).Value.Split('@@UK@@')[-1];
+            } catch {
+              # Grupa nie istnieje w tej edycji Windows - nie ma czego czytac.
+              $wynik | ConvertTo-Json -Depth 4 -Compress;
+              exit 0
+            }
+            $grupa = [ADSI]"WinNT://./$nazwa,group";
             $out = @();
-            foreach ($m in @($group.psbase.Invoke('Members'))) {{
+            foreach ($m in @($grupa.psbase.Invoke('Members'))) {
               $path = $m.GetType().InvokeMember('AdsPath','GetProperty',$null,$m,$null);
               $cls  = $m.GetType().InvokeMember('Class','GetProperty',$null,$m,$null);
               $nm   = $m.GetType().InvokeMember('Name','GetProperty',$null,$m,$null);
-              $out += @{{ name = [string]$nm; path = [string]$path; class = [string]$cls }}
-            }};
-            @{{ group = $name; items = @($out) }} | ConvertTo-Json -Depth 4 -Compress
-            """
-        )
+              $out += @{ name = [string]$nm; path = [string]$path; class = [string]$cls }
+            };
+            $wynik.istnieje = $true;
+            $wynik.group = $nazwa;
+            $wynik.items = @($out);
+            $wynik | ConvertTo-Json -Depth 4 -Compress
+            """.replace("@@SID@@", group_sid).replace("@@UK@@", chr(92))
+
+        result = run_powershell(skrypt)
+        if not isinstance(result, dict) or not to_bool(result.get("istnieje")):
+            return None
+
         local_name = (clean(self._base().get("computer_name")) or "").upper()
         members = []
         for member in items_of(result):

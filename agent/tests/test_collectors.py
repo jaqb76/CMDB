@@ -172,3 +172,59 @@ def test_bez_dostepu_do_tablicy_systemu_zostaje_widok_wlasny(monkeypatch):
 
     wolumeny = kolektor.LinuxCollector(AgentConfig()).collect_storage()["logical_disks"]
     assert [w["mount"] for w in wolumeny] == ["/"]
+
+
+# --- grupy wbudowane, ktorych nie ma w kazdej edycji Windows -----------------
+#
+# "Uzytkownicy pulpitu zdalnego" i "Operatorzy kopii zapasowych" nie istnieja
+# w wydaniu Home. Tlumaczenie ich SID-u konczy sie tam wyjatkiem, ktory trafial
+# do raportu jako blad kolektora - choc opisuje wylacznie to, czego na tej
+# maszynie nie ma.
+
+def _kolektor_windows(monkeypatch, odpowiedz):
+    from cmdb_agent.collectors import windows as kolektor
+    from cmdb_agent.config import AgentConfig
+
+    monkeypatch.setattr(kolektor, "run_powershell", lambda *a, **kw: odpowiedz)
+    return kolektor.WindowsCollector(AgentConfig())
+
+
+def test_brak_grupy_nie_jest_bledem(monkeypatch):
+    k = _kolektor_windows(monkeypatch, {"istnieje": False, "group": None, "items": []})
+
+    assert k._group_members("S-1-5-32-555") is None
+    assert k.collect_groups() == []
+    assert k.errors == [], f"brak grupy nie moze trafiac do bledow: {k.errors}"
+
+
+def test_pusta_grupa_tez_nie_jest_bledem(monkeypatch):
+    """Grupa istnieje, ale nikt do niej nie nalezy - nie ma czego pokazywac."""
+    k = _kolektor_windows(monkeypatch, {"istnieje": True, "group": "Goscie", "items": []})
+
+    assert k._group_members("S-1-5-32-546") == []
+    assert k.errors == []
+
+
+def test_czlonkowie_grupy_sa_odczytywani(monkeypatch):
+    k = _kolektor_windows(monkeypatch, {
+        "istnieje": True,
+        "group": "Administratorzy",
+        "items": [
+            {"name": "jaqb7", "path": "WinNT://NEWNODE/jaqb7", "class": "User"},
+            {"name": "Domain Admins", "path": "WinNT://FIRMA/Domain Admins", "class": "Group"},
+        ],
+    })
+    monkeypatch.setattr(k, "_base", lambda: {"computer_name": "NEWNODE"})
+
+    czlonkowie = k._group_members("S-1-5-32-544")
+    assert [c["name"] for c in czlonkowie] == ["NEWNODE\\jaqb7", "FIRMA\\Domain Admins"]
+    assert czlonkowie[0]["source"] == "lokalne"
+    assert czlonkowie[1]["source"] == "domena"
+    assert czlonkowie[1]["type"] == "grupa"
+
+
+def test_administratorzy_bez_grupy_daja_pusta_liste(monkeypatch):
+    """Sekcja administratorow ma zwracac liste, a nie None - inaczej raport
+    niosly by wartosc, ktorej serwer sie nie spodziewa."""
+    k = _kolektor_windows(monkeypatch, {"istnieje": False, "group": None, "items": []})
+    assert k.collect_administrators() == []

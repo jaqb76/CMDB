@@ -8,7 +8,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 
 from .api import admin as admin_api
@@ -120,6 +125,16 @@ def create_app() -> FastAPI:
 
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> Response:
+        """Przegladarki pytaja o /favicon.ico niezaleznie od tego, co jest
+        w naglowku strony - bez tej trasy kazde wejscie zostawialo w logu 404."""
+        return FileResponse(
+            static_dir / "favicon.ico",
+            media_type="image/x-icon",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
 
     app.include_router(agent_api.router)
     app.include_router(download_api.router)

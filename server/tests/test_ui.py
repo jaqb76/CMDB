@@ -176,3 +176,34 @@ def test_przelacznik_jest_w_obu_panelach(client, tenant_a, make_user):
     make_user(None, "root@motyw.pl", "haslo-do-testow-123")
     _login(client, "root@motyw.pl", "haslo-do-testow-123")
     assert "data-motyw" in client.get("/admin").text
+
+
+# --- ikona ------------------------------------------------------------------
+
+def test_favicon_jest_wydawany(client):
+    """Przegladarki pytaja o /favicon.ico niezaleznie od naglowka strony -
+    bez tej trasy kazde wejscie zostawialo w logu 404."""
+    odpowiedz = client.get("/favicon.ico")
+    assert odpowiedz.status_code == 200
+    assert odpowiedz.content[:4] == bytes([0, 0, 1, 0]), "to nie jest plik ICO"
+
+
+def test_favicon_ma_kilka_rozmiarow():
+    """Jeden rozmiar wystarcza przegladarce, ale zakladka, pasek zadan
+    i skrot na pulpicie prosza o rozne."""
+    from pathlib import Path
+
+    from PIL import Image
+
+    plik = Path(__file__).resolve().parent.parent / "cmdb_server" / "static" / "favicon.ico"
+    rozmiary = sorted(Image.open(plik).info.get("sizes", []))
+    assert (16, 16) in rozmiary
+    assert (256, 256) in rozmiary
+
+
+def test_strony_wskazuja_ikone(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "ikona@firma.pl", "haslo-do-testow-123")
+    _login(client, "ikona@firma.pl", "haslo-do-testow-123")
+
+    for sciezka in ("/", "/login"):
+        assert 'rel="icon"' in client.get(sciezka).text, sciezka
