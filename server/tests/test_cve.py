@@ -585,7 +585,10 @@ def test_dzialajace_nowsze_jadro_nie_jest_podatne(kanal_jadra):
 
     assert wynik["fixable_count"] == 0, "maszyna dziala na jadrze z poprawka"
     assert wynik["stale_kernel_count"] == 1
-    assert wynik["entries"][0]["inactive_kernel"] is True
+    # Na liscie ich nie ma - jest ich tyle, ze zaslanialyby wszystko, na co
+    # faktycznie da sie zareagowac. Zostaje liczba i wersje do sprzatniecia.
+    assert wynik["entries"] == []
+    assert wynik["stale_kernels"] == ["7.0.0-1006.6"]
 
 
 def test_dzialajace_starsze_jadro_jest_podatne(kanal_jadra):
@@ -618,8 +621,8 @@ def test_nieaktywne_jadro_nie_wchodzi_do_powaznych(kanal_jadra, monkeypatch):
         db.commit()
         wynik = cve.dopasuj(db, _raport_jadra("7.0.0-1011-aws"))
 
-    assert wynik["entries"][0]["base_score"] == 9.8
     assert wynik["critical_count"] == 0, "jadro juz nie dziala, mimo oceny 9.8"
+    assert wynik["entries"] == [], "ocena 9.8 nie przywraca pozycji na liste"
 
 
 def test_zwykly_pakiet_nie_podlega_regule_jadra(kanal_debian):
@@ -632,3 +635,25 @@ def test_zwykly_pakiet_nie_podlega_regule_jadra(kanal_debian):
 
     assert wynik["fixable_count"] == 1
     assert wynik["entries"][0]["inactive_kernel"] is False
+
+
+def test_pozycje_nieaktywnego_jadra_nie_zaslaniaja_reszty(kanal_jadra):
+    """Sedno zmiany: na maszynie w AWS bylo ich kilka tysiecy i przykrywaly
+    wszystko, na co faktycznie dalo sie zareagowac."""
+    raport = _raport_jadra("7.0.0-1011-aws")
+    # Obok jadra cos, co naprawde wymaga dzialania.
+    with SessionLocal() as db:
+        cve.zapisz_kanal(db, "ubuntu", "resolute",
+                         cve.wpisy_debian(json.dumps(JADRO).encode(), {"resolute"})
+                         + [{"package": "curl", "cve": "CVE-2025-99999",
+                             "release": "resolute", "fixed_version": "9.9",
+                             "status": "resolved", "severity": "high",
+                             "no_fix_reason": None, "description": None}])
+    raport["software"]["packages"] = PAKIETY_JADRA + [_pakiet("curl", "7.0")]
+
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, raport)
+
+    assert [z["cve"] for z in wynik["entries"]] == ["CVE-2025-99999"]
+    assert wynik["fixable_count"] == 1
+    assert wynik["stale_kernel_count"] == 1

@@ -408,10 +408,18 @@ def dopasuj(db: Session, payload: dict) -> dict:
             elif nazwa not in grupa["packages"]:
                 grupa["packages"].append(nazwa)
 
-    znalezione = list(grupy.values())
-    for pozycja in znalezione:
+    wszystkie = list(grupy.values())
+    for pozycja in wszystkie:
         pozycja["packages"].sort()
         pozycja["package_count"] = len(pozycja["packages"])
+
+    # Podatnosci juz niedzialajacego jadra NIE trafiaja na liste. Maszyna nie
+    # jest przez nie podatna, a jest ich tyle, ze zaslaniaja wszystko, na co
+    # faktycznie da sie zareagowac. Zostaje liczba i wersje zalegajacych
+    # pakietow - to wystarczy, zeby wiedziec, ze warto posprzatac.
+    nieaktywne = [z for z in wszystkie if z.get("inactive_kernel")]
+    znalezione = [z for z in wszystkie if not z.get("inactive_kernel")]
+    zalegajace_jadra = sorted({z["compared_version"] for z in nieaktywne})
 
     # Oceny doklejamy jednym zapytaniem - z bufora, bez ruchu sieciowego.
     from ..models import CveScore
@@ -435,7 +443,6 @@ def dopasuj(db: Session, payload: dict) -> dict:
     # oceny lezy na koncu swojej grupy, a nie udaje najlagodniejszej.
     znalezione.sort(
         key=lambda z: (
-            bool(z.get("inactive_kernel")),
             z["status"] != "resolved",
             -(z["base_score"] if z["base_score"] is not None else -1),
             z["cve"],
@@ -451,6 +458,8 @@ def dopasuj(db: Session, payload: dict) -> dict:
         STATUS_OK,
         None,
         entries=znalezione,
+        stale_kernels=zalegajace_jadra,
+        stale_kernel_count=len(nieaktywne),
         source=f"{source}/{release}",
         feed_age_hours=wiek,
         feed_entries=stan.entries,
@@ -459,7 +468,8 @@ def dopasuj(db: Session, payload: dict) -> dict:
 
 def _wynik(status: str, detail: str | None, entries: list | None = None,
            source: str | None = None, feed_age_hours: float | None = None,
-           feed_entries: int | None = None) -> dict:
+           feed_entries: int | None = None, stale_kernels: list | None = None,
+           stale_kernel_count: int | None = None) -> dict:
     pozycje = entries or []
     return {
         "status": status,
@@ -478,11 +488,10 @@ def _wynik(status: str, detail: str | None, entries: list | None = None,
             if status == STATUS_OK else None
         ),
         # Dotyczy jadra, ktore juz nie dziala - maszyna uruchomila sie
-        # z nowszego, a stare pakiety tylko zalegaja na dysku.
-        "stale_kernel_count": (
-            sum(1 for p in pozycje if p.get("inactive_kernel"))
-            if status == STATUS_OK else None
-        ),
+        # z nowszego, a stare pakiety tylko zalegaja na dysku. Tych pozycji
+        # nie ma na liscie, wiec liczba przychodzi z zewnatrz.
+        "stale_kernel_count": stale_kernel_count if status == STATUS_OK else None,
+        "stale_kernels": stale_kernels or [],
         # Bez poprawki, ale dystrybucja uznaje rzecz za istotna.
         "open_count": (
             sum(1 for p in pozycje if p["status"] == "open" and not p.get("no_fix_reason"))

@@ -429,10 +429,7 @@
             <div class="card-value">{{ podatnosci.minor_count }}</div>
             <div class="card-label">uznane przez dystrybucje za drobne</div>
           </div>
-          <div class="card">
-            <div class="card-value">{{ podatnosci.stale_kernel_count }}</div>
-            <div class="card-label">dotyczy jadra, ktore juz nie dziala</div>
-          </div>
+
           <div class="card">
             <div class="card-value" style="font-size:18px">{{ podatnosci.source }}</div>
             <div class="card-label">
@@ -494,10 +491,7 @@
                 {% else %}<span class="muted">brak poprawki</span>{% endif %}
               </td>
               <td class="small">
-                {% if p.inactive_kernel %}
-                  <span class="badge">nieaktywne jadro</span>
-                  <div class="muted">dziala {{ p.running_kernel }}</div>
-                {% elif p.status == 'resolved' %}
+                {% if p.status == 'resolved' %}
                   <span class="badge badge-danger">do zrobienia</span>
                 {% elif p.no_fix_reason %}
                   <span class="badge">drobne</span>
@@ -527,11 +521,11 @@
 
         {% if podatnosci.stale_kernel_count %}
         <p class="muted small">
-          <b>Jadro.</b> Ubuntu i Debian zostawiaja stare pakiety jadra
-          zainstalowane po aktualizacji, wiec pakiety wycofanego ABI leza na
-          dysku jeszcze dlugo po tym, jak maszyna uruchomila sie z nowszego.
-          Takie pozycje sa oznaczone jako <b>nieaktywne jadro</b> — maszyna nie
-          jest przez nie podatna teraz. Usuwa sie je poleceniem
+          Pominieto <b>{{ podatnosci.stale_kernel_count }}</b> podatnosci
+          dotyczacych jadra, ktore juz nie dziala — maszyna jest uruchomiona
+          z nowszego. Zalegaja jeszcze pakiety
+          <code>{{ podatnosci.stale_kernels | join(', ') }}</code>, bo Ubuntu
+          i Debian nie usuwaja starych jader po aktualizacji. Sprzatniecie:
           <code>apt autoremove --purge</code>.
         </p>
         {% endif %}
