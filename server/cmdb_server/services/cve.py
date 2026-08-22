@@ -304,6 +304,15 @@ def wydanie_maszyny(payload: dict) -> tuple[str, str] | None:
     return None
 
 
+# Zrodla jadra w Debianie i Ubuntu: "linux", "linux-aws", "linux-hwe-6.8",
+# "linux-signed-oem" i podobne. Wszystkie zaczynaja sie od "linux".
+_ZRODLA_JADRA = re.compile(r"^linux(-|$)")
+
+
+def _to_jadro(pakiet_zrodlowy: str) -> bool:
+    return bool(_ZRODLA_JADRA.match((pakiet_zrodlowy or "").lower()))
+
+
 def dopasuj(db: Session, payload: dict) -> dict:
     """Podatnosci maszyny na podstawie jej ostatniego raportu."""
     wydanie = wydanie_maszyny(payload)
@@ -342,7 +351,16 @@ def dopasuj(db: Session, payload: dict) -> dict:
     for wpis in wpisy:
         wedlug_pakietu.setdefault(wpis.package, []).append(wpis)
 
-    znalezione = []
+    # Jadro wymaga osobnego traktowania. Ubuntu zostawia stare pakiety jadra
+    # zainstalowane po aktualizacji, wiec pakiety wycofanego ABI leza na dysku
+    # jeszcze dlugo po tym, jak maszyna uruchomila sie z nowszego. Porownywanie
+    # ich wersji zglaszalo podatnosci jadra, ktore juz nie dziala.
+    dzialajace_jadro = ((payload.get("os") or {}).get("kernel") or "").strip()
+
+    # Grupujemy po pakiecie ZRODLOWYM. Jedno zrodlo daje kilkanascie pakietow
+    # binarnych - bez grupowania ta sama podatnosc jest wypisana tyle razy, ile
+    # binariow jest zainstalowanych, i lista przestaje byc do przeczytania.
+    grupy: dict[tuple[str, str], dict] = {}
     for pakiet in pakiety:
         nazwa = (pakiet.get("name") or "").strip()
         wersja = (pakiet.get("version") or "").strip()
@@ -353,15 +371,30 @@ def dopasuj(db: Session, payload: dict) -> dict:
         wersja_porownywana = (pakiet.get("source_version") or wersja).strip()
         if not nazwa or not wersja_porownywana:
             continue
+
         for wpis in wedlug_pakietu.get(zrodlo, []):
+            nieaktywne_jadro = False
             if wpis.status == "resolved":
                 if not wersje_pakietow.starsza_niz(wersja_porownywana, wpis.fixed_version):
                     continue
-            znalezione.append(
-                {
+                if _to_jadro(zrodlo):
+                    starsze = wersje_pakietow.dzialajace_jadro_starsze(
+                        dzialajace_jadro, wpis.fixed_version
+                    )
+                    # Dziala nowsze jadro niz to z poprawka - maszyna nie jest
+                    # podatna teraz. Stary pakiet nadal lezy na dysku, wiec
+                    # odnotowujemy to osobno, zamiast przemilczec albo straszyc.
+                    if starsze is False:
+                        nieaktywne_jadro = True
+
+            klucz = (wpis.cve, zrodlo)
+            grupa = grupy.get(klucz)
+            if grupa is None:
+                grupy[klucz] = {
                     "cve": wpis.cve,
-                    "package": nazwa,
+                    "package": zrodlo,
                     "source_package": zrodlo,
+                    "packages": [nazwa],
                     "installed_version": wersja,
                     "compared_version": wersja_porownywana,
                     "fixed_version": wpis.fixed_version,
@@ -369,8 +402,16 @@ def dopasuj(db: Session, payload: dict) -> dict:
                     "severity": wpis.severity,
                     "no_fix_reason": wpis.no_fix_reason,
                     "description": wpis.description,
+                    "inactive_kernel": nieaktywne_jadro,
+                    "running_kernel": dzialajace_jadro or None,
                 }
-            )
+            elif nazwa not in grupa["packages"]:
+                grupa["packages"].append(nazwa)
+
+    znalezione = list(grupy.values())
+    for pozycja in znalezione:
+        pozycja["packages"].sort()
+        pozycja["package_count"] = len(pozycja["packages"])
 
     # Oceny doklejamy jednym zapytaniem - z bufora, bez ruchu sieciowego.
     from ..models import CveScore
@@ -394,6 +435,7 @@ def dopasuj(db: Session, payload: dict) -> dict:
     # oceny lezy na koncu swojej grupy, a nie udaje najlagodniejszej.
     znalezione.sort(
         key=lambda z: (
+            bool(z.get("inactive_kernel")),
             z["status"] != "resolved",
             -(z["base_score"] if z["base_score"] is not None else -1),
             z["cve"],
@@ -431,7 +473,15 @@ def _wynik(status: str, detail: str | None, entries: list | None = None,
         "count": len(pozycje) if status == STATUS_OK else None,
         # Do zrobienia teraz: poprawka istnieje, a maszyna jej nie ma.
         "fixable_count": (
-            sum(1 for p in pozycje if p["status"] == "resolved") if status == STATUS_OK else None
+            sum(1 for p in pozycje
+                if p["status"] == "resolved" and not p.get("inactive_kernel"))
+            if status == STATUS_OK else None
+        ),
+        # Dotyczy jadra, ktore juz nie dziala - maszyna uruchomila sie
+        # z nowszego, a stare pakiety tylko zalegaja na dysku.
+        "stale_kernel_count": (
+            sum(1 for p in pozycje if p.get("inactive_kernel"))
+            if status == STATUS_OK else None
         ),
         # Bez poprawki, ale dystrybucja uznaje rzecz za istotna.
         "open_count": (
@@ -446,7 +496,8 @@ def _wynik(status: str, detail: str | None, entries: list | None = None,
         # zaczyna sie prace.
         "critical_count": (
             sum(1 for p in pozycje
-                if p["status"] == "resolved" and (p.get("base_score") or 0) >= 7.0)
+                if p["status"] == "resolved" and not p.get("inactive_kernel")
+                and (p.get("base_score") or 0) >= 7.0)
             if status == STATUS_OK else None
         ),
         "bez_oceny": (

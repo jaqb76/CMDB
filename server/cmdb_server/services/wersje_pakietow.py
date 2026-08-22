@@ -103,3 +103,40 @@ def starsza_niz(zainstalowana: str, naprawiona: str) -> bool:
     if not zainstalowana or not naprawiona:
         return False
     return porownaj(zainstalowana, naprawiona) < 0
+
+
+# --- jadro ------------------------------------------------------------------
+
+# Nazwa wydania jadra z uname: "7.0.0-1011-aws" albo "6.8.0-51-generic".
+# Interesuje nas czlon ABI, czyli "7.0.0-1011" - to on rosnie z kazda
+# aktualizacja jadra i to jego podaja wersje pakietow.
+_ABI_JADRA = re.compile(r"^(\d+\.\d+\.\d+-\d+)")
+
+
+def abi_jadra(wydanie: str | None) -> str | None:
+    """Czlon ABI z nazwy wydania jadra albo z wersji pakietu.
+
+    "7.0.0-1011-aws"  -> "7.0.0-1011"
+    "7.0.0-1008.8"    -> "7.0.0-1008"
+
+    Wersja pakietu jadra ma na koncu numer kompilacji ("-1008.8"), ktorego
+    uname nie podaje. Porownanie pelnych wersji byloby wiec porownywaniem
+    dwoch roznych rzeczy - do rozstrzygniecia, czy dziala nowsze jadro,
+    wystarczy i musi wystarczyc sam czlon ABI.
+    """
+    if not wydanie:
+        return None
+    dopasowanie = _ABI_JADRA.match(wydanie.strip())
+    return dopasowanie.group(1) if dopasowanie else None
+
+
+def dzialajace_jadro_starsze(uruchomione: str | None, naprawione: str | None) -> bool | None:
+    """Czy DZIALAJACE jadro jest starsze niz to z poprawka.
+
+    Zwraca None, gdy nie da sie tego ustalic - wtedy zostaje zwykle
+    porownanie wersji pakietu, bo lepiej zglosic za duzo niz przemilczec.
+    """
+    a, b = abi_jadra(uruchomione), abi_jadra(naprawione)
+    if a is None or b is None:
+        return None
+    return porownaj(a, b) < 0

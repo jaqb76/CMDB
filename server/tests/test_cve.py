@@ -223,8 +223,10 @@ def test_dopasowanie_po_pakiecie_zrodlowym(kanal_debian):
         ]))
     assert wynik["fixable_count"] == 1
     znalezione = wynik["entries"][0]
-    assert znalezione["package"] == "libcurl4", "pokazujemy nazwe, ktora widzi administrator"
+    # Po zgrupowaniu pozycja opisuje pakiet ZRODLOWY, a nazwy binarne, ktore
+    # administrator widzi na maszynie, sa wymienione obok.
     assert znalezione["source_package"] == "curl"
+    assert znalezione["packages"] == ["libcurl4"]
 
 
 def test_porownujemy_wersje_zrodlowa(kanal_debian):
@@ -517,3 +519,116 @@ def test_podatnosc_bez_oceny_nie_udaje_lagodnej(kanal_debian):
     znalezione = wynik["entries"][0]
     assert znalezione["base_score"] is None
     assert wynik["bez_oceny"] == 1
+
+
+# --- jadro i grupowanie -----------------------------------------------------
+#
+# Oba bledy ujawnily sie na maszynie w AWS: 5505 znalezisk, z ktorych
+# wiekszosc dotyczyla jadra juz niedzialajacego, a kazda podatnosc byla
+# wypisana tyle razy, ile pakietow binarnych pochodzi z jednego zrodla.
+
+JADRO = {
+    "linux-aws": {
+        "CVE-2025-54505": {
+            "description": "luka w jadrze",
+            "releases": {"resolute": {"status": "resolved",
+                                      "fixed_version": "7.0.0-1008.8",
+                                      "urgency": "high"}},
+        }
+    }
+}
+
+# Pakiety binarne jednego ABI jadra - wszystkie z tego samego zrodla.
+PAKIETY_JADRA = [
+    _pakiet(n, "7.0.0-1006.6", source_package="linux-aws",
+            source_version="7.0.0-1006.6")
+    for n in ("linux-aws-headers-7.0.0-1006", "linux-aws-tools-7.0.0-1006",
+              "linux-headers-7.0.0-1006-aws", "linux-modules-7.0.0-1006-aws",
+              "linux-tools-7.0.0-1006-aws")
+]
+
+
+def _raport_jadra(uruchomione: str):
+    return {
+        "os": {"distro_id": "ubuntu", "codename": "resolute", "kernel": uruchomione},
+        "software": {"packages": PAKIETY_JADRA},
+    }
+
+
+@pytest.fixture()
+def kanal_jadra():
+    with SessionLocal() as db:
+        cve.zapisz_kanal(db, "ubuntu", "resolute",
+                         cve.wpisy_debian(json.dumps(JADRO).encode(), {"resolute"}))
+    yield
+
+
+def test_podatnosc_liczona_raz_na_zrodlo(kanal_jadra):
+    """Piec pakietow binarnych z jednego zrodla to jedna podatnosc, a nie piec.
+    Bez grupowania lista rosla do tysiecy pozycji i przestawala byc czytana."""
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport_jadra("7.0.0-1006-aws"))
+
+    assert len(wynik["entries"]) == 1
+    znalezione = wynik["entries"][0]
+    assert znalezione["package_count"] == 5
+    assert "linux-modules-7.0.0-1006-aws" in znalezione["packages"]
+
+
+def test_dzialajace_nowsze_jadro_nie_jest_podatne(kanal_jadra):
+    """Sedno bledu z AWS: uname pokazywal 7.0.0-1011, czyli jadro nowsze niz
+    poprawka, a pakiety wycofanego ABI 1006 nadal lezaly na dysku. Ubuntu nie
+    usuwa starych jader od razu, wiec zglaszalismy podatnosc jadra, ktore
+    juz nie dziala."""
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport_jadra("7.0.0-1011-aws"))
+
+    assert wynik["fixable_count"] == 0, "maszyna dziala na jadrze z poprawka"
+    assert wynik["stale_kernel_count"] == 1
+    assert wynik["entries"][0]["inactive_kernel"] is True
+
+
+def test_dzialajace_starsze_jadro_jest_podatne(kanal_jadra):
+    """Gdy maszyna faktycznie dziala na podatnym jadrze, ma to byc zgloszone."""
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport_jadra("7.0.0-1006-aws"))
+
+    assert wynik["fixable_count"] == 1
+    assert wynik["stale_kernel_count"] == 0
+    assert wynik["entries"][0]["inactive_kernel"] is False
+
+
+def test_bez_informacji_o_jadrze_zglaszamy_podatnosc(kanal_jadra):
+    """Starszy agent nie podaje wersji jadra. Lepiej zglosic za duzo niz
+    przemilczec podatnosc jadra, ktore moze byc uruchomione."""
+    raport = _raport_jadra("")
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, raport)
+
+    assert wynik["fixable_count"] == 1
+    assert wynik["entries"][0]["inactive_kernel"] is False
+
+
+def test_nieaktywne_jadro_nie_wchodzi_do_powaznych(kanal_jadra, monkeypatch):
+    """Kafelek "powazne" ma pokazywac to, co wymaga dzialania teraz."""
+    from cmdb_server.models import CveScore
+
+    with SessionLocal() as db:
+        db.add(CveScore(cve="CVE-2025-54505", base_score=9.8, severity="CRITICAL"))
+        db.commit()
+        wynik = cve.dopasuj(db, _raport_jadra("7.0.0-1011-aws"))
+
+    assert wynik["entries"][0]["base_score"] == 9.8
+    assert wynik["critical_count"] == 0, "jadro juz nie dziala, mimo oceny 9.8"
+
+
+def test_zwykly_pakiet_nie_podlega_regule_jadra(kanal_debian):
+    """Regula dotyczy wylacznie jadra - dla reszty liczy sie to, co jest
+    zainstalowane, bo to ono jest uruchamiane."""
+    raport = _raport([_pakiet("curl", "7.88.1-10+deb12u14")])
+    raport["os"]["kernel"] = "9.9.9-9999-generic"
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, raport)
+
+    assert wynik["fixable_count"] == 1
+    assert wynik["entries"][0]["inactive_kernel"] is False

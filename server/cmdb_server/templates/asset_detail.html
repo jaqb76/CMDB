@@ -430,6 +430,10 @@
             <div class="card-label">uznane przez dystrybucje za drobne</div>
           </div>
           <div class="card">
+            <div class="card-value">{{ podatnosci.stale_kernel_count }}</div>
+            <div class="card-label">dotyczy jadra, ktore juz nie dziala</div>
+          </div>
+          <div class="card">
             <div class="card-value" style="font-size:18px">{{ podatnosci.source }}</div>
             <div class="card-label">
               dane sprzed {{ podatnosci.feed_age_hours }} h
@@ -476,9 +480,12 @@
                 {% endif %}
               </td>
               <td class="small">
-                {{ p.package }}
-                {% if p.source_package != p.package %}
-                  <div class="muted">zrodlo: {{ p.source_package }}</div>
+                {{ p.source_package }}
+                {% if p.package_count > 1 %}
+                  <div class="muted">{{ p.package_count }} pakietow binarnych:
+                    {{ p.packages[:3] | join(', ') }}{% if p.package_count > 3 %} i {{ p.package_count - 3 }} wiecej{% endif %}</div>
+                {% elif p.packages and p.packages[0] != p.source_package %}
+                  <div class="muted">{{ p.packages[0] }}</div>
                 {% endif %}
               </td>
               <td class="small muted"><code>{{ p.compared_version }}</code></td>
@@ -487,7 +494,10 @@
                 {% else %}<span class="muted">brak poprawki</span>{% endif %}
               </td>
               <td class="small">
-                {% if p.status == 'resolved' %}
+                {% if p.inactive_kernel %}
+                  <span class="badge">nieaktywne jadro</span>
+                  <div class="muted">dziala {{ p.running_kernel }}</div>
+                {% elif p.status == 'resolved' %}
                   <span class="badge badge-danger">do zrobienia</span>
                 {% elif p.no_fix_reason %}
                   <span class="badge">drobne</span>
@@ -512,6 +522,17 @@
           {{ podatnosci.bez_oceny }} podatnosci nie ma jeszcze oceny CVSS —
           pobiera sie je w <a href="/admin/podatnosci">administracji</a>.
           Dane dystrybucji ocen nie zawieraja, wiec pochodza z osobnego zrodla.
+        </p>
+        {% endif %}
+
+        {% if podatnosci.stale_kernel_count %}
+        <p class="muted small">
+          <b>Jadro.</b> Ubuntu i Debian zostawiaja stare pakiety jadra
+          zainstalowane po aktualizacji, wiec pakiety wycofanego ABI leza na
+          dysku jeszcze dlugo po tym, jak maszyna uruchomila sie z nowszego.
+          Takie pozycje sa oznaczone jako <b>nieaktywne jadro</b> — maszyna nie
+          jest przez nie podatna teraz. Usuwa sie je poleceniem
+          <code>apt autoremove --purge</code>.
         </p>
         {% endif %}
 
