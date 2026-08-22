@@ -172,6 +172,26 @@ if ($Installer) {
     }
 }
 
+
+# --- kopie z numerem wersji -------------------------------------------------
+# Pliki bez numeru wersji zostaja, bo ich nazwy sa nosne: ikona w zasobniku
+# szuka agenta po "cmdb-agent.exe" obok siebie, instalator kopiuje wlasnie
+# taka nazwe do Program Files, a skrypt Inno Setup tez ja zaklada.
+# Kopie z wersja sluza do trzymania historii - kolejny build nie kasuje juz
+# poprzedniego, wiec da sie wrocic do dowolnego wydanego agenta.
+$zwersjonowane = @()
+foreach ($plik in @($exe, $trayExe)) {
+    if (-not (Test-Path $plik)) { continue }
+    $bazowa = [System.IO.Path]::GetFileNameWithoutExtension($plik)
+    $rozsz  = [System.IO.Path]::GetExtension($plik)
+    $kopia  = Join-Path $OutputDir ("{0}-{1}{2}" -f $bazowa, $wersjaZrodel, $rozsz)
+    Copy-Item -Path $plik -Destination $kopia -Force
+    $zwersjonowane += $kopia
+}
+if ($zwersjonowane.Count -gt 0) {
+    Write-Host ("  zapisano kopie z numerem wersji ({0})" -f $wersjaZrodel) -ForegroundColor Cyan
+    $artifacts += $zwersjonowane
+}
 Write-Host ""
 Write-Host "Gotowe:" -ForegroundColor Green
 foreach ($item in $artifacts) {

@@ -359,3 +359,26 @@ Deinstalacja agenta **nie usuwa maszyny z CMDB** — zasób zostaje w bazie
 z datą ostatniego kontaktu i po `CMDB_STALE_AFTER_HOURS` pojawia się na
 liście maszyn bez kontaktu. Jest to zamierzone: historia inwentarza nie
 powinna znikać razem z agentem.
+
+## Historia zbudowanych wersji
+
+Budowanie zostawia w `agent/dist/` cztery pliki:
+
+```
+cmdb-agent.exe             <- najnowszy, pod tą nazwą sięgają po niego skrypty
+cmdb-agent-tray.exe
+cmdb-agent-0.5.5.exe       <- kopia z numerem wersji, do historii
+cmdb-agent-tray-0.5.5.exe
+```
+
+Kopie z numerem wersji nie są kasowane przez kolejne budowanie, więc da się
+wrócić do dowolnego wydanego wcześniej agenta — na przykład żeby porównać
+zachowanie albo wgrać z powrotem starszą wersję po nieudanej aktualizacji.
+
+Nazwy **bez** numeru zostają, bo są nośne: ikona w zasobniku szuka agenta po
+`cmdb-agent.exe` obok siebie, instalator kopiuje właśnie taką nazwę do
+`Program Files`, a skrypt Inno Setup też ją zakłada. Wersja w nazwie
+zainstalowanego pliku zerwałaby te powiązania po pierwszej aktualizacji.
+
+Katalog `dist/` jest w `.gitignore` — historia leży na maszynie budującej,
+a wydania rozsyłane agentom trzyma magazyn wersji na serwerze.

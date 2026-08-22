@@ -107,3 +107,45 @@ def test_admin_group_is_resolved_by_sid():
     kod = WINDOWS_COLLECTOR.read_text(encoding="utf-8")
     assert "S-1-5-32-544" in kod
     assert not re.search(r'WinNT://\./Administrators', kod)
+
+
+# --- historia zbudowanych agentow -------------------------------------------
+
+def _skrypt_budujacy() -> str:
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parent.parent / "packaging" / "build-agent.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+
+
+def test_build_zapisuje_kopie_z_numerem_wersji():
+    """Bez tego kazdy build kasowal poprzedni i nie dalo sie wrocic do
+    wydanego wczesniej agenta."""
+    tresc = _skrypt_budujacy()
+    assert "$wersjaZrodel" in tresc
+    assert "$zwersjonowane" in tresc
+    assert "Copy-Item" in tresc
+
+
+def test_build_zostawia_takze_nazwy_bez_wersji():
+    """Nazwy bez wersji sa nosne: ikona w zasobniku szuka agenta po
+    "cmdb-agent.exe" obok siebie, instalator kopiuje wlasnie ta nazwe do
+    Program Files, a skrypt Inno Setup tez ja zaklada."""
+    tresc = _skrypt_budujacy()
+    # Kopiujemy, a nie przenosimy - plik zrodlowy ma zostac na miejscu.
+    assert "Move-Item" not in tresc
+    assert 'Join-Path $OutputDir "cmdb-agent.exe"' in tresc
+
+
+def test_instalator_i_ikona_uzywaja_stalej_nazwy():
+    """Gdyby nazwa instalowanego pliku niosla wersje, ikona w zasobniku
+    przestalaby znajdowac agenta po kazdej aktualizacji."""
+    from pathlib import Path
+
+    korzen = Path(__file__).resolve().parent.parent
+    instalator = (korzen / "packaging" / "install-agent.ps1").read_text(encoding="utf-8-sig")
+    ikona = (korzen / "cmdb_agent" / "gui" / "common.py").read_text(encoding="utf-8")
+
+    assert 'Join-Path $InstallDir "cmdb-agent.exe"' in instalator
+    assert '"cmdb-agent.exe"' in ikona
