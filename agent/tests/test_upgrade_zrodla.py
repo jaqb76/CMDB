@@ -252,3 +252,46 @@ def test_brak_oferty_nie_generuje_szumu(monkeypatch):
     """Gdy serwer niczego nie oczekuje, nie ma czego zglaszac."""
     klient = _KlientAtrapa(None)
     assert _zastosuj(monkeypatch, klient) == []
+
+
+# --- jednostka timera -------------------------------------------------------
+#
+# Cykliczne uruchamianie stoi wylacznie na tej jednostce. Blad w niej nie
+# rzuca zadnym wyjatkiem - agent po prostu przestaje raportowac, i to cicho.
+
+def _tresc_instalatora() -> str:
+    korzen = Path(__file__).resolve().parent.parent
+    return (korzen / "packaging" / "install-agent.sh").read_text(encoding="utf-8")
+
+
+def test_timer_uzywa_harmonogramu_kalendarzowego():
+    """Persistent= systemd honoruje WYLACZNIE razem z OnCalendar=.
+
+    Przy timerze monotonicznym (OnUnitActiveSec) jest po cichu ignorowane,
+    wiec przebiegi pominiete, gdy maszyna byla wylaczona, przepadaly - mimo ze
+    jednostka deklarowala Persistent=true.
+    """
+    tresc = _tresc_instalatora()
+    assert "OnCalendar=" in tresc
+    assert "Persistent=true" in tresc
+    # Szukamy dyrektywy, a nie slowa - w komentarzu wystepuje z wyjasnieniem,
+    # dlaczego wlasnie jej nie uzywamy.
+    dyrektywy = [w.strip() for w in tresc.splitlines() if not w.strip().startswith("#")]
+    assert not any(w.startswith("OnUnitActiveSec=") for w in dyrektywy),         "monotoniczny odstep uniewaznia Persistent"
+
+
+def test_timer_ma_przebieg_po_starcie_systemu():
+    """Bez tego maszyna wlaczona miedzy terminami czekalaby do nastepnego."""
+    assert "OnBootSec=" in _tresc_instalatora()
+
+
+def test_timer_rozprasza_flote():
+    assert "RandomizedDelaySec=" in _tresc_instalatora()
+
+
+def test_usluga_jest_jednorazowa():
+    """Agent zbiera dane i konczy prace - miedzy przebiegami nie zajmuje
+    pamieci. Stan "inactive (dead)" jest wiec poprawny, a nie objawem awarii."""
+    tresc = _tresc_instalatora()
+    assert "Type=oneshot" in tresc
+    assert "RemainAfterExit" not in tresc

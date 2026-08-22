@@ -59,9 +59,23 @@ cmdb-agent status                          # ostatnia poprawna synchronizacja
 cmdb-agent doctor                          # diagnostyka połączenia etap po etapie
 ```
 
-Timer ma `RandomizedDelaySec=10min`, żeby przy większej flocie maszyny nie
-uderzały w serwer w tej samej sekundzie, oraz `Persistent=true` — Pi wyłączone
-na noc nadgoni pominięty przebieg po starcie.
+Timer jest **kalendarzowy** (`OnCalendar=*-*-* 00/4:00:00`), nie odstępowy.
+To nie jest kosmetyka: `Persistent=true` systemd honoruje **wyłącznie** razem
+z `OnCalendar=` — przy timerze monotonicznym (`OnUnitActiveSec=`) jest po cichu
+ignorowane. Pi wyłączone na noc gubiło przez to pominięte przebiegi, mimo że
+jednostka deklarowała `Persistent=true`.
+
+Dochodzi `RandomizedDelaySec=10min`, żeby przy większej flocie maszyny nie
+uderzały w serwer w tej samej sekundzie, oraz `OnBootSec=3min` na pierwszy
+przebieg po starcie systemu.
+
+Stan `inactive (dead)` w `systemctl status cmdb-agent.service` jest
+**poprawny** — usługa jest typu `oneshot` i ma się kończyć między przebiegami.
+Interesujący jest stan timera:
+
+```bash
+systemctl list-timers cmdb-agent.timer    # NEXT / LEFT / LAST / PASSED
+```
 
 Usługa działa z `ProtectSystem=strict` i `ProtectHome=true`: agent czyta dane
 systemowe, ale zapisywać może wyłącznie do `/var/lib/cmdb-agent`.

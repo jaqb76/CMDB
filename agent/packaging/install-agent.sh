@@ -49,6 +49,10 @@ done
 [[ "$SERWER" == https://* ]] || blad "adres serwera musi zaczynac sie od https:// - agent nie wysyla danych po nieszyfrowanym polaczeniu"
 [[ "$TOKEN" == cmdb_ent_* ]] || blad "to nie wyglada na token rejestracyjny - powinien zaczynac sie od 'cmdb_ent_'"
 [[ -z "$CA_BUNDLE" || -f "$CA_BUNDLE" ]] || blad "nie znajduje pliku CA: $CA_BUNDLE"
+# OnCalendar zapisuje godziny w zakresie 0-23, wiec wiekszy odstep nie ma
+# jak powstac - lepiej odmowic teraz niz zalozyc timer, ktory nigdy nie strzeli.
+[[ "$INTERWAL_GODZIN" =~ ^[0-9]+$ ]] || blad "--interval musi byc liczba godzin"
+[[ "$INTERWAL_GODZIN" -ge 1 && "$INTERWAL_GODZIN" -le 23 ]]     || blad "--interval musi miescic sie w zakresie 1-23 godzin (podano: $INTERWAL_GODZIN)"
 
 [[ $EUID -eq 0 ]] || blad "skrypt wymaga uprawnien roota (uzyj sudo) - agent czyta dane systemowe i zaklada usluge"
 
@@ -160,12 +164,19 @@ cat > "/etc/systemd/system/$NAZWA_USLUGI.timer" <<TIMER
 Description=Cykliczna inwentaryzacja CMDB
 
 [Timer]
+# Pierwszy przebieg krotko po starcie systemu.
 OnBootSec=3min
-OnUnitActiveSec=${INTERWAL_GODZIN}h
+
+# Harmonogram kalendarzowy, a nie odstep od poprzedniego przebiegu.
+# Persistent= systemd honoruje WYLACZNIE razem z OnCalendar= - przy timerze
+# monotonicznym (OnUnitActiveSec) jest po cichu ignorowane, wiec przebiegi
+# pominiete, gdy maszyna byla wylaczona, przepadaly bezpowrotnie.
+OnCalendar=*-*-* 00/${INTERWAL_GODZIN}:00:00
+Persistent=true
+
 # Losowe rozproszenie - przy wiekszej flocie maszyny nie uderzaja w serwer
 # w tej samej sekundzie.
 RandomizedDelaySec=10min
-Persistent=true
 
 [Install]
 WantedBy=timers.target
