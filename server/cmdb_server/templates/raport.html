@@ -176,6 +176,32 @@
     {% endif %}
   {% endif %}
 
+  {% if raport.wiersze and raport.kolumny %}
+  <h2 style="font-size:15px; margin:24px 0 8px">Maszyny ({{ raport.wiersze | length }})</h2>
+  <table cellpadding="6" cellspacing="0" border="0" width="100%"
+         style="border-collapse:collapse; font-size:12px">
+    <tr style="background:#f5f6f8">
+      {% for k in raport.kolumny %}
+        <th align="{% if k.typ == 'liczba' %}right{% else %}left{% endif %}"
+            style="border-bottom:1px solid #dcdfe4; white-space:nowrap">{{ k.etykieta }}</th>
+      {% endfor %}
+    </tr>
+    {% for w in raport.wiersze %}
+    <tr>
+      {% for c in w.komorki %}
+        <td align="{% if c.kolumna.typ == 'liczba' %}right{% else %}left{% endif %}"
+            style="border-bottom:1px solid #eef0f3;
+            {% if c.kolumna.alarm and c.wartosc %}color:#a52222; font-weight:700{% endif %}">
+          {% if c.wartosc is none or c.wartosc == '' %}
+            <span style="color:#b6bcc6">—</span>
+          {% else %}{{ c.wartosc }}{% endif %}
+        </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
   <p style="margin:26px 0 0; padding-top:12px; border-top:1px solid #dcdfe4;
             font-size:11px; color:#6b7280">
     Raport wygenerowany automatycznie przez CMDB. Nie odpowiadaj na te wiadomosc.

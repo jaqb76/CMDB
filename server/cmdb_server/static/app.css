@@ -260,3 +260,31 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 :root:not([data-theme]) .motyw .motyw-auto,
 :root[data-theme="jasny"] .motyw .motyw-jasny,
 :root[data-theme="ciemny"] .motyw .motyw-ciemny { display: inline; }
+
+/* --- widok raportu --- */
+.podzakladki { display: flex; gap: 4px; margin: 0 0 16px; flex-wrap: wrap; }
+.podzakladki a {
+  padding: 7px 14px; border-radius: var(--radius); color: var(--muted);
+  font-size: 14px; border: 1px solid transparent;
+}
+.podzakladki a:hover { color: var(--text); text-decoration: none; background: var(--surface); }
+.podzakladki a.is-active {
+  background: var(--surface); border-color: var(--border); color: var(--text); font-weight: 600;
+}
+
+.wybor-kolumn summary { cursor: pointer; padding: 4px 0; user-select: none; }
+.wybor-kolumn summary::marker { color: var(--muted); }
+
+.kolumny-siatka {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px; margin: 14px 0;
+}
+.kolumny-grupa { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.kolumny-grupa legend { color: var(--muted); font-size: 12px; padding: 0 5px; }
+.kolumna-wybor { display: flex; align-items: center; gap: 7px; padding: 3px 0; font-size: 13px; }
+.kolumna-wybor input { margin: 0; }
+
+/* Tresc raportu ma wpisane style pod klienty poczty - w panelu wystarczy
+   zapewnic jej przewijanie w poziomie, gdy kolumn jest duzo. */
+.raport-tresc { overflow-x: auto; }
+.raport-tresc > div { max-width: none !important; }

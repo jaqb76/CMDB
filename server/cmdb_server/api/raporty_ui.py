@@ -319,3 +319,80 @@ def zapisz_zakup(
     db.commit()
     return RedirectResponse(f"/assets/{asset_id}#overview",
                             status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/raporty/widok/{rodzaj}", response_class=HTMLResponse)
+def widok_raportu(
+    request: Request,
+    rodzaj: str,
+    raport_id: str = "",
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Pelny raport na stronie, wraz z wyborem kolumn.
+
+    Ta sama tresc idzie potem poczta - widok rozniacy sie od wysylki bylby
+    gorszy niz jego brak. Wybor kolumn zapisuje sie przy definicji, wiec to,
+    co widac tutaj, jest tym, co dostana adresaci.
+    """
+    from ..services import kolumny as katalog
+
+    if rodzaj not in raporty.RODZAJE:
+        raise HTTPException(status_code=404, detail="nieznany rodzaj raportu")
+
+    definicja = _definicja(db, ctx, raport_id) if raport_id else None
+    wybor = definicja.kolumny if definicja else None
+
+    tenant = db.get(Tenant, ctx.tenant_id)
+    raport = raporty.zbuduj(db, tenant, rodzaj, wybor)
+    tresc, _ = raporty.renderuj(raport)
+
+    return render(
+        request, "raport_widok.html", user, ctx, db,
+        raport=raport,
+        tresc=tresc,
+        rodzaj=rodzaj,
+        rodzaje=raporty.RODZAJE,
+        definicja=definicja,
+        definicje=db.execute(
+            select(DefinicjaRaportu)
+            .where(DefinicjaRaportu.tenant_id == ctx.tenant_id)
+            .order_by(DefinicjaRaportu.nazwa)
+        ).scalars().all(),
+        grupy_kolumn=katalog.grupy(),
+        wybrane_klucze={k["klucz"] for k in raport["kolumny"]},
+    )
+
+
+@router.post("/raporty/definicje/{raport_id}/kolumny")
+def zapisz_kolumny(
+    request: Request,
+    raport_id: str,
+    kolumny: list[str] = Form(default=[]),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zapisuje wybor kolumn przy definicji raportu.
+
+    Kolejnosc zaznaczenia nie ma znaczenia - zapisujemy w kolejnosci
+    katalogu, zeby tabela zawsze wygladala tak samo niezaleznie od tego,
+    w jakiej kolejnosci ktos klikal.
+    """
+    from ..services import kolumny as katalog
+
+    _zapis_dozwolony(ctx)
+    verify_csrf(request, user, csrf_token)
+    definicja = _definicja(db, ctx, raport_id)
+
+    wybrane = [k["klucz"] for k in katalog.KOLUMNY if k["klucz"] in set(kolumny)]
+    definicja.kolumny = wybrane or None
+    audit(db, ctx, action="raport.kolumny", target=definicja.nazwa, ip=client_ip(request))
+    db.commit()
+
+    return RedirectResponse(
+        f"/raporty/widok/{definicja.rodzaj}?raport_id={definicja.id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )

@@ -108,4 +108,12 @@
     });
   });
 
+
+  // Listy, ktore po wyborze przenosza na wskazany adres.
+  document.querySelectorAll("[data-autonawigacja]").forEach(function (lista) {
+    lista.addEventListener("change", function () {
+      if (lista.value) { window.location.href = lista.value; }
+    });
+  });
+
 })();

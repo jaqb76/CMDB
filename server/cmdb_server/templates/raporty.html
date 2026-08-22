@@ -129,8 +129,7 @@
           {% endif %}
         </td>
         <td class="small">
-          <a class="btn btn-small" href="/raporty/podglad/{{ d.rodzaj }}" target="_blank"
-             rel="noopener">Podglad</a>
+          <a class="btn btn-small" href="/raporty/widok/{{ d.rodzaj }}?raport_id={{ d.id }}">Otworz</a>
           <form method="post" action="/raporty/definicje/{{ d.id }}/wyslij" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn-small btn-primary">Wyslij teraz</button>
@@ -196,20 +195,20 @@
         <td class="small">Ile jest do zrobienia, ile powaznych, ktore maszyny
           wymagaja uwagi. Osobno liczone podatnosci znane, ale bez dostepnej
           jeszcze poprawki.
-          <a href="/raporty/podglad/podatnosci" target="_blank" rel="noopener">podglad</a></td>
+          <a href="/raporty/widok/podatnosci">otworz</a></td>
       </tr>
       <tr>
         <th>Inwentaryzacja sprzetu</th>
         <td class="small">Liczba maszyn z podzialem na system operacyjny,
           producenta i wersje agenta. Maszyny bez kontaktu i bez opiekuna.
-          <a href="/raporty/podglad/sprzet" target="_blank" rel="noopener">podglad</a></td>
+          <a href="/raporty/widok/sprzet">otworz</a></td>
       </tr>
       <tr>
         <th>Gwarancje i wsparcie</th>
         <td class="small">Co juz po terminie, co konczy sie w najblizszych
           90 dniach, co pozostaje objete wsparciem. Daty gwarancji wpisuje sie
           na karcie maszyny.
-          <a href="/raporty/podglad/gwarancje" target="_blank" rel="noopener">podglad</a></td>
+          <a href="/raporty/widok/gwarancje">otworz</a></td>
       </tr>
     </tbody>
   </table>

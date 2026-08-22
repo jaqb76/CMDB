@@ -629,6 +629,9 @@ class DefinicjaRaportu(Base):
     # Adresaci rozdzieleni przecinkiem albo srednikiem - rozbierane przy wysylce.
     adresaci: Mapped[str] = mapped_column(Text, nullable=False)
     aktywny: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Ktore atrybuty pokazac w tabeli. Puste = zestaw domyslny, zeby raport
+    # dodany bez zastanowienia i tak byl czytelny.
+    kolumny: Mapped[list | None] = mapped_column(JSONType)
     # Kiedy raport ostatnio poszedl i z jakim skutkiem. Bez tego nie da sie
     # odroznic "jeszcze nie byl wysylany" od "wysylka sie nie udaje".
     ostatnia_wysylka: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

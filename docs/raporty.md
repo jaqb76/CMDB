@@ -28,6 +28,37 @@ to, że odbiorca zgodzi się go wyświetlić. Tabela z tłem renderuje się wsz�
 Szerokość paska liczy się względem **największej** pozycji, nie sumy: przy
 kilkunastu kategoriach paski liczone od sumy byłyby nieczytelnie krótkie.
 
+## Widok na stronie i wybór kolumn
+
+Raport otwiera się **w panelu w całości** (`Raporty → Otwórz`), a nie tylko
+jako podgląd. Ta sama treść idzie pocztą — widok różniący się od wysyłki byłby
+gorszy niż jego brak.
+
+Pod nagłówkiem jest wybór kolumn tabeli, pogrupowany tematycznie:
+
+| Grupa | Przykłady |
+|---|---|
+| Identyfikacja | nazwa, FQDN, adres IP, opiekun, rola |
+| System | system, wersja, jądro, architektura, wersja agenta, ostatni kontakt |
+| Sprzęt | producent, model, numer seryjny, procesor, rdzenie, pamięć, dysk, wirtualizacja |
+| Zakup | dostawca, data zakupu, gwarancja, cena, faktura, umowa wsparcia |
+| Podatności | poważne CVE, CVE do zrobienia, CVE bez poprawki, brakujące aktualizacje |
+
+Wybór zapisuje się **przy definicji raportu**, więc to, co widzisz w panelu,
+jest tym, co dostaną adresaci.
+
+### Dlaczego niektóre kolumny są oznaczone jako „wolne"
+
+Każda kolumna zna swoje źródło:
+
+* **pole maszyny** — dostępne od ręki,
+* **z raportu agenta** — wymaga odczytania jego treści,
+* **podatności** — wymaga zestawienia pakietów każdej maszyny z kanałem CVE.
+
+Liczymy wyłącznie to, co zaznaczono. Kolumna z liczbą podatności przy stu
+maszynach to sto dopasowań — bez tego rozróżnienia płacilibyśmy za nią także
+wtedy, gdy nikt jej nie chce.
+
 ## Poczta
 
 Ustawienia w zakładce **Raporty**. Hasło jest szyfrowane kluczem serwera —

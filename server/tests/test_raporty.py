@@ -345,3 +345,160 @@ def test_nieznany_rodzaj_raportu_daje_404(client, tenant_a, make_user):
     make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
     _login(client, "raporty@firma.pl", HASLO)
     assert client.get("/raporty/podglad/wymyslony").status_code == 404
+
+
+# --- wybor kolumn -----------------------------------------------------------
+
+def test_domyslne_kolumny_gdy_nic_nie_wybrano():
+    """Raport dodany bez zastanowienia ma byc czytelny od razu."""
+    from cmdb_server.services import kolumny
+
+    assert [k["klucz"] for k in kolumny.wybrane(None)] == kolumny.DOMYSLNE
+    assert [k["klucz"] for k in kolumny.wybrane([])] == kolumny.DOMYSLNE
+
+
+def test_nieznana_kolumna_jest_pomijana():
+    """Definicja mogla powstac przy wersji, ktora znala kolumne juz usunieta -
+    to nie powod, zeby wywracac caly raport."""
+    from cmdb_server.services import kolumny
+
+    wybrane = kolumny.wybrane(["hostname", "kolumna-ktorej-nie-ma", "memory"])
+    assert [k["klucz"] for k in wybrane] == ["hostname", "memory"]
+
+
+def test_tabela_zawiera_wybrane_atrybuty(client, tenant_a):
+    _maszyna(client, tenant_a, "SRV-KOL", "maszyna-kol-0001")
+
+    with SessionLocal() as db:
+        raport = raporty.zbuduj(
+            db, db.get(Tenant, tenant_a["id"]), "sprzet",
+            ["hostname", "primary_ip", "memory", "cpu"],
+        )
+
+    # Kolejnosc jest taka, jak podana - normalizacja do kolejnosci
+    # katalogu nastepuje przy ZAPISIE definicji, nie przy budowaniu.
+    assert [k["etykieta"] for k in raport["kolumny"]] == [
+        "Nazwa", "Adres IP", "Pamiec", "Procesor",
+    ]
+    assert len(raport["wiersze"]) == 1
+    assert raport["wiersze"][0]["komorki"][0]["wartosc"] == "SRV-KOL"
+
+
+def test_kolumny_zapisuja_sie_w_kolejnosci_katalogu(client, tenant_a, make_user):
+    """Tabela ma wygladac tak samo niezaleznie od kolejnosci klikania."""
+    from cmdb_server.services import kolumny
+
+    identyfikator = _definicja(tenant_a["id"])
+    make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
+    _login(client, "raporty@firma.pl", HASLO)
+    csrf = client.get("/raporty").text.split('name="csrf_token" value="')[1].split('"')[0]
+
+    client.post(
+        f"/raporty/definicje/{identyfikator}/kolumny",
+        data={"csrf_token": csrf, "kolumny": ["memory", "hostname", "cpu"]},
+        follow_redirects=False,
+    )
+
+    with SessionLocal() as db:
+        zapisane = db.get(DefinicjaRaportu, identyfikator).kolumny
+    kolejnosc = [k["klucz"] for k in kolumny.KOLUMNY if k["klucz"] in {"memory", "hostname", "cpu"}]
+    assert zapisane == kolejnosc
+
+
+def test_kosztowne_kolumny_liczone_tylko_gdy_zaznaczone(client, tenant_a, monkeypatch):
+    """Kolumna z liczba podatnosci przy stu maszynach to sto dopasowan -
+    nie ma powodu placic za nia, gdy nikt jej nie chce."""
+    from cmdb_server.services import cve
+
+    _maszyna(client, tenant_a, "SRV-CVE", "maszyna-cve-0001")
+    wywolania = []
+    monkeypatch.setattr(
+        cve, "dopasuj",
+        lambda db, payload: wywolania.append(1) or {"status": "nieznany", "detail": "x"},
+    )
+
+    with SessionLocal() as db:
+        tenant = db.get(Tenant, tenant_a["id"])
+        raporty.zbuduj(db, tenant, "sprzet", ["hostname", "memory"])
+    bez_cve = len(wywolania)
+
+    with SessionLocal() as db:
+        raporty.zbuduj(db, tenant, "sprzet", ["hostname", "cve_powazne"])
+
+    assert bez_cve == 0, "podatnosci liczone mimo braku takiej kolumny"
+    assert len(wywolania) > 0, "podatnosci nie policzone mimo zaznaczonej kolumny"
+
+
+def test_wysylka_uzywa_kolumn_z_definicji(client, tenant_a, monkeypatch):
+    """To, co widac w panelu, ma byc tym, co dostana adresaci."""
+    _maszyna(client, tenant_a, "SRV-WYS", "maszyna-wys-0001")
+    _ustaw_poczte(tenant_a["id"])
+    identyfikator = _definicja(tenant_a["id"])
+    with SessionLocal() as db:
+        db.get(DefinicjaRaportu, identyfikator).kolumny = ["hostname", "serial_number"]
+        db.commit()
+
+    tresci = []
+    monkeypatch.setattr(
+        poczta, "wyslij",
+        lambda db, t, a, temat, html, tekst: tresci.append(html),
+    )
+
+    with SessionLocal() as db:
+        raporty.wyslij_raport(db, db.get(DefinicjaRaportu, identyfikator))
+
+    assert tresci, "raport nie zostal wyslany"
+    assert "Numer seryjny" in tresci[0]
+    assert "Adres IP" not in tresci[0], "kolumna spoza wyboru trafila do wiadomosci"
+
+
+# --- widok na stronie -------------------------------------------------------
+
+def test_widok_pokazuje_caly_raport(client, tenant_a, make_user):
+    _maszyna(client, tenant_a, "SRV-WIDOK", "maszyna-widok-001")
+    make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
+    _login(client, "raporty@firma.pl", HASLO)
+
+    strona = client.get("/raporty/widok/sprzet").text
+    assert "Inwentaryzacja sprzetu" in strona
+    assert "SRV-WIDOK" in strona, "tabela maszyn musi byc na stronie"
+    assert "Kolumny tabeli" in strona
+
+
+def test_widok_odrzuca_nieznany_rodzaj(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
+    _login(client, "raporty@firma.pl", HASLO)
+    assert client.get("/raporty/widok/wymyslony").status_code == 404
+
+
+def test_widok_nie_pokazuje_raportu_innej_firmy(client, tenant_a, tenant_b, make_user):
+    obcy = _definicja(tenant_b["id"])
+    make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
+    _login(client, "raporty@firma.pl", HASLO)
+
+    assert client.get(f"/raporty/widok/sprzet?raport_id={obcy}").status_code == 404
+
+
+def test_kolumna_opiekuna_pokazuje_imie_i_nazwisko(client, tenant_a):
+    """Wczesniejsze testy tego nie objely, bo nie mialy ani jednego opiekuna -
+    petla budujaca mape nigdy sie nie wykonywala i bledne pole nie wychodzilo."""
+    from cmdb_server.models import Owner
+
+    _maszyna(client, tenant_a, "SRV-OPIEKUN", "maszyna-opiekun-01")
+    with SessionLocal() as db:
+        opiekun = Owner(tenant_id=tenant_a["id"], full_name="Jan Kowalski",
+                        email="jan@firma.pl")
+        db.add(opiekun)
+        db.flush()
+        maszyna = db.execute(
+            select(Asset).where(Asset.hostname == "SRV-OPIEKUN")
+        ).scalar_one()
+        maszyna.owner_id = opiekun.id
+        db.commit()
+
+    with SessionLocal() as db:
+        raport = raporty.zbuduj(
+            db, db.get(Tenant, tenant_a["id"]), "sprzet", ["hostname", "owner"]
+        )
+
+    assert raport["wiersze"][0]["komorki"][1]["wartosc"] == "Jan Kowalski"

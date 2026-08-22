@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ raport.tytul }} - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ raport.tytul }}</h1>
+    <p class="muted">
+      Ta sama tresc idzie poczta — widok rozniacy sie od wysylki bylby gorszy
+      niz jego brak.
+    </p>
+  </div>
+  <div class="row-form">
+    {% if definicja %}
+    <form method="post" action="/raporty/definicje/{{ definicja.id }}/wyslij" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-primary">Wyslij teraz</button>
+    </form>
+    {% endif %}
+    <a class="btn" href="/raporty">Ustawienia</a>
+  </div>
+</div>
+
+<nav class="podzakladki">
+  {% for klucz, opis in rodzaje.items() %}
+    <a href="/raporty/widok/{{ klucz }}{% if definicja and definicja.rodzaj == klucz %}?raport_id={{ definicja.id }}{% endif %}"
+       class="{% if klucz == rodzaj %}is-active{% endif %}">{{ opis }}</a>
+  {% endfor %}
+</nav>
+
+{% if definicje %}
+<div class="row-form" style="margin-bottom:14px">
+  <div>
+    <label for="wybor_definicji">Ustawienia kolumn z raportu</label>
+    <select id="wybor_definicji" data-autonawigacja>
+      <option value="/raporty/widok/{{ rodzaj }}">— domyslne kolumny —</option>
+      {% for d in definicje %}
+        <option value="/raporty/widok/{{ d.rodzaj }}?raport_id={{ d.id }}"
+                {% if definicja and d.id == definicja.id %}selected{% endif %}>
+          {{ d.nazwa }} ({{ rodzaje.get(d.rodzaj, d.rodzaj) }})
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+{% endif %}
+
+<details class="panel wybor-kolumn" {% if not definicja %}open{% endif %}>
+  <summary>
+    <b>Kolumny tabeli</b>
+    <span class="muted small">— zaznaczone: {{ raport.kolumny | length }} z {{ grupy_kolumn.values() | map('length') | sum }}</span>
+  </summary>
+
+  {% if definicja %}
+  <form method="post" action="/raporty/definicje/{{ definicja.id }}/kolumny">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="kolumny-siatka">
+      {% for grupa, pozycje in grupy_kolumn.items() %}
+      <fieldset class="kolumny-grupa">
+        <legend>{{ grupa }}</legend>
+        {% for k in pozycje %}
+        <label class="kolumna-wybor">
+          <input type="checkbox" name="kolumny" value="{{ k.klucz }}"
+                 {% if k.klucz in wybrane_klucze %}checked{% endif %}>
+          <span>{{ k.etykieta }}</span>
+          {% if k.zrodlo == 'cve' %}
+            <span class="badge badge-warn" title="Wymaga zestawienia pakietow z kanalem podatnosci">wolne</span>
+          {% endif %}
+        </label>
+        {% endfor %}
+      </fieldset>
+      {% endfor %}
+    </div>
+    <p class="muted small">
+      Kolumny oznaczone jako <b>wolne</b> wymagaja zestawienia pakietow kazdej
+      maszyny z kanalem podatnosci. Liczymy je wylacznie wtedy, gdy sa
+      zaznaczone — przy duzej flocie roznica jest odczuwalna.
+    </p>
+    <button type="submit" class="btn btn-primary">Zapisz kolumny</button>
+  </form>
+  {% else %}
+  <p class="muted">
+    Wybor kolumn zapisuje sie przy konkretnym raporcie — dzieki temu to, co
+    widzisz tutaj, jest tym, co dostana adresaci. Wybierz raport powyzej albo
+    <a href="/raporty">utworz nowy</a>.
+  </p>
+  <div class="kolumny-siatka">
+    {% for grupa, pozycje in grupy_kolumn.items() %}
+    <fieldset class="kolumny-grupa">
+      <legend>{{ grupa }}</legend>
+      {% for k in pozycje %}
+      <label class="kolumna-wybor">
+        <input type="checkbox" disabled {% if k.klucz in wybrane_klucze %}checked{% endif %}>
+        <span>{{ k.etykieta }}</span>
+      </label>
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+  </div>
+  {% endif %}
+</details>
+
+<section class="panel raport-tresc">
+  {{ tresc | safe }}
+</section>
+{% endblock %}

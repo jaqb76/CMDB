@@ -236,17 +236,30 @@ BUDOWNICZOWIE = {
 }
 
 
-def zbuduj(db: Session, tenant: Tenant, rodzaj: str) -> dict:
-    """Dane raportu wraz z naglowkiem wspolnym dla wszystkich rodzajow."""
+def zbuduj(db: Session, tenant: Tenant, rodzaj: str, wybor_kolumn=None) -> dict:
+    """Dane raportu wraz z naglowkiem wspolnym dla wszystkich rodzajow.
+
+    Tabela szczegolowa jest wspolna dla wszystkich rodzajow - rozni je to,
+    co jest nad nia: kafelki i wykresy. Dzieki temu wybor kolumn dziala
+    wszedzie tak samo i nie trzeba go definiowac osobno dla kazdego raportu.
+    """
+    from . import kolumny as katalog
+
     budowniczy = BUDOWNICZOWIE.get(rodzaj)
     if budowniczy is None:
         raise ValueError(f"nieznany rodzaj raportu: {rodzaj}")
+
+    wybrane = katalog.wybrane(wybor_kolumn)
     return {
         "rodzaj": rodzaj,
         "tytul": RODZAJE[rodzaj],
         "firma": tenant.name,
         "wygenerowano": utcnow(),
         "dane": budowniczy(db, tenant.id),
+        "kolumny": wybrane,
+        "wiersze": katalog.tabela(
+            db, _maszyny(db, tenant.id), wybrane, _ostatni_raport, tenant.id
+        ),
     }
 
 
@@ -353,7 +366,7 @@ def wyslij_raport(db: Session, definicja) -> None:
         if not odbiorcy:
             raise poczta.BladPoczty("brak poprawnych adresow")
 
-        raport = zbuduj(db, tenant, definicja.rodzaj)
+        raport = zbuduj(db, tenant, definicja.rodzaj, definicja.kolumny)
         html, tekst = renderuj(raport)
         temat = f"[CMDB] {raport['tytul']} - {tenant.name}"
         poczta.wyslij(db, tenant.id, odbiorcy, temat, html, tekst)
