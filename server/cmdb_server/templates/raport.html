@@ -176,6 +176,71 @@
     {% endif %}
   {% endif %}
 
+  {# --- wykorzystanie zasobow --- #}
+  {% if raport.rodzaj == 'wykorzystanie' %}
+    {% macro dziesiatka(pozycje, tytul, podpis) %}
+      {% if pozycje %}
+      <h2 style="font-size:15px; margin:22px 0 6px">{{ tytul }}</h2>
+      <p style="margin:0 0 8px; font-size:11px; color:#6b7280">{{ podpis }}</p>
+      <table cellpadding="5" cellspacing="0" border="0" width="100%"
+             style="border-collapse:collapse; font-size:13px">
+        {% for p in pozycje %}
+        <tr>
+          <td style="border-bottom:1px solid #eef0f3; width:26%">{{ p.maszyna.hostname }}</td>
+          <td style="border-bottom:1px solid #eef0f3; width:16%" align="right">
+            <b style="color:{% if p.alarm %}#a52222{% elif p.uwaga %}#8a6100{% else %}#1c2024{% endif %}">
+              {{ p.wartosc }} {{ p.jednostka }}</b>
+          </td>
+          <td style="border-bottom:1px solid #eef0f3; color:#6b7280; font-size:12px">
+            {{ p.opis }}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    {% endmacro %}
+
+    <p style="margin:0 0 14px; font-size:13px; color:#6b7280">
+      Zbadano {{ d.zbadanych }} maszyn. Kazde zestawienie pokazuje najwyzej
+      dziesiec pozycji — lista, ktora nie miesci sie na ekranie, przestaje byc
+      lista rzeczy do zrobienia.
+    </p>
+
+    {{ dziesiatka(d.pamiec, 'Najwieksze zajecie pamieci',
+       'Stan w chwili raportu. Wyroznione powyzej ' ~ d.prog_uwagi ~ '%.') }}
+    {{ dziesiatka(d.dyski, 'Najpelniejsze dyski',
+       'Najbardziej zapelniony wolumen kazdej maszyny - nie srednia, bo pelny dysk systemowy i pusty dysk danych to nie jest polowa problemu.') }}
+    {{ dziesiatka(d.procesor, 'Najwieksze obciazenie procesora',
+       'Uwaga: obciazenie to tempo, a agent raportuje raz na kilka godzin. Na Linuksie jest to srednia z 15 minut, na Windows probka z chwili raportu.') }}
+    {{ dziesiatka(d.podatnosci, 'Najwiecej podatnosci do zrobienia',
+       'Podatnosci z dostepna poprawka - czyli te, na ktore mozna zareagowac.') }}
+    {{ dziesiatka(d.aktualizacje, 'Najwiecej brakujacych aktualizacji',
+       'Wedlug menedzera pakietow albo uslugi Windows Update.') }}
+    {{ dziesiatka(d.restarty, 'Najdluzej bez ponownego uruchomienia',
+       'Powyzej ' ~ d.dni_bez_restartu ~ ' dni. Czesc poprawek jadra i bibliotek zaczyna dzialac dopiero po restarcie.') }}
+    {{ dziesiatka(d.administratorzy, 'Najwiecej kont administratorow',
+       'Konta z uprawnieniami administratora lokalnego - im wiecej, tym szersza powierzchnia ataku.') }}
+
+    {% if d.bez_kontaktu %}
+    <h2 style="font-size:15px; margin:22px 0 6px">Bez kontaktu</h2>
+    <p style="margin:0 0 8px; font-size:11px; color:#6b7280">
+      Dla tych maszyn dane sa nieaktualne — zestawienia powyzej ich nie opisuja.
+    </p>
+    <table cellpadding="5" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      {% for p in d.bez_kontaktu %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3; width:26%">{{ p.maszyna.hostname }}</td>
+        <td style="border-bottom:1px solid #eef0f3" align="right">
+          <b style="color:#a52222">{{ p.wartosc }} {{ p.jednostka }}</b>
+        </td>
+        <td style="border-bottom:1px solid #eef0f3; color:#6b7280; font-size:12px">{{ p.opis }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  {% endif %}
+
   {% if raport.wiersze and raport.kolumny %}
   <h2 style="font-size:15px; margin:24px 0 8px">Maszyny ({{ raport.wiersze | length }})</h2>
   <table cellpadding="6" cellspacing="0" border="0" width="100%"

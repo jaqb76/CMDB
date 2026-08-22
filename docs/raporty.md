@@ -13,6 +13,33 @@ jest zbudowany wokół tego, że firmy się nie widzą.
 | **Podatności** | co wymaga łatania i jak pilnie |
 | **Inwentaryzacja sprzętu** | co w ogóle mamy i w jakim stanie |
 | **Gwarancje i wsparcie** | czemu kończy się wsparcie |
+| **Wykorzystanie zasobów** | od czego zacząć — pierwsza dziesiątka w każdej kategorii |
+
+### Wykorzystanie zasobów
+
+Siedem zestawień, każde po najwyżej dziesięć pozycji: zajęcie pamięci,
+najpełniejsze dyski, obciążenie procesora, podatności do zrobienia, brakujące
+aktualizacje, najdłużej bez restartu i najwięcej kont administratorów. Osobno
+maszyny bez kontaktu — dla nich dane są nieaktualne, więc pozostałe zestawienia
+ich nie opisują.
+
+Dziesięć pozycji to świadomy limit: lista, która nie mieści się na ekranie,
+przestaje być listą rzeczy do zrobienia.
+
+**Stan kontra tempo.** Zajętość pamięci i dysku to *stan* — pomiar z dowolnej
+chwili jest o nich prawdziwy. Obciążenie procesora to *tempo*, a agent
+raportuje raz na kilka godzin. Dlatego na Linuksie bierzemy **średnią z 15
+minut** z `/proc/loadavg`, znormalizowaną przez liczbę rdzeni; na Windows
+— trzy próbki licznika wydajności. Każda pozycja mówi, na czym się opiera,
+bo w jednej kolumnie średnia i próbka wyglądają tak samo.
+
+Licznik na Windows czytamy przez CIM, a nie przez `Get-Counter` ze ścieżką
+opisaną po angielsku: **nazwy liczników wydajności są tłumaczone**, więc
+angielska ścieżka zawodzi na każdym systemie w innym języku.
+
+Dysk pokazujemy jako **najbardziej zapełniony wolumen**, a nie średnią —
+maszyna z pełnym dyskiem systemowym i pustym dyskiem danych ma problem,
+którego średnia nie widzi.
 
 Każdy ma podgląd w panelu (`/raporty/podgląd/<rodzaj>`) — ta sama treść, która
 pójdzie pocztą. Podgląd różniący się od wysyłki byłby gorszy niż jego brak.

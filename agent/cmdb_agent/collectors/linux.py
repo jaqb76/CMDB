@@ -164,6 +164,7 @@ class LinuxCollector(BaseCollector):
             ("hardware.firmware", self.collect_firmware),
             ("hardware.cpu", self.collect_cpu),
             ("hardware.memory", self.collect_memory),
+            ("hardware.load", self.collect_load),
             ("hardware.storage", self.collect_storage),
             ("os", self.collect_os),
             ("network.interfaces", self.collect_network),
@@ -313,6 +314,36 @@ class LinuxCollector(BaseCollector):
             "total_bytes": total * 1024 if total else None,
             "available_bytes": available * 1024 if available else None,
             "modules": [],
+        }
+
+    def collect_load(self) -> dict:
+        """Obciazenie procesora.
+
+        Bierzemy srednie z /proc/loadavg, a nie chwilowy odczyt. To istotne:
+        agent raportuje raz na kilka godzin, wiec pojedynczy pomiar mowilby
+        wylacznie o tej jednej sekundzie i do zestawien bylby bezuzyteczny.
+        Srednia z pietnastu minut jest juz uogolnieniem.
+
+        Dzielimy przez liczbe rdzeni, zeby wartosci dalo sie porownywac miedzy
+        maszynami: obciazenie 4 na czterordzeniowej maszynie znaczy co innego
+        niz na dwudziestoczterordzeniowej.
+        """
+        czlony = read_text("/proc/loadavg").split()
+        if len(czlony) < 3:
+            return {}
+        try:
+            minuta, piec, pietnascie = (float(c) for c in czlony[:3])
+        except ValueError:
+            return {}
+
+        rdzenie = os.cpu_count() or 1
+        return {
+            "load_1": minuta,
+            "load_5": piec,
+            "load_15": pietnascie,
+            "cores": rdzenie,
+            "percent": round(min(pietnascie / rdzenie * 100, 999), 1),
+            "source": "loadavg-15min",
         }
 
     def collect_storage(self) -> dict:

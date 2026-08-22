@@ -30,6 +30,7 @@ RODZAJE = {
     "podatnosci": "Podatnosci",
     "sprzet": "Inwentaryzacja sprzetu",
     "gwarancje": "Gwarancje i wsparcie",
+    "wykorzystanie": "Wykorzystanie zasobow",
 }
 
 CZESTOTLIWOSCI = {
@@ -229,10 +230,18 @@ def dane_podatnosci(db: Session, tenant_id: str) -> dict:
     }
 
 
+def dane_wykorzystanie(db: Session, tenant_id: str) -> dict:
+    """Zestawienia "pierwsza dziesiatka" - od czego zaczac."""
+    from . import zestawienia
+
+    return zestawienia.zbierz(db, _maszyny(db, tenant_id), _ostatni_raport)
+
+
 BUDOWNICZOWIE = {
     "podatnosci": dane_podatnosci,
     "sprzet": dane_sprzet,
     "gwarancje": dane_gwarancje,
+    "wykorzystanie": dane_wykorzystanie,
 }
 
 
@@ -342,6 +351,27 @@ def wersja_tekstowa(raport: dict) -> str:
             f"  {m.hostname} ({m.model or 'brak modelu'}): {m.warranty_until}"
             for m in d["koncza_sie"]
         ] or ["  brak"]
+
+    elif raport["rodzaj"] == "wykorzystanie":
+        linie += [f"Zbadanych maszyn: {d['zbadanych']}", ""]
+        for klucz, tytul in (
+            ("pamiec", "Najwieksze zajecie pamieci"),
+            ("dyski", "Najpelniejsze dyski"),
+            ("procesor", "Najwieksze obciazenie procesora"),
+            ("podatnosci", "Najwiecej podatnosci do zrobienia"),
+            ("aktualizacje", "Najwiecej brakujacych aktualizacji"),
+            ("restarty", "Najdluzej bez ponownego uruchomienia"),
+            ("administratorzy", "Najwiecej kont administratorow"),
+        ):
+            pozycje = d.get(klucz) or []
+            if not pozycje:
+                continue
+            linie.append(f"{tytul}:")
+            linie += [
+                f"  {p['maszyna'].hostname}: {p['wartosc']} {p['jednostka']}"
+                for p in pozycje
+            ]
+            linie.append("")
 
     linie += ["", "Raport wygenerowany automatycznie przez CMDB."]
     return "\n".join(linie)

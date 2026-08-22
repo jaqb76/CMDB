@@ -502,3 +502,164 @@ def test_kolumna_opiekuna_pokazuje_imie_i_nazwisko(client, tenant_a):
         )
 
     assert raport["wiersze"][0]["komorki"][1]["wartosc"] == "Jan Kowalski"
+
+
+# --- zestawienia "pierwsza dziesiatka" --------------------------------------
+
+def _raport_z_zasobami(hostname, *, pamiec=None, dysk=None, obciazenie=None,
+                       admini=None, uptime=None, aktualizacje=None):
+    """Raport agenta z wybranymi sekcjami zasobow."""
+    raport = build_report(machine_id=f"maszyna-{hostname.lower()}", hostname=hostname)
+    sprzet = raport.setdefault("hardware", {})
+    if pamiec:
+        calosc, dostepna = pamiec
+        sprzet["memory"] = {"total_bytes": calosc, "available_bytes": dostepna}
+    if dysk is not None:
+        sprzet["storage"] = {"logical_disks": dysk}
+    if obciazenie is not None:
+        sprzet["load"] = obciazenie
+    if admini is not None:
+        raport.setdefault("users", {})["administrators"] = admini
+    if uptime is not None:
+        raport.setdefault("os", {})["uptime_seconds"] = uptime
+    if aktualizacje is not None:
+        raport.setdefault("software", {})["updates_pending"] = aktualizacje
+    return raport
+
+
+def _wyslij_raport_agenta(client, tenant, raport):
+    token = enroll(client, tenant["token"], machine_id=raport["machine_id"],
+                   hostname=raport["identity"]["hostname"]).json()["agent_token"]
+    odpowiedz = client.post(
+        "/api/v1/inventory", headers={"Authorization": f"Bearer {token}"}, json=raport
+    )
+    assert odpowiedz.status_code == 200, odpowiedz.text
+
+
+def _wykorzystanie(tenant_id):
+    with SessionLocal() as db:
+        return raporty.zbuduj(db, db.get(Tenant, tenant_id), "wykorzystanie")["dane"]
+
+
+def test_zajecie_pamieci_liczone_z_dostepnej(client, tenant_a):
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "PAMIEC", pamiec=(8_000_000_000, 2_000_000_000)))
+
+    pozycja = _wykorzystanie(tenant_a["id"])["pamiec"][0]
+    assert pozycja["wartosc"] == 75.0
+    assert "wolne" in pozycja["opis"]
+
+
+def test_brany_jest_najpelniejszy_wolumen_a_nie_srednia(client, tenant_a):
+    """Maszyna z zapelnionym dyskiem systemowym i pustym dyskiem danych ma
+    problem, ktorego srednia nie widzi."""
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami("DYSKI", dysk=[
+        {"mount": "C:", "used_percent": 95.0, "free_bytes": 5_000_000_000,
+         "size_bytes": 100_000_000_000},
+        {"mount": "D:", "used_percent": 5.0, "free_bytes": 950_000_000_000,
+         "size_bytes": 1_000_000_000_000},
+    ]))
+
+    pozycja = _wykorzystanie(tenant_a["id"])["dyski"][0]
+    assert pozycja["wartosc"] == 95.0
+    assert "C:" in pozycja["opis"]
+
+
+def test_wartosci_powyzej_progu_sa_wyroznione(client, tenant_a):
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "ALARM", pamiec=(10_000_000_000, 500_000_000)))
+
+    pozycja = _wykorzystanie(tenant_a["id"])["pamiec"][0]
+    assert pozycja["wartosc"] == 95.0
+    assert pozycja["alarm"] is True
+
+
+def test_zestawienie_jest_uszeregowane_i_ograniczone(client, tenant_a):
+    """Dziesiec pozycji to swiadomy limit - dluzsza lista przestaje byc lista
+    rzeczy do zrobienia."""
+    from cmdb_server.services import zestawienia
+
+    for numer in range(13):
+        _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+            f"SRV{numer:02d}",
+            pamiec=(100_000_000_000, (100 - numer * 5) * 1_000_000_000),
+        ))
+
+    lista = _wykorzystanie(tenant_a["id"])["pamiec"]
+    assert len(lista) == zestawienia.ILE
+    wartosci = [p["wartosc"] for p in lista]
+    assert wartosci == sorted(wartosci, reverse=True), "lista musi byc uszeregowana"
+
+
+def test_obciazenie_opisuje_swoje_zrodlo(client, tenant_a):
+    """Srednia z 15 minut i trzysekundowa probka to dwie rozne rzeczy,
+    a w jednej kolumnie wygladaja tak samo."""
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "LINUX", obciazenie={"percent": 82.0, "load_15": 3.3, "cores": 4,
+                             "source": "loadavg-15min"}))
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "WINDOWS", obciazenie={"percent": 91.0, "samples": 3, "source": "licznik-3s"}))
+
+    opisy = {p["maszyna"].hostname: p["opis"] for p in _wykorzystanie(tenant_a["id"])["procesor"]}
+    assert "15 min" in opisy["LINUX"]
+    assert "probka" in opisy["WINDOWS"]
+
+
+def test_maszyna_bez_danych_o_zasobach_nie_trafia_na_liste(client, tenant_a):
+    """Brak pomiaru to nie to samo co zerowe wykorzystanie."""
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami("BEZDANYCH"))
+
+    dane = _wykorzystanie(tenant_a["id"])
+    assert dane["procesor"] == [], "brak pomiaru to nie to samo co zerowe obciazenie"
+    assert dane["restarty"] == []
+    assert dane["administratorzy"] == []
+
+
+def test_dlugi_czas_pracy_jest_zglaszany(client, tenant_a):
+    """Czesc poprawek jadra zaczyna dzialac dopiero po restarcie."""
+    from cmdb_server.services import zestawienia
+
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "DLUGO", uptime=(zestawienia.DNI_BEZ_RESTARTU + 40) * 86400))
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami("SWIEZO", uptime=3 * 86400))
+
+    nazwy = [p["maszyna"].hostname for p in _wykorzystanie(tenant_a["id"])["restarty"]]
+    assert nazwy == ["DLUGO"]
+
+
+def test_liczba_administratorow_jest_zglaszana(client, tenant_a):
+    """Im wiecej kont z uprawnieniami, tym szersza powierzchnia ataku."""
+    def konto(nazwa):
+        return {"name": nazwa, "type": "uzytkownik", "source": "lokalne"}
+
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "WIELUADM",
+        admini=[konto(n) for n in ("Administrator", "jan", "anna", "serwis", "backup")]))
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "MALOADM", admini=[konto("Administrator")]))
+
+    nazwy = [p["maszyna"].hostname for p in _wykorzystanie(tenant_a["id"])["administratorzy"]]
+    assert nazwy == ["WIELUADM"]
+
+
+def test_zestawienia_widza_tylko_swoja_firme(client, tenant_a, tenant_b):
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "MOJA", pamiec=(8_000_000_000, 1_000_000_000)))
+    _wyslij_raport_agenta(client, tenant_b, _raport_z_zasobami(
+        "OBCA", pamiec=(8_000_000_000, 100_000_000)))
+
+    nazwy = [p["maszyna"].hostname for p in _wykorzystanie(tenant_a["id"])["pamiec"]]
+    assert nazwy == ["MOJA"]
+
+
+def test_raport_wykorzystania_ma_obie_wersje_tresci(client, tenant_a):
+    _wyslij_raport_agenta(client, tenant_a, _raport_z_zasobami(
+        "TRESC", pamiec=(8_000_000_000, 1_000_000_000)))
+
+    with SessionLocal() as db:
+        html, tekst = raporty.renderuj(
+            raporty.zbuduj(db, db.get(Tenant, tenant_a["id"]), "wykorzystanie")
+        )
+    assert "Najwieksze zajecie pamieci" in html
+    assert "Najwieksze zajecie pamieci" in tekst
+    assert "<" not in tekst

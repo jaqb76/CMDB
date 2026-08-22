@@ -234,6 +234,7 @@ class WindowsCollector(BaseCollector):
             ("hardware.firmware", self.collect_firmware),
             ("hardware.cpu", self.collect_cpu),
             ("hardware.memory", self.collect_memory),
+            ("hardware.load", self.collect_load),
             ("hardware.storage", self.collect_storage),
             ("hardware.gpus", self.collect_gpus),
             ("os", self.collect_os),
@@ -347,7 +348,58 @@ class WindowsCollector(BaseCollector):
         total = to_int(self._base().get("total_memory"))
         if total is None and modules:
             total = sum(m["capacity_bytes"] or 0 for m in modules) or None
-        return {"total_bytes": total, "modules": self.limit(modules)}
+        # Pamiec dostepna byla dotad wylacznie w sekcji systemu, przez co
+        # wyliczenie zajetosci wymagalo siegania w dwa rozne miejsca zaleznie
+        # od systemu. Podajemy ja tam, gdzie jej szukac naturalnie.
+        # Win32_OperatingSystem podaje wolna pamiec w KILOBAJTACH - bez
+        # przeliczenia zajetosc wychodzilaby bliska stu procent na kazdej
+        # maszynie, co wygladaloby na awarie, a bylo by bledem jednostki.
+        wolne_kb = to_int(self._base().get("os_free_mem"))
+        dostepna = wolne_kb * 1024 if wolne_kb else None
+        return {
+            "total_bytes": total,
+            "available_bytes": dostepna,
+            "modules": self.limit(modules),
+        }
+
+    def collect_load(self) -> dict:
+        """Obciazenie procesora w chwili raportu.
+
+        Windows nie prowadzi odpowiednika sredniej obciazenia z Linuksa, wiec
+        bierzemy trzy probki licznika wydajnosci. Jeden odczyt bywa
+        przypadkowy, a dluzsze mierzenie opoznialoby kazdy raport.
+
+        Czytamy licznik przez CIM, a nie przez Get-Counter ze sciezka
+        opisana po angielsku. Nazwy licznikow wydajnosci sa TLUMACZONE,
+        wiec angielska sciezka zawodzi na kazdym systemie
+        w innym jezyku - na polskim Windows za kazdym razem.
+
+        To nadal chwila, a nie srednia - i tak jest opisana w polu "source",
+        zeby zestawienia nie sugerowaly wiecej, niz wiadomo.
+        """
+        wynik = run_powershell(
+            """
+            $wartosci = @();
+            foreach ($i in 1..3) {
+              $p = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor `
+                     -Filter "Name='_Total'" -ErrorAction SilentlyContinue;
+              if ($p) { $wartosci += [double]$p.PercentProcessorTime };
+              if ($i -lt 3) { Start-Sleep -Seconds 1 }
+            };
+            @{ probki = $wartosci } | ConvertTo-Json -Depth 3 -Compress
+            """,
+            timeout=90,
+        )
+        probki = [p for p in (wynik or {}).get("probki", []) if isinstance(p, (int, float))]
+        if not probki:
+            return {}
+        return {
+            "percent": round(sum(probki) / len(probki), 1),
+            "samples": len(probki),
+            # Licznik zwraca juz procent calego procesora, wiec nie ma czego
+            # dzielic przez rdzenie - inaczej niz przy sredniej z Linuksa.
+            "source": "licznik-3s",
+        }
 
     def collect_storage(self) -> dict:
         result = run_powershell(
