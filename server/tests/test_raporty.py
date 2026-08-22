@@ -663,3 +663,60 @@ def test_raport_wykorzystania_ma_obie_wersje_tresci(client, tenant_a):
     assert "Najwieksze zajecie pamieci" in html
     assert "Najwieksze zajecie pamieci" in tekst
     assert "<" not in tekst
+
+
+# --- wybor kolumn w widoku --------------------------------------------------
+
+def test_kolumny_z_adresu_dzialaja_bez_zapisanego_raportu(client, tenant_a, make_user):
+    """Pola wyboru byly wylaczone, dopoki nie wskazano raportu - a to wlasnie
+    wtedy uzytkownik pierwszy raz probuje czegos zaznaczyc."""
+    _maszyna(client, tenant_a, "SRV-ADRES", "maszyna-adres-001")
+    make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
+    _login(client, "raporty@firma.pl", HASLO)
+
+    strona = client.get("/raporty/widok/sprzet?kolumny=hostname&kolumny=serial_number").text
+    assert "Numer seryjny" in strona
+    assert "disabled" not in strona, "pola wyboru maja byc aktywne zawsze"
+
+
+def test_wybor_z_adresu_ma_pierwszenstwo_przed_zapisem(client, tenant_a, make_user):
+    """Zapis przy definicji jest wartoscia wyjsciowa, a nie ograniczeniem -
+    inaczej nie dalo by sie niczego podejrzec bez zmieniania raportu."""
+    identyfikator = _definicja(tenant_a["id"])
+    with SessionLocal() as db:
+        db.get(DefinicjaRaportu, identyfikator).kolumny = ["hostname"]
+        db.commit()
+
+    _maszyna(client, tenant_a, "SRV-PIERW", "maszyna-pierw-001")
+    make_user(tenant_a["id"], "raporty@firma.pl", HASLO)
+    _login(client, "raporty@firma.pl", HASLO)
+
+    strona = client.get(
+        f"/raporty/widok/sprzet?raport_id={identyfikator}&kolumny=hostname&kolumny=vendor"
+    ).text
+    assert "Dostawca" in strona
+
+    # Zapis pozostal nietkniety - podglad niczego nie zmienil.
+    with SessionLocal() as db:
+        assert db.get(DefinicjaRaportu, identyfikator).kolumny == ["hostname"]
+
+
+def test_pola_wyboru_nie_sa_rozciagane_na_cala_szerokosc():
+    """Globalna regula ustawiala szerokosc kazdego pola na 100%, przez co
+    checkbox odpychal etykiete na drugi koniec wiersza."""
+    from pathlib import Path
+
+    styl = (Path(__file__).resolve().parent.parent
+            / "cmdb_server" / "static" / "app.css").read_text(encoding="utf-8")
+    assert 'input[type="checkbox"]' in styl
+    fragment = styl.split('input[type="checkbox"]')[1].split("}")[0]
+    assert "width: auto" in fragment
+
+
+def test_kolumny_ukladaja_sie_w_trzy_kolumny():
+    from pathlib import Path
+
+    styl = (Path(__file__).resolve().parent.parent
+            / "cmdb_server" / "static" / "app.css").read_text(encoding="utf-8")
+    fragment = styl.split(".kolumny-siatka {")[1].split("}")[0]
+    assert "repeat(3," in fragment

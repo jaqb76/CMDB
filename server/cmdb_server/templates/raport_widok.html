@@ -48,12 +48,17 @@
 <details class="panel wybor-kolumn" {% if not definicja %}open{% endif %}>
   <summary>
     <b>Kolumny tabeli</b>
-    <span class="muted small">— zaznaczone: {{ raport.kolumny | length }} z {{ grupy_kolumn.values() | map('length') | sum }}</span>
+    <span class="muted small">— zaznaczone: {{ raport.kolumny | length }}</span>
   </summary>
 
-  {% if definicja %}
-  <form method="post" action="/raporty/definicje/{{ definicja.id }}/kolumny">
+  {# Jeden formularz, dwa zachowania: przycisk "Pokaz" wysyla go metoda GET
+     i zmienia wylacznie to, co widac, a "Zapisz w raporcie" - metoda POST,
+     wiec wybor obowiazuje takze wysylke poczta. Przyciski roznia sie
+     atrybutami formaction i formmethod. #}
+  <form method="get" action="/raporty/widok/{{ rodzaj }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if definicja %}<input type="hidden" name="raport_id" value="{{ definicja.id }}">{% endif %}
+
     <div class="kolumny-siatka">
       {% for grupa, pozycje in grupy_kolumn.items() %}
       <fieldset class="kolumny-grupa">
@@ -64,40 +69,39 @@
                  {% if k.klucz in wybrane_klucze %}checked{% endif %}>
           <span>{{ k.etykieta }}</span>
           {% if k.zrodlo == 'cve' %}
-            <span class="badge badge-warn" title="Wymaga zestawienia pakietow z kanalem podatnosci">wolne</span>
+            <span class="badge badge-warn"
+                  title="Wymaga zestawienia pakietow z kanalem podatnosci">wolne</span>
           {% endif %}
         </label>
         {% endfor %}
       </fieldset>
       {% endfor %}
     </div>
+
+    <div class="row-form">
+      <div><button type="submit" class="btn btn-primary">Pokaz</button></div>
+      {% if definicja %}
+      <div>
+        <button type="submit" class="btn"
+                formmethod="post"
+                formaction="/raporty/definicje/{{ definicja.id }}/kolumny">
+          Zapisz w raporcie „{{ definicja.nazwa }}”
+        </button>
+      </div>
+      {% endif %}
+      <div><a class="btn btn-ghost" href="/raporty/widok/{{ rodzaj }}">Domyslne</a></div>
+    </div>
+
     <p class="muted small">
       Kolumny oznaczone jako <b>wolne</b> wymagaja zestawienia pakietow kazdej
-      maszyny z kanalem podatnosci. Liczymy je wylacznie wtedy, gdy sa
-      zaznaczone — przy duzej flocie roznica jest odczuwalna.
+      maszyny z kanalem podatnosci — liczymy je wylacznie wtedy, gdy sa
+      zaznaczone.
+      {% if not definicja %}
+        Wybor dziala na tym widoku; zeby obowiazywal takze wysylke poczta,
+        otworz raport z listy w <a href="/raporty">ustawieniach</a>.
+      {% endif %}
     </p>
-    <button type="submit" class="btn btn-primary">Zapisz kolumny</button>
   </form>
-  {% else %}
-  <p class="muted">
-    Wybor kolumn zapisuje sie przy konkretnym raporcie — dzieki temu to, co
-    widzisz tutaj, jest tym, co dostana adresaci. Wybierz raport powyzej albo
-    <a href="/raporty">utworz nowy</a>.
-  </p>
-  <div class="kolumny-siatka">
-    {% for grupa, pozycje in grupy_kolumn.items() %}
-    <fieldset class="kolumny-grupa">
-      <legend>{{ grupa }}</legend>
-      {% for k in pozycje %}
-      <label class="kolumna-wybor">
-        <input type="checkbox" disabled {% if k.klucz in wybrane_klucze %}checked{% endif %}>
-        <span>{{ k.etykieta }}</span>
-      </label>
-      {% endfor %}
-    </fieldset>
-    {% endfor %}
-  </div>
-  {% endif %}
 </details>
 
 <section class="panel raport-tresc">

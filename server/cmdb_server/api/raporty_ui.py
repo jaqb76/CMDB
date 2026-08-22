@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import urllib.parse
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -326,6 +326,7 @@ def widok_raportu(
     request: Request,
     rodzaj: str,
     raport_id: str = "",
+    kolumny: list[str] = Query(default=[]),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -333,8 +334,11 @@ def widok_raportu(
     """Pelny raport na stronie, wraz z wyborem kolumn.
 
     Ta sama tresc idzie potem poczta - widok rozniacy sie od wysylki bylby
-    gorszy niz jego brak. Wybor kolumn zapisuje sie przy definicji, wiec to,
-    co widac tutaj, jest tym, co dostana adresaci.
+    gorszy niz jego brak.
+
+    Kolumny mozna zmieniac zawsze, takze bez wskazanego raportu: wybor
+    z adresu dziala od razu na tym, co widac. Zapisanie go przy definicji
+    jest osobnym krokiem - dopiero wtedy obowiazuje takze wysylke.
     """
     from ..services import kolumny as katalog
 
@@ -342,7 +346,9 @@ def widok_raportu(
         raise HTTPException(status_code=404, detail="nieznany rodzaj raportu")
 
     definicja = _definicja(db, ctx, raport_id) if raport_id else None
-    wybor = definicja.kolumny if definicja else None
+    # Wybor z adresu ma pierwszenstwo - to on jest tym, co uzytkownik wlasnie
+    # kliknal. Zapis przy definicji sluzy za wartosc wyjsciowa.
+    wybor = list(kolumny) if kolumny else (definicja.kolumny if definicja else None)
 
     tenant = db.get(Tenant, ctx.tenant_id)
     raport = raporty.zbuduj(db, tenant, rodzaj, wybor)

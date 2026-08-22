@@ -126,6 +126,11 @@ input, select, textarea {
   font: inherit; color: var(--text); background: var(--bg);
   border: 1px solid var(--border); border-radius: 5px; padding: 7px 9px; width: 100%;
 }
+/* Pola wyboru nie sa polami tekstowymi: rozciagniete na cala szerokosc
+   odpychaly etykiete na drugi koniec wiersza. */
+input[type="checkbox"], input[type="radio"] {
+  width: auto; padding: 0; margin: 0; flex: none;
+}
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; font-weight: 600; }
 .stack label:first-child { margin-top: 0; }
@@ -275,14 +280,33 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 .wybor-kolumn summary { cursor: pointer; padding: 4px 0; user-select: none; }
 .wybor-kolumn summary::marker { color: var(--muted); }
 
+/* Trzy grupy w rzedzie - przy wiekszej liczbie kolumn pionowa lista
+   ciagnela sie przez kilka ekranow. */
 .kolumny-siatka {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 14px; margin: 14px 0;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px; margin: 14px 0;
 }
-.kolumny-grupa { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
-.kolumny-grupa legend { color: var(--muted); font-size: 12px; padding: 0 5px; }
-.kolumna-wybor { display: flex; align-items: center; gap: 7px; padding: 3px 0; font-size: 13px; }
-.kolumna-wybor input { margin: 0; }
+@media (max-width: 1000px) { .kolumny-siatka { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .kolumny-siatka { grid-template-columns: 1fr; } }
+
+.kolumny-grupa {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 12px 10px; margin: 0;
+}
+.kolumny-grupa legend {
+  color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; padding: 0 4px; font-weight: 600;
+}
+
+/* Etykieta obok pola, nie pod nim - globalna regula ustawia label na blok. */
+.kolumna-wybor {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; font-size: 13px; font-weight: 400;
+  color: var(--text); text-transform: none; letter-spacing: normal;
+  margin: 0; cursor: pointer;
+}
+.kolumna-wybor:hover { color: var(--accent); }
+.kolumna-wybor .badge { margin-left: auto; font-size: 10px; }
 
 /* Tresc raportu ma wpisane style pod klienty poczty - w panelu wystarczy
    zapewnic jej przewijanie w poziomie, gdy kolumn jest duzo. */
