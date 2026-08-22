@@ -382,3 +382,81 @@ zainstalowanego pliku zerwałaby te powiązania po pierwszej aktualizacji.
 
 Katalog `dist/` jest w `.gitignore` — historia leży na maszynie budującej,
 a wydania rozsyłane agentom trzyma magazyn wersji na serwerze.
+
+## Dwa pliki: agent i ikona w zasobniku
+
+| Plik | Co robi | Kto go uruchamia | Rozmiar |
+|---|---|---|---|
+| `cmdb-agent.exe` | zbiera dane i wysyła raport | zadanie harmonogramu jako SYSTEM | 7,8 MB |
+| `cmdb-agent-tray.exe` | ikona ze statusem, zmiana adresu/tokenu, wymuszenie synchronizacji | zalogowany użytkownik | 29 MB |
+
+Różnica rozmiaru bierze się stąd, że ikona potrzebuje `tkinter`, `pystray`
+i `Pillow`. Agent jest budowany **bez** nich celowo — chodzi jako SYSTEM,
+nigdy nie rysuje okien, a mniejszy plik to mniejsza powierzchnia ataku
+i szybsza aktualizacja.
+
+Ikona nie sięga po poświadczenie agenta — czyta wyłącznie plik statusu
+(`ProgramData\CMDB\public\status.json`), który nie zawiera sekretów.
+
+### Do magazynu wersji wgrywa się tylko agenta
+
+Magazyn trzyma **jeden plik na wydanie** i to jego rozsyła mechanizm
+samoaktualizacji. Wgrywa się więc `cmdb-agent.exe` — to on musi być aktualny,
+bo to on zbiera dane.
+
+Ikona trafia na maszynę **tylko przy instalacji**: instalator kopiuje ją, jeśli
+leży obok agenta w tym samym katalogu. Dlatego przy budowaniu warto zachować
+oba pliki, nawet jeśli wgrywasz jeden.
+
+**Konsekwencja, o której trzeba wiedzieć:** samoaktualizacja podmienia
+wyłącznie `cmdb-agent.exe`. Po kilku aktualizacjach maszyna ma nowego agenta
+i ikonę w wersji z dnia instalacji. Działa to dalej, bo format pliku statusu
+jest stabilny, ale wersje się rozjeżdżają. Żeby wyrównać, trzeba uruchomić
+instalator ponownie — albo używać agenta bez ikony (`-NoTray`).
+
+## Podpisywanie
+
+Niepodpisany plik wywołuje ostrzeżenie SmartScreen przy pierwszym uruchomieniu,
+a część systemów EDR potrafi go zablokować. Skrypt budujący przyjmuje gotowy
+certyfikat:
+
+```powershell
+.uild-agent.ps1 -SignCertThumbprint 1A2B3C... -Installer
+```
+
+Podpis jest znakowany czasem (domyślnie serwerem DigiCert), więc pozostaje
+ważny także po wygaśnięciu certyfikatu.
+
+### Skąd wziąć certyfikat
+
+| Wariant | Koszt | Co daje |
+|---|---|---|
+| **Azure Trusted Signing** | ~10 USD/mies. | podpis zaufany publicznie, bez własnego tokenu sprzętowego |
+| **Certyfikat OV** | ~200–400 USD/rok | zaufanie publiczne; reputacja SmartScreen buduje się stopniowo |
+| **Certyfikat EV** | ~400–700 USD/rok | reputacja SmartScreen od razu, bez okresu docierania |
+| **Własne PKI / self-signed** | 0 | działa **tylko** na maszynach, które ufają temu wystawcy |
+
+Od czerwca 2023 klucz prywatny certyfikatu publicznie zaufanego musi leżeć na
+sprzęcie spełniającym FIPS 140-2 Level 2 (token USB albo HSM w chmurze) —
+plik `.pfx` na dysku już nie wystarczy. Azure Trusted Signing rozwiązuje to
+za nas, bo klucz zostaje po stronie usługi; wymaga natomiast zweryfikowania
+organizacji, a dla zaufania publicznego również udokumentowanego stażu firmy.
+
+### Wariant wewnętrzny, bez kosztów
+
+Dla floty w jednej organizacji wystarczy własny certyfikat rozgłoszony przez
+GPO do magazynu **Zaufani wydawcy**. SmartScreen nadal ostrzeże przy pobraniu
+z internetu, ale AppLocker, WDAC i większość systemów EDR przestaną blokować:
+
+```powershell
+# raz, na maszynie budującej
+$c = New-SelfSignedCertificate -Type CodeSigningCert `
+     -Subject "CN=CMDB Agent, O=Twoja Firma" `
+     -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(5)
+$c.Thumbprint
+Export-Certificate -Cert $c -FilePath cmdb-agent-ca.cer   # to rozgłaszasz przez GPO
+```
+
+Przy agencie pobieranym z **własnego serwera po HTTPS, ze sprawdzeniem
+SHA-256**, podpis nie jest jedynym zabezpieczeniem — jest nim także to, że
+plik pochodzi z uwierzytelnionego źródła i zgadza się co do bajtu.

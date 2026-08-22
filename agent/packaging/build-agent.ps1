@@ -145,7 +145,10 @@ if ($SignCertThumbprint) {
     $artifacts | ForEach-Object { Invoke-Sign $_ }
 }
 else {
-    Write-Warning "Pliki nie zostaly podpisane - bez podpisu SmartScreen i czesc systemow EDR beda blokowac agenta."
+    Write-Warning "Pliki nie zostaly podpisane."
+    Write-Host "  SmartScreen ostrzeze przy pierwszym uruchomieniu, a czesc systemow EDR moze plik zablokowac." -ForegroundColor DarkYellow
+    Write-Host "  Podpisywanie: .uild-agent.ps1 -SignCertThumbprint <odcisk>" -ForegroundColor DarkYellow
+    Write-Host "  Skad wziac certyfikat: docs/agent-windows.md, sekcja Podpisywanie" -ForegroundColor DarkYellow
 }
 
 # --- instalator graficzny ---------------------------------------------------
