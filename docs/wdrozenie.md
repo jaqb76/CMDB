@@ -271,3 +271,25 @@ takie żądanie, ale dopiero po odebraniu go w całości.
 Odpowiednikiem po stronie aplikacji są `CMDB_MAX_REPORT_BYTES` (8 MB) oraz
 `CMDB_MAX_RELEASE_BYTES` (128 MB). Jeśli podnosisz jeden, podnieś i drugi —
 niższy z nich decyduje.
+
+### Zmiana konfiguracji nginx wymaga przeładowania
+
+Plik `nginx/cmdb.conf` jest podmontowany jako wolumen, więc zmiana na dysku
+jest widoczna w kontenerze natychmiast — ale **nginx trzyma konfigurację
+w pamięci**. `docker compose up -d --build` przebudowuje obraz serwera
+i odtwarza jego kontener; kontener `proxy` pozostaje nietknięty, bo nic się
+w nim nie zmieniło.
+
+```bash
+docker compose exec proxy nginx -t          # najpierw sprawdź składnię
+docker compose exec proxy nginx -s reload   # potem przeładuj, bez przerwy w działaniu
+```
+
+Gdy chcesz mieć pewność, że kontener widzi nową treść:
+
+```bash
+docker compose exec proxy grep -A2 "location /admin/releases" /etc/nginx/conf.d/default.conf
+```
+
+Pusty wynik oznacza, że na serwerze nie ma jeszcze aktualnego repozytorium —
+wtedy najpierw `git pull`.
