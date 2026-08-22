@@ -188,6 +188,23 @@ def cmd_odtworz_zmiany(args: argparse.Namespace) -> None:
         print(f"odtworzono {lacznie} zmian")
 
 
+def cmd_odblokuj(args: argparse.Namespace) -> None:
+    """Zdejmuje blokade logowania z konta.
+
+    Blokada konta ma nieprzyjemna wlasciwosc: kto zna adres administratora,
+    moze go zablokowac trzema bledymi haslami. Bez tego polecenia zostawaloby
+    czekanie do konca blokady.
+    """
+    from .services import logowanie
+
+    if not (args.email or args.ip or args.wszystko):
+        raise SystemExit("podaj --email, --ip albo --wszystko")
+
+    with session_scope() as db:
+        ile = logowanie.odblokuj(db, args.email, args.ip, args.wszystko)
+    print(f"zdjeto blokad: {ile}" if ile else "nie bylo czego zdejmowac")
+
+
 def cmd_demo_secret(_args: argparse.Namespace) -> None:
     print(secrets.token_urlsafe(48))
 
@@ -227,6 +244,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--phone")
     p.add_argument("--department")
     p.set_defaults(func=cmd_owner_add)
+
+    p = sub.add_parser("odblokuj", help="zdejmuje blokade logowania")
+    p.add_argument("--email", help="konto do odblokowania")
+    p.add_argument("--ip", help="adres, z ktorego przychodzily proby")
+    p.add_argument("--wszystko", action="store_true", help="zdejmij wszystkie blokady")
+    p.set_defaults(func=cmd_odblokuj)
 
     sub.add_parser("gen-secret", help="generuje losowy CMDB_SECRET_KEY").set_defaults(
         func=cmd_demo_secret

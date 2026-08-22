@@ -532,3 +532,27 @@ class CveScore(Base):
     # Pusty wynik tez zapamietujemy - inaczej przy kazdym odswiezeniu pytalibysmy
     # o te same CVE, ktorych NVD nie zna (np. swieze, jeszcze nieopisane).
     found: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class BlokadaLogowania(Base):
+    """Nieudane proby logowania do panelu i wynikajaca z nich blokada.
+
+    Trzymana w bazie, a nie w pamieci procesu, z dwoch powodow. Serwer
+    produkcyjny dziala w kilku procesach roboczych, wiec licznik w pamieci
+    dawalby tylokrotnie wiecej prob, ile jest procesow. Po drugie restart
+    serwera zerowalby go doszczetnie, a atakujacy nie musi czekac na restart -
+    wystarczy, ze poczeka na wdrozenie.
+
+    Klucz opisuje, czego dotyczy blokada: "konto:<email>" albo "ip:<adres>".
+    Konto chroni haslo konkretnego uzytkownika, adres - probe rozproszona
+    po wielu kontach.
+    """
+
+    __tablename__ = "blokady_logowania"
+
+    klucz: Mapped[str] = mapped_column(String(320), primary_key=True)
+    licznik: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    blokada_do: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    ostatnia_proba: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )

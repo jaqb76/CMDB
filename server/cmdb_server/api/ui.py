@@ -35,7 +35,9 @@ from ..models import (
     utcnow,
 )
 from ..security import generate_token, issue_csrf_token, sign_session
-from ..services import cve, duplicates, pakiet, scoping, upgrades, ustawienia
+from ..services import (
+    cve, duplicates, logowanie, pakiet, scoping, upgrades, ustawienia,
+)
 from ..services.auth import (
     LoginRequired,
     authenticate_user,
@@ -227,18 +229,46 @@ def login_submit(
     db: Session = Depends(get_db),
 ) -> Response:
     settings = get_settings()
-    user = authenticate_user(db, email, password)
-    if user is None:
-        audit(db, None, action="login.failed", target=email, ip=client_ip(request), actor=email)
-        db.commit()
+    ip = client_ip(request)
+
+    def odmow(komunikat: str, kod: int = status.HTTP_401_UNAUTHORIZED):
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"request": request, "error": "Nieprawidlowy e-mail lub haslo.",
-             "motyw": motyw_z_ciasteczka(request)},
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            {"request": request, "error": komunikat, "motyw": motyw_z_ciasteczka(request)},
+            status_code=kod,
         )
 
+    do_kiedy = logowanie.zablokowane_do(db, email, ip)
+    if do_kiedy is not None:
+        # Nie sprawdzamy nawet hasla: inaczej blokada mowilaby, ktore haslo
+        # jest poprawne, roznym czasem odpowiedzi.
+        audit(db, None, action="login.blocked", target=email, ip=ip, actor=email)
+        db.commit()
+        return odmow(
+            f"Logowanie zablokowane po nieudanych probach. Sprobuj po "
+            f"{do_kiedy.strftime('%Y-%m-%d %H:%M')} UTC.",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    user = authenticate_user(db, email, password)
+    if user is None:
+        audit(db, None, action="login.failed", target=email, ip=ip, actor=email)
+        db.commit()
+        zalozona = logowanie.odnotuj_niepowodzenie(
+            db, email, ip, settings.login_max_failures, settings.login_lockout_hours
+        )
+        if zalozona is not None:
+            return odmow(
+                f"Zbyt wiele nieudanych prob. Logowanie zablokowane do "
+                f"{zalozona.strftime('%Y-%m-%d %H:%M')} UTC.",
+                status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        # Komunikat jest ten sam dla zlego adresu i zlego hasla - inaczej
+        # dalby sie uzyc do sprawdzania, ktore konta istnieja.
+        return odmow("Nieprawidlowy e-mail lub haslo.")
+
+    logowanie.wyczysc(db, email, ip)
     user.last_login_at = utcnow()
     audit(
         db,

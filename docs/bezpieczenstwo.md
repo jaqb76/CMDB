@@ -181,3 +181,59 @@ nie może podmienić tego, co zadanie uruchamia.
 tokenu, rejestrację agenta, wycofanie poświadczenia, zmianę opiekuna,
 dodanie i usunięcie opiekuna — z adresem IP i znacznikiem czasu.
 Podgląd w panelu: zakładka **Audyt**.
+
+## Serwer wystawiony do internetu
+
+Publiczny adres oznacza stały ruch skanerów szukających PHP i WordPressa.
+Same 404, ale każde takie żądanie przechodziło przez aplikację.
+
+**nginx odcina je przed aplikacją.** Ścieżki kończące się na `.php`, `.asp`,
+`.jsp` oraz zaczynające się od `/wp-`, `/phpmyadmin`, `/.env`, `/.git` i
+podobnych dostają kod **444** — nginx zamyka połączenie bez odpowiedzi, więc
+skaner nie dostaje nawet potwierdzenia, że coś tu stoi. Aplikacja nie serwuje
+PHP, więc takie żądanie jest z definicji obce; nie ma tu ryzyka odcięcia
+czegoś własnego.
+
+Do tego limity: 20 żądań/s ogólnie i **6 na minutę na `/login`**. Agent
+raportuje raz na kilka godzin, a człowiek klika najwyżej kilka razy na
+sekundę — nawet ciasny limit nie ma jak przeszkodzić normalnemu użyciu.
+
+## Blokada logowania
+
+Tokeny agentów miały limit prób od początku, panel nie miał żadnego — a to on
+jest jedynym miejscem, gdzie zgadywanie hasła ma sens.
+
+Po **3 nieudanych próbach** logowanie jest blokowane na **24 godziny**
+(`CMDB_LOGIN_MAX_FAILURES`, `CMDB_LOGIN_LOCKOUT_HOURS`). Blokowane są dwie
+rzeczy naraz:
+
+* **konto** — chroni hasło konkretnego użytkownika,
+* **adres** — chroni przed próbą rozproszoną po wielu kontach.
+
+Wystarczy jedna z nich, żeby odmówić. Podczas blokady hasło **nie jest
+sprawdzane** — inaczej różny czas odpowiedzi zdradzałby, które hasło jest
+poprawne.
+
+Stan trzyma baza, nie pamięć procesu. Serwer produkcyjny działa w czterech
+procesach roboczych, więc licznik w pamięci dawałby czterokrotnie więcej prób,
+a restart zerowałby go doszczętnie — atakujący nie musi czekać na restart,
+wystarczy, że go doczeka.
+
+Licznik zeruje się po udanym logowaniu oraz po 12 godzinach bez żadnej próby:
+trzy pomyłki rozłożone na pół roku to nie jest atak.
+
+### Zdejmowanie blokady
+
+Blokada konta ma nieprzyjemną właściwość: **kto zna adres e-mail
+administratora, może go zablokować trzema błędnymi hasłami.** To świadomy
+kompromis — bez blokady hasło da się zgadywać w nieskończoność. Musi jednak
+istnieć droga wyjścia, która nie wymaga czekania:
+
+```bash
+docker compose exec server python -m cmdb_server.cli odblokuj --email admin@firma.pl
+docker compose exec server python -m cmdb_server.cli odblokuj --ip 203.0.113.5
+docker compose exec server python -m cmdb_server.cli odblokuj --wszystko
+```
+
+Jeśli administrator zablokował **sam siebie**, założone są obie blokady —
+konta i jego adresu. Samo `--email` wtedy nie wystarczy.

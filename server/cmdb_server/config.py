@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     session_cookie: str = "cmdb_session"
     session_max_age: int = 8 * 3600
 
+    # Po ilu nieudanych probach logowanie zostaje zablokowane i na ile godzin.
+    # Blokada obejmuje konto ORAZ adres, z ktorego przyszly proby.
+    login_max_failures: int = 3
+    login_lockout_hours: int = 24
+
     # Wymuszenie HTTPS (Secure cookie + HSTS + redirect). Wylaczane tylko w dev.
     require_https: bool = False
 
