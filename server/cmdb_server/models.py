@@ -8,11 +8,12 @@ na poziomie zapytan (patrz services/scoping.py).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -267,6 +268,19 @@ class Asset(Base):
     # "Bez kontaktu" celowo NIE jest tu zapisywane - wynika z last_seen
     # w chwili patrzenia. Zapisane po godzinie bylo by juz nieprawdziwe
     # i wymagaloby zadania, ktore je odswieza.
+    # --- zakup i gwarancja ---
+    # Wpisywane recznie: agent nie ma skad znac daty zakupu ani warunkow
+    # umowy. Data konca gwarancji jest tu najwazniejsza - to na niej opiera
+    # sie raport o wygasajacym wsparciu.
+    purchase_date: Mapped[date | None] = mapped_column(Date)
+    warranty_until: Mapped[date | None] = mapped_column(Date, index=True)
+    vendor: Mapped[str | None] = mapped_column(String(200))
+    purchase_price: Mapped[float | None] = mapped_column(Float)
+    purchase_currency: Mapped[str | None] = mapped_column(String(8))
+    invoice_number: Mapped[str | None] = mapped_column(String(120))
+    support_contract: Mapped[str | None] = mapped_column(String(200))
+    purchase_notes: Mapped[str | None] = mapped_column(Text)
+
     lifecycle: Mapped[str] = mapped_column(
         String(20), nullable=False, default=LIFECYCLE_AKTYWNY, index=True
     )
@@ -556,3 +570,71 @@ class BlokadaLogowania(Base):
     ostatnia_proba: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+
+
+# --- raporty i poczta -------------------------------------------------------
+
+class UstawieniaPoczty(Base):
+    """Poswiadczenia SMTP jednej firmy.
+
+    Kazda firma wpisuje wlasne: raporty maja wychodzic z jej domeny i przez
+    jej serwer, a nie przez wspolna skrzynke operatora - inaczej wiadomosci
+    o jednej organizacji szlyby infrastruktura, do ktorej ma dostep inna.
+
+    Haslo jest szyfrowane kluczem serwera. Musi byc odwracalne, bo SMTP
+    wymaga podania go przy kazdym polaczeniu - skrot tu nie wystarczy.
+    """
+
+    __tablename__ = "ustawienia_poczty"
+
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(Integer, nullable=False, default=587)
+    uzytkownik: Mapped[str | None] = mapped_column(String(255))
+    haslo_szyfr: Mapped[str | None] = mapped_column(Text)
+    # "starttls" (587), "ssl" (465) albo "brak" - serwery wewnetrzne bywaja
+    # bez szyfrowania, ale wtedy to swiadomy wybor, a nie domysl.
+    szyfrowanie: Mapped[str] = mapped_column(String(16), nullable=False, default="starttls")
+    nadawca: Mapped[str] = mapped_column(String(320), nullable=False)
+    nazwa_nadawcy: Mapped[str | None] = mapped_column(String(200))
+    aktywne: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    ostatni_blad: Mapped[str | None] = mapped_column(Text)
+    zaktualizowano: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+class DefinicjaRaportu(Base):
+    """Raport wysylany cyklicznie do wskazanych adresatow.
+
+    Firm moze byc kilkanascie, a kazda chce czego innego - stad definicja
+    zamiast jednego raportu wbudowanego. Rodzaj okresla, co raport zawiera,
+    czestotliwosc - jak czesto ma przyjsc.
+    """
+
+    __tablename__ = "definicje_raportow"
+    __table_args__ = (Index("ix_raport_tenant", "tenant_id", "aktywny"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nazwa: Mapped[str] = mapped_column(String(200), nullable=False)
+    # "podatnosci", "sprzet" albo "gwarancje".
+    rodzaj: Mapped[str] = mapped_column(String(32), nullable=False)
+    # "dziennie", "tygodniowo" albo "miesiecznie".
+    czestotliwosc: Mapped[str] = mapped_column(String(16), nullable=False, default="tygodniowo")
+    # Adresaci rozdzieleni przecinkiem albo srednikiem - rozbierane przy wysylce.
+    adresaci: Mapped[str] = mapped_column(Text, nullable=False)
+    aktywny: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Kiedy raport ostatnio poszedl i z jakim skutkiem. Bez tego nie da sie
+    # odroznic "jeszcze nie byl wysylany" od "wysylka sie nie udaje".
+    ostatnia_wysylka: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ostatni_status: Mapped[str | None] = mapped_column(String(16))
+    ostatni_blad: Mapped[str | None] = mapped_column(Text)
+    utworzony: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    utworzyl: Mapped[str | None] = mapped_column(String(255))

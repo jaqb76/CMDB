@@ -8,7 +8,7 @@ ktora czytalaby maszyny bez filtra tenant_id.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
@@ -500,6 +500,7 @@ def asset_detail(
         asset=asset,
         snapshot=current,
         podatnosci=podatnosci,
+        dzisiaj=date.today(),
         history=history,
         owners=owners,
         credentials=credentials,

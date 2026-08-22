@@ -65,6 +65,7 @@
   <div class="tab-buttons">
     <button type="button" class="tab-button is-active" data-tab="overview">Przeglad</button>
     <button type="button" class="tab-button" data-tab="hardware">Sprzet</button>
+    <button type="button" class="tab-button" data-tab="zakup">Zakup i gwarancja</button>
     <button type="button" class="tab-button" data-tab="software">Oprogramowanie</button>
     <button type="button" class="tab-button" data-tab="aktualizacje">Aktualizacje</button>
     <button type="button" class="tab-button" data-tab="podatnosci">Podatnosci</button>
@@ -121,6 +122,77 @@
         </tbody>
       </table>
       {% else %}<p class="muted">Brak danych o interfejsach.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="tab-panel" data-panel="zakup">
+    <div class="panel">
+      <h2>Zakup i gwarancja</h2>
+      <p class="muted small">
+        Danych z tej sekcji agent nie ma skad znac — wpisuje je czlowiek.
+        Data konca gwarancji zasila raport o wygasajacym wsparciu.
+      </p>
+
+      {% if asset.warranty_until %}
+        {% set dni = (asset.warranty_until - dzisiaj).days %}
+        {% if dni < 0 %}
+        <div class="alert alert-error">
+          Gwarancja wygasla {{ asset.warranty_until }} — {{ -dni }} dni temu.
+        </div>
+        {% elif dni <= 90 %}
+        <div class="alert alert-warn">
+          Gwarancja konczy sie {{ asset.warranty_until }} — za {{ dni }} dni.
+        </div>
+        {% else %}
+        <div class="alert alert-ok">
+          Objeta gwarancja do {{ asset.warranty_until }} (jeszcze {{ dni }} dni).
+        </div>
+        {% endif %}
+      {% endif %}
+
+      <form method="post" action="/assets/{{ asset.id }}/zakup" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="row-form">
+          <div>
+            <label for="purchase_date">Data zakupu</label>
+            <input id="purchase_date" name="purchase_date" type="date"
+                   value="{{ asset.purchase_date or '' }}">
+          </div>
+          <div>
+            <label for="warranty_until">Gwarancja do</label>
+            <input id="warranty_until" name="warranty_until" type="date"
+                   value="{{ asset.warranty_until or '' }}">
+          </div>
+          <div>
+            <label for="vendor">Dostawca</label>
+            <input id="vendor" name="vendor" maxlength="200" value="{{ asset.vendor or '' }}">
+          </div>
+        </div>
+        <div class="row-form">
+          <div>
+            <label for="purchase_price">Cena</label>
+            <input id="purchase_price" name="purchase_price"
+                   value="{{ asset.purchase_price or '' }}">
+          </div>
+          <div>
+            <label for="purchase_currency">Waluta</label>
+            <input id="purchase_currency" name="purchase_currency" maxlength="8"
+                   value="{{ asset.purchase_currency or '' }}" placeholder="PLN">
+          </div>
+          <div>
+            <label for="invoice_number">Numer faktury</label>
+            <input id="invoice_number" name="invoice_number" maxlength="120"
+                   value="{{ asset.invoice_number or '' }}">
+          </div>
+        </div>
+        <label for="support_contract">Umowa wsparcia</label>
+        <input id="support_contract" name="support_contract" maxlength="200"
+               value="{{ asset.support_contract or '' }}"
+               placeholder="np. NBD on-site do 2028-03-01">
+        <label for="purchase_notes">Uwagi</label>
+        <textarea id="purchase_notes" name="purchase_notes" rows="3">{{ asset.purchase_notes or '' }}</textarea>
+        <button type="submit" class="btn btn-primary">Zapisz</button>
+      </form>
     </div>
   </section>
 

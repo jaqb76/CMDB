@@ -8,3 +8,6 @@ python-multipart>=0.0.9
 itsdangerous>=2.2
 argon2-cffi>=23.1
 psycopg[binary]>=3.2
+# Szyfrowanie hasel SMTP - musi byc odwracalne, bo SMTP wymaga
+# podania hasla przy kazdym polaczeniu.
+cryptography>=42.0

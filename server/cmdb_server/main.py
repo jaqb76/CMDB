@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -19,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from .api import admin as admin_api
 from .api import agent as agent_api
 from .api import download as download_api
+from .api import raporty_ui
 from .api import ui as ui_api
 from .config import get_settings
 from .db import init_db
@@ -70,7 +72,16 @@ async def lifespan(app: FastAPI):
     init_db()
     _odswiez_paczke_agenta(settings)
     log.info("CMDB wystartowal (env=%s, db=%s)", settings.env, settings.database_url.split("@")[-1])
-    yield
+
+    from .services.harmonogram import petla
+
+    zadanie = asyncio.create_task(petla())
+    try:
+        yield
+    finally:
+        zadanie.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await zadanie
 
 
 # Endpoint zywotnosci: bez tokenu, bez danych, odpytywany lokalnie.
@@ -140,6 +151,7 @@ def create_app() -> FastAPI:
     app.include_router(download_api.router)
     app.include_router(admin_api.router)
     app.include_router(ui_api.router)
+    app.include_router(raporty_ui.router)
 
     # Agenci wysylaja raporty spakowane gzipem - rozpakowujemy z limitem.
     app.add_middleware(GzipRequestMiddleware, max_bytes=settings.max_report_bytes)

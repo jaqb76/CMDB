@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Raporty - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Raporty</h1>
+    <p class="muted">Cykliczne zestawienia wysylane poczta na wskazane adresy.</p>
+  </div>
+</div>
+
+{% if komunikat %}
+<div class="alert {% if 'Nie udalo' in komunikat %}alert-error{% else %}alert-ok{% endif %}">
+  {{ komunikat }}
+</div>
+{% endif %}
+
+<section class="panel">
+  <h2>Poczta wychodzaca</h2>
+  <p class="muted small">
+    Raporty ida <b>przez serwer tej firmy</b>, nie przez wspolna skrzynke.
+    Dzieki temu wiadomosci o Twoich maszynach nie przechodza przez
+    infrastrukture, do ktorej ma dostep ktokolwiek inny.
+  </p>
+
+  {% if poczta and poczta.ostatni_blad %}
+  <div class="alert alert-error">
+    <b>Ostatnia proba wysylki sie nie udala:</b> {{ poczta.ostatni_blad }}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/raporty/poczta" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row-form">
+      <div>
+        <label for="host">Serwer SMTP</label>
+        <input id="host" name="host" required maxlength="255"
+               value="{{ poczta.host if poczta else '' }}" placeholder="smtp.firma.pl">
+      </div>
+      <div>
+        <label for="port">Port</label>
+        <input id="port" name="port" type="number" min="1" max="65535"
+               value="{{ poczta.port if poczta else 587 }}">
+      </div>
+      <div>
+        <label for="szyfrowanie">Szyfrowanie</label>
+        <select id="szyfrowanie" name="szyfrowanie">
+          {% for wariant, opis in [('starttls', 'STARTTLS (zwykle port 587)'),
+                                   ('ssl', 'SSL/TLS (zwykle port 465)'),
+                                   ('brak', 'bez szyfrowania')] %}
+            <option value="{{ wariant }}"
+              {% if poczta and poczta.szyfrowanie == wariant %}selected{% endif %}>{{ opis }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label for="uzytkownik">Uzytkownik</label>
+        <input id="uzytkownik" name="uzytkownik" maxlength="255"
+               value="{{ poczta.uzytkownik if poczta else '' }}">
+      </div>
+      <div>
+        <label for="haslo">Haslo</label>
+        <input id="haslo" name="haslo" type="password" autocomplete="new-password"
+               placeholder="{% if poczta and poczta.haslo_szyfr %}bez zmian{% else %}wpisz haslo{% endif %}">
+        <div class="muted small">Puste pole zostawia poprzednie haslo.</div>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label for="nadawca">Adres nadawcy</label>
+        <input id="nadawca" name="nadawca" type="email" required maxlength="320"
+               value="{{ poczta.nadawca if poczta else '' }}" placeholder="cmdb@firma.pl">
+      </div>
+      <div>
+        <label for="nazwa_nadawcy">Nazwa nadawcy</label>
+        <input id="nazwa_nadawcy" name="nazwa_nadawcy" maxlength="200"
+               value="{{ poczta.nazwa_nadawcy if poczta else '' }}" placeholder="CMDB">
+      </div>
+      <div><button type="submit" class="btn btn-primary">Zapisz</button></div>
+    </div>
+  </form>
+
+  {% if poczta %}
+  <form method="post" action="/raporty/poczta/test" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div>
+      <label for="adres">Wyslij wiadomosc probna na</label>
+      <input id="adres" name="adres" type="email" required value="{{ user.email }}">
+    </div>
+    <div><button type="submit" class="btn">Sprawdz</button></div>
+  </form>
+  <p class="muted small">
+    Poprawnie wygladajaca konfiguracja i dzialajaca konfiguracja to dwie rozne
+    rzeczy — wiadomosc probna jest jedynym pewnym sprawdzeniem.
+  </p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Raporty cykliczne</h2>
+  {% if definicje %}
+  <table class="table">
+    <thead>
+      <tr><th>Nazwa</th><th>Rodzaj</th><th>Czestotliwosc</th><th>Adresaci</th>
+          <th>Ostatnia wysylka</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for d in definicje %}
+      <tr>
+        <td class="strong">{{ d.nazwa }}</td>
+        <td>{{ rodzaje.get(d.rodzaj, d.rodzaj) }}</td>
+        <td class="small">{{ d.czestotliwosc }}</td>
+        <td class="small muted">{{ d.adresaci }}</td>
+        <td class="small">
+          {% if d.ostatnia_wysylka %}
+            {{ d.ostatnia_wysylka | ago }}
+            {% if d.ostatni_status == 'ok' %}
+              <span class="badge badge-ok">ok</span>
+            {% else %}
+              <span class="badge badge-danger">blad</span>
+              <div class="muted">{{ (d.ostatni_blad or '')[:90] }}</div>
+            {% endif %}
+          {% else %}
+            <span class="muted">jeszcze nie wysylany</span>
+          {% endif %}
+        </td>
+        <td class="small">
+          <a class="btn btn-small" href="/raporty/podglad/{{ d.rodzaj }}" target="_blank"
+             rel="noopener">Podglad</a>
+          <form method="post" action="/raporty/definicje/{{ d.id }}/wyslij" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-primary">Wyslij teraz</button>
+          </form>
+          <form method="post" action="/raporty/definicje/{{ d.id }}/usun" class="inline-form"
+                data-confirm="Usunac raport {{ d.nazwa }}?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-danger">Usun</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">
+    Nie zdefiniowano jeszcze zadnego raportu. Kazdy raport idzie do wskazanych
+    adresow z wybrana czestotliwoscia; pierwszy przychodzi zaraz po dodaniu,
+    zeby dalo sie sprawdzic, czy wszystko dziala.
+  </p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Nowy raport</h2>
+  <form method="post" action="/raporty/definicje" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row-form">
+      <div>
+        <label for="nazwa">Nazwa</label>
+        <input id="nazwa" name="nazwa" required maxlength="200"
+               placeholder="Podatnosci - tygodniowo">
+      </div>
+      <div>
+        <label for="rodzaj">Rodzaj</label>
+        <select id="rodzaj" name="rodzaj" required>
+          {% for klucz, opis in rodzaje.items() %}
+            <option value="{{ klucz }}">{{ opis }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="czestotliwosc">Czestotliwosc</label>
+        <select id="czestotliwosc" name="czestotliwosc">
+          {% for c in czestotliwosci %}
+            <option value="{{ c }}" {% if c == 'tygodniowo' %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label for="adresaci">Adresaci</label>
+    <input id="adresaci" name="adresaci" required
+           placeholder="admin@firma.pl, it@firma.pl">
+    <div class="muted small">Kilka adresow rozdziel przecinkiem albo srednikiem.</div>
+    <button type="submit" class="btn btn-primary">Dodaj raport</button>
+  </form>
+
+  <h3>Co zawiera ktory raport</h3>
+  <table class="table">
+    <tbody>
+      <tr>
+        <th style="width:200px">Podatnosci</th>
+        <td class="small">Ile jest do zrobienia, ile powaznych, ktore maszyny
+          wymagaja uwagi. Osobno liczone podatnosci znane, ale bez dostepnej
+          jeszcze poprawki.
+          <a href="/raporty/podglad/podatnosci" target="_blank" rel="noopener">podglad</a></td>
+      </tr>
+      <tr>
+        <th>Inwentaryzacja sprzetu</th>
+        <td class="small">Liczba maszyn z podzialem na system operacyjny,
+          producenta i wersje agenta. Maszyny bez kontaktu i bez opiekuna.
+          <a href="/raporty/podglad/sprzet" target="_blank" rel="noopener">podglad</a></td>
+      </tr>
+      <tr>
+        <th>Gwarancje i wsparcie</th>
+        <td class="small">Co juz po terminie, co konczy sie w najblizszych
+          90 dniach, co pozostaje objete wsparciem. Daty gwarancji wpisuje sie
+          na karcie maszyny.
+          <a href="/raporty/podglad/gwarancje" target="_blank" rel="noopener">podglad</a></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+{% endblock %}

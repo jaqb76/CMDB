@@ -1,0 +1,183 @@
+{#
+  Tresc raportu - ta sama w wiadomosci i w podgladzie w panelu.
+
+  Styl jest wpisany w atrybuty, a nie w arkusz: klienty poczty w wiekszosci
+  wycinaja sekcje <style>, a Gmail robi to zawsze. Tabele zamiast siatki
+  z tego samego powodu - flexbox i grid nie dzialaja w Outlooku.
+#}
+<div style="font-family: Segoe UI, Arial, sans-serif; color:#1c2024; max-width:760px">
+  <h1 style="font-size:20px; margin:0 0 4px">{{ raport.tytul }}</h1>
+  <p style="margin:0 0 20px; color:#6b7280; font-size:13px">
+    {{ raport.firma }} &middot; stan na {{ raport.wygenerowano.strftime('%Y-%m-%d %H:%M') }} UTC
+  </p>
+
+  {% macro paski(dane) %}
+    {% if dane %}
+    <table cellpadding="0" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; margin:0 0 18px">
+      {% for p in dane %}
+      <tr>
+        <td style="padding:3px 10px 3px 0; font-size:13px; white-space:nowrap; width:34%">
+          {{ p.etykieta }}
+        </td>
+        <td style="padding:3px 0">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%"
+                 style="border-collapse:collapse">
+            <tr>
+              <td width="{{ p.szerokosc }}%" style="background:{{ p.barwa }}; height:16px;
+                  border-radius:3px"></td>
+              <td style="padding-left:8px; font-size:12px; color:#6b7280; white-space:nowrap">
+                {{ p.wartosc }}{% if p.udzial %} &middot; {{ p.udzial }}%{% endif %}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  {% endmacro %}
+
+  {% macro kafelek(wartosc, opis, alarm=false) %}
+    <td style="padding:12px 14px; border:1px solid #dcdfe4; border-radius:6px; width:33%">
+      <div style="font-size:26px; font-weight:700; line-height:1.1;
+                  color:{% if alarm and wartosc %}#a52222{% else %}#1c2024{% endif %}">
+        {{ wartosc }}
+      </div>
+      <div style="font-size:12px; color:#6b7280; margin-top:3px">{{ opis }}</div>
+    </td>
+  {% endmacro %}
+
+  {% set d = raport.dane %}
+
+  {# --- podatnosci --- #}
+  {% if raport.rodzaj == 'podatnosci' %}
+    <table cellpadding="0" cellspacing="8" border="0" width="100%"
+           style="border-collapse:separate; margin:0 0 18px">
+      <tr>
+        {{ kafelek(d.powazne, 'powazne (CVSS >= 7) z gotowa poprawka', true) }}
+        {{ kafelek(d.do_zrobienia, 'wszystkie do zrobienia') }}
+        {{ kafelek(d.bez_poprawki, 'znane, bez dostepnej poprawki') }}
+      </tr>
+    </table>
+
+    <h2 style="font-size:15px; margin:18px 0 8px">Podzial wedlug wagi</h2>
+    {{ paski(d.wykres_wagi) }}
+
+    {% if d.najgorsze %}
+    <h2 style="font-size:15px; margin:18px 0 8px">Maszyny wymagajace uwagi</h2>
+    <table cellpadding="6" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      <tr style="background:#f5f6f8">
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Maszyna</th>
+        <th align="right" style="border-bottom:1px solid #dcdfe4">Powazne</th>
+        <th align="right" style="border-bottom:1px solid #dcdfe4">Do zrobienia</th>
+        <th align="right" style="border-bottom:1px solid #dcdfe4">Bez poprawki</th>
+      </tr>
+      {% for w in d.najgorsze %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ w.maszyna.hostname }}</td>
+        <td align="right" style="border-bottom:1px solid #eef0f3;
+            {% if w.wynik.critical_count %}color:#a52222; font-weight:700{% endif %}">
+          {{ w.wynik.critical_count }}
+        </td>
+        <td align="right" style="border-bottom:1px solid #eef0f3">{{ w.wynik.fixable_count }}</td>
+        <td align="right" style="border-bottom:1px solid #eef0f3">{{ w.wynik.open_count }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if d.nieznane %}
+    <p style="font-size:12px; color:#8a6100; margin:16px 0 0">
+      Dla {{ d.nieznane | length }} maszyn nie znamy stanu podatnosci — to nie
+      znaczy, ze sa bezpieczne, tylko ze nie udalo sie ich sprawdzic.
+    </p>
+    {% endif %}
+
+  {# --- sprzet --- #}
+  {% elif raport.rodzaj == 'sprzet' %}
+    <table cellpadding="0" cellspacing="8" border="0" width="100%"
+           style="border-collapse:separate; margin:0 0 18px">
+      <tr>
+        {{ kafelek(d.liczba, 'maszyn w ewidencji') }}
+        {{ kafelek(d.bez_kontaktu, 'bez kontaktu ponad 48 h', true) }}
+        {{ kafelek(d.bez_opiekuna, 'bez przypisanego opiekuna') }}
+      </tr>
+    </table>
+
+    <h2 style="font-size:15px; margin:18px 0 8px">System operacyjny</h2>
+    {{ paski(d.wykres_systemy) }}
+
+    <h2 style="font-size:15px; margin:18px 0 8px">Producent</h2>
+    {{ paski(d.wykres_producenci) }}
+
+    <h2 style="font-size:15px; margin:18px 0 8px">Wersja agenta</h2>
+    {{ paski(d.wykres_agenci) }}
+
+  {# --- gwarancje --- #}
+  {% elif raport.rodzaj == 'gwarancje' %}
+    <table cellpadding="0" cellspacing="8" border="0" width="100%"
+           style="border-collapse:separate; margin:0 0 18px">
+      <tr>
+        {{ kafelek(d.po_terminie | length, 'gwarancja juz wygasla', true) }}
+        {{ kafelek(d.koncza_sie | length, 'konczy sie w ' ~ d.horyzont ~ ' dni', true) }}
+        {{ kafelek(d.na_gwarancji, 'objetych wsparciem') }}
+      </tr>
+    </table>
+
+    {{ paski(d.wykres) }}
+
+    {% if d.koncza_sie %}
+    <h2 style="font-size:15px; margin:18px 0 8px">Konczy sie w najblizszych {{ d.horyzont }} dniach</h2>
+    <table cellpadding="6" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      <tr style="background:#f5f6f8">
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Maszyna</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Model</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Dostawca</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Gwarancja do</th>
+      </tr>
+      {% for m in d.koncza_sie %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ m.hostname }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ m.model or '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ m.vendor or '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3; font-weight:700">{{ m.warranty_until }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if d.po_terminie %}
+    <h2 style="font-size:15px; margin:18px 0 8px">Po terminie</h2>
+    <table cellpadding="6" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      <tr style="background:#f5f6f8">
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Maszyna</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Model</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Wygasla</th>
+      </tr>
+      {% for m in d.po_terminie[:40] %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ m.hostname }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ m.model or '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3; color:#a52222">{{ m.warranty_until }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if d.bez_danych %}
+    <p style="font-size:12px; color:#6b7280; margin:16px 0 0">
+      {{ d.bez_danych | length }} maszyn nie ma wpisanej daty gwarancji. Brak daty
+      nie znaczy, ze gwarancji nie ma — znaczy, ze nikt jej nie uzupelnil.
+    </p>
+    {% endif %}
+  {% endif %}
+
+  <p style="margin:26px 0 0; padding-top:12px; border-top:1px solid #dcdfe4;
+            font-size:11px; color:#6b7280">
+    Raport wygenerowany automatycznie przez CMDB. Nie odpowiadaj na te wiadomosc.
+  </p>
+</div>

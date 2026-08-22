@@ -1,0 +1,74 @@
+# Raporty
+
+Każda firma konfiguruje raporty samodzielnie: własny serwer SMTP, własnych
+adresatów, własną częstotliwość. Raporty idą **przez serwer tej firmy**, a nie
+przez wspólną skrzynkę operatora — inaczej wiadomości o jednej organizacji
+przechodziłyby przez infrastrukturę, do której ma dostęp inna, a cały system
+jest zbudowany wokół tego, że firmy się nie widzą.
+
+## Trzy rodzaje
+
+| Rodzaj | Odpowiada na pytanie |
+|---|---|
+| **Podatności** | co wymaga łatania i jak pilnie |
+| **Inwentaryzacja sprzętu** | co w ogóle mamy i w jakim stanie |
+| **Gwarancje i wsparcie** | czemu kończy się wsparcie |
+
+Każdy ma podgląd w panelu (`/raporty/podgląd/<rodzaj>`) — ta sama treść, która
+pójdzie pocztą. Podgląd różniący się od wysyłki byłby gorszy niż jego brak.
+
+## Wykresy
+
+Paski są zbudowane z komórek tabeli z tłem, a nie z obrazków ani biblioteki
+JavaScript. Powód jest prozaiczny: klienty poczty nie uruchamiają skryptów,
+większość wycina SVG, a obrazek trzeba by dołączać jako załącznik i liczyć na
+to, że odbiorca zgodzi się go wyświetlić. Tabela z tłem renderuje się wszędzie
+— w Outlooku, Gmailu i w przeglądarce.
+
+Szerokość paska liczy się względem **największej** pozycji, nie sumy: przy
+kilkunastu kategoriach paski liczone od sumy byłyby nieczytelnie krótkie.
+
+## Poczta
+
+Ustawienia w zakładce **Raporty**. Hasło jest szyfrowane kluczem serwera —
+musi być odwracalne, bo SMTP wymaga podania go przy każdym połączeniu, więc
+skrót tu nie wystarczy.
+
+**Konsekwencja:** zmiana `CMDB_SECRET_KEY` unieważnia zapisane hasła SMTP
+i trzeba je wpisać ponownie. To ten sam kompromis co przy ciasteczkach sesji.
+Serwer mówi wtedy wprost „nie mogę odczytać zapisanego hasła", zamiast
+próbować połączenia i zwracać mylący błąd sieciowy.
+
+Puste pole hasła przy edycji zostawia poprzednie — inaczej każda zmiana portu
+wymagałaby wpisywania hasła od nowa, co kończy się trzymaniem go w notatniku obok.
+
+Przycisk **Sprawdź** wysyła wiadomość próbną. Poprawnie wyglądająca
+konfiguracja i działająca konfiguracja to dwie różne rzeczy.
+
+## Harmonogram
+
+Raport idzie, gdy od ostatniej wysyłki minął okres z definicji. Raport **nigdy
+niewysłany idzie od razu** — inaczej po dodaniu definicji trzeba by czekać cały
+okres, nie wiedząc, czy cokolwiek działa.
+
+Wysyłkę obsługuje zadanie w tle, sprawdzające co 15 minut. Serwer produkcyjny
+działa w kilku procesach roboczych, więc uzgadniają się blokadą doradczą
+Postgresa pobieraną bez czekania: proces, który jej nie dostanie, pomija ten
+obieg. Bez tego raport poszedłby tylokrotnie, ile jest procesów — a wiadomość
+wysłana cztery razy jest gorsza niż niewysłana wcale, bo uczy odbiorców
+ignorowania raportów.
+
+Błąd jednego raportu **nie zatrzymuje pozostałych**: trafia do definicji
+i jest widoczny w panelu przy „ostatniej wysyłce". Wyjątek przerwałby cały
+przebieg.
+
+## Zakup i gwarancja
+
+Zakładka **Zakup i gwarancja** na karcie maszyny. Tych danych agent nie ma
+skąd znać — data zakupu, numer faktury czy warunki umowy nie wynikają
+z niczego, co da się odczytać z maszyny.
+
+Data końca gwarancji zasila raport o wygasającym wsparciu, z podziałem na:
+po terminie, kończy się w najbliższych 90 dniach, objęte wsparciem oraz
+**bez wpisanej daty**. Ta ostatnia kategoria jest osobna celowo: brak daty nie
+znaczy, że gwarancji nie ma — znaczy tylko, że nikt jej nie uzupełnił.
