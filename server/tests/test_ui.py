@@ -207,3 +207,41 @@ def test_strony_wskazuja_ikone(client, tenant_a, make_user):
 
     for sciezka in ("/", "/login"):
         assert 'rel="icon"' in client.get(sciezka).text, sciezka
+
+
+# --- pamiec podreczna plikow statycznych -------------------------------------
+
+def test_arkusz_stylow_ma_znacznik_wersji(client, tenant_a, make_user):
+    """Bez znacznika przegladarka trzymala poprzedni arkusz i uzytkownik po
+    wdrozeniu poprawki wygladu dalej widzial stary uklad."""
+    make_user(tenant_a["id"], "styl@firma.pl", "bardzo-dlugie-haslo")
+    _login(client, "styl@firma.pl", "bardzo-dlugie-haslo")
+
+    strona = client.get("/").text
+    assert "/static/app.css?v=" in strona
+    assert 'href="/static/app.css"' not in strona
+
+
+def test_znacznik_zmienia_sie_razem_z_trescia(tmp_path, monkeypatch):
+    """Znacznik ma odwzorowywac tresc pliku - staly numer wersji wypuszczalby
+    nowy arkusz dopiero przy pamietaniu o jego podniesieniu."""
+    from cmdb_server.api import ui
+
+    plik = tmp_path / "probny.css"
+    plik.write_text("a{}", encoding="utf-8")
+    monkeypatch.setattr(ui, "STATIC_DIR", tmp_path)
+    monkeypatch.setattr(ui, "_ODCISKI", {})
+
+    pierwszy = ui._odcisk("probny.css")
+
+    plik.write_text("a{color:red}", encoding="utf-8")
+    monkeypatch.setattr(ui, "_ODCISKI", {})
+    assert ui._odcisk("probny.css") != pierwszy
+
+
+def test_brak_pliku_nie_wywraca_strony(tmp_path, monkeypatch):
+    from cmdb_server.api import ui
+
+    monkeypatch.setattr(ui, "STATIC_DIR", tmp_path)
+    monkeypatch.setattr(ui, "_ODCISKI", {})
+    assert ui._odcisk("nie-ma.css") == "/static/nie-ma.css"

@@ -7,6 +7,7 @@ ktora czytalaby maszyny bez filtra tenant_id.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -53,6 +54,8 @@ from . import download
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+_ODCISKI: dict[str, str] = {}
 # ChainableUndefined: brak sekcji w raporcie (np. maszyna jeszcze nie raportowala)
 # nie moze wywalac calego widoku - '{{ a.b.c }}' renderuje sie pusto zamiast rzucac.
 templates.env.undefined = ChainableUndefined
@@ -123,6 +126,31 @@ def _pretty_json(value) -> str:
         return "{}"
     return json.dumps(value, indent=2, ensure_ascii=False, sort_keys=False)
 
+
+def _odcisk(nazwa: str) -> str:
+    """Adres pliku statycznego ze znacznikiem jego tresci.
+
+    Bez tego przegladarka trzyma poprzedni arkusz stylow tak dlugo, jak uzna
+    za stosowne - poprawka wygladu byla wdrozona na serwerze, a uzytkownik
+    dalej ogladal stary uklad i nie mial powodu podejrzewac pamieci
+    podrecznej. Znacznik zmienia sie razem z plikiem, wiec nowa wersja jest
+    dla przegladarki innym adresem i pobiera ja natychmiast.
+
+    Skrot liczymy raz, przy pierwszym uzyciu: pliki statyczne nie zmieniaja
+    sie w trakcie pracy procesu.
+    """
+    if nazwa not in _ODCISKI:
+        plik = STATIC_DIR / nazwa
+        try:
+            skrot = hashlib.sha256(plik.read_bytes()).hexdigest()[:10]
+        except OSError:
+            # Brak pliku nie jest powodem, zeby strona sie nie otworzyla.
+            return f"/static/{nazwa}"
+        _ODCISKI[nazwa] = f"/static/{nazwa}?v={skrot}"
+    return _ODCISKI[nazwa]
+
+
+templates.env.globals["zasob"] = _odcisk
 
 templates.env.filters["dt"] = _fmt_dt
 templates.env.filters["ago"] = _fmt_ago
