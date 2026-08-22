@@ -928,3 +928,71 @@ def test_aplikacja_przepuszcza_plik_wielkosci_wariantu_z_ikona(client, make_user
 
     assert get_settings().max_release_bytes >= 32 * 1024 * 1024
     assert get_settings().max_release_bytes > get_settings().max_report_bytes
+
+
+def test_ikona_wydawana_gdy_aktywny_jest_AGENT(client, tenant_a, make_user):
+    """Przypadek z prawdziwego wdrozenia, ktorego wczesniejszy test nie objal.
+
+    Jako aktywna oznacza sie AGENTA - nikt nie oznacza ikony, bo to ona
+    mialaby wtedy trafiac na maszyny jako aktualizacja. Tabela wersji
+    oficjalnych ma UNIQUE(os_family), wiec wyszukiwanie ikony trafialo na wpis
+    wskazujacy agenta, nie pasowalo architektura i konczylo sie kodem 404.
+    Instalator melduje wtedy "ikona niedostepna" i instaluje bez niej.
+    """
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.5", PLIK_AGENTA, "windows")
+    _wgraj_wersje(client, csrf, "0.5.5", _plik_gui(), "windows")
+
+    with SessionLocal() as db:
+        agent = db.execute(
+            select(AgentRelease.id).where(AgentRelease.arch == "x86_64")
+        ).scalar_one()
+    _oznacz_oficjalna(client, csrf, agent)
+
+    odpowiedz = client.get(
+        "/download/agent-windows-tray.exe", headers=_naglowek(tenant_a["token"])
+    )
+    assert odpowiedz.status_code == 200, "ikona musi byc wydawana obok aktywnego agenta"
+    assert odpowiedz.headers["x-cmdb-version"] == "0.5.5", "wersja ikony ma isc za agentem"
+
+
+def test_ikona_w_innej_wersji_niz_agent_jest_wydawana(client, tenant_a, make_user):
+    """Stara ikona jest uzyteczniejsza niz zadna: czyta plik statusu, ktorego
+    format jest stabilny."""
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.4", _plik_gui(), "windows")
+    _wgraj_wersje(client, csrf, "0.5.5", PLIK_AGENTA, "windows")
+
+    with SessionLocal() as db:
+        agent = db.execute(
+            select(AgentRelease.id).where(AgentRelease.arch == "x86_64")
+        ).scalar_one()
+    _oznacz_oficjalna(client, csrf, agent)
+
+    odpowiedz = client.get(
+        "/download/agent-windows-tray.exe", headers=_naglowek(tenant_a["token"])
+    )
+    assert odpowiedz.status_code == 200
+    assert odpowiedz.headers["x-cmdb-version"] == "0.5.4"
+
+
+def test_ikona_wybierana_jest_w_wersji_agenta(client, tenant_a, make_user):
+    """Gdy sa dwie, bierzemy te pasujaca do agenta - obie czesci maja
+    pochodzic z jednego budowania."""
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.4", _plik_gui(), "windows")
+    _wgraj_wersje(client, csrf, "0.5.5", _plik_gui(0x8664), "windows")
+    _wgraj_wersje(client, csrf, "0.5.4", PLIK_AGENTA, "windows")
+
+    with SessionLocal() as db:
+        agent = db.execute(
+            select(AgentRelease.id).where(
+                AgentRelease.arch == "x86_64", AgentRelease.version == "0.5.4"
+            )
+        ).scalar_one()
+    _oznacz_oficjalna(client, csrf, agent)
+
+    odpowiedz = client.get(
+        "/download/agent-windows-tray.exe", headers=_naglowek(tenant_a["token"])
+    )
+    assert odpowiedz.headers["x-cmdb-version"] == "0.5.4"

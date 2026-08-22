@@ -211,3 +211,38 @@ def zapisz_wynik(
             detail=(detail or "")[:1000] or None,
         )
     )
+
+
+def wersja_ikony(db: Session, tenant_id: str) -> AgentRelease | None:
+    """Wariant z ikona w zasobniku dla tej firmy.
+
+    Ikona NIE podlega polityce wersji i nie da sie jej wskazac jako aktywnej:
+    tabela wersji oficjalnych ma UNIQUE(os_family), a to miejsce nalezy do
+    agenta - on jest rozsylany samoaktualizacja, ikona nie. Proba szukania
+    ikony przez ten sam mechanizm konczyla sie trafieniem na wpis wskazujacy
+    agenta i odmowa, bo architektura sie nie zgadzala.
+
+    Bierzemy wiec ikone w TEJ SAMEJ wersji co agent obowiazujacy firme, zeby
+    obie czesci pochodzily z jednego budowania. Gdy takiej nie ma - najnowsza
+    dostepna, bo stara ikona jest uzyteczniejsza niz zadna: czyta plik statusu,
+    ktorego format jest stabilny.
+    """
+    zapytanie = select(AgentRelease).where(
+        AgentRelease.os_family == "windows",
+        AgentRelease.arch == architektura.ARCH_TRAY,
+    )
+
+    agent = wersja_dla_firmy(db, tenant_id, "windows")
+    if agent is not None:
+        zgodna = db.execute(
+            zapytanie.where(AgentRelease.version == agent.version)
+        ).scalars().first()
+        if zgodna is not None:
+            return zgodna
+        log.info(
+            "brak ikony w wersji %s - wydaje najnowsza dostepna", agent.version
+        )
+
+    return db.execute(
+        zapytanie.order_by(AgentRelease.created_at.desc())
+    ).scalars().first()

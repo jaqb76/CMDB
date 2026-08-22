@@ -176,9 +176,7 @@ def ikona_windows(
     "architekturze" i nigdy nie trafia do samoaktualizacji.
     """
     _, tenant = auth
-    wydanie = upgrades.wersja_dla_firmy(
-        db, tenant.id, "windows", architektura.ARCH_TRAY
-    )
+    wydanie = upgrades.wersja_ikony(db, tenant.id)
     if wydanie is None:
         # Brak ikony nie jest bledem instalacji - agent dziala bez niej.
         raise HTTPException(
