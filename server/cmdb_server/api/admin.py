@@ -720,6 +720,15 @@ async def wgraj_wersje(
                     detail="nie rozpoznaje architektury pliku - czy to na pewno program?",
                 )
 
+            # Wariant z ikona w zasobniku to osobny plik tej samej wersji.
+            # Rozpoznajemy go po podsystemie z naglowka PE, a nie po nazwie:
+            # nazwe da sie zmienic, a wgrywajacy moze sie pomylic. Zapisujemy
+            # go pod wlasna "architektura", zeby nie kolidowal z agentem
+            # i zeby samoaktualizacja nigdy go nie zaproponowala - maszyna
+            # zglasza sie jako x86_64, wiec do "tray" nie pasuje.
+            if system == "windows" and architektura.czy_okienkowy(tymczasowy):
+                arch = architektura.ARCH_TRAY
+
         if not numer:
             raise HTTPException(
                 status_code=400,

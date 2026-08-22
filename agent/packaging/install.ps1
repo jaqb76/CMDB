@@ -85,6 +85,26 @@ try {
         Write-Host "    UWAGA: serwer nie podal skrotu - nie moge sprawdzic pliku" -ForegroundColor Yellow
     }
 
+    # --- ikona w zasobniku (opcjonalna) -------------------------------------
+    # Instalator kopiuje ja, jesli lezy OBOK agenta. Agent trafia tu do
+    # katalogu tymczasowego, wiec bez pobrania ikona nie mialaby skad sie
+    # tam wziasc - i instalacja z serwera nigdy by jej nie zakladala.
+    #
+    # Jej brak nie jest bledem: agent zbiera dane i raportuje bez niej,
+    # a nie kazda firma wgrywa ten wariant.
+    if (-not $NoTray) {
+        $ikona = Join-Path $roboczy "cmdb-agent-tray.exe"
+        try {
+            Invoke-WebRequest -Uri "$Server/download/agent-windows-tray.exe" `
+                -Headers @{ Authorization = "Bearer $Token" } `
+                -OutFile $ikona -UseBasicParsing | Out-Null
+            Write-Host "    pobrano ikone w zasobniku"
+        } catch {
+            Remove-Item $ikona -ErrorAction SilentlyContinue
+            Write-Host "    ikona w zasobniku niedostepna - instaluje bez niej" -ForegroundColor DarkYellow
+        }
+    }
+
     # --- wlasciwy instalator ------------------------------------------------
     Krok "Pobieram instalator"
     $instalator = Join-Path $roboczy "install-agent.ps1"

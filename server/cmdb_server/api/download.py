@@ -26,7 +26,7 @@ from ..db import get_db
 from sqlalchemy import select
 
 from ..models import AgentRelease, EnrollmentToken, Tenant
-from ..services import pakiet, upgrades
+from ..services import architektura, pakiet, upgrades
 from ..services.auth import require_enrollment_token_do_pobrania
 
 log = logging.getLogger(__name__)
@@ -151,6 +151,52 @@ def paczka_linux(
     return FileResponse(
         path=sciezka,
         media_type="application/gzip",
+        filename=wydanie.filename,
+        headers={
+            "X-CMDB-SHA256": wydanie.sha256,
+            "X-CMDB-Version": wydanie.version,
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/agent-windows-tray.exe")
+def ikona_windows(
+    db: Session = Depends(get_db),
+    auth: tuple[EnrollmentToken, Tenant] = Depends(require_enrollment_token_do_pobrania),
+) -> FileResponse:
+    """Wariant z ikona w zasobniku - dodatek do agenta, nie zamiennik.
+
+    Instalator kopiuje go, jesli lezy obok agenta. Przy instalacji z serwera
+    agent jest pobierany do katalogu tymczasowego, wiec bez tego endpointu
+    ikona nie mialaby skad sie tam wziasc i nigdy nie byla instalowana.
+
+    Osobny endpoint, a nie drugi plik przy tym samym wydaniu, bo magazyn
+    trzyma jeden plik na wpis - ikona jest wiec zapisana jako wpis o wlasnej
+    "architekturze" i nigdy nie trafia do samoaktualizacji.
+    """
+    _, tenant = auth
+    wydanie = upgrades.wersja_dla_firmy(
+        db, tenant.id, "windows", architektura.ARCH_TRAY
+    )
+    if wydanie is None:
+        # Brak ikony nie jest bledem instalacji - agent dziala bez niej.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="dla tej firmy nie wgrano wariantu z ikona w zasobniku",
+        )
+
+    sciezka = upgrades.sciezka_pliku(wydanie)
+    if not sciezka.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="plik jest niedostepny na serwerze",
+        )
+
+    log.info("firma %s pobiera ikone agenta %s", tenant.slug, wydanie.version)
+    return FileResponse(
+        path=sciezka,
+        media_type="application/octet-stream",
         filename=wydanie.filename,
         headers={
             "X-CMDB-SHA256": wydanie.sha256,

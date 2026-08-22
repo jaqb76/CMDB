@@ -398,21 +398,26 @@ i szybsza aktualizacja.
 Ikona nie sięga po poświadczenie agenta — czyta wyłącznie plik statusu
 (`ProgramData\CMDB\public\status.json`), który nie zawiera sekretów.
 
-### Do magazynu wersji wgrywa się tylko agenta
+### Do magazynu wgrywa się oba pliki
 
-Magazyn trzyma **jeden plik na wydanie** i to jego rozsyła mechanizm
-samoaktualizacji. Wgrywa się więc `cmdb-agent.exe` — to on musi być aktualny,
-bo to on zbiera dane.
+Wgraj **oba**: `cmdb-agent.exe` i `cmdb-agent-tray.exe`. Serwer rozpoznaje je
+po polu Subsystem w nagłówku PE — agent jest programem konsolowym, ikona
+okienkowym — i zapisuje jako osobne wpisy tej samej wersji. Nazwa pliku nie ma
+znaczenia: nazwę da się zmienić, nagłówek jest faktem.
 
-Ikona trafia na maszynę **tylko przy instalacji**: instalator kopiuje ją, jeśli
-leży obok agenta w tym samym katalogu. Dlatego przy budowaniu warto zachować
-oba pliki, nawet jeśli wgrywasz jeden.
+Ikona **nigdy nie trafia do samoaktualizacji**. Maszyna zgłasza się jako
+`x86_64`, a wariant z ikoną ma własne oznaczenie, więc nie pasuje — podmiana
+agenta programem okienkowym zostawiłaby maszynę bez działającego agenta,
+bo zadanie SYSTEM nie ma pulpitu.
+
+Jeśli nie wgrasz wariantu z ikoną, instalacja przebiegnie normalnie i po prostu
+jej nie założy. Agent zbiera dane i raportuje bez niej.
 
 **Konsekwencja, o której trzeba wiedzieć:** samoaktualizacja podmienia
 wyłącznie `cmdb-agent.exe`. Po kilku aktualizacjach maszyna ma nowego agenta
 i ikonę w wersji z dnia instalacji. Działa to dalej, bo format pliku statusu
-jest stabilny, ale wersje się rozjeżdżają. Żeby wyrównać, trzeba uruchomić
-instalator ponownie — albo używać agenta bez ikony (`-NoTray`).
+jest stabilny, ale wersje się rozjeżdżają. Żeby wyrównać, uruchom instalator
+ponownie — albo używaj agenta bez ikony (`-NoTray`).
 
 ## Podpisywanie
 

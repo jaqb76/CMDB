@@ -87,3 +87,51 @@ def _z_pe(plik, naglowek: bytes) -> str | None:
     if len(sygnatura) < 6 or sygnatura[:4] != b"PE" + bytes(2):
         return None
     return PE_MASZYNY.get(int.from_bytes(sygnatura[4:6], "little"))
+
+
+# --- rodzaj pliku Windows ---------------------------------------------------
+
+# Wariant z ikona w zasobniku nie jest osobna architektura, ale musi byc
+# odrozniony od agenta: to dwa rozne pliki tej samej wersji, a magazyn wydan
+# rozroznia wpisy po trojce wersja + system + architektura.
+ARCH_TRAY = "tray"
+
+# Pole Subsystem z naglowka opcjonalnego PE. 2 = program okienkowy,
+# 3 = program konsolowy. Agent chodzi jako zadanie SYSTEM i nigdy nie rysuje
+# okien, wiec jest konsolowy; ikona w zasobniku jest okienkowa.
+PE_GUI = 2
+PE_KONSOLA = 3
+
+# Przesuniecie pola Subsystem: sygnatura PE (4) + naglowek COFF (20) + 68.
+# Takie samo dla PE32 i PE32+.
+_PRZESUNIECIE_PODSYSTEMU = 4 + 20 + 68
+
+
+def podsystem_pe(sciezka: Path) -> int | None:
+    """Rodzaj programu Windows odczytany z naglowka pliku.
+
+    Czytamy naglowek, a nie polegamy na nazwie pliku ani na deklaracji
+    wgrywajacego: nazwe da sie zmienic, a wgrywajacy moze sie pomylic.
+    """
+    try:
+        with sciezka.open("rb") as plik:
+            naglowek = plik.read(0x40)
+            if len(naglowek) < 0x40 or naglowek[:2] != b"MZ":
+                return None
+            przesuniecie = int.from_bytes(naglowek[0x3C:0x40], "little")
+            plik.seek(przesuniecie)
+            if plik.read(4) != b"PE" + bytes(2):
+                return None
+            plik.seek(przesuniecie + _PRZESUNIECIE_PODSYSTEMU)
+            pole = plik.read(2)
+    except OSError as exc:
+        log.warning("nie moge odczytac podsystemu %s: %s", sciezka, exc)
+        return None
+    if len(pole) < 2:
+        return None
+    return int.from_bytes(pole, "little")
+
+
+def czy_okienkowy(sciezka: Path) -> bool:
+    """Czy plik jest wariantem z interfejsem (ikona w zasobniku)."""
+    return podsystem_pe(sciezka) == PE_GUI

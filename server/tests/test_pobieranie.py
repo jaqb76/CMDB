@@ -774,3 +774,114 @@ def test_kolizja_miedzy_procesami_nie_jest_bledem(tmp_path, monkeypatch):
 
     assert wynik is not None, "przegrany wyscig ma zwrocic istniejacy wpis"
     assert wynik.version == metadane["version"]
+
+
+# --- wariant z ikona w zasobniku --------------------------------------------
+#
+# Instalacja z serwera pobierala wylacznie agenta do katalogu tymczasowego,
+# a instalator szuka ikony OBOK niego - wiec nic jej tam nie kladlo i ikona
+# nigdy nie byla instalowana. Dokumentacja mowila "kopiuje ja, jesli lezy
+# obok", co bylo prawda, tylko udokumentowana droga gwarantowala, ze nie lezy.
+
+def _plik_gui(maszyna: int = 0x8664) -> bytes:
+    """Plik PE oznaczony jako program okienkowy (podsystem 2)."""
+    from cmdb_server.services import architektura
+
+    trzon = bytearray(b"MZ" + bytes(0x3E))
+    trzon[0x3C:0x40] = (0x40).to_bytes(4, "little")
+    ogon = bytearray(b"PE" + bytes(2) + maszyna.to_bytes(2, "little") + bytes(200))
+    # Pole Subsystem lezy 68 bajtow za naglowkiem COFF.
+    pozycja = 4 + 20 + 68
+    ogon[pozycja:pozycja + 2] = architektura.PE_GUI.to_bytes(2, "little")
+    return bytes(trzon) + bytes(ogon) + b"wariant z ikona" * 20
+
+
+def test_podsystem_odroznia_ikone_od_agenta():
+    """Czytamy naglowek, nie nazwe pliku: nazwe da sie zmienic, a wgrywajacy
+    moze sie pomylic."""
+    import tempfile
+    from cmdb_server.services import architektura
+
+    with tempfile.TemporaryDirectory() as katalog:
+        okienkowy = Path(katalog) / "tray.exe"
+        konsolowy = Path(katalog) / "agent.exe"
+        okienkowy.write_bytes(_plik_gui())
+        konsolowy.write_bytes(PLIK_AGENTA)
+
+        assert architektura.czy_okienkowy(okienkowy) is True
+        assert architektura.czy_okienkowy(konsolowy) is False
+
+
+def test_wgrany_wariant_z_ikona_dostaje_wlasna_architekture(client, make_user):
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.5", PLIK_AGENTA, "windows")
+    _wgraj_wersje(client, csrf, "0.5.5", _plik_gui(), "windows")
+
+    with SessionLocal() as db:
+        architektury = {
+            w.arch for w in db.execute(
+                select(AgentRelease).where(AgentRelease.os_family == "windows")
+            ).scalars()
+        }
+    # Ta sama wersja, dwa wpisy - bez rozroznienia kolidowalyby na kluczu
+    # wersja + system + architektura.
+    assert architektury == {"x86_64", "tray"}
+
+
+def test_ikona_nigdy_nie_jest_proponowana_jako_aktualizacja(client, tenant_a, make_user):
+    """Sedno zabezpieczenia: podmiana agenta programem okienkowym zostawilaby
+    maszyne bez dzialajacego agenta - zadanie SYSTEM nie ma pulpitu."""
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.5", _plik_gui(), "windows")
+    with SessionLocal() as db:
+        ikona = db.execute(
+            select(AgentRelease.id).where(AgentRelease.arch == "tray")
+        ).scalar_one()
+    _oznacz_oficjalna(client, csrf, ikona)
+
+    token = client.post(
+        "/api/v1/agents/enroll",
+        headers=_naglowek(tenant_a["token"]),
+        json={"machine_id": "stacja-tray-0001",
+              "identity": {"hostname": "WIN-TRAY", "os_family": "windows", "arch": "amd64"},
+              "agent_version": "0.1.0"},
+    ).json()["agent_token"]
+
+    oferta = client.get("/api/v1/agent/version", headers=_naglowek(token)).json()
+    assert oferta["available"] is False, "maszyna dostala wariant okienkowy jako agenta"
+
+
+def test_ikona_jest_wydawana_pod_wlasnym_adresem(client, tenant_a, make_user):
+    csrf = _superadmin(client, make_user)
+    _wgraj_wersje(client, csrf, "0.5.5", _plik_gui(), "windows")
+    with SessionLocal() as db:
+        ikona = db.execute(
+            select(AgentRelease.id).where(AgentRelease.arch == "tray")
+        ).scalar_one()
+    _oznacz_oficjalna(client, csrf, ikona)
+
+    odpowiedz = client.get(
+        "/download/agent-windows-tray.exe", headers=_naglowek(tenant_a["token"])
+    )
+    assert odpowiedz.status_code == 200
+    assert odpowiedz.headers["x-cmdb-version"] == "0.5.5"
+
+
+def test_brak_ikony_nie_jest_bledem_instalacji(client, tenant_a):
+    """Agent zbiera dane i raportuje bez niej, a nie kazda firma ja wgrywa."""
+    odpowiedz = client.get(
+        "/download/agent-windows-tray.exe", headers=_naglowek(tenant_a["token"])
+    )
+    assert odpowiedz.status_code == 404
+    assert "ikona" in odpowiedz.json()["detail"]
+
+
+def test_skrypt_startowy_pobiera_ikone():
+    """Bez tego instalacja z serwera nigdy jej nie zaklada."""
+    from cmdb_server.api import download
+
+    tresc = download._skrypt("install.ps1")
+    assert "/download/agent-windows-tray.exe" in tresc
+    assert "cmdb-agent-tray.exe" in tresc
+    # Pobranie musi byc w bloku try - brak ikony nie moze przerwac instalacji.
+    assert "instaluje bez niej" in tresc

@@ -134,6 +134,13 @@ def _zgodne(wydanie: AgentRelease, os_family: str, arch: str | None) -> bool:
     if (wydanie.arch or "") == pakiet.ARCH_ZRODLA:
         return True
 
+    # Wariant z ikona w zasobniku nie jest architektura procesora, wiec nie
+    # przechodzi przez normalizacje. Pasuje wylacznie wtedy, gdy pytamy o niego
+    # wprost - maszyna zglasza sie jako x86_64 i nigdy go nie dostanie jako
+    # aktualizacji agenta.
+    if (wydanie.arch or "") == architektura.ARCH_TRAY:
+        return arch == architektura.ARCH_TRAY
+
     znormalizowana = architektura.normalizuj(arch)
     if not znormalizowana:
         return False
