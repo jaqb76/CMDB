@@ -885,3 +885,46 @@ def test_skrypt_startowy_pobiera_ikone():
     assert "cmdb-agent-tray.exe" in tresc
     # Pobranie musi byc w bloku try - brak ikony nie moze przerwac instalacji.
     assert "instaluje bez niej" in tresc
+
+
+# --- limity rozmiaru przy wgrywaniu -----------------------------------------
+#
+# Aplikacja rozrozniala wgrywanie wersji od raportu agenta, ale nginx stosowal
+# jeden limit do wszystkiego. Wariant z ikona w zasobniku ma ponad 29 MB, wiec
+# byl odrzucany kodem 413, zanim zadanie w ogole doszlo do aplikacji.
+
+def _konfiguracja_nginx() -> str:
+    korzen = Path(__file__).resolve().parent.parent.parent
+    return (korzen / "deploy" / "nginx" / "cmdb.conf").read_text(encoding="utf-8")
+
+
+def test_nginx_przepuszcza_duze_pliki_agenta():
+    tresc = _konfiguracja_nginx()
+    assert "location /admin/releases" in tresc
+
+    # Limit w bloku wgrywania musi byc wiekszy niz najwiekszy plik agenta.
+    import re
+
+    limity = re.findall(r"client_max_body_size\s+(\d+)m", tresc)
+    assert limity, "brak limitu rozmiaru w konfiguracji"
+    assert max(int(w) for w in limity) >= 64, "za maly limit dla wariantu z ikona"
+
+
+def test_podniesiony_limit_dotyczy_tylko_wgrywania():
+    """Podniesienie go globalnie pozwoliloby wyslac setki megabajtow
+    na dowolny inny adres."""
+    tresc = _konfiguracja_nginx()
+    globalny = tresc.split("server {")[0]
+    import re
+
+    limity_globalne = [int(w) for w in re.findall(r"client_max_body_size\s+(\d+)m", globalny)]
+    assert limity_globalne, "brak limitu globalnego"
+    assert max(limity_globalne) <= 16, "limit globalny nie moze byc podniesiony"
+
+
+def test_aplikacja_przepuszcza_plik_wielkosci_wariantu_z_ikona(client, make_user):
+    """Sprawdzenie od strony aplikacji: limit 8 MB dotyczy raportow, nie wgrywania."""
+    from cmdb_server.config import get_settings
+
+    assert get_settings().max_release_bytes >= 32 * 1024 * 1024
+    assert get_settings().max_release_bytes > get_settings().max_report_bytes

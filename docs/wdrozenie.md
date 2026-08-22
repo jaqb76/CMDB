@@ -253,3 +253,21 @@ Schemat bazy tworzony jest przy starcie (`create_all`) — brakujące tabele
 i indeksy powstają automatycznie, ale **zmiany istniejących kolumn nie są
 migrowane**. Przed wdrożeniem wersji zmieniającej model zrób kopię bazy.
 Docelowo warto wprowadzić Alembic.
+
+## Limity rozmiaru żądań
+
+nginx stosuje **12 MB** do całego ruchu — raport agenta to kilkaset kB tekstu
+wysyłanego gzipem, więc zapas jest spory.
+
+Wyjątkiem jest `/admin/releases`, gdzie limit wynosi **160 MB**: plik agenta
+spakowany PyInstallerem ma ~8 MB, a wariant z ikoną w zasobniku ponad 29 MB.
+Bez tego wyjątku wgranie ikony kończyło się kodem **413**, zanim żądanie
+w ogóle doszło do aplikacji.
+
+Limit jest podniesiony wyłącznie tam. Podniesienie go globalnie pozwoliłoby
+wysłać setki megabajtów na dowolny inny adres — aplikacja i tak odrzuciłaby
+takie żądanie, ale dopiero po odebraniu go w całości.
+
+Odpowiednikiem po stronie aplikacji są `CMDB_MAX_REPORT_BYTES` (8 MB) oraz
+`CMDB_MAX_RELEASE_BYTES` (128 MB). Jeśli podnosisz jeden, podnieś i drugi —
+niższy z nich decyduje.
