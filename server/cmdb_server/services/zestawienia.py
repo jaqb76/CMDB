@@ -19,7 +19,7 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
-from ..models import as_utc, utcnow
+from ..models import ZRODLO_AGENT, as_utc, utcnow
 from . import cve, kolumny
 
 log = logging.getLogger(__name__)
@@ -152,8 +152,11 @@ def zbierz(db: Session, maszyny: list, ostatni_raport) -> dict:
                     f"w tym {wynik['critical_count']} powaznych (CVSS >= 7)", "szt.",
                 ))
 
+        # Wpis reczny nie ma agenta - cisza jest tu stanem normalnym.
         ostatni = as_utc(maszyna.last_seen)
-        if ostatni is None or teraz - ostatni > timedelta(hours=48):
+        if maszyna.zrodlo == ZRODLO_AGENT and (
+            ostatni is None or teraz - ostatni > timedelta(hours=48)
+        ):
             dni_ciszy = round((teraz - ostatni).total_seconds() / 86400, 1) if ostatni else None
             bez_kontaktu.append(_wpis(
                 maszyna, dni_ciszy if dni_ciszy is not None else "—",

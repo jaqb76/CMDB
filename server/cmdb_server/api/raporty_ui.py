@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import DefinicjaRaportu, PortalUser, Tenant, UstawieniaPoczty
-from ..services import poczta, raporty, sekrety, wykresy
+from ..services import poczta, raporty, sekrety, slowniki, wykresy
 from ..services.auth import client_ip, require_user, verify_csrf
 from ..services.scoping import TenantContext, audit
 from .ui import render, resolve_tenant, templates
@@ -310,7 +310,9 @@ def zapisz_zakup(
 
     maszyna.purchase_date = data(purchase_date)
     maszyna.warranty_until = data(warranty_until)
-    maszyna.vendor = vendor.strip()[:200] or None
+    # Nowy dostawca dopisuje sie do slownika firmy - podpowie sie przy
+    # nastepnym sprzecie zamiast powstac po raz drugi w innej pisowni.
+    maszyna.vendor = slowniki.zapewnij(db, ctx, "dostawca", vendor)
     maszyna.purchase_price = kwota(purchase_price)
     maszyna.purchase_currency = purchase_currency.strip()[:8].upper() or None
     maszyna.invoice_number = invoice_number.strip()[:120] or None

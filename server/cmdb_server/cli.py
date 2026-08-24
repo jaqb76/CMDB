@@ -73,13 +73,16 @@ def cmd_user_create(args: argparse.Namespace) -> None:
         if db.execute(select(PortalUser).where(PortalUser.email == email)).scalar_one_or_none():
             sys.exit(f"blad: uzytkownik {email} juz istnieje")
 
+        if args.superadmin and args.audytor:
+            sys.exit("blad: konto jest albo superadminem, albo audytorem - nie obydwoma")
+
         tenant_id = None
-        if args.superadmin:
+        if args.superadmin or args.audytor:
             if args.tenant:
-                sys.exit("blad: superadmin nie moze byc przypisany do firmy")
+                sys.exit("blad: konto obejmujace wszystkie firmy nie ma wlasnej firmy")
         else:
             if not args.tenant:
-                sys.exit("blad: podaj --tenant albo --superadmin")
+                sys.exit("blad: podaj --tenant, --superadmin albo --audytor")
             tenant_id = _tenant_by_slug(db, args.tenant).id
 
         db.add(
@@ -88,12 +91,43 @@ def cmd_user_create(args: argparse.Namespace) -> None:
                 email=email,
                 full_name=args.full_name,
                 password_hash=hash_password(password),
-                role="admin" if args.superadmin else args.role,
+                # Audytor ma role "viewer" dla porzadku, ale to nie ona decyduje
+                # o braku zapisu - robi to flaga is_global_viewer.
+                role="admin" if args.superadmin else ("viewer" if args.audytor else args.role),
                 is_superadmin=args.superadmin,
+                is_global_viewer=args.audytor,
             )
         )
-        scope = "superadmin (wszystkie firmy)" if args.superadmin else f"firma {args.tenant}"
+        if args.superadmin:
+            scope = "superadmin (wszystkie firmy)"
+        elif args.audytor:
+            scope = "audytor (wszystkie firmy, tylko odczyt)"
+        else:
+            scope = f"firma {args.tenant}"
         print(f"utworzono uzytkownika {email} - {scope}")
+
+
+def cmd_user_password(args: argparse.Namespace) -> None:
+    """Ostatnia droga wyjscia, gdy nikt nie moze sie zalogowac.
+
+    Panel pozwala superadminowi ustawic haslo dowolnemu kontu, ale gdy to
+    wlasnie konto superadmina jest niedostepne, nie ma sie czym zalogowac,
+    zeby z tej mozliwosci skorzystac. Dostep do serwera jest tu jedynym
+    uwierzytelnieniem - i wystarczajacym, bo kto ma serwer, ma i baze.
+    """
+    email = args.email.strip().lower()
+    password = args.password or getpass.getpass("nowe haslo: ")
+    if len(password) < 12:
+        sys.exit("blad: haslo musi miec co najmniej 12 znakow")
+
+    with session_scope() as db:
+        konto = db.execute(
+            select(PortalUser).where(PortalUser.email == email)
+        ).scalar_one_or_none()
+        if konto is None:
+            sys.exit(f"blad: nie ma uzytkownika {email}")
+        konto.password_hash = hash_password(password)
+        print(f"ustawiono nowe haslo konta {email}")
 
 
 def cmd_token_issue(args: argparse.Namespace) -> None:
@@ -229,7 +263,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tenant", help="slug firmy")
     p.add_argument("--role", choices=["admin", "viewer"], default="viewer")
     p.add_argument("--superadmin", action="store_true", help="dostep do wszystkich firm")
+    p.add_argument("--audytor", action="store_true",
+                   help="podglad wszystkich firm, bez prawa zapisu")
     p.set_defaults(func=cmd_user_create)
+
+    p = sub.add_parser("user-password", help="ustawia nowe haslo istniejacemu kontu")
+    p.add_argument("--email", required=True)
+    p.add_argument("--password", help="pominiete = zapyta interaktywnie")
+    p.set_defaults(func=cmd_user_password)
 
     p = sub.add_parser("token-issue", help="wydaje token rejestracyjny dla firmy")
     p.add_argument("--tenant", required=True)

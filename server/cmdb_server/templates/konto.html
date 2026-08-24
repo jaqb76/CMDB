@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Moje konto - CMDB{% endblock %}
+{% block content %}
+<h1>Moje konto</h1>
+
+{% if zmienione %}
+  <div class="alert alert-ok">Haslo zostalo zmienione.</div>
+{% endif %}
+{% if blad %}
+  <div class="alert alert-error">{{ blad }}</div>
+{% endif %}
+
+<div class="two-col">
+  <section class="panel">
+    <h2>Konto</h2>
+    <dl class="kv">
+      <dt>Adres</dt><dd>{{ user.email }}</dd>
+      <dt>Imie i nazwisko</dt><dd>{{ user.full_name or '—' }}</dd>
+      <dt>Zakres</dt>
+      <dd>
+        {% if user.is_superadmin %}wszystkie firmy, pelne uprawnienia
+        {% elif user.is_global_viewer %}wszystkie firmy, tylko odczyt
+        {% elif user.tenant %}{{ user.tenant.name }}
+        {% else %}—{% endif %}
+      </dd>
+      <dt>Rola w firmie</dt>
+      <dd>{% if user.role == 'admin' %}administrator{% else %}podglad{% endif %}</dd>
+      <dt>Ostatnie logowanie</dt><dd>{{ user.last_login_at | dt }}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Zmiana hasla</h2>
+    <p class="small muted">
+      Dotychczasowe haslo jest wymagane takze dla administratora: bez niego
+      pozostawiona bez opieki przegladarka wystarczylaby, zeby przejac konto
+      na stale.
+    </p>
+    <form method="post" action="/konto/haslo" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="obecne">Dotychczasowe haslo</label>
+      <input id="obecne" name="obecne" type="password" required autocomplete="current-password">
+      <label for="nowe">Nowe haslo</label>
+      <input id="nowe" name="nowe" type="password" required autocomplete="new-password"
+             minlength="{{ min_dlugosc_hasla }}">
+      <label for="powtorzone">Powtorz nowe haslo</label>
+      <input id="powtorzone" name="powtorzone" type="password" required autocomplete="new-password"
+             minlength="{{ min_dlugosc_hasla }}">
+      <p class="small muted">Co najmniej {{ min_dlugosc_hasla }} znakow.</p>
+      <button type="submit" class="btn btn-primary">Zmien haslo</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

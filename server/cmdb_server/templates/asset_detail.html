@@ -9,10 +9,16 @@
       {% if asset.lifecycle == 'wycofany' %}<span class="badge badge-danger">wycofana</span>{% endif %}
     </h1>
     <p class="muted">
-      {{ asset.fqdn or asset.hostname }}
-      {% if asset.domain %} &middot; domena {{ asset.domain }}{% endif %}
-      &middot; agent {{ asset.agent_version or '?' }}
-      &middot; ostatni kontakt {{ asset.last_seen | ago }}
+      {{ typy.get(asset.typ, asset.typ) }}
+      {% if asset.lokalizacja %} &middot; {{ asset.lokalizacja }}{% endif %}
+      {% if asset.zrodlo == 'reczne' %}
+        &middot; wpis reczny, dodany {{ asset.first_seen | dt }}
+      {% else %}
+        &middot; {{ asset.fqdn or asset.hostname }}
+        {% if asset.domain %} &middot; domena {{ asset.domain }}{% endif %}
+        &middot; agent {{ asset.agent_version or '?' }}
+        &middot; ostatni kontakt {{ asset.last_seen | ago }}
+      {% endif %}
     </p>
   </div>
   <div class="head-actions">
@@ -22,7 +28,15 @@
 </div>
 
 {% if not snapshot %}
-  <div class="alert alert-warn">Maszyna jest zarejestrowana, ale nie przyslala jeszcze zadnego raportu.</div>
+  {% if asset.zrodlo == 'reczne' %}
+    <div class="alert">
+      Sprzet wpisany recznie - nie ma na nim agenta, wiec system operacyjny,
+      oprogramowanie i podatnosci pozostaja puste. Wszystko, co o nim wiadomo,
+      jest ponizej.
+    </div>
+  {% else %}
+    <div class="alert alert-warn">Maszyna jest zarejestrowana, ale nie przyslala jeszcze zadnego raportu.</div>
+  {% endif %}
 {% endif %}
 
 {% if collector_errors %}
@@ -35,11 +49,11 @@
 {% endif %}
 
 <section class="panel">
-  <h2>Opiekun i rola</h2>
+  <h2>Opiekun, uzytkownik i lokalizacja</h2>
   <form method="post" action="/assets/{{ asset.id }}/owner" class="row-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div>
-      <label for="owner_id">Opiekun / wlasciciel</label>
+      <label for="owner_id">Opiekun (odpowiada za sprzet)</label>
       <select id="owner_id" name="owner_id" {% if not ctx.can_write %}disabled{% endif %}>
         <option value="">— nieprzypisany —</option>
         {% for o in owners %}
@@ -50,16 +64,108 @@
       </select>
     </div>
     <div>
-      <label for="role_label">Rola maszyny</label>
+      <label for="uzytkownik_id">Uzytkownik komputera</label>
+      <select id="uzytkownik_id" name="uzytkownik_id" {% if not ctx.can_write %}disabled{% endif %}>
+        <option value="">— nieprzypisany —</option>
+        {% for o in owners %}
+          <option value="{{ o.id }}" {% if asset.uzytkownik_id == o.id %}selected{% endif %}>
+            {{ o.full_name }} ({{ o.email }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="lokalizacja">Lokalizacja</label>
+      <input id="lokalizacja" name="lokalizacja" maxlength="200" list="slownik-lokalizacje"
+             autocomplete="off" value="{{ asset.lokalizacja or '' }}"
+             placeholder="np. Serwerownia A, pokoj 214"
+             {% if not ctx.can_write %}disabled{% endif %}>
+      <datalist id="slownik-lokalizacje">
+        {% for l in podpowiedzi.lokalizacja %}<option value="{{ l }}"></option>{% endfor %}
+      </datalist>
+    </div>
+    <div>
+      <label for="role_label">Rola</label>
       <input id="role_label" name="role_label" maxlength="200" value="{{ asset.role_label or '' }}"
-             placeholder="np. serwer plikow, kontroler domeny" {% if not ctx.can_write %}disabled{% endif %}>
+             placeholder="np. serwer plikow, drukarka dzialu kadr" {% if not ctx.can_write %}disabled{% endif %}>
     </div>
     {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
   </form>
+  <p class="small muted">
+    Osoby wybiera sie z <a href="/owners">listy firmy</a>; nowa lokalizacja dopisze sie
+    do <a href="/slowniki">slownika</a> automatycznie.
+  </p>
   {% if asset.owner %}
-    <p class="small muted">Kontakt: {{ asset.owner.email }}{% if asset.owner.phone %} &middot; {{ asset.owner.phone }}{% endif %}{% if asset.owner.department %} &middot; {{ asset.owner.department }}{% endif %}</p>
+    <p class="small muted">Opiekun: {{ asset.owner.email }}{% if asset.owner.phone %} &middot; {{ asset.owner.phone }}{% endif %}{% if asset.owner.department %} &middot; {{ asset.owner.department }}{% endif %}</p>
+  {% endif %}
+  {% if asset.uzytkownik %}
+    <p class="small muted">Uzytkownik: {{ asset.uzytkownik.email }}{% if asset.uzytkownik.phone %} &middot; {{ asset.uzytkownik.phone }}{% endif %}{% if asset.uzytkownik.department %} &middot; {{ asset.uzytkownik.department }}{% endif %}</p>
   {% endif %}
 </section>
+
+{% if asset.zrodlo == 'reczne' %}
+<section class="panel">
+  <h2>Dane sprzetu</h2>
+  <p class="small muted">
+    Wpis reczny opisuje wylacznie to, co wpisal czlowiek - nie ma raportu,
+    ktory by go poprawil, wiec te pola sa jedynym zrodlem prawdy o tym sprzecie.
+  </p>
+  <form method="post" action="/assets/{{ asset.id }}/dane" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div>
+      <label for="nazwa">Nazwa</label>
+      <input id="nazwa" name="nazwa" required maxlength="255" value="{{ asset.hostname }}"
+             {% if not ctx.can_write %}disabled{% endif %}>
+    </div>
+    <div>
+      <label for="typ">Rodzaj</label>
+      <select id="typ" name="typ" {% if not ctx.can_write %}disabled{% endif %}>
+        {% for klucz, etykieta in typy.items() %}
+          <option value="{{ klucz }}" {% if asset.typ == klucz %}selected{% endif %}>{{ etykieta }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="producent">Producent</label>
+      <input id="producent" name="producent" maxlength="200" value="{{ asset.manufacturer or '' }}"
+             {% if not ctx.can_write %}disabled{% endif %}>
+    </div>
+    <div>
+      <label for="model">Model</label>
+      <input id="model" name="model" maxlength="200" value="{{ asset.model or '' }}"
+             {% if not ctx.can_write %}disabled{% endif %}>
+    </div>
+    <div>
+      <label for="numer_seryjny">Numer seryjny</label>
+      <input id="numer_seryjny" name="numer_seryjny" maxlength="128" value="{{ asset.serial_number or '' }}"
+             {% if not ctx.can_write %}disabled{% endif %}>
+    </div>
+    <div>
+      <label for="ip">Adres IP</label>
+      <input id="ip" name="ip" maxlength="64" value="{{ asset.primary_ip or '' }}"
+             {% if not ctx.can_write %}disabled{% endif %}>
+    </div>
+    <div>
+      <label for="rola">Rola</label>
+      <input id="rola" name="rola" maxlength="200" value="{{ asset.role_label or '' }}"
+             {% if not ctx.can_write %}disabled{% endif %}>
+    </div>
+    <div>
+      <label for="uwagi">Uwagi</label>
+      <input id="uwagi" name="uwagi" value="{{ asset.purchase_notes or '' }}"
+             {% if not ctx.can_write %}disabled{% endif %}>
+    </div>
+    {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
+  </form>
+  {% if ctx.can_write %}
+    <form method="post" action="/assets/{{ asset.id }}/usun" class="inline-form"
+          data-confirm="Usunac wpis {{ asset.hostname }}? Wpisu recznego nie da sie odzyskac.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-small btn-danger">Usun wpis</button>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
 
 <div class="tabs" data-tabs>
   <div class="tab-buttons">
@@ -165,7 +271,11 @@
           </div>
           <div>
             <label for="vendor">Dostawca</label>
-            <input id="vendor" name="vendor" maxlength="200" value="{{ asset.vendor or '' }}">
+            <input id="vendor" name="vendor" maxlength="200" value="{{ asset.vendor or '' }}"
+                   list="slownik-dostawcy" autocomplete="off">
+            <datalist id="slownik-dostawcy">
+              {% for d in podpowiedzi.dostawca %}<option value="{{ d }}"></option>{% endfor %}
+            </datalist>
           </div>
         </div>
         <div class="row-form">

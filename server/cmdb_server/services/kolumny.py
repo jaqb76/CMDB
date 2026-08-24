@@ -16,6 +16,8 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..models import TYPY_SPRZETU
+
 
 def bajty(wartosc) -> str | None:
     """Rozmiar w postaci czytelnej dla czlowieka."""
@@ -64,6 +66,13 @@ KOLUMNY: list[dict] = [
      "wartosc": lambda k: k["maszyna"].primary_ip, "domyslna": True},
     {"klucz": "owner", "etykieta": "Opiekun", "grupa": "Identyfikacja", "zrodlo": "asset",
      "wartosc": lambda k: k["opiekunowie"].get(k["maszyna"].owner_id)},
+    {"klucz": "uzytkownik", "etykieta": "Uzytkownik", "grupa": "Identyfikacja",
+     "zrodlo": "asset",
+     "wartosc": lambda k: k["opiekunowie"].get(k["maszyna"].uzytkownik_id)},
+    {"klucz": "lokalizacja", "etykieta": "Lokalizacja", "grupa": "Identyfikacja",
+     "zrodlo": "asset", "wartosc": lambda k: k["maszyna"].lokalizacja},
+    {"klucz": "typ", "etykieta": "Rodzaj sprzetu", "grupa": "Identyfikacja", "zrodlo": "asset",
+     "wartosc": lambda k: TYPY_SPRZETU.get(k["maszyna"].typ, k["maszyna"].typ)},
     {"klucz": "role_label", "etykieta": "Rola", "grupa": "Identyfikacja", "zrodlo": "asset",
      "wartosc": lambda k: k["maszyna"].role_label},
 
@@ -170,7 +179,7 @@ def tabela(db: Session, maszyny: list, kolumny: list[dict],
     # Mape opiekunow budujemy tylko wtedy, gdy jakas kolumna o nia prosi -
     # przy jednej kolumnie mniej nie ma powodu odpytywac bazy.
     opiekunowie: dict[str, str] = {}
-    if any(kolumna["klucz"] == "owner" for kolumna in kolumny):
+    if any(kolumna["klucz"] in ("owner", "uzytkownik") for kolumna in kolumny):
         opiekunowie = {
             o.id: o.full_name
             for o in db.execute(select(Owner).where(Owner.tenant_id == tenant_id)).scalars()

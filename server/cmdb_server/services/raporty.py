@@ -21,7 +21,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Asset, InventorySnapshot, Tenant, utcnow
+from ..models import ZRODLO_AGENT, Asset, InventorySnapshot, Tenant, utcnow
 from . import cve
 
 log = logging.getLogger(__name__)
@@ -108,8 +108,14 @@ def dane_sprzet(db: Session, tenant_id: str) -> dict:
         wersje_agenta[maszyna.agent_version or "nieznana"] += 1
 
     prog = utcnow() - timedelta(hours=48)
-    bez_kontaktu = [m for m in maszyny if not m.last_seen or m.last_seen.replace(
-        tzinfo=m.last_seen.tzinfo or utcnow().tzinfo) < prog]
+    # Sprzet wpisany recznie nie ma agenta i nigdy sie nie odezwie - liczenie
+    # go jako "bez kontaktu" zamienialoby raport w stala falszywa alarmowke.
+    bez_kontaktu = [
+        m for m in maszyny
+        if m.zrodlo == ZRODLO_AGENT
+        and (not m.last_seen or m.last_seen.replace(
+            tzinfo=m.last_seen.tzinfo or utcnow().tzinfo) < prog)
+    ]
 
     return {
         "liczba": len(maszyny),

@@ -5,7 +5,7 @@
 <div class="page-head">
   <div>
     <h1>Firmy i konta</h1>
-    <p class="muted">Zakladanie organizacji, kont logowania i tokenow rejestracyjnych.</p>
+    <p class="muted">Zakladanie organizacji, kont logowania, hasel i tokenow rejestracyjnych.</p>
   </div>
 </div>
 
@@ -41,6 +41,13 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn-link">{% if k.is_active %}wylacz{% else %}wlacz{% endif %}</button>
               </form>
+              <form method="post" action="/admin/users/{{ k.id }}/haslo" class="inline-form"
+                    data-confirm="Ustawic nowe haslo konta {{ k.email }}? Dotychczasowe przestanie dzialac.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="text" name="password" required minlength="{{ min_dlugosc_hasla }}"
+                       maxlength="200" placeholder="nowe haslo" autocomplete="off">
+                <button type="submit" class="btn-link">ustaw haslo</button>
+              </form>
             </div>
           {% else %}<span class="muted">brak</span>{% endfor %}
         </td>
@@ -66,6 +73,78 @@
     {% endfor %}
     </tbody>
   </table>
+</section>
+
+<section class="panel">
+  <h2>Konta obejmujace wszystkie firmy</h2>
+  <p class="muted small">
+    Konta bez przypisanej organizacji. Superadmin zarzadza calym systemem;
+    audytor widzi inwentarz kazdej firmy, ale nie zmienia w nim niczego -
+    zadnego formularza zapisu nie dostanie nawet po wpisaniu adresu recznie.
+  </p>
+  <table class="table">
+    <thead><tr><th>Konto</th><th>Uprawnienia</th><th>Ostatnie logowanie</th><th>Nowe haslo</th><th></th></tr></thead>
+    <tbody>
+    {% for k in konta_globalne %}
+      <tr {% if not k.is_active %}class="row-muted"{% endif %}>
+        <td>
+          <span class="strong">{{ k.email }}</span>
+          {% if k.full_name %}<div class="muted small">{{ k.full_name }}</div>{% endif %}
+        </td>
+        <td class="small">
+          {% if k.is_superadmin %}<span class="badge badge-ok">superadmin</span>
+          {% else %}<span class="badge badge-warn">audytor — tylko odczyt</span>{% endif %}
+          {% if not k.is_active %}<span class="badge badge-danger">wylaczone</span>{% endif %}
+        </td>
+        <td class="small muted">{{ k.last_login_at | dt }}</td>
+        <td>
+          <form method="post" action="/admin/users/{{ k.id }}/haslo" class="inline-form"
+                data-confirm="Ustawic nowe haslo konta {{ k.email }}? Dotychczasowe przestanie dzialac.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="text" name="password" required minlength="{{ min_dlugosc_hasla }}"
+                   maxlength="200" placeholder="nowe haslo" autocomplete="off">
+            <button type="submit" class="btn btn-small">Ustaw</button>
+          </form>
+        </td>
+        <td>
+          {% if not k.is_superadmin %}
+          <form method="post" action="/admin/users/{{ k.id }}/active" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-ghost">
+              {% if k.is_active %}Wylacz{% else %}Wlacz{% endif %}
+            </button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">Brak kont globalnych.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Nowy audytor wszystkich firm (tylko odczyt)</h3>
+  <form method="post" action="/admin/users/globalne" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div>
+      <label for="audytor_email">E-mail (login)</label>
+      <input id="audytor_email" name="email" type="email" required maxlength="255">
+    </div>
+    <div>
+      <label for="audytor_haslo">Haslo</label>
+      <input id="audytor_haslo" name="password" type="text" required
+             minlength="{{ min_dlugosc_hasla }}" maxlength="200">
+    </div>
+    <div>
+      <label for="audytor_nazwa">Imie i nazwisko</label>
+      <input id="audytor_nazwa" name="full_name" maxlength="200">
+    </div>
+    <div><button type="submit" class="btn btn-primary">Utworz audytora</button></div>
+  </form>
+  <p class="muted small">
+    Minimum {{ min_dlugosc_hasla }} znakow. Haslo pokazane jawnie, zeby dalo sie je przekazac
+    wlascicielowi konta; w bazie zostaje wylacznie skrot Argon2id.
+  </p>
 </section>
 
 <div class="two-col">

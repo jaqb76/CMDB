@@ -203,3 +203,70 @@ def test_sqlite_nie_uzywa_blokady_doradczej(monkeypatch):
 
     modul.init_db()
     assert dziennik == [("SCHEMAT", None)]
+
+
+def test_stare_assets_dostaja_rodzaj_i_zrodlo(tmp_path, monkeypatch):
+    """Baza zalozona przed podzialem na sprzet z agentem i wpisy reczne.
+
+    Kolumny 'typ' i 'zrodlo' sa wymagane, wiec do tabeli z danymi da sie je
+    dolozyc tylko z wartoscia domyslna. Wartosc jest tu faktem, a nie
+    zgadywaniem: wszystko, co bylo w bazie wczesniej, przyszlo od agenta
+    i jest komputerem - wpisow recznych wtedy jeszcze nie bylo.
+    """
+    plik_bazy = tmp_path / "assets.db"
+    db = sqlite3.connect(plik_bazy)
+    db.execute(
+        """CREATE TABLE assets (
+               id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, machine_id TEXT NOT NULL,
+               hostname TEXT NOT NULL, is_active BOOLEAN NOT NULL,
+               first_seen TIMESTAMP, last_seen TIMESTAMP,
+               lifecycle TEXT NOT NULL DEFAULT 'aktywny')"""
+    )
+    db.execute(
+        "INSERT INTO assets (id, tenant_id, machine_id, hostname, is_active) VALUES (?,?,?,?,1)",
+        (str(uuid.uuid4()), str(uuid.uuid4()), "win-0001", "SRV-STARY"),
+    )
+    db.commit()
+    db.close()
+
+    silnik = _migruj(plik_bazy, monkeypatch)
+    with silnik.connect() as polaczenie:
+        wiersz = polaczenie.execute(
+            text("SELECT typ, zrodlo, lokalizacja, uzytkownik_id FROM assets")
+        ).one()
+    assert wiersz.typ == "komputer"
+    assert wiersz.zrodlo == "agent"
+    assert wiersz.lokalizacja is None
+    assert wiersz.uzytkownik_id is None
+
+
+def test_stare_konta_nie_staja_sie_audytorami(tmp_path, monkeypatch):
+    """Nowa flaga uprawnien musi dolozyc sie jako WYLACZONA.
+
+    Kolumna wymagana bez poprawnej wartosci domyslnej zamienilaby kazde
+    istniejace konto w audytora widzacego wszystkie firmy - czyli cicho
+    zniosla izolacje danych przy zwyklej aktualizacji serwera.
+    """
+    plik_bazy = tmp_path / "konta.db"
+    db = sqlite3.connect(plik_bazy)
+    db.execute(
+        """CREATE TABLE portal_users (
+               id TEXT PRIMARY KEY, tenant_id TEXT, email TEXT NOT NULL,
+               password_hash TEXT NOT NULL, role TEXT NOT NULL,
+               is_superadmin BOOLEAN NOT NULL, is_active BOOLEAN NOT NULL,
+               created_at TIMESTAMP)"""
+    )
+    db.execute(
+        "INSERT INTO portal_users (id, tenant_id, email, password_hash, role, "
+        "is_superadmin, is_active) VALUES (?,?,?,?,?,0,1)",
+        (str(uuid.uuid4()), str(uuid.uuid4()), "admin@firma.pl", "hash", "admin"),
+    )
+    db.commit()
+    db.close()
+
+    silnik = _migruj(plik_bazy, monkeypatch)
+    with silnik.connect() as polaczenie:
+        wartosc = polaczenie.execute(
+            text("SELECT is_global_viewer FROM portal_users")
+        ).scalar_one()
+    assert not wartosc

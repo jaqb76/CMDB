@@ -233,13 +233,24 @@ def require_superadmin(user: PortalUser = Depends(require_user)) -> PortalUser:
     return user
 
 
+def widzi_wszystkie_firmy(user: PortalUser) -> bool:
+    """Czy konto moze ogladac dane dowolnej firmy, nie tylko wlasnej.
+
+    Superadmin zarzadza calym systemem; audytor globalny ma te sama szerokosc
+    widoku, ale wylacznie do odczytu (patrz tenant_context_for).
+    """
+    return bool(user.is_superadmin or user.is_global_viewer)
+
+
 def tenant_context_for(user: PortalUser, tenant: Tenant) -> TenantContext:
     return TenantContext(
         tenant_id=tenant.id,
         tenant_slug=tenant.slug,
         actor=user.email,
         is_superadmin=user.is_superadmin,
-        can_write=user.is_superadmin or user.role == "admin",
+        # Audytor globalny nie zapisuje niczego w zadnej firmie - warunek jest
+        # tutaj, bo to jedyne miejsce, w ktorym powstaje prawo do zapisu.
+        can_write=(user.is_superadmin or user.role == "admin") and not user.is_global_viewer,
     )
 
 

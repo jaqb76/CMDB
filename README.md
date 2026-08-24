@@ -33,6 +33,53 @@ maszyny, a agent posługuje się tokenem przypisanym do konkretnej firmy.
 Pełny raport trafia do bazy jako JSON — widoki w panelu są tylko jego
 prezentacją, więc dołożenie nowego pola nie wymaga migracji bazy.
 
+## Dane dopisywane ręcznie
+
+Agent zna maszynę od środka, ale nie wie, gdzie ona stoi, kto przy niej
+siedzi ani od kogo została kupiona. Te informacje wpisuje człowiek:
+
+| Pole | Gdzie | Uwagi |
+|---|---|---|
+| Opiekun | strona sprzętu | osoba odpowiedzialna za sprzęt |
+| Użytkownik komputera | strona sprzętu | osoba, która przy nim pracuje — zwykle ktoś inny niż opiekun |
+| Lokalizacja | strona sprzętu | np. „Serwerownia A", „pokój 214" |
+| Dział | lista osób | przypisany do osoby, nie do maszyny |
+| Dostawca, faktura, gwarancja | zakładka „Zakup i gwarancja" | podstawa raportu o wygasającym wsparciu |
+
+**Sprzęt bez agenta** (drukarki, switche, monitory, telefony) dodaje się
+ręcznie przyciskiem *Dodaj sprzęt ręcznie* na liście. Taki wpis ma rodzaj,
+lokalizację, opiekuna i dane zakupowe, ale nie ma raportu — i dlatego nigdy
+nie trafia na listę „bez kontaktu": urządzenie bez agenta nie odezwie się
+nigdy, więc alarm byłby stały i fałszywy. Wpis ręczny wolno usunąć; maszynę
+z agentem można tylko wycofać, bo niesie historię raportów.
+
+**Słowniki** (dział, lokalizacja, dostawca) zapełniają się same: każda nowa
+wartość wpisana w formularzu od razu do nich trafia i od następnego razu
+podpowiada się na liście. Wpisania własnej wartości nic nie blokuje —
+wymuszanie wyboru z listy kończy się pustym polem, gdy ktoś nie znajdzie
+swojego działu. Porównanie ignoruje wielkość liter i nadmiarowe spacje, więc
+„magazyn" nie zakłada drugiego wpisu obok „Magazyn". Zawartość słowników
+przegląda się na stronie *Słowniki*.
+
+## Konta i uprawnienia
+
+| Konto | Zakres | Zapis |
+|---|---|---|
+| `viewer` | jedna firma | nie |
+| `admin` | jedna firma | tak |
+| audytor globalny | wszystkie firmy | **nie** |
+| superadmin | wszystkie firmy + panel `/admin` | tak |
+
+Audytora globalnego zakłada superadmin w `/admin/firmy`. Przełącza się on
+między firmami tak samo jak superadmin, ale nie dostaje żadnego formularza
+zapisu — prawo do zapisu powstaje w jednym miejscu w kodzie i temu kontu nie
+jest przyznawane nigdzie.
+
+Hasło zmienia się pod `/konto`, zawsze po podaniu dotychczasowego — również
+administrator. Superadmin może ustawić hasło dowolnemu kontu w `/admin/firmy`;
+to jedyne wyjście z sytuacji, w której administrator firmy zapomniał swojego.
+Hasła trzymane są jako skróty **Argon2id** i nie da się ich odczytać.
+
 ## Szybki start — jedno polecenie
 
 ```bash

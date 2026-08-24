@@ -15,6 +15,13 @@
 </div>
 {% endif %}
 
+{% if not ctx.can_write %}
+<div class="alert">
+  Konto ma uprawnienia tylko do odczytu - raporty mozna przegladac
+  i otwierac, ale nie zmieniac ani wysylac.
+</div>
+{% endif %}
+
 <section class="panel">
   <h2>Poczta wychodzaca</h2>
   <p class="muted small">
@@ -29,6 +36,7 @@
   </div>
   {% endif %}
 
+  {% if ctx.can_write %}
   <form method="post" action="/raporty/poczta" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="row-form">
@@ -98,6 +106,7 @@
     rzeczy — wiadomosc probna jest jedynym pewnym sprawdzeniem.
   </p>
   {% endif %}
+  {% endif %}
 </section>
 
 <section class="panel">
@@ -130,6 +139,7 @@
         </td>
         <td class="small">
           <a class="btn btn-small" href="/raporty/widok/{{ d.rodzaj }}?raport_id={{ d.id }}">Otworz</a>
+          {% if ctx.can_write %}
           <form method="post" action="/raporty/definicje/{{ d.id }}/wyslij" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn-small btn-primary">Wyslij teraz</button>
@@ -139,6 +149,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn-small btn-danger">Usun</button>
           </form>
+          {% endif %}
         </td>
       </tr>
     {% endfor %}
@@ -155,6 +166,7 @@
 
 <section class="panel">
   <h2>Nowy raport</h2>
+  {% if ctx.can_write %}
   <form method="post" action="/raporty/definicje" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="row-form">
@@ -186,6 +198,7 @@
     <div class="muted small">Kilka adresow rozdziel przecinkiem albo srednikiem.</div>
     <button type="submit" class="btn btn-primary">Dodaj raport</button>
   </form>
+  {% endif %}
 
   <h3>Co zawiera ktory raport</h3>
   <table class="table">

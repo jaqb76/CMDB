@@ -37,6 +37,24 @@ LIFECYCLE_WYCOFANY = "wycofany"
 LIFECYCLE_WSZYSTKIE = (LIFECYCLE_AKTYWNY, LIFECYCLE_WYCOFANY)
 
 
+# Skad wziely sie dane zasobu. Agent nie zaloguje sie do drukarki ani do
+# switcha, wiec taki sprzet wpisuje czlowiek - i te wpisy trzeba odroznic,
+# bo nie wolno ich oceniac miara "od kiedy nie bylo kontaktu".
+ZRODLO_AGENT = "agent"
+ZRODLO_RECZNE = "reczne"
+
+# Rodzaj sprzetu. Maszyny z agentem sa komputerami; reszte wybiera czlowiek.
+TYP_KOMPUTER = "komputer"
+TYPY_SPRZETU: dict[str, str] = {
+    TYP_KOMPUTER: "Komputer / serwer",
+    "siec": "Sprzet sieciowy",
+    "drukarka": "Drukarka / skaner",
+    "monitor": "Monitor",
+    "telefon": "Telefon / tablet",
+    "inne": "Inne",
+}
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -103,6 +121,10 @@ class PortalUser(Base):
     role: Mapped[str] = mapped_column(String(20), default="viewer", nullable=False)
     # superadmin nie nalezy do zadnej firmy i widzi wszystkie
     is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Audytor: widzi wszystkie firmy, ale nie moze zmienic w nich niczego.
+    # Osobna flaga, a nie rola "viewer" bez tenanta - rola opisuje uprawnienia
+    # WEWNATRZ firmy, a to jest uprawnienie do przekraczania jej granicy.
+    is_global_viewer: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -212,6 +234,46 @@ class Owner(Base):
     tenant: Mapped[Tenant] = relationship()
 
 
+# Slowniki firmowe. Kategoria jest zamknieta, wartosci otwarte - dzialow
+# i lokalizacji nie da sie przewidziec, ale ich lista musi byc skonczona,
+# zeby "Ksiegowosc", "ksiegowosc" i "Księgowość" nie byly trzema dzialami.
+KATEGORIE_SLOWNIKA: dict[str, str] = {
+    "dzial": "Dzial",
+    "lokalizacja": "Lokalizacja",
+    "dostawca": "Dostawca",
+}
+
+
+class WpisSlownika(Base):
+    """Jedna wartosc slownika firmowego (dzial, lokalizacja, dostawca).
+
+    Slownik nie ogranicza tego, co mozna wpisac - kazda nowa wartosc wpisana
+    w formularzu od razu do niego trafia. Sluzy do podpowiadania juz uzywanych
+    nazw, zeby literowka nie tworzyla drugiego "magazynu".
+
+    Klucz unikalnosci liczymy z wartosci znormalizowanej (male litery, bez
+    zbednych spacji), a pokazujemy wersje wpisana przez czlowieka.
+    """
+
+    __tablename__ = "slowniki"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "kategoria", "klucz", name="uq_slownik_wartosc"),
+        Index("ix_slownik_tenant_kategoria", "tenant_id", "kategoria"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kategoria: Mapped[str] = mapped_column(String(32), nullable=False)
+    wartosc: Mapped[str] = mapped_column(String(200), nullable=False)
+    klucz: Mapped[str] = mapped_column(String(200), nullable=False)
+    utworzony: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    utworzyl: Mapped[str | None] = mapped_column(String(255))
+
+    tenant: Mapped[Tenant] = relationship()
+
+
 class Asset(Base):
     """Maszyna (serwer/stacja). Kolumny = pola po ktorych filtrujemy w UI."""
 
@@ -242,9 +304,24 @@ class Asset(Base):
     primary_ip: Mapped[str | None] = mapped_column(String(64))
     agent_version: Mapped[str | None] = mapped_column(String(32))
 
+    # Rodzaj sprzetu i sposob, w jaki trafil do bazy. Zasob wpisany recznie
+    # (drukarka, switch) nie ma agenta i nigdy sie nie odezwie - bez tego
+    # rozroznienia kazdy taki wpis trafialby na liste "bez kontaktu".
+    typ: Mapped[str] = mapped_column(String(32), nullable=False, default=TYP_KOMPUTER, index=True)
+    zrodlo: Mapped[str] = mapped_column(String(16), nullable=False, default=ZRODLO_AGENT, index=True)
+
     owner_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Opiekun odpowiada za sprzet, uzytkownik przy nim siedzi - to czesto dwie
+    # rozne osoby (laptop prezesa ma opiekuna w IT). Obie wskazuja na te sama
+    # liste osob, bo to ten sam katalog ludzi w firmie.
+    uzytkownik_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Gdzie sprzet fizycznie stoi. Agent tego nie wie - wpisuje czlowiek,
+    # a podpowiedzi biora sie ze slownika lokalizacji firmy.
+    lokalizacja: Mapped[str | None] = mapped_column(String(200), index=True)
     # Rola maszyny wpisywana recznie w panelu (np. "serwer plikow", "laptop ksiegowosc").
     role_label: Mapped[str | None] = mapped_column(String(200))
     tags: Mapped[list | None] = mapped_column(JSONType, default=list)
@@ -294,7 +371,10 @@ class Asset(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     tenant: Mapped[Tenant] = relationship(back_populates="assets")
-    owner: Mapped[Owner | None] = relationship()
+    # Dwa klucze obce do tej samej tabeli - SQLAlchemy nie zgadnie, ktory
+    # nalezy do ktorej relacji, wiec wskazujemy je jawnie.
+    owner: Mapped[Owner | None] = relationship(foreign_keys=[owner_id])
+    uzytkownik: Mapped[Owner | None] = relationship(foreign_keys=[uzytkownik_id])
     snapshots: Mapped[list["InventorySnapshot"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan", order_by="InventorySnapshot.collected_at.desc()"
     )

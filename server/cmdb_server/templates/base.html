@@ -15,7 +15,8 @@
     <a href="/">Pulpit</a>
     <a href="/assets">Maszyny</a>
     <a href="/zmiany">Zmiany</a>
-    <a href="/owners">Opiekunowie</a>
+    <a href="/owners">Osoby</a>
+    <a href="/slowniki">Slowniki</a>
     <a href="/tokens">Tokeny agentow</a>
     <a href="/pobierz">Instalacja agenta</a>
     <a href="/raporty">Raporty</a>
@@ -43,7 +44,10 @@
     {% elif ctx %}
       <span class="tenant-name">{{ ctx.tenant_slug }}</span>
     {% endif %}
-    <span class="user-email">{{ user.email }}</span>
+    {% if user.is_global_viewer %}
+      <span class="badge badge-warn" title="Konto widzi wszystkie firmy, ale niczego w nich nie zmienia">tylko odczyt</span>
+    {% endif %}
+    <a class="user-email" href="/konto" title="Moje konto i zmiana hasla">{{ user.email }}</a>
     <form method="post" action="/logout" class="inline-form">
       <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
     </form>

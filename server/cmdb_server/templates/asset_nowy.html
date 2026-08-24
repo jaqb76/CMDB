@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Nowy sprzet - CMDB{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dodaj sprzet recznie</h1>
+    <p class="muted">
+      Dla urzadzen, na ktorych agenta zainstalowac sie nie da: drukarek,
+      switchy, monitorow. Taki wpis nie bedzie sie sam aktualizowal - opisuje
+      go wylacznie to, co tu zostanie wpisane.
+    </p>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-small btn-ghost" href="/assets">Wroc do listy</a>
+  </div>
+</div>
+
+<section class="panel">
+  <form method="post" action="/assets/nowy" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label for="typ">Rodzaj sprzetu</label>
+    <select id="typ" name="typ">
+      {% for klucz, etykieta in typy.items() %}
+        <option value="{{ klucz }}" {% if klucz == domyslny_typ %}selected{% endif %}>{{ etykieta }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="nazwa">Nazwa</label>
+    <input id="nazwa" name="nazwa" required maxlength="255"
+           placeholder="np. SW-MAGAZYN-01, HP LaserJet kadry">
+
+    <div class="grid-2">
+      <div>
+        <label for="producent">Producent</label>
+        <input id="producent" name="producent" maxlength="200">
+      </div>
+      <div>
+        <label for="model">Model</label>
+        <input id="model" name="model" maxlength="200">
+      </div>
+      <div>
+        <label for="numer_seryjny">Numer seryjny</label>
+        <input id="numer_seryjny" name="numer_seryjny" maxlength="128">
+      </div>
+      <div>
+        <label for="ip">Adres IP</label>
+        <input id="ip" name="ip" maxlength="64" placeholder="np. 10.10.5.30">
+      </div>
+    </div>
+
+    <label for="lokalizacja">Lokalizacja</label>
+    <input id="lokalizacja" name="lokalizacja" maxlength="200" list="slownik-lokalizacje"
+           autocomplete="off" placeholder="wybierz lub wpisz nowa">
+    <datalist id="slownik-lokalizacje">
+      {% for l in podpowiedzi.lokalizacja %}<option value="{{ l }}"></option>{% endfor %}
+    </datalist>
+
+    <label for="dostawca">Dostawca</label>
+    <input id="dostawca" name="dostawca" maxlength="200" list="slownik-dostawcy"
+           autocomplete="off" placeholder="wybierz lub wpisz nowego">
+    <datalist id="slownik-dostawcy">
+      {% for d in podpowiedzi.dostawca %}<option value="{{ d }}"></option>{% endfor %}
+    </datalist>
+    <p class="small muted">
+      Nowa lokalizacja i nowy dostawca dopisza sie do <a href="/slowniki">slownika</a> firmy
+      od razu po zapisaniu.
+    </p>
+
+    <div class="grid-2">
+      <div>
+        <label for="owner_id">Opiekun</label>
+        <select id="owner_id" name="owner_id">
+          <option value="">— nieprzypisany —</option>
+          {% for o in owners %}
+            <option value="{{ o.id }}">{{ o.full_name }} ({{ o.email }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="uzytkownik_id">Uzytkownik</label>
+        <select id="uzytkownik_id" name="uzytkownik_id">
+          <option value="">— nieprzypisany —</option>
+          {% for o in owners %}
+            <option value="{{ o.id }}">{{ o.full_name }} ({{ o.email }})</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {% if not owners %}
+      <p class="small muted">Lista osob jest pusta - dodaj je na stronie <a href="/owners">Osoby</a>.</p>
+    {% endif %}
+
+    <label for="rola">Rola</label>
+    <input id="rola" name="rola" maxlength="200" placeholder="np. switch dostepowy, drukarka kadr">
+
+    <label for="uwagi">Uwagi</label>
+    <textarea id="uwagi" name="uwagi" rows="3"></textarea>
+
+    <button type="submit" class="btn btn-primary">Dodaj sprzet</button>
+  </form>
+</section>
+
+<p class="small muted">
+  Date zakupu, gwarancje i fakture uzupelnisz po zapisaniu, w zakladce
+  "Zakup i gwarancja" na stronie sprzetu.
+</p>
+{% endblock %}

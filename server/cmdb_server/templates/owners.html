@@ -1,8 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Opiekunowie - CMDB{% endblock %}
+{% block title %}Osoby - CMDB{% endblock %}
 {% block content %}
-<h1>Opiekunowie zasobow</h1>
-<p class="muted">Kazda maszyna moze miec przypisana osobe odpowiedzialna.</p>
+<h1>Osoby</h1>
+<p class="muted">
+  Jedna lista ludzi dla calej firmy. Kazdy sprzet wskazuje z niej opiekuna
+  (odpowiada za sprzet) i uzytkownika (na co dzien przy nim pracuje) -
+  czesto sa to dwie rozne osoby.
+</p>
 
 <div class="two-col">
   <section class="panel">
@@ -35,7 +39,7 @@
 
   {% if ctx.can_write %}
   <section class="panel">
-    <h2>Dodaj opiekuna</h2>
+    <h2>Dodaj osobe</h2>
     <form method="post" action="/owners" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label for="full_name">Imie i nazwisko</label>
@@ -45,7 +49,12 @@
       <label for="phone">Telefon</label>
       <input id="phone" name="phone" maxlength="64">
       <label for="department">Dzial</label>
-      <input id="department" name="department" maxlength="200">
+      <input id="department" name="department" maxlength="200" list="slownik-dzialy"
+             autocomplete="off" placeholder="wybierz lub wpisz nowy">
+      <datalist id="slownik-dzialy">
+        {% for d in dzialy %}<option value="{{ d }}"></option>{% endfor %}
+      </datalist>
+      <p class="small muted">Nowy dzial dopisze sie do <a href="/slowniki">slownika</a> firmy.</p>
       <label for="notes">Notatki</label>
       <textarea id="notes" name="notes" rows="3"></textarea>
       <button type="submit" class="btn btn-primary">Dodaj</button>

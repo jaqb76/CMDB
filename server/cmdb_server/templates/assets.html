@@ -2,8 +2,13 @@
 {% block title %}Maszyny - CMDB{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Maszyny <span class="muted">({{ assets | length }})</span></h1>
-  <a class="btn btn-small" href="/export/assets.json">Eksport JSON</a>
+  <h1>Sprzet <span class="muted">({{ assets | length }})</span></h1>
+  <div class="head-actions">
+    {% if ctx.can_write %}
+      <a class="btn btn-small btn-primary" href="/assets/nowy">Dodaj sprzet recznie</a>
+    {% endif %}
+    <a class="btn btn-small" href="/export/assets.json">Eksport JSON</a>
+  </div>
 </div>
 
 <form method="get" action="/assets" class="filters">
@@ -12,6 +17,18 @@
     <option value="">wszystkie systemy</option>
     {% for f in families %}
       <option value="{{ f }}" {% if filters.os_family == f %}selected{% endif %}>{{ f }}</option>
+    {% endfor %}
+  </select>
+  <select name="typ">
+    <option value="">kazdy rodzaj</option>
+    {% for klucz, etykieta in typy.items() %}
+      <option value="{{ klucz }}" {% if filters.typ == klucz %}selected{% endif %}>{{ etykieta }}</option>
+    {% endfor %}
+  </select>
+  <select name="lokalizacja">
+    <option value="">kazda lokalizacja</option>
+    {% for l in lokalizacje %}
+      <option value="{{ l }}" {% if filters.lokalizacja == l %}selected{% endif %}>{{ l }}</option>
     {% endfor %}
   </select>
   <select name="owner">
@@ -39,8 +56,8 @@
 <table class="table table-assets">
   <thead>
     <tr>
-      <th>Maszyna</th><th>System</th><th>Sprzet</th><th>IP</th>
-      <th>Opiekun</th><th>Rola</th><th>Ostatni kontakt</th>
+      <th>Nazwa</th><th>Rodzaj</th><th>System</th><th>Podzespoly</th><th>IP</th>
+      <th>Lokalizacja</th><th>Opiekun / uzytkownik</th><th>Rola</th><th>Ostatni kontakt</th>
     </tr>
   </thead>
   <tbody>
@@ -52,6 +69,10 @@
         {% if a.lifecycle == 'wycofany' %}<span class="badge badge-danger">wycofana</span>{% endif %}
         {% if a.serial_number %}<div class="muted small">s/n {{ a.serial_number }}</div>{% endif %}
       </td>
+      <td class="small">
+        {{ typy.get(a.typ, a.typ) }}
+        {% if a.zrodlo == 'reczne' %}<div class="muted">wpis reczny</div>{% endif %}
+      </td>
       <td>
         {{ a.os_name or a.os_family or '-' }}
         {% if a.os_version %}<div class="muted small">{{ a.os_version }}</div>{% endif %}
@@ -62,21 +83,28 @@
         {% if f.storage_gb %} &middot; {{ f.storage_gb }} GB{% endif %}
       </td>
       <td class="small">{{ a.primary_ip or '-' }}</td>
-      <td>
+      <td class="small">{{ a.lokalizacja or '—' }}</td>
+      <td class="small">
         {% if a.owner %}{{ a.owner.full_name }}
-        {% else %}<span class="badge badge-warn">brak</span>{% endif %}
+        {% else %}<span class="badge badge-warn">brak opiekuna</span>{% endif %}
+        {% if a.uzytkownik %}<div class="muted">uzywa: {{ a.uzytkownik.full_name }}</div>{% endif %}
       </td>
       <td class="small">{{ a.role_label or '—' }}</td>
       <td class="small">
-        {{ a.last_seen | ago }}
-        {% if f.collector_errors %}<span class="badge badge-warn" title="bledy kolektorow">{{ f.collector_errors }}</span>{% endif %}
-        <div class="muted">agent {{ a.agent_version or '?' }}</div>
+        {% if a.zrodlo == 'reczne' %}
+          <span class="muted">bez agenta</span>
+          <div class="muted">dodano {{ a.first_seen | dt }}</div>
+        {% else %}
+          {{ a.last_seen | ago }}
+          {% if f.collector_errors %}<span class="badge badge-warn" title="bledy kolektorow">{{ f.collector_errors }}</span>{% endif %}
+          <div class="muted">agent {{ a.agent_version or '?' }}</div>
+        {% endif %}
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
-  <p class="muted">Brak maszyn spelniajacych kryteria.</p>
+  <p class="muted">Brak sprzetu spelniajacego kryteria.</p>
 {% endif %}
 {% endblock %}

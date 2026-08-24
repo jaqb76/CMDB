@@ -52,7 +52,7 @@ from ..security import check_csrf_token, generate_token, hash_password, issue_cs
 from ..services.auth import client_ip, require_superadmin
 from ..services import architektura, cve, pakiet, ustawienia
 from ..services.scoping import audit
-from .ui import motyw_z_ciasteczka, templates
+from .ui import MIN_DLUGOSC_HASLA, motyw_z_ciasteczka, templates
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -67,7 +67,6 @@ SYSTEMY = {
     "windows": {"etykieta": "Windows", "sygnatura": b"MZ", "opis": "program Windows (.exe)"},
     "linux": {"etykieta": "Linux", "sygnatura": bytes.fromhex("7f") + b"ELF", "opis": "program ELF"},
 }
-MIN_DLUGOSC_HASLA = 12
 
 # Skrypt budujacy dopisuje metadane na koncu pliku agenta. PyInstaller pakuje
 # kod w skompresowane archiwum, wiec numeru wersji nie da sie odczytac
@@ -282,11 +281,19 @@ def widok_firm(
     ).scalars():
         konta_firm.setdefault(konto.tenant_id, []).append(konto)
 
+    # Konta bez firmy: superadmini i audytorzy globalni. Widac je w jednym
+    # miejscu, bo to jedyne konta, ktore siegaja poza granice jednej firmy.
+    konta_globalne = db.execute(
+        select(PortalUser).where(PortalUser.tenant_id.is_(None)).order_by(PortalUser.email)
+    ).scalars().all()
+
     firmy = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
     return render_admin(
         request, "admin_firmy.html", user, "firmy",
         firmy=firmy,
         konta_firm=konta_firm,
+        konta_globalne=konta_globalne,
+        min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
         opiekunowie=opiekunowie,
         tokeny=tokeny,
         maszyny=maszyny,
@@ -392,12 +399,102 @@ def przelacz_konto(
 ) -> Response:
     sprawdz_csrf(user, csrf_token)
     konto = db.get(PortalUser, user_id)
+    # Superadmina nie da sie wylaczyc z panelu: to konto, ktore panel otwiera.
+    # Audytor globalny nim nie jest, wiec jego wylaczenie jest dozwolone.
     if konto is None or konto.is_superadmin:
         raise HTTPException(status_code=404, detail="nie znaleziono konta")
     konto.is_active = not konto.is_active
     audit(db, None, action="user.active_changed", target=konto.email,
           detail={"is_active": konto.is_active}, ip=client_ip(request), actor=user.email)
     db.commit()
+    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/users/globalne")
+def utworz_konto_globalne(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(""),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Audytor globalny: widzi wszystkie firmy, nie zmienia w nich niczego.
+
+    Powstaje osobno, a nie jako konto firmowe z rola "viewer", bo to inne
+    uprawnienie: rola opisuje, co wolno w JEDNEJ firmie, a to jest zgoda na
+    ogladanie wszystkich. Prawo zapisu odbiera services/auth.tenant_context_for
+    - jedyne miejsce, w ktorym prawo zapisu w ogole powstaje.
+
+    Do panelu administracyjnego taki audytor nie wchodzi: zarzadzanie firmami,
+    kontami i wersjami agenta wymaga require_superadmin.
+    """
+    sprawdz_csrf(user, csrf_token)
+    adres = email.strip().lower()
+
+    if len(password) < MIN_DLUGOSC_HASLA:
+        raise HTTPException(
+            status_code=400,
+            detail=f"haslo musi miec co najmniej {MIN_DLUGOSC_HASLA} znakow",
+        )
+    if db.execute(select(PortalUser).where(PortalUser.email == adres)).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="konto o tym adresie juz istnieje")
+
+    db.add(
+        PortalUser(
+            tenant_id=None,
+            email=adres,
+            full_name=full_name.strip() or None,
+            password_hash=hash_password(password),
+            role="viewer",
+            is_superadmin=False,
+            is_global_viewer=True,
+        )
+    )
+    audit(db, None, action="user.created", target=adres,
+          detail={"zakres": "wszystkie firmy", "tryb": "tylko odczyt"},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s utworzyl audytora globalnego %s", user.email, adres)
+    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/users/{user_id}/haslo")
+def ustaw_haslo_konta(
+    user_id: str,
+    request: Request,
+    password: str = Form(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Ustawia haslo dowolnemu kontu panelu - takze administratorowi firmy.
+
+    Bez tego jedyna reakcja na zapomniane haslo administratora firmy bylo
+    zalozenie mu drugiego konta, a stare zostawalo aktywne. Nowego hasla nie
+    wyswietlamy ani nie zapisujemy - wpisuje je administrator i przekazuje
+    wlascicielowi konta osobno; w bazie zostaje wylacznie skrot Argon2id.
+
+    W dzienniku audytu zostaje sam fakt zmiany. Kto zmienil komu haslo, jest
+    informacja, ktora musi byc widoczna - sama zmiana nie.
+    """
+    sprawdz_csrf(user, csrf_token)
+    konto = db.get(PortalUser, user_id)
+    if konto is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    if len(password) < MIN_DLUGOSC_HASLA:
+        raise HTTPException(
+            status_code=400,
+            detail=f"haslo musi miec co najmniej {MIN_DLUGOSC_HASLA} znakow",
+        )
+
+    konto.password_hash = hash_password(password)
+    audit(db, None, action="haslo.ustawione_przez_admina", target=konto.email,
+          detail={"tenant": konto.tenant.slug if konto.tenant else None},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s ustawil nowe haslo konta %s", user.email, konto.email)
     return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
 
 

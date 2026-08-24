@@ -11,6 +11,8 @@ import hashlib
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -22,8 +24,13 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
+    KATEGORIE_SLOWNIKA,
     LIFECYCLE_AKTYWNY,
     LIFECYCLE_WYCOFANY,
+    TYP_KOMPUTER,
+    TYPY_SPRZETU,
+    ZRODLO_AGENT,
+    ZRODLO_RECZNE,
     AgentCredential,
     Asset,
     AssetChange,
@@ -35,9 +42,15 @@ from ..models import (
     Tenant,
     utcnow,
 )
-from ..security import generate_token, issue_csrf_token, sign_session
+from ..security import (
+    generate_token,
+    hash_password,
+    issue_csrf_token,
+    sign_session,
+    verify_password,
+)
 from ..services import (
-    cve, duplicates, logowanie, pakiet, scoping, upgrades, ustawienia,
+    cve, duplicates, logowanie, pakiet, scoping, slowniki, upgrades, ustawienia,
 )
 from ..services.auth import (
     LoginRequired,
@@ -48,6 +61,7 @@ from ..services.auth import (
     require_user,
     tenant_context_for,
     verify_csrf,
+    widzi_wszystkie_firmy,
 )
 from ..services.scoping import TenantContext, audit
 from . import download
@@ -166,8 +180,10 @@ def resolve_tenant(
     db: Session = Depends(get_db),
 ) -> TenantContext:
     """Zwykly uzytkownik ma tenant przypisany na sztywno.
-    Superadmin przelacza sie parametrem ?tenant=<slug> (zapamietanym w sesji)."""
-    if user.is_superadmin:
+    Superadmin i audytor globalny przelaczaja sie parametrem ?tenant=<slug>
+    (zapamietanym w ciasteczku). Audytor dostaje kontekst bez prawa zapisu -
+    decyduje o tym tenant_context_for, wiec nie da sie tego tu przeoczyc."""
+    if widzi_wszystkie_firmy(user):
         slug = request.query_params.get("tenant") or request.cookies.get("cmdb_tenant")
         tenant = None
         if slug:
@@ -198,7 +214,7 @@ def render(
 ) -> HTMLResponse:
     settings = get_settings()
     tenants = []
-    if user.is_superadmin:
+    if widzi_wszystkie_firmy(user):
         tenants = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
     payload = {
         "request": request,
@@ -216,6 +232,11 @@ def render(
     }
     return templates.TemplateResponse(request, template, payload)
 
+
+# Minimalna dlugosc hasla panelu. Ta sama wartosc obowiazuje przy zakladaniu
+# konta w administracji (api/admin.py importuje ja stad), zeby nie dalo sie
+# ustawic hasla slabszego niz przy zalozeniu konta.
+MIN_DLUGOSC_HASLA = 12
 
 # Dozwolone wartosci ciasteczka motywu. Pusta - motyw z ustawien systemu.
 MOTYWY = {"jasny", "ciemny"}
@@ -335,8 +356,8 @@ def switch_tenant(
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    if not user.is_superadmin:
-        raise HTTPException(status_code=403, detail="tylko superadmin moze przelaczac firmy")
+    if not widzi_wszystkie_firmy(user):
+        raise HTTPException(status_code=403, detail="to konto widzi tylko swoja firme")
     tenant = db.execute(select(Tenant).where(Tenant.slug == slug)).scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="nieznana firma")
@@ -359,9 +380,12 @@ def dashboard(
     total = db.execute(
         select(func.count(Asset.id)).where(Asset.tenant_id == ctx.tenant_id)
     ).scalar_one()
+    # Wpisy reczne nie maja agenta - do liczby "bez kontaktu" nie wchodza.
     stale = db.execute(
         select(func.count(Asset.id)).where(
-            Asset.tenant_id == ctx.tenant_id, Asset.last_seen < stale_before
+            Asset.tenant_id == ctx.tenant_id,
+            Asset.zrodlo == ZRODLO_AGENT,
+            Asset.last_seen < stale_before,
         )
     ).scalar_one()
     unassigned = db.execute(
@@ -410,6 +434,8 @@ def asset_list(
     owner: str = Query("", max_length=36),
     state: str = Query("", max_length=16),
     lifecycle: str = Query("", max_length=16),
+    typ: str = Query("", max_length=32),
+    lokalizacja: str = Query("", max_length=200),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -426,18 +452,25 @@ def asset_list(
                 Asset.serial_number.ilike(pattern),
                 Asset.primary_ip.ilike(pattern),
                 Asset.role_label.ilike(pattern),
+                Asset.lokalizacja.ilike(pattern),
             )
         )
     if os_family:
         stmt = stmt.where(Asset.os_family == os_family)
+    if typ in TYPY_SPRZETU:
+        stmt = stmt.where(Asset.typ == typ)
+    if lokalizacja:
+        stmt = stmt.where(Asset.lokalizacja == lokalizacja)
     if owner == "none":
         stmt = stmt.where(Asset.owner_id.is_(None))
     elif owner:
         stmt = stmt.where(Asset.owner_id == owner)
+    # Sprzet wpisany recznie nie ma agenta i nigdy sie nie odezwie - pytanie
+    # o kontakt jest dla niego bez sensu, wiec nie trafia do zadnej z odpowiedzi.
     if state == "stale":
-        stmt = stmt.where(Asset.last_seen < granica)
+        stmt = stmt.where(Asset.zrodlo == ZRODLO_AGENT, Asset.last_seen < granica)
     elif state == "online":
-        stmt = stmt.where(Asset.last_seen >= granica)
+        stmt = stmt.where(Asset.zrodlo == ZRODLO_AGENT, Asset.last_seen >= granica)
 
     # Wycofane maszyny znikaja z domyslnej listy, ale zostaja w bazie razem
     # z cala historia - pokazujemy je na zadanie.
@@ -463,14 +496,210 @@ def asset_list(
         assets=assets,
         owners=owners,
         families=families,
+        typy=TYPY_SPRZETU,
+        lokalizacje=slowniki.wartosci(db, ctx, "lokalizacja"),
         filters={"q": q, "os_family": os_family, "owner": owner,
-                 "state": state, "lifecycle": lifecycle},
+                 "state": state, "lifecycle": lifecycle,
+                 "typ": typ, "lokalizacja": lokalizacja},
         liczba_wycofanych=db.execute(
             select(func.count(Asset.id)).where(
                 Asset.tenant_id == ctx.tenant_id, Asset.lifecycle == LIFECYCLE_WYCOFANY
             )
         ).scalar_one(),
     )
+
+
+# --- sprzet wpisywany recznie -----------------------------------------------
+# Trasa /assets/nowy musi byc zadeklarowana PRZED /assets/{asset_id}, bo
+# inaczej "nowy" zostaloby potraktowane jako identyfikator maszyny.
+
+def _dane_recznego_sprzetu(dane: dict) -> dict:
+    """Pola wspolne dla dodawania i edycji - jedno miejsce na obcinanie dlugosci."""
+    return {
+        "hostname": (dane.get("nazwa") or "").strip()[:255],
+        "manufacturer": (dane.get("producent") or "").strip()[:200] or None,
+        "model": (dane.get("model") or "").strip()[:200] or None,
+        "serial_number": (dane.get("numer_seryjny") or "").strip()[:128] or None,
+        "primary_ip": (dane.get("ip") or "").strip()[:64] or None,
+        "role_label": (dane.get("rola") or "").strip()[:200] or None,
+        "purchase_notes": (dane.get("uwagi") or "").strip() or None,
+    }
+
+
+@router.get("/assets/nowy", response_class=HTMLResponse)
+def formularz_nowego_sprzetu(
+    request: Request,
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Sprzet, na ktorym agenta nie da sie zainstalowac.
+
+    Drukarka, switch czy monitor nie zaraportuja sie same, a bez nich CMDB
+    opisuje tylko czesc tego, co firma ma na stanie. Wpis reczny jest ubozszy
+    (nie ma raportu, oprogramowania ani podatnosci), za to zna wszystko, co
+    wpisal czlowiek: gdzie stoi, kto go uzywa i skad pochodzi.
+    """
+    _require_write(ctx)
+    return render(
+        request,
+        "asset_nowy.html",
+        user,
+        ctx,
+        db,
+        owners=db.execute(scoping.owners_query(ctx)).scalars().all(),
+        typy=TYPY_SPRZETU,
+        podpowiedzi=slowniki.podpowiedzi(db, ctx),
+        domyslny_typ="siec",
+    )
+
+
+@router.post("/assets/nowy")
+def utworz_sprzet(
+    request: Request,
+    nazwa: str = Form(...),
+    typ: str = Form("siec"),
+    producent: str = Form(""),
+    model: str = Form(""),
+    numer_seryjny: str = Form(""),
+    ip: str = Form(""),
+    lokalizacja: str = Form(""),
+    rola: str = Form(""),
+    owner_id: str = Form(""),
+    uzytkownik_id: str = Form(""),
+    dostawca: str = Form(""),
+    uwagi: str = Form(""),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+
+    if typ not in TYPY_SPRZETU:
+        raise HTTPException(status_code=400, detail="nieznany rodzaj sprzetu")
+    pola = _dane_recznego_sprzetu(
+        {"nazwa": nazwa, "producent": producent, "model": model,
+         "numer_seryjny": numer_seryjny, "ip": ip, "rola": rola, "uwagi": uwagi}
+    )
+    if not pola["hostname"]:
+        raise HTTPException(status_code=400, detail="nazwa jest wymagana")
+
+    def osoba(identyfikator: str) -> str | None:
+        if not identyfikator:
+            return None
+        znaleziona = scoping.get_owner(db, ctx, identyfikator)
+        if znaleziona is None:
+            raise HTTPException(status_code=400, detail="osoba spoza tej firmy")
+        return znaleziona.id
+
+    # Wpis reczny tez potrzebuje machine_id - kolumna jest wymagana i unikalna
+    # w obrebie firmy. Przedrostek od razu mowi, ze to nie jest identyfikator
+    # odczytany z plyty glownej, tylko klucz nadany przez system.
+    sprzet = Asset(
+        tenant_id=ctx.tenant_id,
+        machine_id=f"reczne:{uuid4()}",
+        typ=typ,
+        zrodlo=ZRODLO_RECZNE,
+        owner_id=osoba(owner_id),
+        uzytkownik_id=osoba(uzytkownik_id),
+        lokalizacja=slowniki.zapewnij(db, ctx, "lokalizacja", lokalizacja),
+        vendor=slowniki.zapewnij(db, ctx, "dostawca", dostawca),
+        **pola,
+    )
+    db.add(sprzet)
+    db.flush()
+    audit(db, ctx, action="asset.dodany_recznie", target=sprzet.hostname,
+          detail={"typ": typ}, ip=client_ip(request))
+    db.commit()
+    return RedirectResponse(f"/assets/{sprzet.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/assets/{asset_id}/dane")
+def zapisz_dane_sprzetu(
+    asset_id: str,
+    request: Request,
+    nazwa: str = Form(...),
+    typ: str = Form("siec"),
+    producent: str = Form(""),
+    model: str = Form(""),
+    numer_seryjny: str = Form(""),
+    ip: str = Form(""),
+    rola: str = Form(""),
+    uwagi: str = Form(""),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Edycja danych sprzetu wpisanego recznie.
+
+    Dla maszyn z agentem tych pol nie ruszamy: przy najblizszym raporcie i tak
+    wrocilyby wartosci odczytane z maszyny, a rozjazd miedzy tym, co widac
+    w panelu, a tym co jest na sprzecie, jest gorszy niz brak edycji.
+    """
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+
+    sprzet = scoping.get_asset(db, ctx, asset_id)
+    if sprzet is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono sprzetu")
+    if sprzet.zrodlo != ZRODLO_RECZNE:
+        raise HTTPException(
+            status_code=400,
+            detail="dane maszyny z agentem pochodza z jej raportow i nie edytuje sie ich recznie",
+        )
+    if typ not in TYPY_SPRZETU:
+        raise HTTPException(status_code=400, detail="nieznany rodzaj sprzetu")
+
+    pola = _dane_recznego_sprzetu(
+        {"nazwa": nazwa, "producent": producent, "model": model,
+         "numer_seryjny": numer_seryjny, "ip": ip, "rola": rola, "uwagi": uwagi}
+    )
+    if not pola["hostname"]:
+        raise HTTPException(status_code=400, detail="nazwa jest wymagana")
+    for klucz, wartosc in pola.items():
+        setattr(sprzet, klucz, wartosc)
+    sprzet.typ = typ
+
+    audit(db, ctx, action="asset.dane_zmienione", target=sprzet.hostname,
+          ip=client_ip(request))
+    db.commit()
+    return RedirectResponse(f"/assets/{sprzet.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/assets/{asset_id}/usun")
+def usun_sprzet(
+    asset_id: str,
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Kasuje wpis reczny. Maszyny z agentem sie wycofuje, a nie usuwa.
+
+    Wpis reczny to sam tekst wpisany przez czlowieka - pomylke naprawia sie
+    jego skasowaniem. Maszyna z agentem niesie historie raportow i zmian,
+    ktorej nie wolno stracic, wiec ma cykl zycia (wycofana), a nie kasowanie.
+    """
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+
+    sprzet = scoping.get_asset(db, ctx, asset_id)
+    if sprzet is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono sprzetu")
+    if sprzet.zrodlo != ZRODLO_RECZNE:
+        raise HTTPException(
+            status_code=400,
+            detail="maszyne z agentem mozna wycofac, ale nie usunac - historia raportow zostaje",
+        )
+    nazwa = sprzet.hostname
+    db.delete(sprzet)
+    audit(db, ctx, action="asset.usuniety", target=nazwa, ip=client_ip(request))
+    db.commit()
+    return RedirectResponse("/assets", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/assets/{asset_id}", response_class=HTMLResponse)
@@ -531,6 +760,8 @@ def asset_detail(
         dzisiaj=date.today(),
         history=history,
         owners=owners,
+        typy=TYPY_SPRZETU,
+        podpowiedzi=slowniki.podpowiedzi(db, ctx),
         credentials=credentials,
         zmiany=zmiany,
         payload=payload,
@@ -548,12 +779,20 @@ def assign_owner(
     asset_id: str,
     request: Request,
     owner_id: str = Form(""),
+    uzytkownik_id: str = Form(""),
     role_label: str = Form(""),
+    lokalizacja: str = Form(""),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Opiekun, uzytkownik, rola i lokalizacja - dane, ktorych agent nie zna.
+
+    Opiekun odpowiada za sprzet, uzytkownik przy nim siedzi. Rozdzielone, bo
+    to zwykle dwie rozne osoby i dwa rozne pytania: "kto to naprawi" i "komu
+    to zabraknie". Obie wskazuja na te sama liste osob firmy.
+    """
     verify_csrf(request, user, csrf_token)
     _require_write(ctx)
 
@@ -561,22 +800,38 @@ def assign_owner(
     if asset is None:
         raise HTTPException(status_code=404, detail="nie znaleziono maszyny")
 
-    new_owner = None
-    if owner_id:
-        new_owner = scoping.get_owner(db, ctx, owner_id)
-        if new_owner is None:
-            raise HTTPException(status_code=400, detail="opiekun spoza tej firmy")
+    def osoba(identyfikator: str) -> Owner | None:
+        if not identyfikator:
+            return None
+        znaleziona = scoping.get_owner(db, ctx, identyfikator)
+        if znaleziona is None:
+            raise HTTPException(status_code=400, detail="osoba spoza tej firmy")
+        return znaleziona
+
+    new_owner = osoba(owner_id)
+    new_user = osoba(uzytkownik_id)
 
     previous = asset.owner.full_name if asset.owner else None
+    poprzedni_uzytkownik = asset.uzytkownik.full_name if asset.uzytkownik else None
     asset.owner_id = new_owner.id if new_owner else None
+    asset.uzytkownik_id = new_user.id if new_user else None
     asset.role_label = role_label.strip() or None
+    # Nowa lokalizacja od razu trafia do slownika firmy - inaczej kazdy
+    # wpisywalby ja po swojemu i podpowiedzi nigdy by nie powstaly.
+    asset.lokalizacja = slowniki.zapewnij(db, ctx, "lokalizacja", lokalizacja)
 
     audit(
         db,
         ctx,
         action="asset.owner_changed",
         target=asset.hostname,
-        detail={"from": previous, "to": new_owner.full_name if new_owner else None},
+        detail={
+            "from": previous,
+            "to": new_owner.full_name if new_owner else None,
+            "uzytkownik_z": poprzedni_uzytkownik,
+            "uzytkownik_na": new_user.full_name if new_user else None,
+            "lokalizacja": asset.lokalizacja,
+        },
         ip=client_ip(request),
     )
     db.commit()
@@ -757,7 +1012,11 @@ def owner_list(
             .group_by(Asset.owner_id)
         ).all()
     )
-    return render(request, "owners.html", user, ctx, db, owners=owners, counts=counts)
+    return render(
+        request, "owners.html", user, ctx, db,
+        owners=owners, counts=counts,
+        dzialy=slowniki.wartosci(db, ctx, "dzial"),
+    )
 
 
 @router.post("/owners")
@@ -788,7 +1047,9 @@ def owner_create(
         full_name=full_name.strip(),
         email=email_normalized,
         phone=phone.strip() or None,
-        department=department.strip() or None,
+        # Nowy dzial od razu zasila slownik firmy - dzieki temu przy nastepnej
+        # osobie podpowie sie ta sama nazwa, zamiast powstac jej drugi wariant.
+        department=slowniki.zapewnij(db, ctx, "dzial", department),
         notes=notes.strip() or None,
     )
     db.add(owner)
@@ -816,6 +1077,178 @@ def owner_delete(
     audit(db, ctx, action="owner.deleted", target=owner.email, ip=client_ip(request))
     db.commit()
     return RedirectResponse("/owners", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- slowniki firmowe -------------------------------------------------------
+
+@router.get("/slowniki", response_class=HTMLResponse)
+def widok_slownikow(
+    request: Request,
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Dzialy, lokalizacje i dostawcy uzywane w tej firmie.
+
+    Slownik zapelnia sie sam - kazda nowa wartosc wpisana w formularzu trafia
+    tu od razu. Ta strona sluzy do posprzatania go: usuniecia literowki albo
+    dopisania wartosci z wyprzedzeniem, zanim pojawi sie pierwszy sprzet.
+    """
+    return render(
+        request,
+        "slowniki.html",
+        user,
+        ctx,
+        db,
+        kategorie=KATEGORIE_SLOWNIKA,
+        wpisy=slowniki.wpisy(db, ctx),
+        uzycia=uzycia_slownika(db, ctx),
+    )
+
+
+def uzycia_slownika(db: Session, ctx: TenantContext) -> dict[str, dict[str, int]]:
+    """Ile razy kazda wartosc jest faktycznie uzyta.
+
+    Bez tej liczby usuwanie ze slownika byloby zgadywaniem: nie widac, czy
+    kasuje sie literowke uzyta raz, czy nazwe lokalizacji polowy floty.
+    """
+    def zlicz(kolumna) -> dict[str, int]:
+        wiersze = db.execute(
+            select(kolumna, func.count(Asset.id))
+            .where(Asset.tenant_id == ctx.tenant_id, kolumna.is_not(None))
+            .group_by(kolumna)
+        ).all()
+        return {wartosc: liczba for wartosc, liczba in wiersze}
+
+    dzialy = db.execute(
+        select(Owner.department, func.count(Owner.id))
+        .where(Owner.tenant_id == ctx.tenant_id, Owner.department.is_not(None))
+        .group_by(Owner.department)
+    ).all()
+    return {
+        "lokalizacja": zlicz(Asset.lokalizacja),
+        "dostawca": zlicz(Asset.vendor),
+        "dzial": {wartosc: liczba for wartosc, liczba in dzialy},
+    }
+
+
+@router.post("/slowniki")
+def dodaj_do_slownika(
+    request: Request,
+    kategoria: str = Form(...),
+    wartosc: str = Form(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+
+    if kategoria not in KATEGORIE_SLOWNIKA:
+        raise HTTPException(status_code=400, detail="nieznana kategoria slownika")
+    dodana = slowniki.zapewnij(db, ctx, kategoria, wartosc)
+    if dodana is None:
+        raise HTTPException(status_code=400, detail="wartosc nie moze byc pusta")
+    audit(db, ctx, action="slownik.dodany", target=f"{kategoria}:{dodana}",
+          ip=client_ip(request))
+    db.commit()
+    return RedirectResponse("/slowniki", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/slowniki/{wpis_id}/usun")
+def usun_ze_slownika(
+    wpis_id: str,
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+
+    wpis = slowniki.usun(db, ctx, wpis_id)
+    if wpis is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono wpisu slownika")
+    audit(db, ctx, action="slownik.usuniety", target=f"{wpis.kategoria}:{wpis.wartosc}",
+          ip=client_ip(request))
+    db.commit()
+    return RedirectResponse("/slowniki", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- wlasne konto -----------------------------------------------------------
+
+@router.get("/konto", response_class=HTMLResponse)
+def widok_konta(
+    request: Request,
+    zmienione: str = Query("", max_length=8),
+    blad: str = Query("", max_length=200),
+    user: PortalUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Wlasne konto - kazdy zalogowany, takze superadmin i audytor.
+
+    Kontekst firmy jest tu opcjonalny: konto globalne zadnej firmy nie ma,
+    a haslo zmienic musi. Dlatego widok nie zalezy od resolve_tenant.
+    """
+    ctx = None
+    if user.tenant_id:
+        tenant = db.get(Tenant, user.tenant_id)
+        if tenant is not None:
+            ctx = tenant_context_for(user, tenant)
+    return render(
+        request,
+        "konto.html",
+        user,
+        ctx,
+        db,
+        zmienione=bool(zmienione),
+        blad=blad,
+        min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
+    )
+
+
+@router.post("/konto/haslo")
+def zmien_wlasne_haslo(
+    request: Request,
+    obecne: str = Form(...),
+    nowe: str = Form(...),
+    powtorzone: str = Form(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zmiana wlasnego hasla - po podaniu dotychczasowego.
+
+    Stare haslo jest wymagane nawet przy zalogowanej sesji: bez tego
+    pozostawiona bez opieki przegladarka wystarcza, zeby przejac konto
+    na stale. Zaden administrator nie moze tego kroku ominac dla siebie.
+    """
+    verify_csrf(request, user, csrf_token)
+
+    def odmow(komunikat: str) -> Response:
+        return RedirectResponse(
+            f"/konto?blad={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
+        )
+
+    if not verify_password(obecne, user.password_hash):
+        audit(db, None, action="haslo.zmiana_odrzucona", target=user.email,
+              ip=client_ip(request), actor=user.email)
+        db.commit()
+        return odmow("Dotychczasowe haslo jest nieprawidlowe.")
+    if nowe != powtorzone:
+        return odmow("Powtorzone haslo rozni sie od nowego.")
+    if len(nowe) < MIN_DLUGOSC_HASLA:
+        return odmow(f"Haslo musi miec co najmniej {MIN_DLUGOSC_HASLA} znakow.")
+    if nowe == obecne:
+        return odmow("Nowe haslo musi rozni sie od dotychczasowego.")
+
+    user.password_hash = hash_password(nowe)
+    audit(db, None, action="haslo.zmienione", target=user.email,
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return RedirectResponse("/konto?zmienione=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # --- tokeny rejestracyjne ---------------------------------------------------

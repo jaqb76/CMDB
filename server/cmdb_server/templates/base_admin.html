@@ -32,7 +32,7 @@
       <span class="motyw-ikona motyw-jasny">jasny</span>
       <span class="motyw-ikona motyw-ciemny">ciemny</span>
     </button>
-    <span class="user-email">{{ user.email }}</span>
+    <a class="user-email" href="/konto" title="Moje konto i zmiana hasla">{{ user.email }}</a>
     <form method="post" action="/logout" class="inline-form">
       <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
     </form>

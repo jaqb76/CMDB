@@ -103,8 +103,22 @@ ważności — jak najbardziej.
   (gdy `CMDB_REQUIRE_HTTPS`), `SameSite=Lax`, domyślnie 8 godzin.
 * Token CSRF wymagany przy każdym `POST` — powiązany z identyfikatorem
   użytkownika i podpisany.
-* Role: `admin` (zarządza tokenami, opiekunami, przypisaniami) i `viewer`
-  (tylko odczyt). Próba zapisu przez `viewer` kończy się kodem 403.
+* Role w firmie: `admin` (zarządza tokenami, osobami, przypisaniami,
+  słownikami i sprzętem wpisywanym ręcznie) oraz `viewer` (tylko odczyt).
+  Próba zapisu przez `viewer` kończy się kodem 403.
+* Konta ponad firmami: **superadmin** (panel `/admin`, pełne uprawnienia)
+  i **audytor globalny** (`is_global_viewer`) — widzi inwentarz każdej
+  organizacji, ale nie zapisuje w żadnej. Prawo zapisu powstaje w jednym
+  miejscu (`services/auth.tenant_context_for`) i audytorowi nie jest
+  przyznawane nigdzie — nie da się go odzyskać wpisując adres formularza
+  ręcznie. Do panelu `/admin` audytor nie wchodzi (`require_superadmin`).
+* Zmiana hasła: każdy zalogowany zmienia własne pod `/konto` — **zawsze po
+  podaniu dotychczasowego**, także administrator; bez tego pozostawiona bez
+  opieki przeglądarka wystarczyłaby do trwałego przejęcia konta. Superadmin
+  może dodatkowo ustawić hasło dowolnemu kontu (`/admin/firmy`) — to jedyna
+  droga wyjścia z zapomnianego hasła administratora firmy. Nowego hasła nigdy
+  nie zapisujemy ani nie pokazujemy ponownie; w dzienniku audytu zostaje sam
+  fakt zmiany i kto jej dokonał.
 * Widoki renderowane po stronie serwera, bez SPA i bez publicznego API
   przeglądarkowego — mniejsza powierzchnia ataku.
 * CSP dopuszcza zasoby wyłącznie z `'self'`; w kodzie nie ma stylów ani
