@@ -109,6 +109,97 @@
   });
 
 
+  // --- hasla ---------------------------------------------------------------
+
+  function poleObok(przycisk) {
+    var grupa = przycisk.closest(".pole-hasla");
+    return grupa ? grupa.querySelector("input") : null;
+  }
+
+  // Podglad hasla na zadanie. Domyslnie zakryte: haslo wpisywane w panelu
+  // widzi kazdy, kto akurat patrzy w ekran, a odslania sie je tylko na czas
+  // przepisania.
+  document.querySelectorAll("[data-pokaz-haslo]").forEach(function (przycisk) {
+    przycisk.addEventListener("click", function () {
+      var pole = poleObok(przycisk);
+      if (!pole) { return; }
+      var zakryte = pole.type === "password";
+      pole.type = zakryte ? "text" : "password";
+      przycisk.textContent = zakryte ? "Ukryj" : "Pokaz";
+      przycisk.setAttribute("aria-pressed", zakryte ? "true" : "false");
+      pole.focus();
+    });
+  });
+
+  // Generator hasla. Losowosc bierzemy z crypto, nie z Math.random - to
+  // drugie jest przewidywalne i nie nadaje sie do niczego, co ma chronic
+  // konto. Alfabet bez znakow mylacych sie przy przepisywaniu (0/O, 1/l/I).
+  var ZNAKI = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  var DLUGOSC_LOSOWANEGO = 18;
+
+  function losoweHaslo() {
+    var bajty = new Uint32Array(DLUGOSC_LOSOWANEGO);
+    window.crypto.getRandomValues(bajty);
+    var wynik = "";
+    for (var i = 0; i < bajty.length; i += 1) {
+      wynik += ZNAKI[bajty[i] % ZNAKI.length];
+    }
+    return wynik;
+  }
+
+  document.querySelectorAll("[data-generuj-haslo]").forEach(function (przycisk) {
+    przycisk.addEventListener("click", function () {
+      var pole = poleObok(przycisk);
+      if (!pole) { return; }
+      pole.value = losoweHaslo();
+      // Odslaniamy od razu: wygenerowanego hasla nie da sie odczytac pozniej,
+      // wiec zakryte byloby haslem, ktorego nikt nie zna.
+      pole.type = "text";
+      var podglad = przycisk.closest(".pole-hasla").querySelector("[data-pokaz-haslo]");
+      if (podglad) {
+        podglad.textContent = "Ukryj";
+        podglad.setAttribute("aria-pressed", "true");
+      }
+      pole.focus();
+      pole.select();
+    });
+  });
+
+  // Okno ustawiania hasla wybranemu koncie. Jedno na strone - adres konta
+  // wstawiamy przy otwarciu, zamiast powielac formularz przy kazdym wierszu.
+  document.querySelectorAll("[data-okno-hasla]").forEach(function (okno) {
+    var formularz = okno.querySelector("[data-okno-formularz]");
+    var pole = okno.querySelector("[data-pole-hasla]");
+    var etykieta = okno.querySelector("[data-okno-konto]");
+    if (!formularz || !pole) { return; }
+
+    okno.querySelectorAll("[data-okno-zamknij]").forEach(function (przycisk) {
+      przycisk.addEventListener("click", function () { okno.close(); });
+    });
+
+    // Sprzatanie po zamknieciu - takze klawiszem Escape, ktory omija przyciski.
+    // Bez tego poprzednie haslo zostawaloby w polu, odsloniete, do nastepnego
+    // otwarcia okna.
+    okno.addEventListener("close", function () {
+      pole.value = "";
+      pole.type = "password";
+      var podglad = okno.querySelector("[data-pokaz-haslo]");
+      if (podglad) {
+        podglad.textContent = "Pokaz";
+        podglad.setAttribute("aria-pressed", "false");
+      }
+    });
+
+    document.querySelectorAll("[data-haslo-akcja]").forEach(function (przycisk) {
+      przycisk.addEventListener("click", function () {
+        formularz.action = przycisk.dataset.hasloAkcja;
+        if (etykieta) { etykieta.textContent = przycisk.dataset.hasloKonto || ""; }
+        okno.showModal();
+        pole.focus();
+      });
+    });
+  });
+
   // Listy, ktore po wyborze przenosza na wskazany adres.
   document.querySelectorAll("[data-autonawigacja]").forEach(function (lista) {
     lista.addEventListener("change", function () {

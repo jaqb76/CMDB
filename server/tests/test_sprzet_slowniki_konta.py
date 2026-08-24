@@ -527,3 +527,23 @@ def test_audytor_nie_dostaje_formularzy_raportow(client, tenant_a, make_user):
     assert 'action="/raporty/definicje"' not in strona.text
     # Tresc informacyjna zostaje - audytor ma raporty ogladac.
     assert "Co zawiera ktory raport" in strona.text
+
+
+def test_haslo_ustawia_sie_w_oknie_a_nie_w_tabeli(client, tenant_a, make_user):
+    """Pole hasla widoczne w tabeli pokazuje je kazdemu, kto patrzy w ekran.
+
+    Sam endpoint zostaje bez zmian - zmienia sie tylko to, ze formularz jest
+    w oknie modalnym, a pole domyslnie zakryte.
+    """
+    make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
+    make_user(None, "root@cmdb.pl", "bardzo-dlugie-haslo")
+    _login(client, "root@cmdb.pl", "bardzo-dlugie-haslo")
+
+    strona = client.get("/admin/firmy")
+    assert strona.status_code == 200
+    assert "data-okno-hasla" in strona.text
+    assert 'data-haslo-akcja="/admin/users/' in strona.text
+    # Zadnego pola hasla wpisywanego jawnie - ani w tabeli, ani w formularzach.
+    assert 'name="password" type="text"' not in strona.text
+    assert 'type="text" name="password"' not in strona.text
+    assert strona.text.count('type="password"') >= 3

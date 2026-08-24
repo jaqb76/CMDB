@@ -41,13 +41,9 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn-link">{% if k.is_active %}wylacz{% else %}wlacz{% endif %}</button>
               </form>
-              <form method="post" action="/admin/users/{{ k.id }}/haslo" class="inline-form"
-                    data-confirm="Ustawic nowe haslo konta {{ k.email }}? Dotychczasowe przestanie dzialac.">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="text" name="password" required minlength="{{ min_dlugosc_hasla }}"
-                       maxlength="200" placeholder="nowe haslo" autocomplete="off">
-                <button type="submit" class="btn-link">ustaw haslo</button>
-              </form>
+              <button type="button" class="btn-link"
+                      data-haslo-akcja="/admin/users/{{ k.id }}/haslo"
+                      data-haslo-konto="{{ k.email }}">ustaw haslo</button>
             </div>
           {% else %}<span class="muted">brak</span>{% endfor %}
         </td>
@@ -83,7 +79,7 @@
     zadnego formularza zapisu nie dostanie nawet po wpisaniu adresu recznie.
   </p>
   <table class="table">
-    <thead><tr><th>Konto</th><th>Uprawnienia</th><th>Ostatnie logowanie</th><th>Nowe haslo</th><th></th></tr></thead>
+    <thead><tr><th>Konto</th><th>Uprawnienia</th><th>Ostatnie logowanie</th><th></th></tr></thead>
     <tbody>
     {% for k in konta_globalne %}
       <tr {% if not k.is_active %}class="row-muted"{% endif %}>
@@ -97,16 +93,10 @@
           {% if not k.is_active %}<span class="badge badge-danger">wylaczone</span>{% endif %}
         </td>
         <td class="small muted">{{ k.last_login_at | dt }}</td>
-        <td>
-          <form method="post" action="/admin/users/{{ k.id }}/haslo" class="inline-form"
-                data-confirm="Ustawic nowe haslo konta {{ k.email }}? Dotychczasowe przestanie dzialac.">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="text" name="password" required minlength="{{ min_dlugosc_hasla }}"
-                   maxlength="200" placeholder="nowe haslo" autocomplete="off">
-            <button type="submit" class="btn btn-small">Ustaw</button>
-          </form>
-        </td>
-        <td>
+        <td class="small">
+          <button type="button" class="btn btn-small"
+                  data-haslo-akcja="/admin/users/{{ k.id }}/haslo"
+                  data-haslo-konto="{{ k.email }}">Ustaw haslo</button>
           {% if not k.is_superadmin %}
           <form method="post" action="/admin/users/{{ k.id }}/active" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -118,7 +108,7 @@
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="5" class="muted">Brak kont globalnych.</td></tr>
+      <tr><td colspan="4" class="muted">Brak kont globalnych.</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -132,8 +122,12 @@
     </div>
     <div>
       <label for="audytor_haslo">Haslo</label>
-      <input id="audytor_haslo" name="password" type="text" required
-             minlength="{{ min_dlugosc_hasla }}" maxlength="200">
+      <div class="pole-hasla">
+        <input id="audytor_haslo" name="password" type="password" required
+               minlength="{{ min_dlugosc_hasla }}" maxlength="200" autocomplete="new-password">
+        <button type="button" class="btn btn-small btn-ghost" data-pokaz-haslo>Pokaz</button>
+        <button type="button" class="btn btn-small btn-ghost" data-generuj-haslo>Generuj</button>
+      </div>
     </div>
     <div>
       <label for="audytor_nazwa">Imie i nazwisko</label>
@@ -142,8 +136,9 @@
     <div><button type="submit" class="btn btn-primary">Utworz audytora</button></div>
   </form>
   <p class="muted small">
-    Minimum {{ min_dlugosc_hasla }} znakow. Haslo pokazane jawnie, zeby dalo sie je przekazac
-    wlascicielowi konta; w bazie zostaje wylacznie skrot Argon2id.
+    Minimum {{ min_dlugosc_hasla }} znakow. Domyslnie zakryte - "Pokaz" odslania je na czas
+    przepisania. W bazie zostaje wylacznie skrot Argon2id, wiec pozniej nie da sie go
+    odczytac: przekaz je wlascicielowi konta teraz.
   </p>
 </section>
 
@@ -174,8 +169,16 @@
       <label for="konto_email">E-mail (login)</label>
       <input id="konto_email" name="email" type="email" required maxlength="255">
       <label for="konto_haslo">Haslo</label>
-      <input id="konto_haslo" name="password" type="text" required minlength="12" maxlength="200">
-      <div class="muted small">Minimum 12 znakow. Pokazane jawnie, zeby dalo sie je przekazac klientowi.</div>
+      <div class="pole-hasla">
+        <input id="konto_haslo" name="password" type="password" required
+               minlength="{{ min_dlugosc_hasla }}" maxlength="200" autocomplete="new-password">
+        <button type="button" class="btn btn-small btn-ghost" data-pokaz-haslo>Pokaz</button>
+        <button type="button" class="btn btn-small btn-ghost" data-generuj-haslo>Generuj</button>
+      </div>
+      <div class="muted small">
+        Minimum {{ min_dlugosc_hasla }} znakow. "Pokaz" odslania haslo na czas przepisania -
+        pozniej nie da sie go odczytac, w bazie zostaje sam skrot.
+      </div>
       <label for="konto_nazwa">Imie i nazwisko</label>
       <input id="konto_nazwa" name="full_name" maxlength="200">
       <label for="konto_rola">Rola</label>
@@ -214,4 +217,46 @@
     <div><button type="submit" class="btn btn-primary">Wygeneruj</button></div>
   </form>
 </section>
+
+{#
+  Jedno okno na cala strone, a nie formularz przy kazdym koncie: pole hasla
+  widoczne w tabeli kusi, zeby je wypelnic przy okazji innej pracy, i pokazuje
+  wpisywane haslo kazdemu, kto akurat patrzy w ekran. Adres konta wstawia
+  JavaScript przy otwarciu (data-haslo-akcja).
+
+  Element <dialog> zamiast wlasnej nakladki: sam zabiera ognisko klawiatury,
+  zamyka sie Escape i blokuje tlo - napisane recznie zwykle nie robi zadnej
+  z tych rzeczy.
+#}
+<dialog class="okno" data-okno-hasla>
+  <form method="post" action="" class="stack" data-okno-formularz>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Nowe haslo konta</h2>
+    <p class="small">
+      Konto: <b data-okno-konto></b>
+    </p>
+    <p class="small muted">
+      Dotychczasowe haslo przestanie dzialac natychmiast. Nowego nie da sie
+      pozniej odczytac - w bazie zostaje wylacznie skrot Argon2id.
+    </p>
+
+    <label for="okno-haslo-pole">Nowe haslo</label>
+    <div class="pole-hasla">
+      <input id="okno-haslo-pole" name="password" type="password" required
+             minlength="{{ min_dlugosc_hasla }}" maxlength="200"
+             autocomplete="new-password" data-pole-hasla>
+      <button type="button" class="btn btn-small btn-ghost" data-pokaz-haslo>Pokaz</button>
+      <button type="button" class="btn btn-small btn-ghost" data-generuj-haslo>Generuj</button>
+    </div>
+    <p class="small muted">
+      Co najmniej {{ min_dlugosc_hasla }} znakow. "Generuj" tworzy losowe haslo
+      i od razu je odslania, zeby dalo sie je przepisac.
+    </p>
+
+    <div class="okno-akcje">
+      <button type="button" class="btn btn-ghost" data-okno-zamknij>Anuluj</button>
+      <button type="submit" class="btn btn-primary">Ustaw haslo</button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}

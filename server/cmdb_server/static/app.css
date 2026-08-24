@@ -389,3 +389,24 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 /* Tabela maszyn bywa szersza niz panel - przewija sie sama, zamiast rozpychac
    cala strone w poziomie. */
 .tabela-przewijana { overflow-x: auto; }
+
+/* --- pole hasla i okno modalne --------------------------------------------
+
+   Haslo jest zakryte domyslnie, a przyciski obok pozwalaja je odslonic albo
+   wylosowac. Uklad poziomy, bo pole i jego dwie akcje to jedna calosc. */
+.pole-hasla { display: flex; gap: 8px; align-items: center; }
+.pole-hasla input { flex: 1; min-width: 0; }
+.pole-hasla .btn { flex: none; white-space: nowrap; }
+
+/* Element <dialog> ma wlasne barwy przegladarki - ustawiamy je jawnie, inaczej
+   w motywie ciemnym okno wychodzi biale. */
+.okno {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+  padding: 22px 24px; width: min(460px, calc(100vw - 32px));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+.okno::backdrop { background: rgba(10, 12, 16, 0.55); }
+.okno h2 { margin-top: 0; }
+.okno p { margin: 0 0 6px; }
+.okno-akcje { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }

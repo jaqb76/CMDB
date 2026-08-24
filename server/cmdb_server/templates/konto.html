@@ -41,11 +41,16 @@
       <label for="obecne">Dotychczasowe haslo</label>
       <input id="obecne" name="obecne" type="password" required autocomplete="current-password">
       <label for="nowe">Nowe haslo</label>
-      <input id="nowe" name="nowe" type="password" required autocomplete="new-password"
-             minlength="{{ min_dlugosc_hasla }}">
+      <div class="pole-hasla">
+        <input id="nowe" name="nowe" type="password" required autocomplete="new-password"
+               minlength="{{ min_dlugosc_hasla }}">
+        <button type="button" class="btn btn-small btn-ghost" data-pokaz-haslo>Pokaz</button>
+      </div>
       <label for="powtorzone">Powtorz nowe haslo</label>
       <input id="powtorzone" name="powtorzone" type="password" required autocomplete="new-password"
              minlength="{{ min_dlugosc_hasla }}">
+      {# Bez generatora: to haslo trzeba zapamietac, a wylosowane i tak
+         zostaloby wpisane recznie w pole ponizej. #}
       <p class="small muted">Co najmniej {{ min_dlugosc_hasla }} znakow.</p>
       <button type="submit" class="btn btn-primary">Zmien haslo</button>
     </form>
