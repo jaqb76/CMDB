@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_zmiany.html" import podsumowanie_raportu, tabela_zmian %}
 {% block title %}{{ asset.hostname }} - CMDB{% endblock %}
 {% block content %}
 
@@ -796,26 +797,27 @@
     <div class="panel">
       <h2>Co sie zmienilo na tej maszynie</h2>
       {% if zmiany %}
-      <table class="table">
-        <thead><tr><th>Kiedy</th><th>Rodzaj</th><th>Zmiana</th><th>Szczegoly</th></tr></thead>
-        <tbody>
-        {% for z in zmiany %}
-          <tr>
-            <td class="small">{{ z.occurred_at | dt }}<div class="muted">{{ z.occurred_at | ago }}</div></td>
-            <td class="small"><code>{{ z.category }}</code></td>
-            <td>
-              {% if z.action == 'dodano' %}<span class="badge badge-ok">dodano</span>
-              {% elif z.action == 'usunieto' %}<span class="badge badge-danger">usunieto</span>
-              {% else %}<span class="badge badge-warn">zmieniono</span>{% endif %}
-              <span class="small">{{ z.label }}</span>
-            </td>
-            <td class="small muted">
-              {% if z.old_value or z.new_value %}{{ z.old_value or '—' }} &rarr; {{ z.new_value or '—' }}{% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      <p class="muted small">
+        Jeden wpis to jeden raport agenta - rozwin go, zeby zobaczyc, co dokladnie
+        sie w nim zmienilo.
+      </p>
+      <ul class="raporty">
+      {% for g in zmiany %}
+        <li>
+          <details class="raport">
+            <summary>
+              <span class="raport-czas">
+                {{ g.kiedy | ago }}
+                <span class="muted">{{ g.kiedy | dt }}</span>
+              </span>
+              {{ podsumowanie_raportu(g) }}
+              <span class="muted small raport-suma">{{ g.liczba | zmiany }}</span>
+            </summary>
+            {{ tabela_zmian(g) }}
+          </details>
+        </li>
+      {% endfor %}
+      </ul>
       {% else %}
         <p class="muted">
           Nie odnotowano jeszcze zadnej zmiany. Pierwszy raport maszyny nie jest

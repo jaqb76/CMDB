@@ -12,7 +12,11 @@ deduplikacji raportow.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Callable, Iterable
+
+from sqlalchemy import String, cast, func, select
+from sqlalchemy.orm import Session
 
 log = logging.getLogger(__name__)
 
@@ -229,3 +233,143 @@ def wykryj_zmiany(poprzedni: dict | None, biezacy: dict) -> list[dict]:
 
     zmiany.extend(_porownaj_skalary(poprzedni, biezacy))
     return zmiany
+
+
+# --- historia zmian widziana jako raporty -----------------------------------
+#
+# Jeden raport agenta potrafi wywolac kilkanascie zmian naraz: podniesiona
+# wersja agenta, dwa nowe interfejsy wirtualne, kilka uslug. Wypisane osobno
+# wygladaja jak kilkanascie zdarzen, choc zdarzenie bylo jedno - i zasypuja
+# liste tak, ze zmiana, na ktorej komus zalezy, ginie miedzy szumem.
+#
+# Grupujemy po snapshot_id: wszystkie zmiany z jednego raportu maja ten sam.
+# Starsze wpisy moga go nie miec (zapis sprzed wprowadzenia kolumny), wiec
+# dla nich kluczem zastepczym jest maszyna i chwila raportu.
+
+# Ile raportow pokazujemy na jednej stronie. Limit jest na RAPORTACH, a nie
+# na zmianach: przyciecie po zmianach urwaloby ostatni raport w polowie
+# i pokazalo przy nim liczbe mniejsza, niz bylo naprawde.
+LIMIT_RAPORTOW = 200
+
+
+def _klucz_raportu(model):
+    """Wyrazenie SQL identyfikujace raport, z ktorego pochodzi zmiana."""
+    return func.coalesce(
+        model.snapshot_id,
+        model.asset_id + ":" + cast(model.occurred_at, String),
+    )
+
+
+def klucze_raportow(
+    db: Session,
+    tenant_id: str,
+    od: datetime | None = None,
+    kategoria: str = "",
+    asset_id: str = "",
+    limit: int = LIMIT_RAPORTOW,
+) -> list[str]:
+    """Klucze najnowszych raportow, ktore w ogole cos zmienily.
+
+    Bez ``od`` siega wstecz bez ograniczenia - karta maszyny nie ma filtra
+    czasu, a historia jednej maszyny i tak miesci sie w limicie raportow.
+    """
+    from ..models import AssetChange
+
+    klucz = _klucz_raportu(AssetChange)
+    stmt = (
+        select(klucz.label("klucz"), func.max(AssetChange.occurred_at).label("kiedy"))
+        .where(AssetChange.tenant_id == tenant_id)
+        .group_by(klucz)
+        .order_by(func.max(AssetChange.occurred_at).desc())
+        .limit(limit)
+    )
+    if od is not None:
+        stmt = stmt.where(AssetChange.occurred_at >= od)
+    if kategoria:
+        stmt = stmt.where(AssetChange.category == kategoria)
+    if asset_id:
+        stmt = stmt.where(AssetChange.asset_id == asset_id)
+    return [wiersz.klucz for wiersz in db.execute(stmt)]
+
+
+def zmiany_raportow(
+    db: Session,
+    tenant_id: str,
+    klucze: list[str],
+    kategoria: str = "",
+    asset_id: str = "",
+) -> list[tuple]:
+    """Wszystkie zmiany nalezace do wskazanych raportow, wraz z maszyna."""
+    from ..models import Asset, AssetChange
+
+    if not klucze:
+        return []
+    klucz = _klucz_raportu(AssetChange)
+    stmt = (
+        select(AssetChange, Asset)
+        .join(Asset, Asset.id == AssetChange.asset_id)
+        .where(AssetChange.tenant_id == tenant_id, klucz.in_(klucze))
+        .order_by(AssetChange.occurred_at.desc(), AssetChange.category, AssetChange.label)
+    )
+    if kategoria:
+        stmt = stmt.where(AssetChange.category == kategoria)
+    if asset_id:
+        stmt = stmt.where(AssetChange.asset_id == asset_id)
+    return list(db.execute(stmt).all())
+
+
+def pogrupuj(wiersze: Iterable[tuple]) -> list[dict]:
+    """Zmiany jako lista raportow: [(AssetChange, Asset), ...] -> grupy.
+
+    Kolejnosc grup bierze sie z kolejnosci wierszy (najnowsze pierwsze).
+    Klucza szukamy w slowniku, a nie porownaniem z poprzednim wierszem:
+    dwie maszyny moga zaraportowac w tej samej sekundzie i ich zmiany
+    przeplotlyby sie ze soba.
+    """
+    grupy: dict[str, dict] = {}
+    for zmiana, maszyna in wiersze:
+        klucz = zmiana.snapshot_id or f"{zmiana.asset_id}:{zmiana.occurred_at}"
+        grupa = grupy.get(klucz)
+        if grupa is None:
+            grupa = {
+                "klucz": klucz,
+                "kiedy": zmiana.occurred_at,
+                "maszyna": maszyna,
+                "zmiany": [],
+                "licznik": {},
+            }
+            grupy[klucz] = grupa
+        grupa["zmiany"].append(zmiana)
+        licznik = grupa["licznik"].setdefault(
+            zmiana.category, {"dodano": 0, "usunieto": 0, "zmieniono": 0}
+        )
+        if zmiana.action in licznik:
+            licznik[zmiana.action] += 1
+
+    wynik = list(grupy.values())
+    for grupa in wynik:
+        grupa["liczba"] = len(grupa["zmiany"])
+        # Kategorie od najliczniejszej: pierwsze slowo w podsumowaniu ma mowic,
+        # czego ten raport dotyczyl przede wszystkim.
+        grupa["podsumowanie"] = sorted(
+            (
+                {"kategoria": kategoria, **liczby, "razem": sum(liczby.values())}
+                for kategoria, liczby in grupa["licznik"].items()
+            ),
+            key=lambda pozycja: (-pozycja["razem"], pozycja["kategoria"]),
+        )
+    return wynik
+
+
+def odmiana_zmian(ile: int) -> str:
+    """1 zmiana / 2 zmiany / 5 zmian - liczebnik po polsku.
+
+    Napis "1 zmian" w podsumowaniu wyglada jak usterka, a pojawialby sie
+    przy kazdym raporcie z pojedyncza zmiana, czyli najczesciej.
+    """
+    if ile == 1:
+        return "1 zmiana"
+    reszta_setkowa = ile % 100
+    if 12 <= reszta_setkowa <= 14:
+        return f"{ile} zmian"
+    return f"{ile} zmiany" if ile % 10 in (2, 3, 4) else f"{ile} zmian"

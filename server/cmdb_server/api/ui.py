@@ -50,7 +50,8 @@ from ..security import (
     verify_password,
 )
 from ..services import (
-    cve, duplicates, logowanie, pakiet, scoping, slowniki, upgrades, ustawienia,
+    changes, cve, duplicates, logowanie, pakiet, scoping, slowniki, upgrades,
+    ustawienia,
 )
 from ..services.auth import (
     LoginRequired,
@@ -170,6 +171,7 @@ templates.env.filters["dt"] = _fmt_dt
 templates.env.filters["ago"] = _fmt_ago
 templates.env.filters["bytes"] = _fmt_bytes
 templates.env.filters["pretty_json"] = _pretty_json
+templates.env.filters["zmiany"] = changes.odmiana_zmian
 
 
 # --- kontekst tenanta -------------------------------------------------------
@@ -736,12 +738,10 @@ def asset_detail(
         .order_by(AgentCredential.created_at.desc())
     ).scalars().all()
 
-    zmiany = db.execute(
-        select(AssetChange)
-        .where(AssetChange.tenant_id == ctx.tenant_id, AssetChange.asset_id == asset.id)
-        .order_by(AssetChange.occurred_at.desc())
-        .limit(200)
-    ).scalars().all()
+    klucze_zmian = changes.klucze_raportow(db, ctx.tenant_id, asset_id=asset.id)
+    zmiany = changes.pogrupuj(
+        changes.zmiany_raportow(db, ctx.tenant_id, klucze_zmian, asset_id=asset.id)
+    )
 
     payload = current.payload if current else {}
     # Podatnosci liczymy przy wyswietleniu, a nie przy przyjeciu raportu:
@@ -956,15 +956,13 @@ def historia_zmian(
     tylko "co sie zmienilo i kiedy".
     """
     od = utcnow() - timedelta(days=dni)
-    stmt = (
-        select(AssetChange, Asset)
-        .join(Asset, Asset.id == AssetChange.asset_id)
-        .where(AssetChange.tenant_id == ctx.tenant_id, AssetChange.occurred_at >= od)
+    # Najpierw raporty, potem ich zmiany. Odwrotna kolejnosc (pobrac N zmian
+    # i pogrupowac) urywalaby ostatni raport w polowie i pokazywala przy nim
+    # liczbe mniejsza, niz bylo naprawde.
+    klucze = changes.klucze_raportow(db, ctx.tenant_id, od, kategoria)
+    grupy = changes.pogrupuj(
+        changes.zmiany_raportow(db, ctx.tenant_id, klucze, kategoria)
     )
-    if kategoria:
-        stmt = stmt.where(AssetChange.category == kategoria)
-
-    wiersze = db.execute(stmt.order_by(AssetChange.occurred_at.desc()).limit(500)).all()
 
     kategorie = db.execute(
         select(AssetChange.category, func.count(AssetChange.id))
@@ -975,7 +973,8 @@ def historia_zmian(
 
     return render(
         request, "zmiany.html", user, ctx, db,
-        wiersze=wiersze,
+        grupy=grupy,
+        limit_raportow=changes.LIMIT_RAPORTOW,
         kategorie=kategorie,
         filtry={"kategoria": kategoria, "dni": dni},
     )

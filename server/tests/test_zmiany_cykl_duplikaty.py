@@ -301,3 +301,76 @@ def test_maszyny_roznych_firm_nie_sa_duplikatami(client, tenant_a, tenant_b, mak
     strona = client.get("/duplikaty").text
     assert "B-01" not in strona
     assert "Nie znaleziono" in strona
+
+
+# --- historia jako lista raportow -------------------------------------------
+
+def _raport_z_wieloma_zmianami(machine_id="maszyna-1", hostname="WS-01"):
+    """Jeden raport, ktory zmienia naraz kilka rzeczy w kilku sekcjach."""
+    raport = build_report(machine_id=machine_id, hostname=hostname)
+    raport["agent"]["version"] = "0.5.6"
+    raport["software"]["packages"].append(
+        {"name": "Nowy Program", "version": "1.0", "publisher": "X", "source": "registry"}
+    )
+    raport["software"]["packages"].pop(0)
+    raport["software"]["services"].append(
+        {"name": "nowa", "display_name": "Nowa usluga", "state": "Running", "start_mode": "Auto"}
+    )
+    raport["network"]["interfaces"].append({
+        "name": "veth96e5fe5", "mac_address": "aa:bb:cc:dd:ee:01",
+        "ip_addresses": ["10.0.0.2"], "is_up": True,
+    })
+    return raport
+
+
+def test_zmiany_z_jednego_raportu_sa_jednym_wpisem(client, tenant_a, make_user):
+    """Podniesiona wersja agenta razem z paroma interfejsami to jedno zdarzenie.
+
+    Rozpisane na osobne wiersze wygladalo jak kilkanascie zdarzen i topilo
+    zmiane, na ktorej komus zalezy, w szumie.
+    """
+    token = _zarejestruj(client, tenant_a)
+    _wyslij(client, token, _raport_z_wieloma_zmianami())
+
+    make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
+    _login(client, "admin@firma-a.pl", "bardzo-dlugie-haslo")
+
+    with SessionLocal() as db:
+        ile_zmian = len(db.execute(select(AssetChange)).scalars().all())
+        asset_id = db.execute(select(Asset)).scalar_one().id
+    assert ile_zmian > 1, "raport testowy ma zmieniac kilka rzeczy naraz"
+
+    strona = client.get("/zmiany").text
+    # Jeden raport = jeden rozwijany wpis, mimo wielu zmian w srodku.
+    assert strona.count('<details class="raport">') == 1
+    assert f"{ile_zmian} zmian" in strona or f"{ile_zmian} zmiany" in strona
+    # Szczegoly sa na stronie od razu, tylko zwiniete - bez dodatkowego zadania.
+    assert "wersja agenta" in strona
+
+    karta = client.get(f"/assets/{asset_id}").text
+    assert karta.count('<details class="raport">') == 1
+
+
+def test_kazdy_raport_to_osobny_wpis(client, tenant_a, make_user):
+    token = _zarejestruj(client, tenant_a)
+    _wyslij(client, token, _raport_z_wieloma_zmianami())
+
+    trzeci = _raport_z_wieloma_zmianami()
+    trzeci["agent"]["version"] = "0.5.7"
+    _wyslij(client, token, trzeci)
+
+    make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
+    _login(client, "admin@firma-a.pl", "bardzo-dlugie-haslo")
+
+    assert client.get("/zmiany").text.count('<details class="raport">') == 2
+
+
+def test_liczebnik_zmian_po_polsku():
+    """"1 zmian" w podsumowaniu wyglada jak usterka, a trafialoby sie najczesciej."""
+    from cmdb_server.services.changes import odmiana_zmian
+
+    assert odmiana_zmian(1) == "1 zmiana"
+    assert odmiana_zmian(3) == "3 zmiany"
+    assert odmiana_zmian(8) == "8 zmian"
+    assert odmiana_zmian(12) == "12 zmian"
+    assert odmiana_zmian(22) == "22 zmiany"
