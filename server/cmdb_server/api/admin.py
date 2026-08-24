@@ -126,6 +126,27 @@ def sprawdz_csrf(user: PortalUser, token: str | None) -> None:
         raise HTTPException(status_code=403, detail="nieprawidlowy token CSRF")
 
 
+def _konto_do_zmiany(db: Session, user: PortalUser, user_id: str) -> PortalUser:
+    """Konto, na ktorym wolno wykonac operacje - albo wyjatek.
+
+    Jedyna regula brzmi: nie na sobie. Wystarcza ona takze za ochrone przed
+    zamknieciem sobie drogi do panelu - skoro operacje wykonuje superadmin,
+    a wlasnego konta ruszyc nie moze, to zawsze zostaje przynajmniej jeden
+    czynny superadmin. Wczesniej regula brzmiala "superadmina nie ruszamy",
+    ale wtedy pomylkowo zalozonego superadmina nie dalo sie ani wylaczyc,
+    ani usunac - z panelu nie dalo sie zrobic nic poza zmiana jego hasla.
+    """
+    konto = db.get(PortalUser, user_id)
+    if konto is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    if konto.id == user.id:
+        raise HTTPException(
+            status_code=400,
+            detail="wlasnego konta nie da sie wylaczyc ani usunac - popros innego administratora",
+        )
+    return konto
+
+
 def znajdz_firme(db: Session, tenant_id: str) -> Tenant:
     firma = db.get(Tenant, tenant_id)
     if firma is None:
@@ -398,15 +419,40 @@ def przelacz_konto(
     db: Session = Depends(get_db),
 ) -> Response:
     sprawdz_csrf(user, csrf_token)
-    konto = db.get(PortalUser, user_id)
-    # Superadmina nie da sie wylaczyc z panelu: to konto, ktore panel otwiera.
-    # Audytor globalny nim nie jest, wiec jego wylaczenie jest dozwolone.
-    if konto is None or konto.is_superadmin:
-        raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    konto = _konto_do_zmiany(db, user, user_id)
     konto.is_active = not konto.is_active
     audit(db, None, action="user.active_changed", target=konto.email,
           detail={"is_active": konto.is_active}, ip=client_ip(request), actor=user.email)
     db.commit()
+    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/users/{user_id}/usun")
+def usun_konto(
+    user_id: str,
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Kasuje konto panelu. Dane firmy zostaja - konto to tylko dostep do nich.
+
+    Wylaczenie konta zostawia je w bazie i da sie cofnac; usuniecie jest dla
+    kont, ktore nie powinny istniec (pomylka przy zakladaniu, osoba, ktora
+    odeszla). Wpisy w dzienniku audytu zostaja - zapisany jest w nich adres,
+    a nie odwolanie do konta, wiec historia nie znika razem z nim.
+    """
+    sprawdz_csrf(user, csrf_token)
+    konto = _konto_do_zmiany(db, user, user_id)
+    # Adres i firme odczytujemy PRZED skasowaniem - po nim obiekt jest juz
+    # tylko wpisem do usuniecia i siegniecie po powiazana firme moze sie nie udac.
+    adres = konto.email
+    firma = konto.tenant.slug if konto.tenant else None
+    db.delete(konto)
+    audit(db, None, action="user.deleted", target=adres,
+          detail={"tenant": firma}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s usunal konto %s", user.email, adres)
     return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
 
 

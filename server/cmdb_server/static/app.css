@@ -410,3 +410,10 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 .okno h2 { margin-top: 0; }
 .okno p { margin: 0 0 6px; }
 .okno-akcje { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+/* Konto panelu w tabeli: opis w jednej linii, akcje pod nim. Trzy przyciski
+   dostawione za adresem rozpychaly kolumne i lamaly sie w przypadkowych
+   miejscach. */
+.konto-wpis { margin-bottom: 10px; }
+.konto-wpis:last-child { margin-bottom: 0; }
+.konto-akcje { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }

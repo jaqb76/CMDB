@@ -547,3 +547,78 @@ def test_haslo_ustawia_sie_w_oknie_a_nie_w_tabeli(client, tenant_a, make_user):
     assert 'name="password" type="text"' not in strona.text
     assert 'type="text" name="password"' not in strona.text
     assert strona.text.count('type="password"') >= 3
+
+
+def test_superadmin_usuwa_konto_ale_nie_swoje(client, tenant_a, make_user):
+    """Zakaz kasowania samego siebie jest tez ochrona przed zatrzasnieciem
+    drzwi: skoro operacje wykonuje superadmin, a wlasnego konta ruszyc nie
+    moze, zawsze zostaje przynajmniej jeden czynny superadmin."""
+    obce = make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
+    moje = make_user(None, "root@cmdb.pl", "bardzo-dlugie-haslo")
+    _login(client, "root@cmdb.pl", "bardzo-dlugie-haslo")
+    csrf = _extract_csrf(client.get("/admin/firmy").text)
+
+    wlasne = client.post(f"/admin/users/{moje}/usun", data={"csrf_token": csrf},
+                         follow_redirects=False)
+    assert wlasne.status_code == 400
+    assert "wlasnego konta" in wlasne.text
+
+    cudze = client.post(f"/admin/users/{obce}/usun", data={"csrf_token": csrf},
+                        follow_redirects=False)
+    assert cudze.status_code == 303
+
+    with SessionLocal() as db:
+        assert db.get(PortalUser, obce) is None
+        assert db.get(PortalUser, moje) is not None
+    # Usuniete konto przestaje sie logowac.
+    client.post("/logout")
+    odmowa = client.post(
+        "/login", data={"email": "admin@firma-a.pl", "password": "bardzo-dlugie-haslo"},
+        follow_redirects=False,
+    )
+    assert odmowa.status_code == 401
+
+
+def test_wlasnego_konta_nie_da_sie_wylaczyc(client, tenant_a, make_user):
+    moje = make_user(None, "root@cmdb.pl", "bardzo-dlugie-haslo")
+    _login(client, "root@cmdb.pl", "bardzo-dlugie-haslo")
+    csrf = _extract_csrf(client.get("/admin/firmy").text)
+
+    odpowiedz = client.post(f"/admin/users/{moje}/active", data={"csrf_token": csrf},
+                            follow_redirects=False)
+    assert odpowiedz.status_code == 400
+    with SessionLocal() as db:
+        assert db.get(PortalUser, moje).is_active is True
+
+
+def test_pomylkowo_zalozonego_superadmina_da_sie_usunac(client, tenant_a, make_user):
+    """Wczesniej konto superadmina bylo nietykalne: nie dalo sie go ani
+    wylaczyc, ani usunac, wiec pomylka przy zakladaniu zostawala w systemie
+    na zawsze."""
+    pomylka = make_user(None, "pomylka@cmdb.pl", "bardzo-dlugie-haslo")
+    make_user(None, "root@cmdb.pl", "bardzo-dlugie-haslo")
+    _login(client, "root@cmdb.pl", "bardzo-dlugie-haslo")
+    csrf = _extract_csrf(client.get("/admin/firmy").text)
+
+    assert client.post(f"/admin/users/{pomylka}/active", data={"csrf_token": csrf},
+                       follow_redirects=False).status_code == 303
+    assert client.post(f"/admin/users/{pomylka}/usun", data={"csrf_token": csrf},
+                       follow_redirects=False).status_code == 303
+    with SessionLocal() as db:
+        assert db.get(PortalUser, pomylka) is None
+
+
+def test_akcje_kont_sa_przyciskami_a_wylaczanie_rozroznia_firme_od_konta(
+    client, tenant_a, make_user
+):
+    """W jednym wierszu stalo "wylacz" (konto) obok "Wylacz" (cala firma)."""
+    make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
+    make_user(None, "root@cmdb.pl", "bardzo-dlugie-haslo")
+    _login(client, "root@cmdb.pl", "bardzo-dlugie-haslo")
+
+    strona = client.get("/admin/firmy").text
+    assert "Wylacz firme" in strona
+    assert "Wylacz konto" in strona
+    assert 'action="/admin/users/' in strona and "/usun" in strona
+    # Wlasne konto bez akcji, ktore odcielyby dostep.
+    assert "to Twoje konto" in strona

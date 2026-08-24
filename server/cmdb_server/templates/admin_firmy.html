@@ -2,6 +2,39 @@
 {% block title %}Firmy i konta - administracja CMDB{% endblock %}
 {% block content %}
 
+{#
+  Akcje na koncie panelu - te same w tabeli firm i w tabeli kont globalnych.
+  Wczesniej byly to dwa osobne kawalki znacznikow, ktore zdazyly sie rozjechac:
+  raz linki w tekscie, raz przyciski.
+
+  Wlasne konto nie dostaje ani wylaczenia, ani usuniecia. Ta jedna regula
+  zastepuje dawne "superadmina nie ruszamy" i przy okazji gwarantuje, ze
+  zawsze zostanie przynajmniej jeden czynny superadmin - ten, ktory wlasnie
+  klika. Serwer sprawdza to niezaleznie od szablonu (api/admin._konto_do_zmiany).
+#}
+{% macro akcje_konta(konto) %}
+  <div class="konto-akcje">
+    <button type="button" class="btn btn-small"
+            data-haslo-akcja="/admin/users/{{ konto.id }}/haslo"
+            data-haslo-konto="{{ konto.email }}">Ustaw haslo</button>
+    {% if konto.id == user.id %}
+      <span class="muted">to Twoje konto</span>
+    {% else %}
+      <form method="post" action="/admin/users/{{ konto.id }}/active" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-small btn-ghost">
+          {% if konto.is_active %}Wylacz konto{% else %}Wlacz konto{% endif %}
+        </button>
+      </form>
+      <form method="post" action="/admin/users/{{ konto.id }}/usun" class="inline-form"
+            data-confirm="Usunac konto {{ konto.email }}? Tego nie da sie cofnac - jesli chodzi o czasowe odebranie dostepu, uzyj 'Wylacz konto'.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-small btn-danger">Usun</button>
+      </form>
+    {% endif %}
+  </div>
+{% endmacro %}
+
 <div class="page-head">
   <div>
     <h1>Firmy i konta</h1>
@@ -33,17 +66,13 @@
         <td>{{ maszyny.get(f.id, 0) }}</td>
         <td class="small">
           {% for k in konta_firm.get(f.id, []) %}
-            <div>
-              {{ k.email }}
-              <span class="muted">({{ k.role }})</span>
-              {% if not k.is_active %}<span class="badge badge-danger">wylaczone</span>{% endif %}
-              <form method="post" action="/admin/users/{{ k.id }}/active" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="btn-link">{% if k.is_active %}wylacz{% else %}wlacz{% endif %}</button>
-              </form>
-              <button type="button" class="btn-link"
-                      data-haslo-akcja="/admin/users/{{ k.id }}/haslo"
-                      data-haslo-konto="{{ k.email }}">ustaw haslo</button>
+            <div class="konto-wpis">
+              <div>
+                <span class="strong">{{ k.email }}</span>
+                <span class="muted">({{ k.role }})</span>
+                {% if not k.is_active %}<span class="badge badge-danger">wylaczone</span>{% endif %}
+              </div>
+              {{ akcje_konta(k) }}
             </div>
           {% else %}<span class="muted">brak</span>{% endfor %}
         </td>
@@ -59,7 +88,7 @@
                 data-confirm="{% if f.is_active %}Wylaczyc firme {{ f.name }}? Jej agenci przestana byc przyjmowani.{% else %}Wlaczyc firme {{ f.name }}?{% endif %}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn-small btn-ghost">
-              {% if f.is_active %}Wylacz{% else %}Wlacz{% endif %}
+              {% if f.is_active %}Wylacz firme{% else %}Wlacz firme{% endif %}
             </button>
           </form>
         </td>
@@ -93,19 +122,7 @@
           {% if not k.is_active %}<span class="badge badge-danger">wylaczone</span>{% endif %}
         </td>
         <td class="small muted">{{ k.last_login_at | dt }}</td>
-        <td class="small">
-          <button type="button" class="btn btn-small"
-                  data-haslo-akcja="/admin/users/{{ k.id }}/haslo"
-                  data-haslo-konto="{{ k.email }}">Ustaw haslo</button>
-          {% if not k.is_superadmin %}
-          <form method="post" action="/admin/users/{{ k.id }}/active" class="inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="btn btn-small btn-ghost">
-              {% if k.is_active %}Wylacz{% else %}Wlacz{% endif %}
-            </button>
-          </form>
-          {% endif %}
-        </td>
+        <td class="small">{{ akcje_konta(k) }}</td>
       </tr>
     {% else %}
       <tr><td colspan="4" class="muted">Brak kont globalnych.</td></tr>
