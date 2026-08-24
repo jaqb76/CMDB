@@ -17,7 +17,6 @@ import logging
 from sqlalchemy import text
 
 from ..db import SessionLocal, engine
-from ..config import get_settings
 
 log = logging.getLogger(__name__)
 
@@ -30,16 +29,13 @@ ODSTEP_SEKUND = 900
 
 
 def _sprobuj_przejac(conn) -> bool:
-    if not get_settings().is_postgres:
-        return True     # SQLite: jeden proces, nie ma z kim sie uzgadniac
     return bool(conn.execute(
         text("SELECT pg_try_advisory_lock(:klucz)"), {"klucz": KLUCZ_BLOKADY}
     ).scalar())
 
 
 def _zwolnij(conn) -> None:
-    if get_settings().is_postgres:
-        conn.execute(text("SELECT pg_advisory_unlock(:klucz)"), {"klucz": KLUCZ_BLOKADY})
+    conn.execute(text("SELECT pg_advisory_unlock(:klucz)"), {"klucz": KLUCZ_BLOKADY})
 
 
 def przebieg() -> dict | None:

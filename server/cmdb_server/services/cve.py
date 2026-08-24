@@ -451,7 +451,8 @@ def dopasuj(db: Session, payload: dict) -> dict:
     wiek = None
     pobrano = as_utc(stan.fetched_at)
     if pobrano:
-        # SQLite oddaje daty bez strefy - bez uzgodnienia odejmowanie wybucha.
+        # Data przepuszczona przez as_utc - odejmowanie daty bez strefy
+        # od daty ze strefa konczy sie TypeError.
         wiek = round((utcnow() - pobrano) / timedelta(hours=1), 1)
 
     return _wynik(

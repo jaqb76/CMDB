@@ -12,16 +12,25 @@ python quickstart.py --print-only    # tylko dane dostępowe, bez startu
 ```
 
 Skrypt wystawia certyfikat self-signed (dla `localhost`, nazwy maszyny
-i adresów lokalnych), zakłada bazę SQLite, firmę, konto panelu i token,
-po czym startuje serwer z TLS i wypisuje dane do wklejenia w agencie.
+i adresów lokalnych), zakłada schemat w PostgreSQL, firmę, konto panelu
+i token, po czym startuje serwer z TLS i wypisuje dane do wklejenia w agencie.
+
+Wymaga działającego PostgreSQL — to jedyny wspierany silnik, także lokalnie.
+Domyślnie łączy się z `postgresql://cmdb:cmdb@localhost:5432/cmdb_dev`;
+własną bazę wskaż zmienną `CMDB_DATABASE_URL`. Jeśli bazy nie ma:
+
+```bash
+psql -U postgres -c "CREATE ROLE cmdb LOGIN PASSWORD 'cmdb'"
+psql -U postgres -c "CREATE DATABASE cmdb_dev OWNER cmdb"
+```
 Artefakty lądują w `server/.quickstart/` i są pomijane przez git — zawierają
 klucz prywatny, klucz sesji i token.
 
 Certyfikat generowany jest biblioteką `cryptography`, a nie poleceniem
 `openssl` — na Windows zwykle go nie ma.
 
-**To nie jest konfiguracja produkcyjna**: SQLite zamiast PostgreSQL,
-certyfikat self-signed i konto z hasłem wpisanym w skrypcie. Do produkcji
+**To nie jest konfiguracja produkcyjna**: certyfikat self-signed, konto
+z hasłem wpisanym w skrypcie i baza bez kopii zapasowych. Do produkcji
 użyj poniższego docker compose.
 
 ## Docker Compose (zalecane)
@@ -116,7 +125,7 @@ jest zawsze jednostronna, od agenta do serwera.
 | Zmienna | Domyślnie | Znaczenie |
 |---|---|---|
 | `CMDB_ENV` | `dev` | `prod` włącza twarde wymagania konfiguracyjne |
-| `CMDB_DATABASE_URL` | SQLite | `postgresql+psycopg://user:hasło@host/baza` |
+| `CMDB_DATABASE_URL` | `postgresql+psycopg://cmdb:cmdb@localhost:5432/cmdb` | wyłącznie PostgreSQL — inny silnik serwer odrzuca przy starcie |
 | `CMDB_SECRET_KEY` | — | klucz podpisujący sesje, min. 32 znaki |
 | `CMDB_REQUIRE_HTTPS` | `false` | wymuszenie HTTPS, HSTS, Secure na ciasteczku |
 | `CMDB_SNAPSHOT_RETENTION` | `50` | ile snapshotów na maszynę (0 = bez limitu) |
@@ -126,8 +135,10 @@ jest zawsze jednostronna, od agenta do serwera.
 | `CMDB_LOG_LEVEL` | `INFO` | poziom dziennika |
 
 W trybie `prod` serwer **odmawia startu**, jeśli klucz sesji jest domyślny
-lub za krótki, HTTPS nie jest wymuszony albo baza to SQLite. Błędna
-konfiguracja nie przejdzie po cichu.
+lub za krótki albo HTTPS nie jest wymuszony. Adres bazy sprawdzany jest
+w każdym trybie: kod używa `JSONB`, blokad doradczych i indeksów GIN, więc na
+innym silniku nie działa gorzej, tylko nie działa wcale — lepiej powiedzieć
+to przy starcie niż w połowie pracy.
 
 ## TLS
 

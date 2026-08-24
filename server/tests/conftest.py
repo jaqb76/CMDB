@@ -19,10 +19,17 @@ os.environ["CMDB_REQUIRE_HTTPS"] = "false"
 # Wgrywane wersje agenta laduja w katalogu tymczasowym testu, a nie
 # w katalogu roboczym repozytorium.
 os.environ["CMDB_RELEASE_DIR"] = str(Path(_TMPDIR) / "releases")
-# Domyslnie SQLite (szybko, bez zaleznosci). Ustawienie CMDB_DATABASE_URL na
-# PostgreSQL pozwala uruchomic te same testy na silniku produkcyjnym:
-#   CMDB_DATABASE_URL=postgresql+psycopg://cmdb:...@localhost/cmdb pytest
-os.environ.setdefault("CMDB_DATABASE_URL", f"sqlite:///{Path(_TMPDIR) / 'test.db'}")
+# Testy chodza na tym samym silniku co produkcja. Wczesniej domyslnym byl
+# SQLite - szybki i bez zaleznosci, ale rozniacy sie od Postgresa dokladnie
+# w tych miejscach, w ktorych roznica boli: typ boolean, JSONB, arytmetyka
+# dat, blokady doradcze. Blad tego rodzaju przechodzil przez caly zestaw
+# testow i wychodzil dopiero przy starcie serwera klienta.
+#
+# Wskaz wlasna baze, jesli Twoja instalacja ma inne dane dostepowe:
+#   CMDB_DATABASE_URL=postgresql+psycopg://uzytkownik:haslo@localhost:5432/cmdb_test
+os.environ.setdefault(
+    "CMDB_DATABASE_URL", "postgresql+psycopg://cmdb:cmdb@localhost:5432/cmdb_test"
+)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -35,14 +42,11 @@ from cmdb_server.security import generate_token, hash_password  # noqa: E402
 def _guard_destructive_database() -> None:
     """Testy kasuja caly schemat przed kazdym przypadkiem.
 
-    Wskazanie CMDB_DATABASE_URL na baze z danymi (np. produkcyjna, zeby
-    "sprawdzic czy dziala na PostgreSQL") skasowaloby ja bez ostrzezenia.
-    Dopuszczamy wiec tylko SQLite albo baze, ktorej nazwa zawiera "test",
+    Wskazanie CMDB_DATABASE_URL na baze z danymi skasowaloby ja bez
+    ostrzezenia. Dopuszczamy wiec tylko baze, ktorej nazwa zawiera "test",
     chyba ze ktos swiadomie ustawi CMDB_TEST_ALLOW_DESTRUCTIVE=1.
     """
     url = os.environ["CMDB_DATABASE_URL"]
-    if url.startswith("sqlite"):
-        return
     if os.environ.get("CMDB_TEST_ALLOW_DESTRUCTIVE") == "1":
         return
     database_name = urlsplit(url).path.lstrip("/")
@@ -56,7 +60,34 @@ def _guard_destructive_database() -> None:
     )
 
 
+def _guard_polaczenie() -> None:
+    """Sprawdza polaczenie ZANIM ruszy pierwszy test.
+
+    Bez tego brak bazy objawia sie sciana bledow polaczenia przy kazdym
+    z kilkuset przypadkow i trzeba ja przewinac, zeby zobaczyc jedna
+    informacje: nie ma z czym sie polaczyc.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from cmdb_server.db import engine
+
+    try:
+        with engine.connect():
+            pass
+    except SQLAlchemyError as blad:
+        pytest.exit(
+            "Nie moge polaczyc sie z baza testowa "
+            f"({os.environ['CMDB_DATABASE_URL'].split('@')[-1]}):\n  {blad}\n\n"
+            "CMDB dziala wylacznie na PostgreSQL. Zaloz baze testowa, np.:\n"
+            "  psql -U postgres -c \"CREATE ROLE cmdb LOGIN PASSWORD 'cmdb'\"\n"
+            "  psql -U postgres -c \"CREATE DATABASE cmdb_test OWNER cmdb\"\n"
+            "albo wskaz wlasna przez CMDB_DATABASE_URL.",
+            returncode=1,
+        )
+
+
 _guard_destructive_database()
+_guard_polaczenie()
 
 
 @pytest.fixture(autouse=True)

@@ -11,7 +11,6 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
-    JSON,
     Boolean,
     Date,
     DateTime,
@@ -26,8 +25,9 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# JSONB na PostgreSQL, zwykly JSON na SQLite (dev/testy).
-JSONType = JSON().with_variant(JSONB(), "postgresql")
+# Raporty agentow trzymamy w JSONB - binarnej postaci Postgresa, po ktorej da
+# sie szukac i ktora da sie zaindeksowac (indeksy GIN zaklada db.py).
+JSONType = JSONB()
 
 
 # Cykl zycia zasobu. Wycofanie jest decyzja czlowieka i zostaje w bazie
@@ -60,11 +60,12 @@ def utcnow() -> datetime:
 
 
 def as_utc(value: datetime | None) -> datetime | None:
-    """Normalizuje date odczytana z bazy do UTC-aware.
+    """Normalizuje date do UTC-aware.
 
-    PostgreSQL z DateTime(timezone=True) zwraca daty ze strefa, SQLite bez -
-    porownanie jednych z drugimi rzuca TypeError. Wszystkie porownania w kodzie
-    Pythona przepuszczamy przez ta funkcje.
+    Baza oddaje daty ze strefa, ale do porownan trafiaja tez daty z raportow
+    agenta - a te sa napisami ISO i bywaja bez strefy. Porownanie daty ze
+    strefa z data bez strefy rzuca TypeError, wiec wszystkie porownania
+    w kodzie Pythona przepuszczamy przez ta funkcje.
     """
     if value is None:
         return None

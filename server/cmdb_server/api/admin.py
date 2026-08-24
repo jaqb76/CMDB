@@ -154,10 +154,10 @@ def _statystyki_agentow(db: Session):
     """Per firma: rozklad wersji, liczba aktywnych i nieaktywnych agentow.
 
     Prog braku kontaktu moze byc ustawiony osobno dla kazdej firmy, wiec
-    zliczamy po stronie Pythona zamiast jednym zapytaniem agregujacym.
-    Wyrazenie tego w SQL wymagaloby arytmetyki dat rozniacej sie miedzy
-    SQLite a PostgreSQL, a przy kilkunastu firmach i setkach maszyn roznica
-    w czasie wykonania jest niemierzalna.
+    zliczamy po stronie Pythona zamiast jednym zapytaniem agregujacym -
+    zapytanie musialoby uwzglednic inny prog dla kazdej firmy naraz, a przy
+    kilkunastu firmach i setkach maszyn roznica w czasie wykonania jest
+    niemierzalna.
     """
     wiersze = db.execute(
         select(Asset.tenant_id, Asset.os_family, Asset.agent_version, Asset.last_seen)

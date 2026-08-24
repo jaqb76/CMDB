@@ -239,16 +239,24 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 
 ## Testy
 
+Testy serwera chodzą na PostgreSQL — tym samym silniku co produkcja. Baza
+testowa zakłada się raz:
+
 ```bash
-cd server && pytest              # 28 testów: API agentów, izolacja firm, panel, gzip
-cd agent  && pytest              # 55 testow: konfiguracja, stan, status, diagnostyka, kolektory
-
-# Testy kasują schemat przed każdym przypadkiem, więc odmawiają startu na bazie
-# bez "test" w nazwie — przypadkowe wskazanie produkcji nic nie zniszczy.
-
-# ten sam zestaw na silniku produkcyjnym (PostgreSQL/JSONB)
-CMDB_DATABASE_URL=postgresql+psycopg://cmdb:...@localhost/cmdb_test pytest
+psql -U postgres -c "CREATE ROLE cmdb LOGIN PASSWORD 'cmdb'"
+psql -U postgres -c "CREATE DATABASE cmdb_test OWNER cmdb"
 ```
+
+```bash
+cd server && pytest              # API agentów, izolacja firm, panel, migracje
+cd agent  && pytest              # konfiguracja, stan, status, diagnostyka, kolektory
+
+# inne dane dostępowe niż domyślne cmdb:cmdb@localhost:5432/cmdb_test
+CMDB_DATABASE_URL=postgresql+psycopg://user:hasło@host/cmdb_test pytest
+```
+
+Testy kasują schemat przed każdym przypadkiem, więc odmawiają startu na bazie
+bez „test" w nazwie — przypadkowe wskazanie produkcji nic nie zniszczy.
 
 ## Struktura repozytorium
 

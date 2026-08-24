@@ -4,15 +4,21 @@ Sprawdzamy przypadek, ktory najlatwiej przeoczyc: kolumny wymaganej nie da sie
 dodac do tabeli z wierszami bez wartosci domyslnej, ale ta wartosc jest tylko
 zgadywaniem. Dla architektury zgadywanie ma konsekwencje - wydanie dla ARM
 oznaczone jako x86_64 trafiloby na Raspberry Pi jako plik nie do uruchomienia.
+
+Stan "przed migracja" odtwarzamy, podmieniajac tabele w bazie testowej na jej
+starszy uklad. Robimy to na tym samym silniku co produkcja - roznice miedzy
+silnikami wychodza wlasnie tutaj (typ boolean, arytmetyka dat), wiec migracja
+sprawdzana gdzie indziej nie sprawdzalaby tego, o co chodzi.
 """
 from __future__ import annotations
 
-import sqlite3
 import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+
+from cmdb_server.db import engine
 
 
 def _naglowek_elf(maszyna: int) -> bytes:
@@ -28,98 +34,198 @@ def _naglowek_pe(maszyna: int) -> bytes:
     return bytes(trzon) + b"PE" + bytes(2) + maszyna.to_bytes(2, "little") + bytes(200)
 
 
+def _cofnij_tabele(nazwa: str, definicja: str) -> None:
+    """Podmienia tabele na jej starszy uklad.
+
+    CASCADE zdejmuje takze klucze obce wskazujace na te tabele - w bazie
+    testowej to bez znaczenia, bo schemat powstaje od nowa przed kazdym
+    przypadkiem, a bez tego nie da sie odtworzyc stanu sprzed migracji.
+    """
+    with engine.begin() as conn:
+        conn.execute(text(f"DROP TABLE IF EXISTS {nazwa} CASCADE"))
+        conn.execute(text(f"CREATE TABLE {nazwa} ({definicja})"))
+
+
+def _migruj() -> None:
+    import cmdb_server.db as modul_bazy
+
+    modul_bazy._dodaj_brakujace_kolumny()
+
+
 @pytest.fixture()
-def stara_baza(tmp_path, monkeypatch):
-    """Baza w ukladzie sprzed rozroznienia architektur - agent_releases bez arch."""
-    # Ustawienia sa zacachowane, wiec nie da sie ich przestawic zmienna
-    # srodowiskowa po starcie - pliki kladziemy tam, gdzie serwer ich szuka.
+def stara_baza():
+    """Uklad sprzed rozroznienia architektur - agent_releases bez kolumny arch."""
     from cmdb_server.config import get_settings
 
     katalog_wydan = Path(get_settings().release_dir)
     katalog_wydan.mkdir(parents=True, exist_ok=True)
 
-    plik_bazy = tmp_path / "stara.db"
-    db = sqlite3.connect(plik_bazy)
-    db.execute(
-        """CREATE TABLE agent_releases (
-               id TEXT PRIMARY KEY, version TEXT NOT NULL, os_family TEXT NOT NULL,
-               filename TEXT NOT NULL, storage_name TEXT NOT NULL, sha256 TEXT NOT NULL,
-               size_bytes INTEGER NOT NULL, notes TEXT, created_at TIMESTAMP,
-               created_by TEXT)"""
+    _cofnij_tabele(
+        "agent_releases",
+        """id VARCHAR(36) PRIMARY KEY, version VARCHAR(32) NOT NULL,
+           os_family VARCHAR(32) NOT NULL, filename VARCHAR(255) NOT NULL,
+           storage_name VARCHAR(128) NOT NULL, sha256 VARCHAR(64) NOT NULL,
+           size_bytes INTEGER NOT NULL, notes TEXT,
+           created_at TIMESTAMP WITH TIME ZONE, created_by VARCHAR(255)""",
     )
-    db.commit()
-    db.close()
-    return plik_bazy, katalog_wydan
+    return katalog_wydan
 
 
-def _dodaj_wydanie(plik_bazy: Path, katalog: Path, wersja: str, system: str, zawartosc: bytes):
+def _dodaj_wydanie(katalog: Path, wersja: str, system: str, zawartosc: bytes) -> str:
     nazwa = f"{uuid.uuid4().hex}.bin"
     (katalog / nazwa).write_bytes(zawartosc)
-    db = sqlite3.connect(plik_bazy)
-    db.execute(
-        "INSERT INTO agent_releases VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (str(uuid.uuid4()), wersja, system, "agent", nazwa, "x" * 64,
-         len(zawartosc), None, None, "admin"),
-    )
-    db.commit()
-    db.close()
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO agent_releases (id, version, os_family, filename, "
+                "storage_name, sha256, size_bytes, created_by) "
+                "VALUES (:id, :wersja, :system, 'agent', :plik, :skrot, :rozmiar, 'admin')"
+            ),
+            {"id": str(uuid.uuid4()), "wersja": wersja, "system": system,
+             "plik": nazwa, "skrot": "x" * 64, "rozmiar": len(zawartosc)},
+        )
     return nazwa
 
 
-def _migruj(plik_bazy: Path, monkeypatch):
-    import cmdb_server.db as modul_bazy
-
-    silnik = create_engine(f"sqlite:///{plik_bazy.as_posix()}", future=True)
-    monkeypatch.setattr(modul_bazy, "engine", silnik)
-    modul_bazy._dodaj_brakujace_kolumny()
-    return silnik
-
-
-def _architektury(silnik) -> dict[str, str]:
-    with silnik.connect() as polaczenie:
+def _architektury() -> dict[str, str]:
+    with engine.connect() as conn:
         return {
             w.version: w.arch
-            for w in polaczenie.execute(text("SELECT version, arch FROM agent_releases"))
+            for w in conn.execute(text("SELECT version, arch FROM agent_releases"))
         }
 
 
-def test_architektura_czytana_z_pliku_a_nie_zgadywana(stara_baza, monkeypatch):
-    plik_bazy, katalog = stara_baza
-    _dodaj_wydanie(plik_bazy, katalog, "0.4.0", "windows", _naglowek_pe(0x8664))
-    _dodaj_wydanie(plik_bazy, katalog, "0.4.1", "linux", _naglowek_elf(0xB7))
-    _dodaj_wydanie(plik_bazy, katalog, "0.4.2", "linux", _naglowek_elf(0x3E))
+def test_architektura_czytana_z_pliku_a_nie_zgadywana(stara_baza):
+    katalog = stara_baza
+    _dodaj_wydanie(katalog, "0.4.0", "windows", _naglowek_pe(0x8664))
+    _dodaj_wydanie(katalog, "0.4.1", "linux", _naglowek_elf(0xB7))
+    _dodaj_wydanie(katalog, "0.4.2", "linux", _naglowek_elf(0x3E))
 
-    silnik = _migruj(plik_bazy, monkeypatch)
+    _migruj()
 
-    assert _architektury(silnik) == {
+    assert _architektury() == {
         "0.4.0": "x86_64",
         "0.4.1": "aarch64",   # wartosc domyslna to x86_64 - naglowek ja poprawil
         "0.4.2": "x86_64",
     }
 
 
-def test_wydanie_z_nieczytelnym_plikiem_zostaje_z_wartoscia_domyslna(stara_baza, monkeypatch):
+def test_wydanie_z_nieczytelnym_plikiem_zostaje_z_wartoscia_domyslna(stara_baza):
     """Brak pliku nie moze wywrocic startu serwera - zostaje ostrzezenie w logu."""
-    plik_bazy, katalog = stara_baza
-    _dodaj_wydanie(plik_bazy, katalog, "0.4.0", "linux", _naglowek_elf(0xB7))
-    nazwa = _dodaj_wydanie(plik_bazy, katalog, "0.4.1", "linux", b"cokolwiek")
+    katalog = stara_baza
+    _dodaj_wydanie(katalog, "0.4.0", "linux", _naglowek_elf(0xB7))
+    nazwa = _dodaj_wydanie(katalog, "0.4.1", "linux", b"cokolwiek")
     (katalog / nazwa).unlink()
 
-    silnik = _migruj(plik_bazy, monkeypatch)
+    _migruj()
 
-    architektury = _architektury(silnik)
+    architektury = _architektury()
     assert architektury["0.4.0"] == "aarch64"
     assert architektury["0.4.1"] == "x86_64"
 
 
-def test_migracja_jest_idempotentna(stara_baza, monkeypatch):
-    plik_bazy, katalog = stara_baza
-    _dodaj_wydanie(plik_bazy, katalog, "0.4.0", "linux", _naglowek_elf(0xB7))
+def test_migracja_jest_idempotentna(stara_baza):
+    katalog = stara_baza
+    _dodaj_wydanie(katalog, "0.4.0", "linux", _naglowek_elf(0xB7))
 
-    _migruj(plik_bazy, monkeypatch)
-    silnik = _migruj(plik_bazy, monkeypatch)     # drugi start serwera
+    _migruj()
+    _migruj()     # drugi start serwera
 
-    assert _architektury(silnik) == {"0.4.0": "aarch64"}
+    assert _architektury() == {"0.4.0": "aarch64"}
+
+
+def test_stare_assets_dostaja_rodzaj_i_zrodlo():
+    """Baza zalozona przed podzialem na sprzet z agentem i wpisy reczne.
+
+    Kolumny 'typ' i 'zrodlo' sa wymagane, wiec do tabeli z danymi da sie je
+    dolozyc tylko z wartoscia domyslna. Wartosc jest tu faktem, a nie
+    zgadywaniem: wszystko, co bylo w bazie wczesniej, przyszlo od agenta
+    i jest komputerem - wpisow recznych wtedy jeszcze nie bylo.
+    """
+    _cofnij_tabele(
+        "assets",
+        """id VARCHAR(36) PRIMARY KEY, tenant_id VARCHAR(36) NOT NULL,
+           machine_id VARCHAR(128) NOT NULL, hostname VARCHAR(255) NOT NULL,
+           is_active BOOLEAN NOT NULL,
+           first_seen TIMESTAMP WITH TIME ZONE, last_seen TIMESTAMP WITH TIME ZONE,
+           lifecycle VARCHAR(20) NOT NULL DEFAULT 'aktywny'""",
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO assets (id, tenant_id, machine_id, hostname, is_active) "
+                "VALUES (:id, :tenant, 'win-0001', 'SRV-STARY', TRUE)"
+            ),
+            {"id": str(uuid.uuid4()), "tenant": str(uuid.uuid4())},
+        )
+
+    _migruj()
+
+    with engine.connect() as conn:
+        wiersz = conn.execute(
+            text("SELECT typ, zrodlo, lokalizacja, uzytkownik_id FROM assets")
+        ).one()
+    assert wiersz.typ == "komputer"
+    assert wiersz.zrodlo == "agent"
+    assert wiersz.lokalizacja is None
+    assert wiersz.uzytkownik_id is None
+
+
+def test_stare_konta_nie_staja_sie_audytorami():
+    """Nowa flaga uprawnien musi dolozyc sie jako WYLACZONA.
+
+    Kolumna wymagana bez poprawnej wartosci domyslnej zamienilaby kazde
+    istniejace konto w audytora widzacego wszystkie firmy - czyli cicho
+    zniosla izolacje danych przy zwyklej aktualizacji serwera.
+    """
+    _cofnij_tabele(
+        "portal_users",
+        """id VARCHAR(36) PRIMARY KEY, tenant_id VARCHAR(36), email VARCHAR(255) NOT NULL,
+           password_hash VARCHAR(255) NOT NULL, role VARCHAR(20) NOT NULL,
+           is_superadmin BOOLEAN NOT NULL, is_active BOOLEAN NOT NULL,
+           created_at TIMESTAMP WITH TIME ZONE""",
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO portal_users (id, tenant_id, email, password_hash, role, "
+                "is_superadmin, is_active) "
+                "VALUES (:id, :tenant, 'admin@firma.pl', 'hash', 'admin', FALSE, TRUE)"
+            ),
+            {"id": str(uuid.uuid4()), "tenant": str(uuid.uuid4())},
+        )
+
+    _migruj()
+
+    with engine.connect() as conn:
+        wartosc = conn.execute(text("SELECT is_global_viewer FROM portal_users")).scalar_one()
+    assert wartosc is False
+
+
+def test_wartosc_logiczna_jako_literal_postgresa():
+    """PostgreSQL nie przyjmie liczby jako domyslnej wartosci kolumny boolean.
+
+    ALTER TABLE z "DEFAULT 0" konczy sie bledem "column is of type boolean but
+    default expression is of type integer", czyli serwer nie wstaje po
+    aktualizacji. Sprawdzamy sam literal, bo dotyczy on KAZDEJ przyszlej
+    kolumny logicznej, nie tylko tych, ktore juz sa w modelu.
+    """
+    from sqlalchemy import Boolean, Column
+
+    import cmdb_server.db as modul
+
+    assert modul._domyslna_wartosc(Column("f", Boolean, default=True, nullable=False)) == "TRUE"
+    assert modul._domyslna_wartosc(Column("f", Boolean, default=False, nullable=False)) == "FALSE"
+
+
+def test_konfiguracja_odrzuca_silnik_inny_niz_postgres():
+    """Kod uzywa JSONB, blokad doradczych i indeksow GIN - na innym silniku nie
+    dziala wcale, wiec lepiej powiedziec to przy starcie niz w polowie pracy."""
+    from cmdb_server.config import Settings
+
+    ustawienia = Settings(database_url="sqlite:///./cmdb.db")
+    with pytest.raises(RuntimeError, match="wylacznie na PostgreSQL"):
+        ustawienia.validate_for_runtime()
 
 
 # --- rownoczesny start procesow roboczych -----------------------------------
@@ -128,13 +234,6 @@ def test_migracja_jest_idempotentna(stara_baza, monkeypatch):
 # starcie. Bez blokady wszystkie naraz stwierdzaja brak tabel i probuja je
 # utworzyc: jeden wygrywa, reszta dostaje "duplicate key value violates
 # unique constraint pg_type_typname_nsp_index" i nie wstaje.
-
-class _UstawieniaAtrapa:
-    """is_postgres jest wlasciwoscia tylko do odczytu, wiec podstawiamy calosc."""
-
-    def __init__(self, is_postgres: bool):
-        self.is_postgres = is_postgres
-
 
 class _PolaczenieAtrapa:
     def __init__(self, dziennik):
@@ -154,11 +253,10 @@ class _PolaczenieAtrapa:
         return False
 
 
-def test_schemat_tworzony_pod_blokada_na_postgresie(monkeypatch):
+def test_schemat_tworzony_pod_blokada(monkeypatch):
     import cmdb_server.db as modul
 
     dziennik = []
-    monkeypatch.setattr(modul, "_settings", _UstawieniaAtrapa(True))
     monkeypatch.setattr(modul.engine, "connect", lambda: _PolaczenieAtrapa(dziennik))
     monkeypatch.setattr(modul, "_utworz_schemat", lambda: dziennik.append(("SCHEMAT", None)))
 
@@ -177,7 +275,6 @@ def test_blokada_zwalniana_takze_po_bledzie(monkeypatch):
     import cmdb_server.db as modul
 
     dziennik = []
-    monkeypatch.setattr(modul, "_settings", _UstawieniaAtrapa(True))
     monkeypatch.setattr(modul.engine, "connect", lambda: _PolaczenieAtrapa(dziennik))
 
     def padnij():
@@ -189,84 +286,3 @@ def test_blokada_zwalniana_takze_po_bledzie(monkeypatch):
         modul.init_db()
 
     assert any("pg_advisory_unlock" in w[0] for w in dziennik)
-
-
-def test_sqlite_nie_uzywa_blokady_doradczej(monkeypatch):
-    """Blokada doradcza to konstrukcja Postgresa - na SQLite wywolanie jej
-    zakonczyloby sie bledem skladni."""
-    import cmdb_server.db as modul
-
-    dziennik = []
-    monkeypatch.setattr(modul, "_settings", _UstawieniaAtrapa(False))
-    monkeypatch.setattr(modul.engine, "connect", lambda: _PolaczenieAtrapa(dziennik))
-    monkeypatch.setattr(modul, "_utworz_schemat", lambda: dziennik.append(("SCHEMAT", None)))
-
-    modul.init_db()
-    assert dziennik == [("SCHEMAT", None)]
-
-
-def test_stare_assets_dostaja_rodzaj_i_zrodlo(tmp_path, monkeypatch):
-    """Baza zalozona przed podzialem na sprzet z agentem i wpisy reczne.
-
-    Kolumny 'typ' i 'zrodlo' sa wymagane, wiec do tabeli z danymi da sie je
-    dolozyc tylko z wartoscia domyslna. Wartosc jest tu faktem, a nie
-    zgadywaniem: wszystko, co bylo w bazie wczesniej, przyszlo od agenta
-    i jest komputerem - wpisow recznych wtedy jeszcze nie bylo.
-    """
-    plik_bazy = tmp_path / "assets.db"
-    db = sqlite3.connect(plik_bazy)
-    db.execute(
-        """CREATE TABLE assets (
-               id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, machine_id TEXT NOT NULL,
-               hostname TEXT NOT NULL, is_active BOOLEAN NOT NULL,
-               first_seen TIMESTAMP, last_seen TIMESTAMP,
-               lifecycle TEXT NOT NULL DEFAULT 'aktywny')"""
-    )
-    db.execute(
-        "INSERT INTO assets (id, tenant_id, machine_id, hostname, is_active) VALUES (?,?,?,?,1)",
-        (str(uuid.uuid4()), str(uuid.uuid4()), "win-0001", "SRV-STARY"),
-    )
-    db.commit()
-    db.close()
-
-    silnik = _migruj(plik_bazy, monkeypatch)
-    with silnik.connect() as polaczenie:
-        wiersz = polaczenie.execute(
-            text("SELECT typ, zrodlo, lokalizacja, uzytkownik_id FROM assets")
-        ).one()
-    assert wiersz.typ == "komputer"
-    assert wiersz.zrodlo == "agent"
-    assert wiersz.lokalizacja is None
-    assert wiersz.uzytkownik_id is None
-
-
-def test_stare_konta_nie_staja_sie_audytorami(tmp_path, monkeypatch):
-    """Nowa flaga uprawnien musi dolozyc sie jako WYLACZONA.
-
-    Kolumna wymagana bez poprawnej wartosci domyslnej zamienilaby kazde
-    istniejace konto w audytora widzacego wszystkie firmy - czyli cicho
-    zniosla izolacje danych przy zwyklej aktualizacji serwera.
-    """
-    plik_bazy = tmp_path / "konta.db"
-    db = sqlite3.connect(plik_bazy)
-    db.execute(
-        """CREATE TABLE portal_users (
-               id TEXT PRIMARY KEY, tenant_id TEXT, email TEXT NOT NULL,
-               password_hash TEXT NOT NULL, role TEXT NOT NULL,
-               is_superadmin BOOLEAN NOT NULL, is_active BOOLEAN NOT NULL,
-               created_at TIMESTAMP)"""
-    )
-    db.execute(
-        "INSERT INTO portal_users (id, tenant_id, email, password_hash, role, "
-        "is_superadmin, is_active) VALUES (?,?,?,?,?,0,1)",
-        (str(uuid.uuid4()), str(uuid.uuid4()), "admin@firma.pl", "hash", "admin"),
-    )
-    db.commit()
-    db.close()
-
-    silnik = _migruj(plik_bazy, monkeypatch)
-    with silnik.connect() as polaczenie:
-        wartosc = polaczenie.execute(
-            text("SELECT is_global_viewer FROM portal_users")
-        ).scalar_one()
-    assert not wartosc

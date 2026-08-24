@@ -55,8 +55,13 @@ SELECT DISTINCT asset_id FROM inventory_snapshots
 WHERE payload @> '{"os":{"name":"Microsoft Windows 11 Pro"}}';
 ```
 
-Na SQLite (development i testy) te same kolumny są zwykłym `JSON` —
-aplikacja działa bez zmian, tracimy tylko indeksowanie zawartości.
+PostgreSQL jest jedynym wspieranym silnikiem — również w developmencie
+i testach. Przez pewien czas dev i testy chodziły na SQLite, gdzie te same
+kolumny były zwykłym `JSON`. Wygoda kosztowała więcej, niż dawała: SQLite nie
+ma typu `boolean` ani `JSONB`, nie zna blokad doradczych ani indeksów GIN,
+więc migracje i zapytania zachowywały się tam inaczej niż na produkcji —
+a różnica wychodziła dopiero przy starcie serwera klienta. Jeden silnik
+wszędzie znaczy, że to, co przeszło testy, zachowa się tak samo w produkcji.
 
 ## Deduplikacja snapshotów
 

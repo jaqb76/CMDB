@@ -61,8 +61,9 @@ rotować poświadczenia bez ręcznego obchodzenia całej floty.
 
 Serwer w trybie `prod`:
 
-* odmawia startu bez `CMDB_SECRET_KEY` (≥ 32 znaki), bez `CMDB_REQUIRE_HTTPS`
-  i na SQLite — błędna konfiguracja nie wjedzie na produkcję po cichu,
+* odmawia startu bez `CMDB_SECRET_KEY` (≥ 32 znaki) i bez
+  `CMDB_REQUIRE_HTTPS` — błędna konfiguracja nie wjedzie na produkcję po
+  cichu; silnika innego niż PostgreSQL serwer odmawia w każdym trybie,
 * żądania do `/api/` po HTTP odrzuca kodem 403 **bez przekierowania** —
   przekierowanie nic by nie dało, token już wyciekł w pierwszym żądaniu,
 * wysyła HSTS, CSP bez `unsafe-inline`, `X-Frame-Options: DENY`,

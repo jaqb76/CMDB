@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -16,28 +16,13 @@ log = logging.getLogger(__name__)
 
 _settings = get_settings()
 
-_connect_args = {}
-if _settings.database_url.startswith("sqlite"):
-    _connect_args = {"check_same_thread": False}
-
 engine: Engine = create_engine(
     _settings.database_url,
-    connect_args=_connect_args,
     pool_pre_ping=True,
     future=True,
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
-
-
-@event.listens_for(Engine, "connect")
-def _sqlite_pragmas(dbapi_connection, connection_record):  # pragma: no cover - infra
-    """Klucze obce w SQLite sa domyslnie wylaczone - wlaczamy je jawnie."""
-    if engine.dialect.name != "sqlite":
-        return
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
 
 
 def get_db() -> Iterator[Session]:
@@ -85,11 +70,6 @@ def init_db() -> None:
 
     from . import models  # noqa: F401  (rejestracja mapperow)
 
-    if not _settings.is_postgres:
-        # SQLite: jeden proces, blokada pliku wystarcza.
-        _utworz_schemat()
-        return
-
     with engine.connect() as conn:
         conn.execute(text("SELECT pg_advisory_lock(:klucz)"),
                      {"klucz": KLUCZ_BLOKADY_SCHEMATU})
@@ -107,8 +87,7 @@ def _utworz_schemat() -> None:
 
     models.Base.metadata.create_all(bind=engine)
     _dodaj_brakujace_kolumny()
-    if _settings.is_postgres:
-        _create_postgres_indexes()
+    _utworz_indeksy_gin()
 
 
 def _dodaj_brakujace_kolumny() -> None:
@@ -264,7 +243,11 @@ def _domyslna_wartosc(kolumna) -> str | None:
     if wartosc is None or callable(wartosc):
         return None
     if isinstance(wartosc, bool):
-        return "1" if wartosc else "0"
+        # PostgreSQL ma osobny typ boolean i nie przyjmie tu liczby - ALTER
+        # TABLE z DEFAULT 0 konczy sie bledem "column is of type boolean but
+        # default expression is of type integer", czyli serwer nie wstaje po
+        # aktualizacji.
+        return "TRUE" if wartosc else "FALSE"
     if isinstance(wartosc, (int, float)):
         return str(wartosc)
     if isinstance(wartosc, str):
@@ -272,8 +255,8 @@ def _domyslna_wartosc(kolumna) -> str | None:
     return None
 
 
-def _create_postgres_indexes() -> None:
-    """Indeksy GIN na kolumnach JSONB - tylko PostgreSQL."""
+def _utworz_indeksy_gin() -> None:
+    """Indeksy GIN na kolumnach JSONB - po nich szukamy wewnatrz raportow."""
     from sqlalchemy import text
 
     statements = [

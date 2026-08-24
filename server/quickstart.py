@@ -9,12 +9,17 @@ Co robi:
   1. wystawia certyfikat self-signed dla localhost, nazwy maszyny i adresow
      lokalnych - agent nie wysyla danych po nieszyfrowanym polaczeniu, wiec
      TLS jest wymagany takze w tescie,
-  2. tworzy baze SQLite, firme, konto administratora i token rejestracyjny,
+  2. zaklada schemat w PostgreSQL, firme, konto administratora i token
+     rejestracyjny,
   3. wypisuje gotowe dane do wklejenia w oknie ustawien agenta,
   4. startuje serwer.
 
-Do produkcji uzyj deploy/docker-compose.yml - tam jest PostgreSQL, nginx
-i certyfikat publicznego urzedu.
+Wymaga dzialajacego PostgreSQL - to jedyny wspierany silnik, takze tutaj.
+Domyslnie laczy sie z postgresql://cmdb:cmdb@localhost:5432/cmdb_dev; wlasna
+baze wskaz zmienna CMDB_DATABASE_URL.
+
+Do produkcji uzyj deploy/docker-compose.yml - tam PostgreSQL, nginx
+i certyfikat publicznego urzedu stawiaja sie same.
 """
 from __future__ import annotations
 
@@ -32,7 +37,7 @@ HERE = Path(__file__).resolve().parent
 WORKDIR = HERE / ".quickstart"
 CERT_PATH = WORKDIR / "server.crt"
 KEY_PATH = WORKDIR / "server.key"
-DB_PATH = WORKDIR / "cmdb.db"
+DB_URL_DOMYSLNY = "postgresql+psycopg://cmdb:cmdb@localhost:5432/cmdb_dev"
 SECRET_PATH = WORKDIR / "secret.key"
 TOKEN_PATH = WORKDIR / "token.txt"
 
@@ -42,6 +47,29 @@ ADMIN_EMAIL = "admin@moja-firma.pl"
 ADMIN_PASSWORD = "cmdb-haslo-testowe-2026"
 
 CERT_DAYS = 825  # maksimum akceptowane przez wspolczesne klienty TLS
+
+
+def sprawdz_baze(adres: str) -> None:
+    """Sprawdza polaczenie, zanim serwer zacznie zakladac schemat.
+
+    Bez tego brak bazy konczy sie sladem stosu z wnetrza sterownika, z ktorego
+    nie wynika, ze wystarczy zalozyc role i baze dwoma poleceniami.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import SQLAlchemyError
+
+    try:
+        create_engine(adres, pool_pre_ping=True).connect().close()
+    except SQLAlchemyError as blad:
+        nazwa = adres.rsplit("/", 1)[-1]
+        fail(
+            f"nie moge polaczyc sie z baza {adres.split('@')[-1]}: "
+            f"{str(blad).splitlines()[0]}",
+            "CMDB dziala wylacznie na PostgreSQL. Zaloz baze, np.:\n"
+            "    psql -U postgres -c \"CREATE ROLE cmdb LOGIN PASSWORD 'cmdb'\"\n"
+            f"    psql -U postgres -c \"CREATE DATABASE {nazwa} OWNER cmdb\"\n"
+            "  albo wskaz wlasna zmienna CMDB_DATABASE_URL.",
+        )
 
 
 def fail(message: str, hint: str = "") -> None:
@@ -63,6 +91,7 @@ def check_dependencies() -> None:
         ("multipart", "python-multipart"),
         ("itsdangerous", "itsdangerous"),
         ("cryptography", "cryptography"),
+        ("psycopg", "psycopg[binary]"),
     ]:
         try:
             __import__(module)
@@ -283,7 +312,7 @@ def main() -> int:
 
     # Konfiguracje ustawiamy PRZED importem serwera - ustawienia i silnik bazy
     # tworza sie na poziomie modulu.
-    os.environ.setdefault("CMDB_DATABASE_URL", f"sqlite:///{DB_PATH}")
+    os.environ.setdefault("CMDB_DATABASE_URL", DB_URL_DOMYSLNY)
     os.environ.setdefault("CMDB_SECRET_KEY", ensure_secret())
     os.environ.setdefault("CMDB_ENV", "dev")
     os.environ.setdefault("CMDB_REQUIRE_HTTPS", "true")
@@ -294,7 +323,9 @@ def main() -> int:
         os.environ.setdefault("CMDB_AGENT_SOURCE_DIR", str(zrodla_agenta))
 
     addresses = ensure_certificate()
-    print(f"  baza danych       : {DB_PATH}")
+    adres_bazy = os.environ["CMDB_DATABASE_URL"]
+    print(f"  baza danych       : {adres_bazy.split('@')[-1]}")
+    sprawdz_baze(adres_bazy)
     token = bootstrap_database()
     print_instructions(token, args.port, addresses)
 

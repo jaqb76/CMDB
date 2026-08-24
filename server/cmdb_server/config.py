@@ -15,8 +15,13 @@ class Settings(BaseSettings):
 
     env: Literal["dev", "prod"] = "dev"
 
-    # Postgres w produkcji (JSONB), SQLite wystarcza do developmentu i testow.
-    database_url: str = "sqlite:///./cmdb.db"
+    # PostgreSQL - jedyny wspierany silnik, takze w developmencie i testach.
+    # Wczesniej dev i testy chodzily na SQLite. Wygoda kosztowala wiecej, niz
+    # dawala: SQLite nie ma typu boolean ani JSONB, wiec migracje i zapytania
+    # zachowywaly sie tam inaczej niz na produkcji, a roznica wychodzila
+    # dopiero przy starcie serwera klienta. Jeden silnik wszedzie znaczy, ze
+    # to, co przeszlo testy, zadziala tak samo na produkcji.
+    database_url: str = "postgresql+psycopg://cmdb:cmdb@localhost:5432/cmdb"
 
     # Klucz do podpisywania ciasteczek sesyjnych. W prod MUSI byc ustawiony.
     secret_key: str = "dev-only-insecure-key-change-me"
@@ -79,6 +84,16 @@ class Settings(BaseSettings):
 
     def validate_for_runtime(self) -> None:
         """Twarde zabezpieczenia, ktore nie moga przejsc na produkcje."""
+        # Silnik bazy sprawdzamy w KAZDYM trybie, nie tylko na produkcji.
+        # Kod uzywa JSONB, blokad doradczych i indeksow GIN - na innym silniku
+        # nie tyle dziala gorzej, co nie dziala wcale, a komunikat "nieznana
+        # funkcja pg_advisory_lock" w polowie startu nie mowi nikomu, o co chodzi.
+        if not self.database_url.startswith("postgresql"):
+            raise RuntimeError(
+                "CMDB dziala wylacznie na PostgreSQL - ustaw CMDB_DATABASE_URL "
+                "w postaci postgresql+psycopg://uzytkownik:haslo@host:5432/baza "
+                f"(jest: {self.database_url.split('://')[0]})"
+            )
         if self.env != "prod":
             return
         problems = []
@@ -86,14 +101,8 @@ class Settings(BaseSettings):
             problems.append("CMDB_SECRET_KEY musi byc ustawiony i miec >= 32 znaki")
         if not self.require_https:
             problems.append("CMDB_REQUIRE_HTTPS musi byc wlaczone w trybie prod")
-        if self.database_url.startswith("sqlite"):
-            problems.append("SQLite nie jest wspierany w trybie prod - uzyj PostgreSQL")
         if problems:
             raise RuntimeError("Bledna konfiguracja produkcyjna: " + "; ".join(problems))
-
-    @property
-    def is_postgres(self) -> bool:
-        return self.database_url.startswith("postgresql")
 
 
 @lru_cache
