@@ -29,8 +29,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r server/requirements-dev.txt
-      - run: python -m pytest -q
+      - run: python -m pytest -v --durations=10 -o faulthandler_timeout=90
         working-directory: server
+        env:
+          PGOPTIONS: "-c lock_timeout=10000 -c statement_timeout=30000"
   agent:
     runs-on: ubuntu-latest
     timeout-minutes: 10
