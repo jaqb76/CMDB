@@ -10,14 +10,13 @@
 
 #define AppName        "CMDB Agent"
 #ifndef AppVersion
-#define AppVersion     "0.5.8"
+#define AppVersion     "0.5.9"
 #endif
 #ifndef BuildDir
 #define BuildDir       "..\dist"
 #endif
 #define AppPublisher   "Dzial IT"
 #define AgentExe       "cmdb-agent.exe"
-#define TrayExe        "cmdb-agent-tray.exe"
 
 [Setup]
 AppId={{7B3A9C42-5E1D-4F8B-9A67-CMDBAGENT0001}
@@ -37,18 +36,19 @@ PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#AgentExe}
 SetupLogging=yes
+CloseApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "polski"; MessagesFile: "compiler:Languages\Polish.isl"
 
 [Files]
 Source: "{#BuildDir}\{#AgentExe}";        DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BuildDir}\{#TrayExe}";         DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "install-agent.ps1";          DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-agent.ps1";        DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Status agenta CMDB"; Filename: "{app}\{#TrayExe}"
+Name: "{group}\Status agenta CMDB"; Filename: "{app}\{#AgentExe}"; Parameters: "gui"
 Name: "{group}\Odinstaluj agenta CMDB"; Filename: "{uninstallexe}"
 
 [Code]
@@ -66,7 +66,7 @@ begin
     'Token sluzy tylko do pierwszej rejestracji - potem maszyna posluguje sie' + #13#10 +
     'wlasnym poswiadczeniem.');
   ServerPage.Add('Adres serwera (wymagane https):', False);
-  ServerPage.Add('Token rejestracyjny:', False);
+  ServerPage.Add('Token (pozostaw pusty przy aktualizacji tej samej rejestracji):', True);
   ServerPage.Values[0] := 'https://';
 
   OptionsPage := CreateInputOptionPage(ServerPage.ID,
@@ -112,7 +112,7 @@ begin
       Result := False;
       Exit;
     end;
-    if Pos('cmdb_ent_', Token) <> 1 then
+    if (Token <> '') and (Pos('cmdb_ent_', Token) <> 1) then
     begin
       MsgBox('To nie wyglada na token rejestracyjny.' + #13#10 + #13#10 +
              'Token wydany przez administratora zaczyna sie od "cmdb_ent_".',
@@ -184,5 +184,5 @@ begin
 end;
 
 [Run]
-Filename: "{app}\{#TrayExe}"; Description: "Uruchom ikone agenta w zasobniku"; \
+Filename: "{app}\{#AgentExe}"; Parameters: "gui"; Description: "Uruchom ikone agenta w zasobniku"; \
     Flags: postinstall nowait skipifsilent skipifdoesntexist

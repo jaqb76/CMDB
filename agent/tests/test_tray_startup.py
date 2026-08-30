@@ -62,11 +62,12 @@ def test_settings_save_keeps_advanced_fields_and_does_not_require_bootstrap(tmp_
     assert "enrollment_token" not in payload and "_source_path" not in payload
 
 
-def test_registered_settings_accept_empty_token_and_retain_limits(tmp_path, monkeypatch):
+@pytest.mark.parametrize("old_bootstrap", ["", "cmdb_ent_previous_bootstrap"])
+def test_registered_settings_accept_empty_token_and_retain_limits(tmp_path, monkeypatch, old_bootstrap):
     window = settings_window.SettingsWindow.__new__(settings_window.SettingsWindow)
     window.config = AgentConfig(server_url="https://cmdb.example", data_dir=tmp_path,
-                                collect_updates=False, discovery_budget_seconds=123)
-    values = {"server_var": "https://cmdb.example", "token_var": "", "ca_var": "",
+                                collect_updates=False, discovery_budget_seconds=123, enrollment_token=old_bootstrap)
+    values = {"server_var": "https://cmdb.example", "token_var": old_bootstrap, "ca_var": "",
               "interval_var": "4", "processes_var": False, "discovery_var": True,
               "discovery_auto_var": False, "discovery_cidrs_var": "10.1.1.0/24"}
     for key, value in values.items():

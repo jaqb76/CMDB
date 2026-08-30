@@ -1,6 +1,6 @@
 [project]
 name = "cmdb-agent"
-version = "0.1.0"
+version = "0.5.9"
 description = "Agent inwentaryzacyjny CMDB - zbiera dane o sprzecie, oprogramowaniu i uzytkownikach"
 requires-python = ">=3.9"
 # Swiadomie zero zaleznosci: agent ma dzialac na kazdej maszynie klienta

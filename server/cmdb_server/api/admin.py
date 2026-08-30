@@ -74,7 +74,8 @@ SYSTEMY = {
 # kodu. Stopka rozwiazuje to bez jednego i bez drugiego.
 ZNACZNIK_POCZATEK = b"<<<CMDB-AGENT-META>>>"
 ZNACZNIK_KONIEC = b"<<<KONIEC>>>"
-OGON_METADANYCH = 4096
+# Zostaw miejsce na doklejony certyfikat Authenticode za stopka buildu.
+OGON_METADANYCH = 65536
 
 
 def odczytaj_metadane(sciezka: Path) -> dict | None:
@@ -864,13 +865,14 @@ async def wgraj_wersje(
                     detail="nie rozpoznaje architektury pliku - czy to na pewno program?",
                 )
 
-            # Wariant z ikona w zasobniku to osobny plik tej samej wersji.
-            # Rozpoznajemy go po podsystemie z naglowka PE, a nie po nazwie:
-            # nazwe da sie zmienic, a wgrywajacy moze sie pomylic. Zapisujemy
-            # go pod wlasna "architektura", zeby nie kolidowal z agentem
-            # i zeby samoaktualizacja nigdy go nie zaproponowala - maszyna
-            # zglasza sie jako x86_64, wiec do "tray" nie pasuje.
-            if system == "windows" and architektura.czy_okienkowy(tymczasowy):
+            # Stary osobny tray nie moze zastapic workera. Nowy pojedynczy
+            # EXE tez jest okienkowy (cichy start), ale obsluguje CLI/workera.
+            # Jego build jawnie deklaruje ten kontrakt w metadanych. To nie
+            # podpis: pliki nadal wgrywa zaufany administrator, bez wykonania.
+            unified = (metadane.get("entry_mode") == "unified"
+                       and wykryty_system == "windows" and bool(wykryta))
+            if (system == "windows" and architektura.czy_okienkowy(tymczasowy)
+                    and not unified):
                 arch = architektura.ARCH_TRAY
 
         if not numer:

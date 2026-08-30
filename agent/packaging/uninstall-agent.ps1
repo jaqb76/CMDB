@@ -45,7 +45,9 @@ Remove-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run" 
                     -Name "CMDB Agent Tray" -ErrorAction SilentlyContinue
 
 # Ikona trzyma otwarty plik exe - bez zamkniecia usuwanie katalogu sie nie uda.
-Get-Process -Name "cmdb-agent-tray" -ErrorAction SilentlyContinue | ForEach-Object {
+Get-Process -Name "cmdb-agent", "cmdb-agent-tray" -ErrorAction SilentlyContinue |
+Where-Object { $_.Path -and ($_.Path -eq (Join-Path $InstallDir "cmdb-agent.exe") -or
+                            $_.Path -eq (Join-Path $InstallDir "cmdb-agent-tray.exe")) } | ForEach-Object {
     $_ | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host "Zatrzymano ikone agenta (PID $($_.Id))"
 }

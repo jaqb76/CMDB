@@ -19,6 +19,9 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import subprocess
+import sys
+from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox
 
@@ -26,6 +29,8 @@ from .. import status as status_module
 from ..config import AgentConfig, default_config_path
 from .common import is_windows, open_in_shell, run_agent_elevated, trigger_scheduled_task
 from .status_window import StatusWindow
+from ..proces import srodowisko_dla_potomka, flagi_bez_okna
+from . import instance
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +68,8 @@ class TrayApp:
         self.commands: queue.Queue = queue.Queue()
         self.icon = None
         self._current_state = ""
+        self.restart_requested = False
+        self._executable_signature = self._file_signature()
 
         self.root = tk.Tk()
         self.root.withdraw()          # ikona zyje w zasobniku, nie na pasku zadan
@@ -196,6 +203,12 @@ class TrayApp:
     def _refresh_icon(self) -> None:
         """Kolor i podpowiedz ikony odswiezane cyklicznie z pliku statusu."""
         try:
+            signature = self._file_signature()
+            if self._executable_signature is not None and signature is not None and signature != self._executable_signature:
+                # Restart w tej samej sesji uzytkownika, nigdy jako SYSTEM.
+                self.restart_requested = True
+                self.quit()
+                return
             snapshot = status_module.read(self.config)
             if self.icon is not None:
                 self.icon.title = self._tooltip(snapshot)
@@ -205,6 +218,16 @@ class TrayApp:
         except Exception:
             log.exception("nie udalo sie odswiezyc ikony")
         self.root.after(TRAY_REFRESH_MS, self._refresh_icon)
+
+    @staticmethod
+    def _file_signature():
+        if sys.platform != "win32" or not getattr(sys, "frozen", False):
+            return None
+        try:
+            info = Path(sys.executable).stat()
+            return info.st_mtime_ns, info.st_size
+        except OSError:
+            return None
 
     # --- uruchomienie -----------------------------------------------------
 
@@ -229,5 +252,21 @@ def run_tray(config: AgentConfig) -> int:
             "brak bibliotek interfejsu graficznego (pystray, Pillow): " + str(exc)
         ) from exc
 
-    log.info("uruchamiam ikone w zasobniku, konfiguracja: %s", default_config_path())
-    return TrayApp(config).run()
+    token = instance.acquire()
+    if token is False:
+        return 0
+    app = None
+    try:
+        log.info("uruchamiam ikone w zasobniku, konfiguracja: %s", default_config_path())
+        app = TrayApp(config)
+        result = app.run()
+    finally:
+        instance.release(token)
+        if app is not None:
+            app.root.destroy()
+    if app.restart_requested:
+        arguments = [sys.executable]
+        if config._source_path:
+            arguments += ["--config", str(config._source_path)]
+        subprocess.Popen([*arguments, "gui"], creationflags=flagi_bez_okna(), env=srodowisko_dla_potomka())
+    return result

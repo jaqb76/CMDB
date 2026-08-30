@@ -163,11 +163,11 @@ w serwer.
 Wariant z kreatorem graficznym:
 
 ```powershell
-# na maszynie budującej (raz) — powstaje CMDB-Agent-Setup-0.1.0.exe
+# na maszynie budującej (raz) — powstaje CMDB-Agent-Setup-0.5.9.exe
 .\agent\packaging\build-agent.ps1 -Installer
 
 # na maszynie docelowej — kreator pyta o adres serwera i token
-CMDB-Agent-Setup-0.1.0.exe
+CMDB-Agent-Setup-0.5.9.exe
 
 # albo bez kreatora, np. przez GPO
 .\install-agent.ps1 -ServerUrl https://cmdb.firma.pl -Token cmdb_ent_... -Silent
@@ -283,9 +283,10 @@ Sesje z unieważnianiem, blokada ponownej rejestracji agenta, bieżący pełny
 odczyt niezależny od historii, relacje VM/host/klaster/aplikacja oraz widok
 jakości danych opisano w [instrukcji aktualizacji](docs/przeglad-poprawki.md).
 
-### Wykrywanie urządzeń w sieci (agent 0.5.8)
+### Jeden EXE i wykrywanie urządzeń w sieci (agent 0.5.9)
 
-Agent Windows uruchamia się do zasobnika bez otwierania statusu. Opcjonalny
+Jeden `cmdb-agent.exe` zawiera worker i tray. Bez argumentów uruchamia się
+do zasobnika bez otwierania statusu; `run` wykonuje pracę w tle. Opcjonalny
 moduł wykrywania włącza administrator w ustawieniach ikony. Podpowiedzi IP,
 MAC, DNS, typu sprzętu i OS trafiają do **Wykrywanie sieci** w panelu;
 elementy zatwierdza się do ewidencji po sprawdzeniu.

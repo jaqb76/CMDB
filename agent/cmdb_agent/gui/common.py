@@ -40,14 +40,10 @@ def is_admin() -> bool:
 def agent_executable(gui: bool = False) -> tuple[str, list[str]]:
     """Zwraca (program, argumenty poprzedzajace) do uruchomienia agenta.
 
-    gui=True wskazuje plik zawierajacy warstwe graficzna. Ma to znaczenie,
-    bo cmdb-agent.exe budowany jest bez tkintera - chodzi jako SYSTEM na
-    kazdej maszynie i nie ma powodu wozic ze soba bibliotek okienkowych.
-    Okno ustawien otwiera wiec ten sam plik, ktory obsluguje ikone.
+    Tray i worker korzystaja z jednego cmdb-agent.exe. Szukanie stalej nazwy
+    pozwala tez uruchomic zaktualizowany plik, gdy stary zostal przemianowany.
     """
     if getattr(sys, "frozen", False):
-        if gui:
-            return sys.executable, []
         candidate = Path(sys.executable).parent / ("cmdb-agent.exe" if is_windows() else "cmdb-agent")
         if candidate.is_file():
             return str(candidate), []
@@ -109,6 +105,8 @@ def run_agent_elevated(
     parameters += args
     quoted = subprocess.list2cmdline(parameters)
 
+    previous_reset = os.environ.get("PYINSTALLER_RESET_ENVIRONMENT")
+    os.environ["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     try:
         # Wartosci > 32 oznaczaja powodzenie; 5 (ACCESS_DENIED) = uzytkownik odmowil.
         # SW_HIDE dla pracy w tle; tylko konfiguracja ma otworzyc okno.
@@ -117,6 +115,11 @@ def run_agent_elevated(
     except (AttributeError, OSError) as exc:  # pragma: no cover - tylko Windows
         log.error("nie udalo sie podniesc uprawnien: %s", exc)
         return False
+    finally:
+        if previous_reset is None:
+            os.environ.pop("PYINSTALLER_RESET_ENVIRONMENT", None)
+        else:
+            os.environ["PYINSTALLER_RESET_ENVIRONMENT"] = previous_reset
 
 
 def trigger_scheduled_task() -> bool:

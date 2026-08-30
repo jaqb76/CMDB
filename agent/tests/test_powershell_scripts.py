@@ -126,6 +126,16 @@ def test_build_zapisuje_kopie_z_numerem_wersji():
     assert "$wersjaZrodel" in tresc
     assert "$zwersjonowane" in tresc
     assert "Copy-Item" in tresc
+    assert "if ($Archive)" in tresc
+
+
+def test_default_build_produces_one_windowed_executable():
+    tresc = _skrypt_budujacy()
+    assert tresc.count("python -m PyInstaller") == 1
+    assert "--windowed" in tresc
+    assert "--name cmdb-agent-tray" not in tresc
+    assert "--exclude-module tkinter" not in tresc
+    assert 'entry_mode = "unified"' in tresc
 
 
 def test_build_zostawia_takze_nazwy_bez_wersji():

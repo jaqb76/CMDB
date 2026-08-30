@@ -1,10 +1,10 @@
-# Agent 0.5.8: zasobnik i wykrywanie sieci
+# Agent 0.5.9: jeden EXE, zasobnik i wykrywanie sieci
 
 ## Uruchamianie Windows
 
-`cmdb-agent-tray.exe` uruchamia tylko ikonę, również na nieskonfigurowanym
+`cmdb-agent.exe` bez argumentów uruchamia tylko ikonę, również na nieskonfigurowanym
 komputerze. Status i konfigurację otwiera użytkownik z menu ikony; zamknięcie
-statusu pozostawia ikonę. Worker `cmdb-agent.exe run` nadal służy do pracy
+statusu pozostawia ikonę. Ten sam `cmdb-agent.exe run` służy do pracy
 w tle jako SYSTEM. Awaryjne uruchomienie workera z menu używa SW_HIDE;
 monit UAC przy operacji wymagającej administratora jest zachowany.
 
@@ -106,17 +106,29 @@ obserwacji. Starszy lub ponowiony raport nie cofa wyników.
 
 Najpierw zaktualizuj serwer: nowe tabele `discovery_scanners` i
 `discovery_devices` tworzy istniejące `init_db()`. Następnie zainstaluj agenta
-0.5.8. Dotychczasowe binaria w repozytorium nie są automatycznie zmieniane.
-Workflow testów buduje **CMDB-Agent-Windows-0.5.8** jako artefakt GitHub Actions:
-worker, tray oraz `CMDB-Agent-Setup-0.5.8.exe`. Jest to build bez podpisu
+0.5.9. Dotychczasowe binaria w repozytorium nie są automatycznie zmieniane.
+Workflow testów buduje **CMDB-Agent-Windows-0.5.9** jako artefakt GitHub Actions:
+jeden `cmdb-agent.exe` (worker + tray) oraz opcjonalny instalator
+`CMDB-Agent-Setup-0.5.9.exe`. Jest to build bez podpisu
 Authenticode; wydanie produkcyjne należy podpisać firmowym certyfikatem.
-Instalator aktualizuje oba pliki, podczas gdy dotychczasowa aktualizacja samego
-workera nie zmienia działającej ikony tray. Zamknij starą ikonę przed instalacją.
+Przejście z dwóch plików na jeden wykonaj instalatorem: zmienia autostart,
+zatrzymuje starą ikonę i zachowuje stary plik jako `.legacy.bak`. Kolejne
+aktualizacje pojedynczego EXE są wykrywane przez tray co 30 s: ikona uruchamia
+się ponownie w tej samej sesji użytkownika, nadal bez widocznego okna.
+Zadanie SYSTEM używa `run`, nigdy nie uruchamia interfejsu graficznego.
+Mutex zapobiega uruchomieniu dwóch ikon z tej samej instalacji w jednej sesji.
 
-Na własnym Windows: `agent/packaging/build-agent.ps1 -Installer`.
+Na własnym Windows: `agent/packaging/build-agent.ps1` tworzy jeden plik programu.
+`-Installer` dodaje opcjonalny instalator; `-Archive` dodaje kopię wersjonowaną
+w podkatalogu `history`. Stare pliki z wcześniejszych buildów pozostają nietknięte;
+użyj nowego `-OutputDir`, aby otrzymać czysty katalog wynikowy.
+CLI zachowuje stdout/stderr i kody wyjścia przy przekierowaniu potoków.
+W interaktywnym PowerShellu użyj `& .\cmdb-agent.exe --version | Out-String`,
+aby zaczekać na program typu windowed i odebrać jego wynik.
 Instalator otrzymuje wersję z `cmdb_agent/__init__.py`, a nie stałą 0.1.0.
-Testy używają atrap sieci; CI dodatkowo uruchamia zbudowany tray na Windows
-bez konfiguracji i sprawdza, że proces pozostaje aktywny bez widocznego okna.
+Testy używają atrap sieci; CI dodatkowo sprawdza pojedynczy EXE na Windows:
+CLI, błędy i kody wyjścia, pracę równoległą workera i tray, blokadę drugiej ikony,
+cichy start oraz restart ikony po podmianie EXE.
 Nie wykonujemy testowego skanu sieci użytkownika ani sieci runnera.
 
 Referencje poleceń odczytu Windows:

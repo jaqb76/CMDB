@@ -876,15 +876,53 @@ def test_brak_ikony_nie_jest_bledem_instalacji(client, tenant_a):
     assert "ikona" in odpowiedz.json()["detail"]
 
 
-def test_skrypt_startowy_pobiera_ikone():
-    """Bez tego instalacja z serwera nigdy jej nie zaklada."""
+def test_skrypt_startowy_pobiera_jeden_program():
+    """Tray jest czescia agenta; drugi plik nie jest juz potrzebny."""
     from cmdb_server.api import download
 
     tresc = download._skrypt("install.ps1")
-    assert "/download/agent-windows-tray.exe" in tresc
-    assert "cmdb-agent-tray.exe" in tresc
-    # Pobranie musi byc w bloku try - brak ikony nie moze przerwac instalacji.
-    assert "instaluje bez niej" in tresc
+    assert "/download/agent-windows.exe" in tresc
+    assert "/download/agent-windows-tray.exe" not in tresc
+    assert "cmdb-agent-tray.exe" not in tresc
+
+
+def test_unified_exe_jest_workerem_i_jest_dostepny_do_aktualizacji(client, tenant_a, make_user):
+    import json
+
+    csrf = _superadmin(client, make_user)
+    metadata = json.dumps({"version": "0.5.9", "os_family": "windows", "entry_mode": "unified"}).encode()
+    payload = _plik_gui() + b"\n<<<CMDB-AGENT-META>>>" + metadata + b"<<<KONIEC>>>"
+    # Podpis/certyfikat moze wystapic za stopka. Serwer nie wykonuje pliku.
+    payload += bytes(8192)
+    assert _wgraj_wersje(client, csrf, "", payload, "windows").status_code == 303
+    with SessionLocal() as db:
+        release = db.execute(select(AgentRelease)).scalar_one()
+        assert release.arch == "x86_64"
+        release_id = release.id
+    _oznacz_oficjalna(client, csrf, release_id)
+    token = client.post(
+        "/api/v1/agents/enroll", headers=_naglowek(tenant_a["token"]),
+        json={"machine_id": "unified-upgrade", "identity": {
+            "hostname": "UNIFIED", "os_family": "windows", "arch": "amd64"},
+            "agent_version": "0.5.8"},
+    ).json()["agent_token"]
+    offer = client.get("/api/v1/agent/version", headers=_naglowek(token)).json()
+    assert offer["available"] is True
+    assert offer["version"] == "0.5.9"
+    downloaded = client.get("/download/agent-windows.exe", headers=_naglowek(tenant_a["token"]))
+    assert downloaded.status_code == 200 and downloaded.content == payload
+
+
+@pytest.mark.parametrize("marker", [None, "tray", "unknown", True, ["unified"]])
+def test_legacy_or_unknown_gui_marker_is_not_worker(client, make_user, marker):
+    import json
+
+    csrf = _superadmin(client, make_user)
+    metadata = json.dumps({"version": "0.5.9", "os_family": "windows", "entry_mode": marker}).encode()
+    payload = _plik_gui() + b"\n<<<CMDB-AGENT-META>>>" + metadata + b"<<<KONIEC>>>"
+    assert _wgraj_wersje(client, csrf, "", payload, "windows").status_code == 303
+    with SessionLocal() as db:
+        assert db.execute(select(AgentRelease)).scalar_one().arch == "tray"
 
 
 # --- limity rozmiaru przy wgrywaniu -----------------------------------------

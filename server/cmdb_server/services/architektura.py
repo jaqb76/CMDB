@@ -97,8 +97,8 @@ def _z_pe(plik, naglowek: bytes) -> str | None:
 ARCH_TRAY = "tray"
 
 # Pole Subsystem z naglowka opcjonalnego PE. 2 = program okienkowy,
-# 3 = program konsolowy. Agent chodzi jako zadanie SYSTEM i nigdy nie rysuje
-# okien, wiec jest konsolowy; ikona w zasobniku jest okienkowa.
+# 3 = program konsolowy. Od 0.5.9 polaczony agent tez ma podsystem 2;
+# od starego osobnego tray odroznia go entry_mode=unified w stopce buildu.
 PE_GUI = 2
 PE_KONSOLA = 3
 

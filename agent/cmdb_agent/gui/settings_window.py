@@ -226,6 +226,11 @@ class SettingsWindow:
             self._set_message("Odstep miedzy raportami musi byc liczba godzin.", "#a52222")
             return None
 
+        # Starsze instalacje zachowaly zuzyty bootstrap w agent.conf. Samo
+        # zapisanie ustawien nie jest zadaniem ponownej rejestracji tym tokenem.
+        if enrolled and token == self.config.enrollment_token:
+            token = ""
+
         candidate = replace(self.config,
             server_url=server,
             enrollment_token=token,

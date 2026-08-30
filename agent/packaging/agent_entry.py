@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cmdb_agent.main import main
+from cmdb_agent.windows_entry import main
 
 if __name__ == "__main__":
     sys.exit(main())

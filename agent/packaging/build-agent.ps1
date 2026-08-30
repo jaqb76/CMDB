@@ -3,16 +3,14 @@
     Buduje agenta CMDB do pojedynczego pliku cmdb-agent.exe.
 
 .DESCRIPTION
-    Powstaja dwa pliki:
-      cmdb-agent.exe      - agent wiersza polecen (chodzi jako zadanie SYSTEM),
-      cmdb-agent-tray.exe - ikona w zasobniku ze statusem i ustawieniami.
+    Powstaje jeden cmdb-agent.exe: bez argumentow dziala w tray,
+    z argumentami (run, enroll, status, configure) wykonuje wybrana operacje.
 
     Sam agent nie ma zaleznosci zewnetrznych; ikona uzywa pystray i Pillow,
     ktore PyInstaller wpakuje do pliku - na stacjach koncowych nadal nie
     trzeba niczego instalowac.
 
-    Buduj na tej wersji Windows, ktora jest najstarsza w flocie - plik
-    zbudowany na Windows 11 dziala na starszych, ale nie odwrotnie.
+    Zgodnosc buildu sprawdz na najstarszej wspieranej wersji Windows.
 
 .EXAMPLE
     .\build-agent.ps1
@@ -26,8 +24,10 @@ param(
     # systemow EDR beda blokowac uruchomienie agenta.
     [string] $SignCertThumbprint,
     [string] $TimestampUrl = "http://timestamp.digicert.com",
-    # Pomija budowanie ikony w zasobniku (np. dla serwerow bez pulpitu).
+    # Zgodnosc ze starymi skryptami; GUI jest teraz czescia jednego EXE.
     [switch] $NoTray,
+    # Opcjonalna kopia historyczna; domyslnie tylko jeden plik programu.
+    [switch] $Archive,
     # Buduje takze CMDB-Agent-Setup.exe - wymaga zainstalowanego Inno Setup 6.
     [switch] $Installer
 )
@@ -51,45 +51,26 @@ if ($LASTEXITCODE -ne 0) { throw "Wymagany Python 3.9 lub nowszy" }
 python -m pip install --quiet --upgrade pyinstaller
 if ($LASTEXITCODE -ne 0) { throw "Nie udalo sie zainstalowac PyInstallera" }
 
-# Ikona w zasobniku potrzebuje pystray i Pillow; sam agent nie ma zaleznosci.
-if (-not $NoTray) {
-    python -m pip install --quiet -r (Join-Path $agentRoot "requirements-gui.txt")
-    if ($LASTEXITCODE -ne 0) { throw "Nie udalo sie zainstalowac zaleznosci interfejsu" }
-}
+if ($NoTray) { Write-Warning "-NoTray nie rozdziela juz buildu. Aby wylaczyc autostart ikony, uzyj -NoTray przy instalacji." }
+python -m pip install --quiet -r (Join-Path $agentRoot "requirements-gui.txt")
+if ($LASTEXITCODE -ne 0) { throw "Nie udalo sie zainstalowac zaleznosci interfejsu" }
 
 Push-Location $agentRoot
 try {
-    # 1. Agent wiersza polecen - to on chodzi jako zadanie SYSTEM.
+    # Jedyny build: subsystem WINDOWS nie tworzy okna konsoli nawet na moment.
     python -m PyInstaller `
         --onefile `
         --name cmdb-agent `
         --distpath $OutputDir `
         --workpath "$OutputDir\build" `
         --specpath "$OutputDir\build" `
-        --console `
+        --windowed `
         --noupx `
         --paths . `
-        --exclude-module tkinter `
-        --exclude-module pystray `
-        --exclude-module PIL `
+        --hidden-import pystray._win32 `
         packaging\agent_entry.py
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller zakonczyl sie bledem (cmdb-agent)" }
 
-    # 2. Ikona w zasobniku - --windowed, zeby nie migalo okno konsoli.
-    if (-not $NoTray) {
-        python -m PyInstaller `
-            --onefile `
-            --name cmdb-agent-tray `
-            --distpath $OutputDir `
-            --workpath "$OutputDir\build" `
-            --specpath "$OutputDir\build" `
-            --windowed `
-            --noupx `
-            --paths . `
-            --hidden-import pystray._win32 `
-            packaging\tray_entry.py
-        if ($LASTEXITCODE -ne 0) { throw "PyInstaller zakonczyl sie bledem (cmdb-agent-tray)" }
-    }
 }
 finally {
     Pop-Location
@@ -115,6 +96,7 @@ function Add-Metadane($sciezka, $system) {
     $meta = [ordered]@{
         version   = $wersjaZrodel
         os_family = $system
+        entry_mode = "unified"
         built_at  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     } | ConvertTo-Json -Compress
     $stopka = "`n<<<CMDB-AGENT-META>>>$meta<<<KONIEC>>>"
@@ -124,13 +106,9 @@ function Add-Metadane($sciezka, $system) {
 }
 
 Add-Metadane $exe "windows"
-$trayExeSciezka = Join-Path $OutputDir "cmdb-agent-tray.exe"
-if (Test-Path $trayExeSciezka) { Add-Metadane $trayExeSciezka "windows" }
 Write-Host "  dopisano metadane wersji do plikow" -ForegroundColor Cyan
 
 $artifacts = @($exe)
-$trayExe = Join-Path $OutputDir "cmdb-agent-tray.exe"
-if (Test-Path $trayExe) { $artifacts += $trayExe }
 
 function Invoke-Sign($path) {
     $cert = Get-ChildItem Cert:\CurrentUser\My, Cert:\LocalMachine\My |
@@ -177,19 +155,13 @@ if ($Installer) {
 }
 
 
-# --- kopie z numerem wersji -------------------------------------------------
-# Pliki bez numeru wersji zostaja, bo ich nazwy sa nosne: ikona w zasobniku
-# szuka agenta po "cmdb-agent.exe" obok siebie, instalator kopiuje wlasnie
-# taka nazwe do Program Files, a skrypt Inno Setup tez ja zaklada.
-# Kopie z wersja sluza do trzymania historii - kolejny build nie kasuje juz
-# poprzedniego, wiec da sie wrocic do dowolnego wydanego agenta.
+# --- opcjonalna historia ---------------------------------------------------
 $zwersjonowane = @()
-foreach ($plik in @($exe, $trayExe)) {
-    if (-not (Test-Path $plik)) { continue }
-    $bazowa = [System.IO.Path]::GetFileNameWithoutExtension($plik)
-    $rozsz  = [System.IO.Path]::GetExtension($plik)
-    $kopia  = Join-Path $OutputDir ("{0}-{1}{2}" -f $bazowa, $wersjaZrodel, $rozsz)
-    Copy-Item -Path $plik -Destination $kopia -Force
+if ($Archive) {
+    $historyDir = Join-Path $OutputDir "history"
+    New-Item -ItemType Directory -Force -Path $historyDir | Out-Null
+    $kopia = Join-Path $historyDir ("cmdb-agent-{0}.exe" -f $wersjaZrodel)
+    Copy-Item -Path $exe -Destination $kopia -Force
     $zwersjonowane += $kopia
 }
 if ($zwersjonowane.Count -gt 0) {

@@ -1,5 +1,9 @@
 # Agent na Windows
 
+Od wersji **0.5.9** worker i tray są jednym `cmdb-agent.exe`. Bez argumentów
+program startuje cicho do zasobnika; `run` wykonuje raport, a `configure`
+otwiera ustawienia. [Skanowanie sieci i aktualizacja](wykrywanie-sieci.md).
+
 ## Wymagania
 
 * Windows 7 SP1 / Server 2008 R2 lub nowszy (PowerShell 5.1 jest w systemie
@@ -8,13 +12,13 @@
   dysków) jest niedostępna dla zwykłego użytkownika. Agent działa jako SYSTEM.
 * Łączność HTTPS do serwera CMDB. Agent nie wymaga otwierania portów
   przychodzących — inicjuje połączenie sam.
-* Python **nie jest wymagany** — agent i ikona w zasobniku to samodzielne pliki `.exe`.
+* Python **nie jest wymagany** — agent i ikona są w jednym samodzielnym `.exe`.
 * Ikona w zasobniku wymaga sesji graficznej. Na serwerach bez pulpitu instaluj
   z `-NoTray` — sam agent działa wtedy normalnie jako zadanie.
 
 ## Budowanie
 
-Agent powstaje jako dwa samodzielne pliki `.exe` plus instalator:
+Domyślny build tworzy jeden `cmdb-agent.exe`. Instalator jest opcjonalny:
 
 ```powershell
 cd agent\packaging
@@ -26,20 +30,18 @@ cd agent\packaging
 
 | Plik | Rola |
 |---|---|
-| `cmdb-agent.exe` | agent zbierający dane, uruchamiany przez zadanie jako SYSTEM |
-| `cmdb-agent-tray.exe` | ikona w zasobniku: status i ustawienia, działa jako zalogowany użytkownik |
-| `CMDB-Agent-Setup-0.1.0.exe` | instalator graficzny |
+| `cmdb-agent.exe` | bez argumentów: tray; `run`: worker SYSTEM; `configure`: ustawienia |
+| `CMDB-Agent-Setup-0.5.9.exe` | opcjonalny instalator jednego programu |
 
 Budowanie instalatora wymaga **Inno Setup 6** (`winget install JRSoftware.InnoSetup`).
 Bez niego powstaną same pliki `.exe`, a instalacja przebiegnie skryptem
 `install-agent.ps1`.
 
-Buduj na najstarszej wersji Windows w flocie — plik zbudowany na Windows 11
-działa na starszych, ale nie odwrotnie.
+Zgodność wydania sprawdź na najstarszej wspieranej wersji Windows w swojej flocie.
 
 ## Instalacja z kreatora
 
-Uruchom `CMDB-Agent-Setup-0.1.0.exe` i podaj dane otrzymane od administratora:
+Uruchom `CMDB-Agent-Setup-0.5.9.exe` i podaj dane otrzymane od administratora:
 
 ```
 ┌─ Połączenie z serwerem CMDB ─────────────────────────────┐
@@ -172,7 +174,7 @@ if (-not (Get-ScheduledTask -TaskName "CMDB Agent" -ErrorAction SilentlyContinue
 }
 ```
 
-**Intune / SCCM** — spakuj `cmdb-agent.exe`, `cmdb-agent-tray.exe`
+**Intune / SCCM** — spakuj `cmdb-agent.exe`
 i `install-agent.ps1` (kreator graficzny nie nadaje się do wdrożenia cichego,
 bo pyta o dane).
 
@@ -345,8 +347,9 @@ biurem nie zostawia dziury w historii inwentarza.
 ## Aktualizacja i deinstalacja
 
 Aktualizacja: uruchom nowy `CMDB-Agent-Setup.exe` albo `install-agent.ps1`
-z nowym `.exe`. Skrypt zatrzyma zadanie, podmieni pliki i zarejestruje maszynę
-na nowo (poprzednie poświadczenie zostanie unieważnione po stronie serwera).
+z nowym `.exe`. Skrypt zatrzyma zadanie i podmieni program. Przy aktualizacji
+tej samej rejestracji pozostaw token pusty: poświadczenie oraz ustawienia
+wykrywania sieci zostaną zachowane. Nowy token oznacza ponowną rejestrację.
 Ikona w zasobniku jest zatrzymywana przed podmianą plików — inaczej trzymałaby
 otwarty plik `.exe` i aktualizacja by się nie powiodła.
 
@@ -362,62 +365,36 @@ powinna znikać razem z agentem.
 
 ## Historia zbudowanych wersji
 
-Budowanie zostawia w `agent/dist/` cztery pliki:
+Domyślny build zostawia jeden program `agent/dist/cmdb-agent.exe`.
+Opcja `-Archive` dodatkowo zapisuje kopię `history/cmdb-agent-0.5.9.exe`;
+opcja `-Installer` tworzy osobny, opcjonalny pakiet instalacyjny.
+Stare pliki z wcześniejszych buildów nie są automatycznie usuwane.
 
-```
-cmdb-agent.exe             <- najnowszy, pod tą nazwą sięgają po niego skrypty
-cmdb-agent-tray.exe
-cmdb-agent-0.5.5.exe       <- kopia z numerem wersji, do historii
-cmdb-agent-tray-0.5.5.exe
-```
+## Jeden plik: agent i ikona w zasobniku
 
-Kopie z numerem wersji nie są kasowane przez kolejne budowanie, więc da się
-wrócić do dowolnego wydanego wcześniej agenta — na przykład żeby porównać
-zachowanie albo wgrać z powrotem starszą wersję po nieudanej aktualizacji.
+`cmdb-agent.exe` bez argumentów uruchamia wyłącznie ikonę tray — bez okna
+statusu ani mignięcia konsoli. Polecenie `gui` działa tak samo; `run`, `enroll`,
+`status` i `configure` wybierają odpowiedni tryb. Zadanie SYSTEM zawsze używa
+`run`, natomiast autostart użytkownika używa `gui`. Druga ikona w tej samej
+sesji i instalacji nie jest uruchamiana.
 
-Nazwy **bez** numeru zostają, bo są nośne: ikona w zasobniku szuka agenta po
-`cmdb-agent.exe` obok siebie, instalator kopiuje właśnie taką nazwę do
-`Program Files`, a skrypt Inno Setup też ją zakłada. Wersja w nazwie
-zainstalowanego pliku zerwałaby te powiązania po pierwszej aktualizacji.
+Ikona czyta publiczny status, bez dostępu do poświadczenia. Ustawienia
+wymagają podniesienia uprawnień. Aby odczytać wynik CLI w PowerShell, użyj
+potoku, np. `& .\cmdb-agent.exe status --json | Out-String`.
 
-Katalog `dist/` jest w `.gitignore` — historia leży na maszynie budującej,
-a wydania rozsyłane agentom trzyma magazyn wersji na serwerze.
+### Magazyn i aktualizacje
 
-## Dwa pliki: agent i ikona w zasobniku
+Wgraj tylko `cmdb-agent.exe`. Najpierw wdroż serwer z obsługą metadanych
+`entry_mode=unified`, następnie aktywuj wydanie 0.5.9 dla firmy. Podsystem PE
+pozostaje okienkowy, ale znacznik odróżnia program od starszego osobnego tray.
+Starszy tray nadal nie jest proponowany jako aktualizacja workera.
+Nowy skrypt instalacji odrzuca plik bez znacznika przed zmianą instalacji.
 
-| Plik | Co robi | Kto go uruchamia | Rozmiar |
-|---|---|---|---|
-| `cmdb-agent.exe` | zbiera dane i wysyła raport | zadanie harmonogramu jako SYSTEM | 7,8 MB |
-| `cmdb-agent-tray.exe` | ikona ze statusem, zmiana adresu/tokenu, wymuszenie synchronizacji | zalogowany użytkownik | 29 MB |
-
-Różnica rozmiaru bierze się stąd, że ikona potrzebuje `tkinter`, `pystray`
-i `Pillow`. Agent jest budowany **bez** nich celowo — chodzi jako SYSTEM,
-nigdy nie rysuje okien, a mniejszy plik to mniejsza powierzchnia ataku
-i szybsza aktualizacja.
-
-Ikona nie sięga po poświadczenie agenta — czyta wyłącznie plik statusu
-(`ProgramData\CMDB\public\status.json`), który nie zawiera sekretów.
-
-### Do magazynu wgrywa się oba pliki
-
-Wgraj **oba**: `cmdb-agent.exe` i `cmdb-agent-tray.exe`. Serwer rozpoznaje je
-po polu Subsystem w nagłówku PE — agent jest programem konsolowym, ikona
-okienkowym — i zapisuje jako osobne wpisy tej samej wersji. Nazwa pliku nie ma
-znaczenia: nazwę da się zmienić, nagłówek jest faktem.
-
-Ikona **nigdy nie trafia do samoaktualizacji**. Maszyna zgłasza się jako
-`x86_64`, a wariant z ikoną ma własne oznaczenie, więc nie pasuje — podmiana
-agenta programem okienkowym zostawiłaby maszynę bez działającego agenta,
-bo zadanie SYSTEM nie ma pulpitu.
-
-Jeśli nie wgrasz wariantu z ikoną, instalacja przebiegnie normalnie i po prostu
-jej nie założy. Agent zbiera dane i raportuje bez niej.
-
-**Konsekwencja, o której trzeba wiedzieć:** samoaktualizacja podmienia
-wyłącznie `cmdb-agent.exe`. Po kilku aktualizacjach maszyna ma nowego agenta
-i ikonę w wersji z dnia instalacji. Działa to dalej, bo format pliku statusu
-jest stabilny, ale wersje się rozjeżdżają. Żeby wyrównać, uruchom instalator
-ponownie — albo używaj agenta bez ikony (`-NoTray`).
+Przy pierwszym przejściu z dwóch EXE uruchom instalator, który zmieni
+autostart i zachowa stary tray jako `.legacy.bak`. Późniejsze aktualizacje
+pojedynczego EXE aktualizują oba tryby: działająca ikona wykrywa podmianę
+co 30 sekund i uruchamia się ponownie, nadal bez pokazywania okna.
+Proces SYSTEM nie uruchamia interfejsu na pulpicie użytkownika.
 
 ## Podpisywanie
 

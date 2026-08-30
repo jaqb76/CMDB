@@ -27,10 +27,10 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)] [string] $ServerUrl,
-    [Parameter(Mandatory = $true)] [string] $Token,
+    [string] $ServerUrl,
+    [string] $Token,
     [string] $AgentExe,
-    [string] $TrayExe,
+    [string] $TrayExe, # przestarzaly parametr; jeden EXE zawiera oba tryby
     # ProgramW6432 wskazuje 64-bitowy Program Files takze wtedy, gdy skrypt
     # uruchomiono z 32-bitowego PowerShella - inaczej agent laduje w
     # "Program Files (x86)", co dla programu 64-bitowego jest mylace.
@@ -53,6 +53,20 @@ $ErrorActionPreference = "Stop"
 # domyslne liczymy dopiero tutaj.
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $AgentExe) { $AgentExe = Join-Path $scriptDir "..\dist\cmdb-agent.exe" }
+$configPath = Join-Path $DataDir "agent.conf"
+$config = @{}
+if (Test-Path $configPath) {
+    $existing = Get-Content -Raw -Encoding UTF8 $configPath | ConvertFrom-Json
+    foreach ($property in $existing.PSObject.Properties) { $config[$property.Name] = $property.Value }
+}
+if (-not $ServerUrl) { $ServerUrl = $config.server_url }
+$reuseEnrollment = $false
+$statePath = Join-Path $DataDir "agent-state.json"
+if (-not $Token -and (Test-Path $statePath) -and $ServerUrl) {
+    $state = Get-Content -Raw -Encoding UTF8 $statePath | ConvertFrom-Json
+    $reuseEnrollment = $state.agent_token -and $state.asset_id -and
+        ([string]$state.server_url).TrimEnd('/') -eq $ServerUrl.TrimEnd('/')
+}
 
 function Write-Step($text) {
     if (-not $Silent) { Write-Host $text -ForegroundColor Cyan } else { Write-Host $text }
@@ -66,8 +80,8 @@ if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
 if ($ServerUrl -notmatch '^https://') {
     throw "Adres serwera musi zaczynac sie od https:// - agent nie wysyla danych po nieszyfrowanym polaczeniu."
 }
-if ($Token -notmatch '^cmdb_ent_') {
-    throw "To nie wyglada na token rejestracyjny - powinien zaczynac sie od 'cmdb_ent_'."
+if (-not $reuseEnrollment -and $Token -notmatch '^cmdb_ent_') {
+    throw "Pierwsza rejestracja wymaga tokenu zaczynajacego sie od 'cmdb_ent_'. Przy aktualizacji tej samej rejestracji pozostaw Token pusty."
 }
 if (-not (Test-Path $AgentExe)) {
     throw "Nie znaleziono $AgentExe. Zbuduj agenta skryptem build-agent.ps1 albo wskaz plik parametrem -AgentExe."
@@ -92,12 +106,25 @@ a nastepnie uruchom instalacje ponownie bez parametru -AgentExe.
 "@
 }
 
+# Sprawdz kontrakt pojedynczego EXE przed zatrzymaniem starej instalacji.
+# Stopka poprzedza ewentualny podpis Authenticode; szukamy w ograniczonym ogonie.
+$binary = [System.IO.File]::OpenRead((Resolve-Path $AgentExe).Path)
+try {
+    [void]$binary.Seek([Math]::Max(0, $binary.Length - 65536), [System.IO.SeekOrigin]::Begin)
+    $tail = New-Object byte[] ([int]($binary.Length - $binary.Position))
+    [void]$binary.Read($tail, 0, $tail.Length)
+} finally { $binary.Dispose() }
+$match = [regex]::Match([System.Text.Encoding]::UTF8.GetString($tail), '<<<CMDB-AGENT-META>>>([^\r\n]*?)<<<KONIEC>>>', 'RightToLeft')
+if (-not $match.Success -or ($match.Groups[1].Value | ConvertFrom-Json).entry_mode -ne 'unified') {
+    throw "Wymagany polaczony cmdb-agent.exe (build 0.5.9 lub nowszy). Wgraj i aktywuj nowe wydanie na serwerze. Instalacja nie zostala zmieniona."
+}
+
 Write-Step "== Instalacja agenta CMDB =="
 
 # --- 1. pliki programu ------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $targetExe = Join-Path $InstallDir "cmdb-agent.exe"
-$targetTray = Join-Path $InstallDir "cmdb-agent-tray.exe"
+$legacyTray = Join-Path $InstallDir "cmdb-agent-tray.exe"
 
 $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($task) {
@@ -105,6 +132,12 @@ if ($task) {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
+
+# Zatrzymaj tylko procesy z aktualizowanej instalacji, nie inne kopie programu.
+Get-Process -Name "cmdb-agent", "cmdb-agent-tray" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and ($_.Path -eq $targetExe -or $_.Path -eq $legacyTray) } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
 
 # Gdy pliki leza juz na miejscu (umiescil je instalator), kopiowanie pomijamy -
 # Copy-Item pliku na samego siebie konczy sie bledem.
@@ -123,37 +156,55 @@ foreach ($inny in @("${env:ProgramFiles(x86)}\CMDB Agent", "${env:ProgramFiles}\
         Write-Step "  usunieto stara instalacje: $inny"
     }
 }
-if (-not $TrayExe) {
-    $candidate = Join-Path (Split-Path $AgentExe -Parent) "cmdb-agent-tray.exe"
-    if (Test-Path $candidate) { $TrayExe = $candidate }
-}
-if ($TrayExe -and (Test-Path $TrayExe)) {
-    $sourceTray = (Resolve-Path $TrayExe).Path
-    if ($sourceTray -ne [System.IO.Path]::GetFullPath($targetTray)) {
-        Copy-Item $sourceTray $targetTray -Force
-    }
+if (Test-Path $legacyTray) {
+    # Zachowaj stary plik do odzyskania; autostart bedzie wskazywal nowy EXE.
+    Move-Item $legacyTray ($legacyTray + ".legacy.bak") -Force
 }
 # Sprawdzamy, ze skopiowany plik naprawde dziala. Bez tego blad w samym
 # programie wychodzi dopiero przy rejestracji - juz po zapisaniu konfiguracji
 # z tokenem - a przy podmianie na nowsza wersje latwo nie zauwazyc, ze
 # w katalogu docelowym zostal stary plik.
-$wersja = (& $targetExe --version 2>&1) -join " "
-if ($LASTEXITCODE -ne 0) {
-    throw "Skopiowany $targetExe nie uruchamia sie poprawnie: $wersja"
+function Invoke-Agent([string[]] $AgentArguments) {
+    $start = New-Object System.Diagnostics.ProcessStartInfo
+    $start.FileName = $targetExe
+    # Argumenty to polecenia stale i sciezka konfiguracji (bez danych logowania).
+    $start.Arguments = ($AgentArguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $start
+    try {
+        [void]$process.Start()
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(1800000)) {
+            $process.Kill()
+            throw "Przekroczono czas operacji agenta."
+        }
+        return @{ Code = $process.ExitCode; Output = $stdout.Result + $stderr.Result }
+    }
+    finally { $process.Dispose() }
 }
+$versionResult = Invoke-Agent @("--version")
+if ($versionResult.Code -ne 0 -or $versionResult.Output -notmatch 'cmdb-agent ') {
+    throw "Skopiowany $targetExe nie uruchamia sie poprawnie: $($versionResult.Output)"
+}
+$wersja = $versionResult.Output.Trim()
 Write-Step "  program        : $targetExe ($wersja)"
 
 # --- 2. konfiguracja --------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
-$configPath = Join-Path $DataDir "agent.conf"
-
-$config = [ordered]@{
-    server_url              = $ServerUrl.TrimEnd('/')
-    enrollment_token        = $Token
-    report_interval_seconds = $IntervalHours * 3600
-    log_level               = "INFO"
-    collect_processes       = (-not $NoProcessList.IsPresent)
+$config.server_url = $ServerUrl.TrimEnd('/')
+$config.data_dir = $DataDir
+if ($reuseEnrollment) { $config.Remove("enrollment_token") }
+else { $config.enrollment_token = $Token }
+if ($PSBoundParameters.ContainsKey("IntervalHours") -or -not $config.ContainsKey("report_interval_seconds")) {
+    $config.report_interval_seconds = $IntervalHours * 3600
 }
+if (-not $config.ContainsKey("log_level")) { $config.log_level = "INFO" }
+if ($NoProcessList -or -not $config.ContainsKey("collect_processes")) { $config.collect_processes = (-not $NoProcessList.IsPresent) }
 if ($CaBundle)  { $config.ca_bundle  = $CaBundle }
 if ($PinSha256) { $config.pin_sha256 = $PinSha256 }
 
@@ -174,14 +225,16 @@ New-Item -ItemType Directory -Force -Path $publicDir | Out-Null
 Write-Step "  konfiguracja   : $configPath (dostep: SYSTEM + Administratorzy)"
 
 # --- 3. rejestracja ---------------------------------------------------------
-Write-Step "Rejestruje maszyne w serwerze..."
-& $targetExe enroll
-if ($LASTEXITCODE -ne 0) {
-    throw "Rejestracja nie powiodla sie (kod $LASTEXITCODE). Sprawdz adres serwera, token i zaufanie do certyfikatu."
+if (-not $reuseEnrollment) {
+    Write-Step "Rejestruje maszyne w serwerze..."
+    $enrollment = Invoke-Agent @("--config", $configPath, "enroll")
+    if ($enrollment.Code -ne 0) {
+        throw "Rejestracja nie powiodla sie (kod $($enrollment.Code)). Sprawdz dziennik agenta."
+    }
 }
 
 # --- 4. zadanie harmonogramu ------------------------------------------------
-$action = New-ScheduledTaskAction -Execute $targetExe -Argument "run" -WorkingDirectory $InstallDir
+$action = New-ScheduledTaskAction -Execute $targetExe -Argument "--config `"$configPath`" run" -WorkingDirectory $InstallDir
 
 # Losowe opoznienie rozklada obciazenie serwera przy duzej flocie maszyn.
 $atStartup = New-ScheduledTaskTrigger -AtStartup
@@ -232,9 +285,9 @@ $bazaRejestru = [Microsoft.Win32.RegistryKey]::OpenBaseKey("LocalMachine", "Regi
 try {
     $kluczRun = $bazaRejestru.CreateSubKey($sciezkaRun, $true)
     try {
-        if (-not $NoTray -and (Test-Path $targetTray)) {
-            $kluczRun.SetValue("CMDB Agent Tray", "`"$targetTray`"", "String")
-            Write-Step "  ikona          : $targetTray (autostart dla kazdego uzytkownika)"
+        if (-not $NoTray) {
+            $kluczRun.SetValue("CMDB Agent Tray", "`"$targetExe`" --config `"$configPath`" gui", "String")
+            Write-Step "  ikona          : $targetExe gui (autostart dla kazdego uzytkownika)"
         }
         else {
             $kluczRun.DeleteValue("CMDB Agent Tray", $false)
@@ -259,9 +312,9 @@ finally { $bazaRejestru.Close() }
 # od razu. Posrednictwo explorer.exe jest tu celowe: instalator dziala z
 # podniesionymi uprawnieniami, a ikona ma chodzic na zwyklym koncie
 # zalogowanego uzytkownika - explorer startuje ja na swoim poziomie.
-if (-not $NoTray -and (Test-Path $targetTray) -and -not (Get-Process -Name "cmdb-agent-tray" -ErrorAction SilentlyContinue)) {
+if (-not $NoTray) {
     try {
-        Start-Process "explorer.exe" -ArgumentList "`"$targetTray`"" -ErrorAction Stop
+        Start-Process "explorer.exe" -ArgumentList "`"$targetExe`"" -ErrorAction Stop
         Write-Step "  ikona uruchomiona (bez czekania na ponowne logowanie)"
     }
     catch {
@@ -271,14 +324,15 @@ if (-not $NoTray -and (Test-Path $targetTray) -and -not (Get-Process -Name "cmdb
 
 # --- 6. pierwszy przebieg ---------------------------------------------------
 Write-Step "Wysylam pierwszy raport..."
-& $targetExe run
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Pierwszy raport nie zostal wyslany (kod $LASTEXITCODE). Zadanie sprobuje ponownie."
+$firstRun = Invoke-Agent @("--config", $configPath, "run")
+if ($firstRun.Code -ne 0) {
+    Write-Warning "Pierwszy raport nie zostal wyslany (kod $($firstRun.Code)). Zadanie sprobuje ponownie."
 }
 
 Write-Host ""
 Write-Host "Gotowe." -ForegroundColor Green
-& $targetExe status
+$status = Invoke-Agent @("--config", $configPath, "status")
+Write-Host $status.Output
 Write-Host ""
 Write-Host "Dziennik agenta: $DataDir\agent.log"
 Write-Host "Reczny przebieg: `"$targetExe`" run"
