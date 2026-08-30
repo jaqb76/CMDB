@@ -1,7 +1,7 @@
 name: CMDB regression tests
 on:
   push:
-    branches: ["codex/**"]
+    branches: ["claude/os-data-collection-agent-gfz2o8"]
   pull_request:
 permissions:
   contents: read

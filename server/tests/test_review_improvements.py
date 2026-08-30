@@ -219,3 +219,70 @@ def test_quality_categories_and_tenant_isolation(client, tenant_a, tenant_b, mak
     assert "SECRET-OTHER-TENANT" not in text
     assert "ManualDevice" not in client.get("/jakosc?issue=stale").text
     assert client.get("/jakosc?issue=invalid").status_code == 422
+
+
+def test_relation_duplicate_cardinality_and_cycle(client, tenant_a, make_user):
+    _, csrf = login(client, tenant_a, make_user)
+    vm, host, cluster, app = assets_for_relations(tenant_a)
+    # Komputer jest kompatybilnym typem dla obu koncow VM/host.
+    with SessionLocal() as db:
+        db.get(Asset, vm).typ = "komputer"
+        db.get(Asset, host).typ = "komputer"
+        db.commit()
+    data = {"source_id": vm, "target_id": host, "kind": "vm_host", "csrf_token": csrf}
+    for _ in range(2):
+        assert client.post("/relacje", data=data, follow_redirects=False).status_code == 303
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(AssetRelation)) == 1
+    reverse = {**data, "source_id": host, "target_id": vm}
+    assert client.post("/relacje", data=reverse).status_code == 409
+    with SessionLocal() as db:
+        db.get(Asset, app).typ = "komputer"
+        db.commit()
+    assert client.post("/relacje", data={**data, "target_id": app}).status_code == 409
+
+
+def test_foreign_relation_cannot_be_deleted(client, tenant_a, tenant_b, make_user):
+    from cmdb_server.services.relations import add_relation
+    _, csrf = login(client, tenant_a, make_user)
+    vm, host, _, _ = assets_for_relations(tenant_b)
+    with SessionLocal() as db:
+        row, _ = add_relation(db, TenantContext(tenant_b["id"], "b", "test", can_write=True), vm, host, "vm_host")
+        rid = row.id
+        db.commit()
+    assert client.post(f"/relacje/{rid}/delete", data={"csrf_token": csrf}).status_code == 404
+
+
+def test_concurrent_retries_create_one_snapshot(client, tenant_a):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from cmdb_server.schemas import InventoryReport
+    from cmdb_server.services.inventory import store_report
+    enrolled, report = enroll(client, tenant_a)
+    report["report_id"] = str(uuid4())
+    barrier = Barrier(2)
+    def write():
+        with SessionLocal() as db:
+            asset = db.get(Asset, enrolled["asset_id"])
+            barrier.wait(timeout=10)
+            _, changed = store_report(db, TenantContext(tenant_a["id"], "a", "test"),
+                                      asset, InventoryReport.model_validate(report))
+            db.commit()
+            return changed
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(write) for _ in range(2)]
+        assert sorted(f.result(timeout=20) for f in futures) == [False, True]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(InventorySnapshot)) == 1
+
+
+def test_new_columns_migrate_without_removing_existing_users(client, tenant_a, make_user):
+    from sqlalchemy import text
+    from cmdb_server.db import engine, init_db
+    uid = make_user(tenant_a["id"], "migration@example.com", PASSWORD)
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE portal_users DROP COLUMN session_version"))
+        conn.execute(text("ALTER TABLE assets DROP COLUMN enrollment_blocked"))
+    init_db()
+    with SessionLocal() as db:
+        assert db.get(PortalUser, uid).session_version == 1

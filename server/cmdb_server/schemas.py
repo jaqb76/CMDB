@@ -93,8 +93,8 @@ class InventoryReport(BaseModel):
             "hardware.storage": ("physical_disks", "logical_disks"),
             "network": ("interfaces",),
             "software": ("packages", "services", "updates", "processes"),
-            "users": ("local_accounts", "administrators", "sessions", "sensitive_groups"),
-            "software.updates_pending": ("packages",),
+            "users": ("local_accounts", "administrators", "sessions", "sensitive_groups", "groups"),
+            "software.updates_pending": ("packages", "entries"),
         }
         def get(path):
             parts = path.split(".")
@@ -118,14 +118,16 @@ class InventoryReport(BaseModel):
                     raise ValueError(f"{path}.{field}: oczekiwano listy obiektow")
         # Znane pola tekstowe wykorzystywane m.in. jako klucze porownania.
         text_fields = {"name", "model", "serial_number", "slot", "mac_address", "version",
-                       "display_name", "publisher", "manufacturer", "caption"}
+                       "display_name", "publisher", "manufacturer", "caption", "source_package",
+                       "source_version", "distro_id", "codename", "kernel"}
         known_records = {
             "hardware.system", "hardware.cpu", "hardware.memory", "hardware.firmware",
             "hardware.memory.modules[]", "hardware.storage.physical_disks[]",
             "hardware.storage.logical_disks[]", "software.packages[]", "software.services[]",
             "software.updates[]", "software.processes[]", "software.updates_pending.packages[]",
             "network.interfaces[]", "users.local_accounts[]", "users.administrators[]",
-            "users.sessions[]", "users.sensitive_groups[]", "os",
+            "users.sessions[]", "users.sensitive_groups[]", "users.groups[]",
+            "software.updates_pending.entries[]", "os",
         }
         def check(node, path):
             if isinstance(node, list):
@@ -133,6 +135,9 @@ class InventoryReport(BaseModel):
                     check(item, path + "[]")
             elif isinstance(node, dict):
                 for key, value in node.items():
+                    if path == "network.interfaces[]" and key == "ip_addresses" and isinstance(value, list):
+                        if any(isinstance(v, str) and len(v) > 64 for v in value):
+                            raise ValueError("network.interfaces[].ip_addresses: adres zbyt dlugi")
                     if path in known_records and (key in text_fields or (path == "software.updates[]" and key == "id")) and value is not None and not isinstance(value, str):
                         raise ValueError(f"{path}.{key}: oczekiwano tekstu")
                     if path == "network.interfaces[]" and key in {"ip_addresses", "gateways", "dns_servers"} and value is not None:
