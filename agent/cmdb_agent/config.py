@@ -72,6 +72,15 @@ class AgentConfig:
     # Maksymalna liczba pozycji na liste - zabezpieczenie przed gigantycznym raportem.
     max_items_per_section: int = 5000
 
+    # Skanuj tylko sieci, do ktorych administrator upowaznil tego agenta.
+    discovery_enabled: bool = False
+    discovery_auto_subnets: bool = True
+    discovery_cidrs: list[str] = field(default_factory=list)
+    discovery_interval_seconds: int = 86400
+    discovery_max_hosts: int = 1024
+    discovery_rate: int = 32
+    discovery_budget_seconds: int = 300
+
     data_dir: Path = field(default_factory=default_data_dir)
     log_level: str = "INFO"
 
@@ -90,6 +99,8 @@ class AgentConfig:
         return self.data_dir / "spool"
 
     def validate(self) -> None:
+        from .discovery import validate_config
+        validate_config(self)
         if not self.server_url:
             raise ValueError("nie ustawiono adresu serwera (--server / CMDB_AGENT_SERVER_URL)")
         if not self.server_url.startswith("https://"):
@@ -120,9 +131,10 @@ _INT_FIELDS = {
     "timeout_seconds",
     "max_retries",
     "max_items_per_section",
+    "discovery_interval_seconds", "discovery_max_hosts", "discovery_rate", "discovery_budget_seconds",
 }
 _BOOL_FIELDS = {"collect_processes", "collect_services", "collect_updates",
-                "collect_pending_updates"}
+                "collect_pending_updates", "discovery_enabled", "discovery_auto_subnets"}
 
 
 def load_config(config_path: Path | None = None, overrides: dict | None = None) -> AgentConfig:

@@ -57,6 +57,6 @@ def report_size(report: dict) -> int:
 
 def report_hash(report: dict) -> str:
     """Skrot uzywany lokalnie do logowania, czy cokolwiek sie zmienilo."""
-    stripped = {k: v for k, v in report.items() if k not in {"agent", "report_id"}}
+    stripped = {k: v for k, v in report.items() if k not in {"agent", "report_id", "network_discovery"}}
     canonical = json.dumps(stripped, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

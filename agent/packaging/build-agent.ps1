@@ -85,6 +85,7 @@ try {
             --specpath "$OutputDir\build" `
             --windowed `
             --noupx `
+            --paths . `
             --hidden-import pystray._win32 `
             packaging\tray_entry.py
         if ($LASTEXITCODE -ne 0) { throw "PyInstaller zakonczyl sie bledem (cmdb-agent-tray)" }
@@ -154,7 +155,7 @@ else {
 # --- instalator graficzny ---------------------------------------------------
 if ($Installer) {
     $iscc = @(
-        "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
     ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 
@@ -164,7 +165,7 @@ if ($Installer) {
     }
     else {
         Write-Host "Buduje instalator..." -ForegroundColor Cyan
-        & $iscc (Join-Path $scriptDir "cmdb-agent.iss")
+        & $iscc "/DAppVersion=$wersjaZrodel" "/DBuildDir=$OutputDir" (Join-Path $scriptDir "cmdb-agent.iss")
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup zakonczyl sie bledem" }
         $setup = Get-ChildItem (Join-Path $OutputDir "CMDB-Agent-Setup-*.exe") |
                  Sort-Object LastWriteTime -Descending | Select-Object -First 1

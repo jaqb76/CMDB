@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Wykrywanie sieci - CMDB{% endblock %}
+{% block content %}
+<h1>Wykrywanie urządzeń w sieci</h1>
+<p class="muted">Włącz moduł w ustawieniach wybranego agenta Windows. Skan obejmuje dostępne prywatne podsieci IPv4.
+Urządzenia są propozycjami do ewidencji; typ i OS wymagają weryfikacji. Brak wyniku nie dowodzi braku urządzenia.
+Adresy IP są rozdzielone według skanera, aby nie łączyć automatycznie różnych lokalizacji.</p>
+<section class="panel">
+<h2>Ostatnie skany (do 50 skanerów)</h2>
+<div class="tabela-przewijana"><table class="table"><thead><tr><th>Agent</th><th>Data skanu</th><th>Zakres</th><th>Postęp</th><th>Wynik / błędy</th></tr></thead><tbody>
+{% for scan, name in scanners %}<tr>
+<td><a href="/assets/{{ scan.asset_id }}">{{ name }}</a></td><td>{{ scan.scanned_at | dt }}</td>
+<td>{{ scan.details.ranges | join(', ') or '—' }}</td><td>{{ scan.details.attempted_hosts }} / {{ scan.details.total_hosts }} adresów sprawdzonych w całości</td>
+<td>{{ 'Ukończono' if scan.details.complete else 'Niepełny / błąd' }}{% for error in scan.details.errors %}<p>{{ error }}</p>{% endfor %}</td>
+</tr>{% else %}<tr><td colspan="5">Brak skanów. Moduł jest domyślnie wyłączony; po włączeniu wybierz „Synchronizuj teraz”.</td></tr>{% endfor %}
+</tbody></table></div></section>
+<form method="get" class="row-form">
+<div><label for="view">Widok</label><select name="view" id="view">{% for value, label in [('pending','Oczekujące'),('linked','Powiązane z ewidencją'),('all','Wszystkie')] %}<option value="{{ value }}" {% if view == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+<div><label for="q">IP lub nazwa DNS</label><input id="q" name="q" value="{{ q }}" maxlength="255"></div><button class="btn" type="submit">Filtruj</button>
+</form>
+<section class="panel"><div class="tabela-przewijana"><table class="table">
+<thead><tr><th>Adres / DNS</th><th>MAC</th><th>Typ — podpowiedź</th><th>OS — podpowiedź</th><th>Usługi TCP</th><th>Skaner / ostatnio widziany</th><th>Ewidencja</th></tr></thead>
+<tbody>{% for device, scanner in rows %}<tr>
+<td><a href="/wykrywanie/{{ device.id }}">{{ device.ip }}</a><br>{{ device.hostname or '—' }}</td>
+<td>{{ device.observation.mac or 'Niedostępny' }}</td><td>{{ types.get(device.device_type, 'Inne') }}<br><small>Pewność typu: {{ {'unknown':'brak', 'low':'niska', 'medium':'średnia'}.get(device.observation.confidence, 'brak') }}</small></td>
+<td>{{ device.observation.os_hint or 'Nierozpoznany' }}</td><td>{{ device.observation.ports | join(', ') or 'Brak otwartych portów' }}</td>
+<td>{{ scanner }}<br>{{ device.last_seen | dt }}</td>
+<td>{% if device.asset_id %}<a href="/assets/{{ device.asset_id }}">Zasób</a>{% else %}<a class="btn btn-small" href="/wykrywanie/{{ device.id }}">Zweryfikuj</a>{% endif %}</td>
+</tr>{% else %}<tr><td colspan="7">Brak urządzeń w wybranym widoku.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+<nav aria-label="Strony wykrywania">{% if page > 1 %}<a class="btn" href="/wykrywanie?page={{ page - 1 }}&amp;view={{ view }}&amp;q={{ q|urlencode }}">Poprzednia</a>{% endif %}
+<span>Strona {{ page }}</span>{% if has_next %}<a class="btn" href="/wykrywanie?page={{ page + 1 }}&amp;view={{ view }}&amp;q={{ q|urlencode }}">Następna</a>{% endif %}</nav>
+{% endblock %}

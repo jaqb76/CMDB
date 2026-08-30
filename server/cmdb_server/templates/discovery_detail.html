@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ device.ip }} - wykrywanie - CMDB{% endblock %}
+{% block content %}
+<a href="/wykrywanie">← Wykrywanie sieci</a><h1>{{ device.hostname or device.ip }}</h1>
+<section class="panel"><h2>Obserwacja sieciowa</h2>
+<p>IP: {{ device.ip }} · MAC: {{ device.observation.mac or 'niedostępny' }} · DNS: {{ device.hostname or 'niedostępny' }}</p>
+<p>Skaner: <a href="/assets/{{ scanner.id }}">{{ scanner.hostname }}</a> · Pierwszy odczyt: {{ device.first_seen | dt }} · Ostatni odczyt: {{ device.last_seen | dt }}</p>
+<p>Sugerowany typ: {{ types.get(device.device_type, 'Inne') }} · OS: {{ device.observation.os_hint or 'nierozpoznany' }} · Producent (podpowiedź): {{ device.observation.manufacturer or 'nierozpoznany' }}</p>
+<p class="muted">Podpowiedzi pochodzą z portów i banerów usług; nie potwierdzają dokładnego OS, modelu ani numeru seryjnego. DNS także może być nieaktualny. MAC jest dostępny zwykle tylko w lokalnej podsieci.</p>
+<h3>Podstawa rozpoznania</h3><ul>{% for evidence in device.observation.evidence %}<li>{{ evidence }}</li>{% else %}<li>Odpowiedź TCP; brak otwartych usług w badanym zestawie.</li>{% endfor %}</ul>
+</section>
+{% if device.asset_id %}<p>Powiązano z <a href="/assets/{{ device.asset_id }}">zasobem w ewidencji</a>.</p>
+{% elif ctx.can_write %}
+<section class="panel"><h2>Zweryfikuj i dodaj do ewidencji</h2>
+<p>Najpierw sprawdź istniejące zasoby. Ten sam adres w różnych sieciach nie oznacza tego samego urządzenia.</p>
+{% if matches %}<p>Możliwe dopasowania (IP lub nazwa; wymagają potwierdzenia):</p><ul>{% for asset in matches %}<li><a href="/assets/{{ asset.id }}">{{ asset.hostname }}</a> — {{ asset.primary_ip or '—' }} · ID: {{ asset.id }}</li>{% endfor %}</ul>{% endif %}
+<form method="post" action="/wykrywanie/{{ device.id }}/adopt">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<p><label for="hostname">Nazwa zasobu</label><input id="hostname" name="hostname" value="{{ device.hostname or device.ip }}" required maxlength="255"></p>
+<p><label for="typ">Potwierdzony typ</label><select id="typ" name="typ">{% for key in ['komputer','drukarka','siec','inne'] %}<option value="{{ key }}" {% if device.device_type == key %}selected{% endif %}>{{ types[key] }}</option>{% endfor %}</select></p>
+<p><label for="asset_id">ID istniejącego zasobu (opcjonalnie)</label><input id="asset_id" name="asset_id" maxlength="36" placeholder="Pozostaw puste, aby utworzyć nowy zasób" list="matches"><datalist id="matches">{% for asset in matches %}<option value="{{ asset.id }}">{{ asset.hostname }}</option>{% endfor %}</datalist></p>
+<p class="muted">Nowy wpis będzie zasobem ręcznym. Dane rozpoznania pozostają obserwacją; nie nadpisują danych agenta. Opiekuna i pozostałe dane uzupełnij na karcie zasobu.</p>
+<button type="submit" class="btn btn-primary">Potwierdź i zapisz w ewidencji</button>
+</form></section>
+{% else %}<p class="muted">Zatwierdzanie wymaga uprawnień do edycji zasobów.</p>{% endif %}
+{% endblock %}

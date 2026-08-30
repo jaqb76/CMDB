@@ -9,7 +9,12 @@
 ; dwoch rozjezdzajacych sie sciezek instalacji.
 
 #define AppName        "CMDB Agent"
-#define AppVersion     "0.1.0"
+#ifndef AppVersion
+#define AppVersion     "0.5.8"
+#endif
+#ifndef BuildDir
+#define BuildDir       "..\dist"
+#endif
 #define AppPublisher   "Dzial IT"
 #define AgentExe       "cmdb-agent.exe"
 #define TrayExe        "cmdb-agent-tray.exe"
@@ -22,7 +27,7 @@ AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\CMDB Agent
 DefaultGroupName=CMDB Agent
 DisableProgramGroupPage=yes
-OutputDir=..\dist
+OutputDir={#BuildDir}
 OutputBaseFilename=CMDB-Agent-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
@@ -37,8 +42,8 @@ SetupLogging=yes
 Name: "polski"; MessagesFile: "compiler:Languages\Polish.isl"
 
 [Files]
-Source: "..\dist\{#AgentExe}";        DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\{#TrayExe}";         DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\{#AgentExe}";        DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\{#TrayExe}";         DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "install-agent.ps1";          DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-agent.ps1";        DestDir: "{app}"; Flags: ignoreversion
 

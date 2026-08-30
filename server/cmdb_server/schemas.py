@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .discovery_schema import NetworkDiscovery
+
 SCHEMA_VERSION = 1
 
 
@@ -71,6 +73,8 @@ class InventoryReport(BaseModel):
     machine_id: str = Field(min_length=8, max_length=128)
     agent: AgentInfo
     identity: MachineIdentity
+
+    network_discovery: NetworkDiscovery | None = None
 
     hardware: dict[str, Any] = Field(default_factory=dict)
     os: dict[str, Any] = Field(default_factory=dict)

@@ -171,6 +171,9 @@ def do_run(config: AgentConfig, state: AgentState, client: CmdbClient) -> int:
 
     flush_spool(config, state, client)
 
+    from .discovery import attach_discovery
+    attach_discovery(config, state, report)
+
     try:
         response = send_report(config, state, client, report)
     except ApiError as exc:

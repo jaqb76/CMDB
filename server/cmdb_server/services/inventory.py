@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 # Pola zmieniajace sie przy kazdym odczycie - nie moga wywolywac nowego snapshotu.
 VOLATILE_PATHS: tuple[str, ...] = (
     "report_id",
+    "network_discovery",
     "agent.collected_at",
     "agent.duration_ms",
     "os.last_boot",
@@ -247,6 +248,8 @@ def store_report(
     if asset.enrollment_blocked:
         raise HTTPException(status_code=403, detail="maszyna zablokowana")
     payload = report.model_dump(mode="json", exclude_none=False)
+    if report.network_discovery is None:
+        payload.pop("network_discovery", None)  # zachowaj hashe receipt starszych agentow
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     content_hash = hashlib.sha256(encoded.encode()).hexdigest()
     report_key = str(report.report_id) if report.report_id else content_hash
@@ -258,6 +261,9 @@ def store_report(
         return None, False
     db.add(ReportReceipt(asset_id=asset.id, tenant_id=ctx.tenant_id,
                          report_key=report_key, content_hash=content_hash))
+    if report.network_discovery is not None:
+        from .discovery import store_discovery
+        store_discovery(db, ctx, asset, report.network_discovery)
     fingerprint = stable_fingerprint(payload)
     collected_at = _normalize_collected_at(report.agent.collected_at)
     current = db.get(AssetCurrentReport, asset.id)

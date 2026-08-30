@@ -215,23 +215,9 @@ class TrayApp:
         self.root.after(POLL_MS, self._poll_commands)
         self.root.after(TRAY_REFRESH_MS, self._refresh_icon)
 
-        snapshot = status_module.read(self.config)
-        if not snapshot.configured or not snapshot.enrolled:
-            # Pierwsze uruchomienie: od razu pytamy o adres serwera i token.
-            self.root.after(400, self._first_run_prompt)
-        else:
-            self.root.after(400, self.show_status)
-
+        # Takze pierwszy start jest cichy. Okna otwieraja tylko akcje menu.
         self.root.mainloop()
         return 0
-
-    def _first_run_prompt(self) -> None:
-        if messagebox.askyesno(
-            "CMDB Agent",
-            "Agent nie jest jeszcze skonfigurowany.\n\n"
-            "Czy chcesz teraz podac adres serwera i token rejestracyjny?",
-        ):
-            self.open_settings()
 
 
 def run_tray(config: AgentConfig) -> int:

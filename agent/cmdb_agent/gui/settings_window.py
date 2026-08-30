@@ -1,6 +1,6 @@
 """Okno konfiguracji agenta: adres serwera i token rejestracyjny.
 
-Uruchamiane przy pierwszym starcie (agent nieskonfigurowany) oraz z menu
+Uruchamiane na wyrazne zadanie uzytkownika z menu
 ikony w zasobniku. Zapisuje konfiguracje i od razu rejestruje maszyne,
 zeby uzytkownik od razu wiedzial, czy dane sa poprawne - zamiast czekac
 do pierwszego przebiegu zadania.
@@ -11,6 +11,9 @@ uruchamiane jest w osobnym, podniesionym procesie.
 from __future__ import annotations
 
 import json
+import os
+from dataclasses import asdict, replace
+from uuid import uuid4
 import logging
 import queue
 import subprocess
@@ -26,7 +29,7 @@ from ..config import (
     AgentConfig,
     default_config_path,
 )
-from ..state import load_state
+from ..state import load_state, save_state, _harden_file
 from .common import is_admin, run_agent
 
 log = logging.getLogger(__name__)
@@ -64,6 +67,9 @@ class SettingsWindow:
         self.interval_var = tk.StringVar(value=str(default_hours))
         self.processes_var = tk.BooleanVar(value=config.collect_processes)
         self.show_token_var = tk.BooleanVar(value=False)
+        self.discovery_var = tk.BooleanVar(value=config.discovery_enabled)
+        self.discovery_auto_var = tk.BooleanVar(value=config.discovery_auto_subnets)
+        self.discovery_cidrs_var = tk.StringVar(value=", ".join(config.discovery_cidrs))
         self.message_var = tk.StringVar(value="")
 
         self._build()
@@ -117,13 +123,26 @@ class SettingsWindow:
             frame, text="Zbieraj liste uruchomionych procesow", variable=self.processes_var
         ).grid(row=9, column=1, columnspan=2, sticky="w", pady=4)
 
+        discovery = ttk.LabelFrame(frame, text="Wykrywanie urzadzen w sieci", padding=8)
+        discovery.grid(row=10, column=0, columnspan=3, sticky="we", pady=(12, 4))
+        ttk.Checkbutton(discovery, text="Wlacz skanowanie sieci (mam zgode administratora sieci)",
+                        variable=self.discovery_var).pack(anchor="w")
+        ttk.Checkbutton(discovery, text="Automatycznie wykryj lokalne prywatne podsieci IPv4",
+                        variable=self.discovery_auto_var).pack(anchor="w")
+        ttk.Label(discovery, text="Dodatkowe zakresy CIDR, oddzielone przecinkiem:").pack(anchor="w")
+        ttk.Entry(discovery, textvariable=self.discovery_cidrs_var, width=64).pack(fill="x")
+        ttk.Label(discovery, text="Np. 192.168.10.0/24. Tylko dostepne prywatne sieci IPv4. "
+                  "Domyslnie co 24 h, do 1024 adresow i 5 min. Wyniki: CMDB → Wykrywanie sieci. "
+                  "Pierwszy skan: nastepna synchronizacja. Typ i OS wymagaja weryfikacji.",
+                  wraplength=500, foreground="#666").pack(anchor="w", pady=(6, 0))
+
         self.message = ttk.Label(frame, textvariable=self.message_var, wraplength=520)
-        self.message.grid(row=10, column=0, columnspan=3, sticky="w", pady=(12, 4))
+        self.message.grid(row=11, column=0, columnspan=3, sticky="w", pady=(12, 4))
 
         self.progress = ttk.Progressbar(frame, mode="indeterminate", length=520)
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=12, column=0, columnspan=3, sticky="we", pady=(12, 0))
+        buttons.grid(row=13, column=0, columnspan=3, sticky="we", pady=(12, 0))
         # Sprawdzenie polaczenia nie zapisuje niczego - mozna go uzyc, zanim
         # zdecydujemy sie na rejestracje.
         self.check_button = ttk.Button(
@@ -131,7 +150,7 @@ class SettingsWindow:
         )
         self.check_button.pack(side="left")
         self.save_button = ttk.Button(
-            buttons, text="Zapisz i zarejestruj", command=self._on_save
+            buttons, text="Zapisz", command=self._on_save
         )
         self.save_button.pack(side="right", padx=(8, 0))
         ttk.Button(buttons, text="Anuluj", command=self.root.destroy).pack(side="right")
@@ -185,10 +204,11 @@ class SettingsWindow:
                 "#a52222",
             )
             return None
-        if not token:
+        enrolled = self._already_enrolled(server)
+        if not token and not enrolled:
             self._set_message("Podaj token rejestracyjny otrzymany od administratora.", "#a52222")
             return None
-        if not token.startswith("cmdb_ent_"):
+        if token and not token.startswith("cmdb_ent_"):
             self._set_message(
                 "To nie wyglada na token rejestracyjny - powinien zaczynac sie od 'cmdb_ent_'.",
                 "#a52222",
@@ -206,12 +226,15 @@ class SettingsWindow:
             self._set_message("Odstep miedzy raportami musi byc liczba godzin.", "#a52222")
             return None
 
-        candidate = AgentConfig(
+        candidate = replace(self.config,
             server_url=server,
             enrollment_token=token,
             ca_bundle=ca or None,
             report_interval_seconds=hours * 3600,
             collect_processes=self.processes_var.get(),
+            discovery_enabled=self.discovery_var.get(),
+            discovery_auto_subnets=self.discovery_auto_var.get(),
+            discovery_cidrs=[v.strip() for v in self.discovery_cidrs_var.get().split(",") if v.strip()],
             data_dir=self.config.data_dir,
         )
         try:
@@ -221,34 +244,37 @@ class SettingsWindow:
             return None
         return candidate
 
-    def _write_config(self, candidate: AgentConfig) -> bool:
-        payload = {
-            "server_url": candidate.server_url,
-            "enrollment_token": candidate.enrollment_token,
-            "report_interval_seconds": candidate.report_interval_seconds,
-            "collect_processes": candidate.collect_processes,
-            "log_level": self.config.log_level,
-        }
-        if candidate.ca_bundle:
-            payload["ca_bundle"] = candidate.ca_bundle
-        if self.config.pin_sha256:
-            payload["pin_sha256"] = self.config.pin_sha256
-        if str(candidate.data_dir) != str(AgentConfig().data_dir):
-            payload["data_dir"] = str(candidate.data_dir)
+    def _already_enrolled(self, server: str) -> bool:
+        state = load_state(self.config.state_path)
+        return state.is_enrolled and state.server_url.rstrip("/") == server.rstrip("/")
 
+    def _write_config(self, candidate: AgentConfig) -> bool:
+        tmp = self.config_path.with_name(f".{self.config_path.name}.{uuid4().hex}.tmp")
         try:
+            # Zachowaj takze ustawienia nieznane starszemu oknu konfiguracji.
+            try:
+                payload = json.loads(self.config_path.read_text(encoding="utf-8-sig"))
+            except FileNotFoundError:
+                payload = {}
+            payload.update({k: str(v) if isinstance(v, Path) else v for k, v in asdict(candidate).items()
+                            if not k.startswith("_") and k != "config_access_denied"})
+            if not candidate.enrollment_token:
+                payload.pop("enrollment_token", None)
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            self.config_path.write_text(
-                json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                _harden_file(tmp)
+                json.dump(payload, handle, indent=2, ensure_ascii=False)
+            os.replace(tmp, self.config_path)
             return True
-        except OSError as exc:
-            messagebox.showerror(
-                "Brak uprawnien",
-                f"Nie moge zapisac konfiguracji w:\n{self.config_path}\n\n{exc}\n\n"
-                "Uruchom konfiguracje jako administrator.",
-            )
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Zapis konfiguracji", f"Nie moge zapisac konfiguracji: {exc}")
             return False
+        finally:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _on_check(self) -> None:
         """Diagnostyka polaczenia - bez zapisywania konfiguracji."""
@@ -307,8 +333,24 @@ class SettingsWindow:
         if not self._write_config(candidate):
             return
 
+        if self._already_enrolled(candidate.server_url):
+            if any(getattr(candidate, key) != getattr(self.config, key) for key in
+                   ("discovery_enabled", "discovery_auto_subnets", "discovery_cidrs")):
+                state = load_state(self.config.state_path)
+                state.last_discovery_at = ""
+                try:
+                    save_state(self.config.state_path, state)
+                except RuntimeError as exc:
+                    self._set_message(f"Zapisano konfiguracje, ale nie odswiezono terminu skanu: {exc}", "#a52222")
+                    return
+            self.saved = True
+            messagebox.showinfo("Gotowe", "Zapisano ustawienia. Zostana uzyte przy nastepnej synchronizacji. "
+                                "Mozesz wybrac Synchronizuj teraz z menu ikony.")
+            self.root.destroy()
+            return
+
         self.save_button.configure(state="disabled")
-        self.progress.grid(row=11, column=0, columnspan=3, sticky="we")
+        self.progress.grid(row=12, column=0, columnspan=3, sticky="we")
         self.progress.start(12)
         self._set_message("Rejestruje maszyne w serwerze...", "#333")
 

@@ -107,11 +107,12 @@ def run_agent_elevated(
     if config_path:
         parameters += ["--config", str(config_path)]
     parameters += args
-    quoted = " ".join(f'"{p}"' if " " in str(p) else str(p) for p in parameters)
+    quoted = subprocess.list2cmdline(parameters)
 
     try:
         # Wartosci > 32 oznaczaja powodzenie; 5 (ACCESS_DENIED) = uzytkownik odmowil.
-        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", program, quoted, None, 1)
+        # SW_HIDE dla pracy w tle; tylko konfiguracja ma otworzyc okno.
+        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", program, quoted, None, 1 if gui else 0)
         return int(result) > 32
     except (AttributeError, OSError) as exc:  # pragma: no cover - tylko Windows
         log.error("nie udalo sie podniesc uprawnien: %s", exc)

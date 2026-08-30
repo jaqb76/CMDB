@@ -282,3 +282,11 @@ kontaktu, import opiekunów z Active Directory, kolektor macOS.
 Sesje z unieważnianiem, blokada ponownej rejestracji agenta, bieżący pełny
 odczyt niezależny od historii, relacje VM/host/klaster/aplikacja oraz widok
 jakości danych opisano w [instrukcji aktualizacji](docs/przeglad-poprawki.md).
+
+### Wykrywanie urządzeń w sieci (agent 0.5.8)
+
+Agent Windows uruchamia się do zasobnika bez otwierania statusu. Opcjonalny
+moduł wykrywania włącza administrator w ustawieniach ikony. Podpowiedzi IP,
+MAC, DNS, typu sprzętu i OS trafiają do **Wykrywanie sieci** w panelu;
+elementy zatwierdza się do ewidencji po sprawdzeniu.
+[Konfiguracja, limity i aktualizacja](docs/wykrywanie-sieci.md).

@@ -87,3 +87,10 @@ szczegóły błędów oraz formularz przypisania opiekuna.
 Nowe regresje: `server/tests/test_review_improvements.py` oraz
 `agent/tests/test_enrollment_security.py`. Workflow `CMDB regression tests`
 uruchamia komplet testów serwera z PostgreSQL 16 oraz testy agenta.
+
+## Agent 0.5.8: tray i wykrywanie urządzeń
+
+Dodatkowa zmiana: zawsze cichy start ikony, opcjonalne skanowanie prywatnych
+sieci IPv4 oraz lista `/wykrywanie` z zatwierdzaniem do ewidencji.
+Konfigurację, ograniczenia i kolejność aktualizacji opisuje
+[wykrywanie-sieci.md](wykrywanie-sieci.md).

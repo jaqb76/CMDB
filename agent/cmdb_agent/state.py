@@ -37,6 +37,7 @@ class AgentState:
     last_error: str = ""
     last_sync_changed: bool = False
     last_report_hash: str = ""
+    last_discovery_at: str = ""
 
     @property
     def is_enrolled(self) -> bool:

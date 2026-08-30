@@ -775,3 +775,30 @@ class DefinicjaRaportu(Base):
         DateTime(timezone=True), nullable=False, default=utcnow
     )
     utworzyl: Mapped[str | None] = mapped_column(String(255))
+
+
+class DiscoveryScanner(Base):
+    """Last scan status, including empty, failed and partial scans."""
+    __tablename__ = "discovery_scanners"
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    details: Mapped[dict] = mapped_column(JSONType, nullable=False)
+
+
+class DiscoveryDevice(Base):
+    """Candidate, not an asset. IP is scoped to scanner to separate sites/VLANs."""
+    __tablename__ = "discovery_devices"
+    __table_args__ = (UniqueConstraint("scanner_id", "ip", name="uq_discovery_scanner_ip"),
+                      Index("ix_discovery_tenant_seen", "tenant_id", "last_seen"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    scanner_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
+    ip: Mapped[str] = mapped_column(String(64), nullable=False)
+    mac: Mapped[str] = mapped_column(String(17), nullable=False, default="")
+    hostname: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    device_type: Mapped[str] = mapped_column(String(32), nullable=False, default="inne")
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    observation: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    asset_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("assets.id", ondelete="SET NULL"))
