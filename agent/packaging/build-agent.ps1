@@ -126,7 +126,7 @@ if ($SignCertThumbprint) {
 else {
     Write-Warning "Pliki nie zostaly podpisane."
     Write-Host "  SmartScreen ostrzeze przy pierwszym uruchomieniu, a czesc systemow EDR moze plik zablokowac." -ForegroundColor DarkYellow
-    Write-Host "  Podpisywanie: .uild-agent.ps1 -SignCertThumbprint <odcisk>" -ForegroundColor DarkYellow
+    Write-Host "  Podpisywanie: .\build-agent.ps1 -SignCertThumbprint <odcisk>" -ForegroundColor DarkYellow
     Write-Host "  Skad wziac certyfikat: docs/agent-windows.md, sekcja Podpisywanie" -ForegroundColor DarkYellow
 }
 

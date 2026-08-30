@@ -80,7 +80,7 @@ jobs:
       - name: Verify single EXE and silent startup, CLI and hot replacement
         shell: pwsh
         run: |
-          $programs = @(Get-ChildItem ./agent/dist/unified/cmdb-agent*.exe)
+          $programs = @(Get-ChildItem ./agent/dist/unified/*.exe | Where-Object { $_.Name -notlike 'CMDB-Agent-Setup-*' })
           if ($programs.Count -ne 1 -or $programs[0].Name -ne 'cmdb-agent.exe') { throw "Expected one application EXE" }
           python agent/packaging/smoke-unified.py agent/dist/unified/cmdb-agent.exe
           if ($LASTEXITCODE -ne 0) { throw "Unified EXE smoke test failed" }

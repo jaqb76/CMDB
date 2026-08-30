@@ -100,7 +100,7 @@ Parametr -AgentExe wskazuje na zbudowany cmdb-agent.exe, a nie na plik zrodlowy.
 Zbuduj agenta:
 
     cd $PSScriptRoot
-    .uild-agent.ps1
+    .\build-agent.ps1
 
 a nastepnie uruchom instalacje ponownie bez parametru -AgentExe.
 "@

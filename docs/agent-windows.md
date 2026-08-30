@@ -403,7 +403,7 @@ a część systemów EDR potrafi go zablokować. Skrypt budujący przyjmuje goto
 certyfikat:
 
 ```powershell
-.uild-agent.ps1 -SignCertThumbprint 1A2B3C... -Installer
+.\build-agent.ps1 -SignCertThumbprint 1A2B3C... -Installer
 ```
 
 Podpis jest znakowany czasem (domyślnie serwerem DigiCert), więc pozostaje

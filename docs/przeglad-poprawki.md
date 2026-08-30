@@ -32,8 +32,8 @@ Po udanym enrollment i trwałym zapisie klucza maszyny usuwa wykorzystany
 token firmowy z własnego pliku konfiguracji i pamięci procesu. Token
 w zewnętrznym systemie dystrybucji konfiguracji lub środowisku usługi trzeba
 usunąć również tam. Jeśli plik jest tylko do odczytu, agent zapisuje ostrzeżenie.
-Instalatory Windows trzeba zbudować ponownie i wydać jako 0.5.7; tego PR nie
-należy traktować jako gotowego podpisanego instalatora EXE.
+Aktualne wydanie Windows to 0.5.9. Workflow buduje pojedynczy EXE i opcjonalny
+instalator; artefakty CI nie są podpisane certyfikatem wydawcy.
 
 ## Odczyty i historia
 
@@ -88,9 +88,10 @@ Nowe regresje: `server/tests/test_review_improvements.py` oraz
 `agent/tests/test_enrollment_security.py`. Workflow `CMDB regression tests`
 uruchamia komplet testów serwera z PostgreSQL 16 oraz testy agenta.
 
-## Agent 0.5.8: tray i wykrywanie urządzeń
+## Agent 0.5.9: jeden EXE, tray i wykrywanie urządzeń
 
-Dodatkowa zmiana: zawsze cichy start ikony, opcjonalne skanowanie prywatnych
+Dodatkowa zmiana: jeden `cmdb-agent.exe` dla workera i GUI, zawsze cichy start
+ikony, wspólne aktualizacje i opcjonalne skanowanie prywatnych
 sieci IPv4 oraz lista `/wykrywanie` z zatwierdzaniem do ewidencji.
 Konfigurację, ograniczenia i kolejność aktualizacji opisuje
 [wykrywanie-sieci.md](wykrywanie-sieci.md).
