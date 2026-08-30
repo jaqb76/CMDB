@@ -9,7 +9,7 @@
 </section>
 <p class="muted">Odczyt jest nieaktualny po {{ stale_after_hours }} godzinach bez kontaktu lub bez swiezego pomiaru, albo gdy agent nigdy nie raportowal.
 Zasoby reczne nie wymagaja raportow. Wycofane zasoby sa pomijane. Duplikaty sa sugestia do sprawdzenia, nie sa usuwane automatycznie.</p>
-<section class="panel"><div class="table-wrap"><table>
+<section class="panel"><div class="tabela-przewijana"><table class="table">
 <thead><tr><th>Zasob</th><th>Problemy</th><th>Ostatni kontakt</th><th>Data pomiaru</th><th>Dalsze dzialanie</th></tr></thead>
 <tbody>{% for row in rows %}<tr>
 <td><a href="/assets/{{ row.asset.id }}">{{ row.asset.hostname }}</a></td>
