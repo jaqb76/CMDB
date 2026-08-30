@@ -95,18 +95,18 @@ def neighbors():
     if sys.platform == "win32":
         rows = _powershell("@(Get-NetNeighbor -AddressFamily IPv4 | "
                            "Where-Object { $_.State -in @('Reachable','Stale','Delay','Probe','Permanent') } | "
-                           "Select-Object IPAddress,LinkLayerAddress) | ConvertTo-Json -Compress")
-        pairs = ((r.get("IPAddress"), r.get("LinkLayerAddress")) for r in rows)
+                           "Select-Object IPAddress,LinkLayerAddress,@{Name='Reachable';Expression={$_.State -eq 'Reachable'}}) | ConvertTo-Json -Compress")
+        pairs = ((r.get("IPAddress"), r.get("LinkLayerAddress"), r.get("Reachable", False)) for r in rows)
     elif sys.platform.startswith("linux"):
         rows = json.loads(_command(["ip", "-j", "-4", "neigh", "show"]))
-        pairs = ((r.get("dst"), r.get("lladdr")) for r in rows)
+        pairs = ((r.get("dst"), r.get("lladdr"), "REACHABLE" in r.get("state", [])) for r in rows)
     else:
         return {}
     result = {}
-    for ip, mac in pairs:
+    for ip, mac, reachable in pairs:
         mac = (mac or "").replace("-", ":").lower()
         if re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac) and mac not in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"}:
-            result[ip] = mac
+            result[ip] = {"mac": mac, "reachable": bool(reachable)}
     return result
 
 
@@ -128,6 +128,7 @@ class RateLimit:
 
 
 def clean_text(value, limit=240):
+    value = "".join(c if c.isprintable() else " " for c in value)
     return " ".join(value.split())[:limit]
 
 
@@ -251,13 +252,38 @@ def scan(config):
                 result["devices"].append(device)
     try:
         cache = neighbors()
+        found = {d["ip"] for d in result["devices"]}
+        targets = set(hosts)
         for device in result["devices"]:
-            device["mac"] = cache.get(device["ip"], "")
+            device["mac"] = cache.get(device["ip"], {}).get("mac", "")
+        # A local host may answer ARP but filter every TCP probe. Only a
+        # Reachable entry is evidence of activity; Stale/Permanent is not.
+        for ip, entry in cache.items():
+            if ip in targets and ip not in found and entry["reachable"]:
+                result["devices"].append({"ip": ip, "mac": entry["mac"], "hostname": "", "ports": [],
+                    **classify([], ["Aktywny wpis ARP (Reachable); brak odpowiedzi TCP w badanym zestawie."])})
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         result["errors"].append("Nie odczytano MAC: " + clean_text(str(exc), 400))
     result["complete"] = complete
     if not complete:
         result["errors"].append("Osiagnieto limit czasu; wynik czesciowy. Podziel zakres lub zwieksz budzet.")
+    return result
+
+
+def limit_result(result, max_bytes=1024 * 1024):
+    """Reserve room for normal inventory; never let banners grow without bound."""
+    devices = result["devices"]
+    result["devices"] = []
+    # Include space for the explanatory error and JSON separators.
+    used = len(json.dumps(result, ensure_ascii=False).encode("utf-8")) + 1024
+    for device in devices:
+        size = len(json.dumps(device, ensure_ascii=False).encode("utf-8")) + 2
+        if used + size > max_bytes:
+            result["complete"] = False
+            result["errors"].append("Limit rozmiaru wynikow (1 MiB); wynik czesciowy. Podziel zakres skanowania.")
+            break
+        result["devices"].append(device)
+        used += size
     return result
 
 
@@ -279,6 +305,7 @@ def attach_discovery(config, state, report):
         observation = {"scanned_at": now.isoformat(), "ranges": [], "devices": [],
                        "errors": [clean_text(str(exc), 500)], "complete": False,
                        "attempted_hosts": 0, "total_hosts": 0}
+    observation = limit_result(observation)
     report["network_discovery"] = observation
     for error in observation["errors"]:
         report.setdefault("errors", []).append({"section": "network_discovery", "message": error})

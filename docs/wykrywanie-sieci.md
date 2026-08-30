@@ -28,6 +28,8 @@ podane sieci muszą mieć trasę i zgodę zapory z maszyny skanującej.
 ## Co jest rozpoznawane
 
 - Aktywność TCP, adres IP, nazwa DNS PTR, MAC z lokalnej tablicy sąsiadów.
+  Aktywne wpisy ARP (Reachable) pozwalają dostrzec lokalne urządzenia, które
+  filtrują wszystkie badane porty TCP. Sam stary wpis ARP nie dowodzi aktywności.
 - Porty TCP: 22, 80, 135, 139, 443, 445, 515, 631, 3389, 9100.
 - Baner SSH oraz ograniczony odczyt strony głównej HTTP/HTTPS/IPP: nagłówek
   Server i tytuł strony. Mogą ujawnić producenta, model lub rodzinę OS;
@@ -74,6 +76,8 @@ Maksymalne konfigurowalne wartości: 4096 hostów, 128 połączeń/s, 900 s,
 32 zakresy; odstęp 1 h–7 dni. Zbyt duży zakres jest odrzucany w całości,
 a nie cicho przycinany. Przekroczenie czasu daje wynik częściowy z błędem.
 Licznik postępu oznacza hosty, dla których wykonano cały zestaw prób TCP.
+Wyniki wykrywania mają dodatkowy limit 1 MiB, aby zostawić miejsce na zwykły
+raport inwentaryzacyjny. Nadmiar daje wynik częściowy z zaleceniem podziału zakresu.
 Niepełne/nieudane skany są widoczne w panelu oraz błędach kolektorów raportu.
 
 Wyniki jadą tym samym uwierzytelnionym raportem HTTPS co inwentaryzacja.

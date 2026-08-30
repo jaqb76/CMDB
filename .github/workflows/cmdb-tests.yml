@@ -54,6 +54,9 @@ jobs:
       - run: pip install pytest
       - run: python -m pytest -q tests/test_discovery.py tests/test_tray_startup.py
         working-directory: agent
+      - name: Check Windows subnet and ARP readers (no active scan)
+        working-directory: agent
+        run: python -c "from cmdb_agent.discovery import local_subnets, neighbors; assert isinstance(local_subnets(), list); assert isinstance(neighbors(), dict)"
       - name: Ensure Inno Setup
         shell: pwsh
         run: |

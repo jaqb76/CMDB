@@ -15,7 +15,6 @@ import logging.handlers
 import random
 import sys
 import time
-import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -102,6 +101,7 @@ def do_enroll(config: AgentConfig, state: AgentState, client: CmdbClient) -> Age
     state.machine_id = machine_id
     state.server_url = config.server_url
     state.enrolled_at = utc_now_iso()
+    state.last_discovery_at = ""
     save_state(config.state_path, state)
     forget_enrollment_token(config)
 

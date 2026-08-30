@@ -116,6 +116,8 @@ def test_viewer_can_read_but_cannot_adopt(client, tenant_a, make_user):
     {"ranges": ["10.0.0.0/8"]}, {"devices": [{"ip": "10.0.0.2", "ports": [70000]}]},
     {"devices": [{"ip": "10.0.0.2", "hostname": "x" * 256}]},
     {"devices": [{"ip": "10.0.0.2"}, {"ip": "10.0.0.2"}]},
+    {"devices": [{"ip": "10.0.0.2", "evidence": ["bad\x00banner"]}]},
+    {"errors": ["bad\x00error"]},
     {"attempted_hosts": 0}, {"scanned_at": "2099-01-01T00:00:00Z"},
 ])
 def test_invalid_discovery_rejected_without_partial_writes(client, tenant_a, bad):

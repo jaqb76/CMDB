@@ -60,3 +60,22 @@ def test_settings_save_keeps_advanced_fields_and_does_not_require_bootstrap(tmp_
     assert payload["discovery_rate"] == 7 and not payload["collect_updates"]
     assert payload["pin_sha256"] == "ab" * 32
     assert "enrollment_token" not in payload and "_source_path" not in payload
+
+
+def test_registered_settings_accept_empty_token_and_retain_limits(tmp_path, monkeypatch):
+    window = settings_window.SettingsWindow.__new__(settings_window.SettingsWindow)
+    window.config = AgentConfig(server_url="https://cmdb.example", data_dir=tmp_path,
+                                collect_updates=False, discovery_budget_seconds=123)
+    values = {"server_var": "https://cmdb.example", "token_var": "", "ca_var": "",
+              "interval_var": "4", "processes_var": False, "discovery_var": True,
+              "discovery_auto_var": False, "discovery_cidrs_var": "10.1.1.0/24"}
+    for key, value in values.items():
+        setattr(window, key, Mock(get=Mock(return_value=value)))
+    window._set_message = Mock()
+    monkeypatch.setattr(settings_window, "load_state", lambda _: AgentState(
+        server_url="https://cmdb.example", agent_token="key", asset_id="asset"))
+    candidate = window._collect()
+    assert candidate is not None and candidate.discovery_cidrs == ["10.1.1.0/24"]
+    assert not candidate.enrollment_token and not candidate.collect_updates
+    assert candidate.discovery_budget_seconds == 123
+    window._set_message.assert_not_called()

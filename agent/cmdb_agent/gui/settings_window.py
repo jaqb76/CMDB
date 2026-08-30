@@ -333,7 +333,7 @@ class SettingsWindow:
         if not self._write_config(candidate):
             return
 
-        if self._already_enrolled(candidate.server_url):
+        if self._already_enrolled(candidate.server_url) and not candidate.enrollment_token:
             if any(getattr(candidate, key) != getattr(self.config, key) for key in
                    ("discovery_enabled", "discovery_auto_subnets", "discovery_cidrs")):
                 state = load_state(self.config.state_path)

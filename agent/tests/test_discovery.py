@@ -51,7 +51,7 @@ def test_auto_subnets_filter_public_and_keep_real_prefix(monkeypatch):
 
 def test_scan_bounds_and_partial_result(monkeypatch):
     config = AgentConfig(discovery_enabled=True, discovery_auto_subnets=False, discovery_cidrs=["10.1.1.0/30"])
-    monkeypatch.setattr(discovery, "neighbors", lambda: {"10.1.1.1": "aa:bb:cc:dd:ee:ff"})
+    monkeypatch.setattr(discovery, "neighbors", lambda: {"10.1.1.1": {"mac": "aa:bb:cc:dd:ee:ff", "reachable": True}})
     def probe(ip, limiter):
         if ip.endswith(".2"):
             return None, False
@@ -119,3 +119,30 @@ def test_invalid_limits_rejected(field, value):
     config = AgentConfig(**{field: value})
     with pytest.raises(ValueError):
         discovery.validate_config(config)
+
+
+def test_active_arp_finds_filtered_host_but_stale_and_out_of_scope_do_not(monkeypatch):
+    config = AgentConfig(discovery_enabled=True, discovery_auto_subnets=False, discovery_cidrs=["10.1.1.0/30"])
+    monkeypatch.setattr(discovery, "probe_host", lambda *_: (None, True))
+    monkeypatch.setattr(discovery, "neighbors", lambda: {
+        "10.1.1.1": {"mac": "aa:bb:cc:dd:ee:01", "reachable": True},
+        "10.1.1.2": {"mac": "aa:bb:cc:dd:ee:02", "reachable": False},
+        "10.9.9.1": {"mac": "aa:bb:cc:dd:ee:03", "reachable": True}})
+    result = discovery.scan(config)
+    assert result["complete"] and len(result["devices"]) == 1
+    assert result["devices"][0]["ip"] == "10.1.1.1"
+    assert result["devices"][0]["device_type"] == "inne"
+    assert "ARP" in result["devices"][0]["evidence"][0]
+
+
+def test_untrusted_banner_control_characters_are_removed():
+    assert discovery.clean_text('SSH-2.0\x00OpenSSH\r\n\x1b') == 'SSH-2.0 OpenSSH'
+
+
+def test_large_banners_cannot_fill_inventory_report():
+    result = {"devices": [{"ip": "10.0.0.1", "evidence": ["x" * 240] * 10}] * 2000,
+              "errors": [], "complete": True}
+    limited = discovery.limit_result(result)
+    assert 0 < len(limited["devices"]) < 2000
+    assert not limited["complete"] and limited["errors"]
+    assert len(json.dumps(limited).encode()) <= 1024 * 1024

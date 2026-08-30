@@ -21,6 +21,14 @@ class DiscoveredDevice(BaseModel):
     confidence: Literal["unknown", "low", "medium"] = "unknown"
     evidence: list[ShortText] = Field(default_factory=list, max_length=32)
 
+    @field_validator("hostname", "os_hint", "manufacturer", "evidence")
+    @classmethod
+    def safe_text(cls, value):
+        for text in value if isinstance(value, list) else [value]:
+            if "\x00" in text or any(0xD800 <= ord(c) <= 0xDFFF for c in text):
+                raise ValueError("discovery: niedozwolony znak w tekscie")
+        return value
+
     @field_validator("ip")
     @classmethod
     def private_ip(cls, value):
@@ -38,6 +46,11 @@ class NetworkDiscovery(BaseModel):
     complete: bool
     attempted_hosts: int = Field(ge=0, le=4096)
     total_hosts: int = Field(ge=0, le=4096)
+
+    @field_validator("errors")
+    @classmethod
+    def safe_errors(cls, value):
+        return DiscoveredDevice.safe_text(value)
 
     @model_validator(mode="after")
     def consistent(self):
