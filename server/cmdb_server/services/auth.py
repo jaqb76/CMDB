@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import AgentCredential, EnrollmentToken, PortalUser, Tenant, as_utc, utcnow
+from ..models import Asset, AgentCredential, EnrollmentToken, PortalUser, Tenant, as_utc, utcnow
 from ..security import (
     check_csrf_token,
     hash_password,
@@ -29,10 +29,8 @@ _failures: dict[str, deque[float]] = defaultdict(deque)
 
 
 def client_ip(request: Request) -> str:
-    # Za reverse proxy (nginx) ufamy pierwszemu wpisowi X-Forwarded-For.
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    # Uvicorn interpretuje proxy headers tylko od zaufanych proxy.
+    # Nigdy nie czytamy naglowka dostarczonego bezposrednio przez klienta.
     return request.client.host if request.client else "unknown"
 
 
@@ -149,6 +147,9 @@ def require_agent(
     ).scalar_one_or_none()
     if cred is None or not verify_token(token, cred.token_hash):
         raise _reject(ip)
+    asset = db.get(Asset, cred.asset_id)
+    if asset is None or asset.enrollment_blocked:
+        raise _reject(ip, "maszyna zablokowana przez administratora")
     if not cred.is_usable:
         raise _reject(ip, "poswiadczenie agenta wycofane")
 
@@ -198,6 +199,8 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> PortalUser 
         return None
     user = db.get(PortalUser, data["uid"])
     if user is None or not user.is_active:
+        return None
+    if data.get("sv") != user.session_version:
         return None
     return user
 

@@ -33,7 +33,7 @@ def znajdz_duplikaty(db: Session, tenant_id: str) -> list[dict]:
         numer = (maszyna.serial_number or "").strip()
         if numer:
             wedlug_cechy[("numer seryjny", numer)].append(maszyna)
-        for mak in (maszyna.facts or {}).get("mac_addresses") or []:
+        for mak in set((maszyna.facts or {}).get("mac_addresses") or []):
             if mak:
                 wedlug_cechy[("adres MAC", str(mak).upper())].append(maszyna)
 

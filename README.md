@@ -276,3 +276,9 @@ działa i służy jako wzorzec dla kolejnych systemów.
 Naturalne kolejne kroki: migracje Alembic zamiast `create_all`, porównywanie
 snapshotów w panelu (co dokładnie się zmieniło), powiadomienia o maszynach bez
 kontaktu, import opiekunów z Active Directory, kolektor macOS.
+
+## Aktualizacja: bezpieczeństwo i zarządzanie zasobami
+
+Sesje z unieważnianiem, blokada ponownej rejestracji agenta, bieżący pełny
+odczyt niezależny od historii, relacje VM/host/klaster/aplikacja oraz widok
+jakości danych opisano w [instrukcji aktualizacji](docs/przeglad-poprawki.md).

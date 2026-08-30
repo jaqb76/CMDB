@@ -4,7 +4,7 @@
 <h1>Moje konto</h1>
 
 {% if zmienione %}
-  <div class="alert alert-ok">Haslo zostalo zmienione.</div>
+  <div class="alert alert-ok">Haslo zostalo zmienione. Zaloguj sie ponownie.</div>
 {% endif %}
 {% if blad %}
   <div class="alert alert-error">{{ blad }}</div>
@@ -27,6 +27,10 @@
       <dd>{% if user.role == 'admin' %}administrator{% else %}podglad{% endif %}</dd>
       <dt>Ostatnie logowanie</dt><dd>{{ user.last_login_at | dt }}</dd>
     </dl>
+    <form method="post" action="/konto/wyloguj-wszystkie">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-danger">Wyloguj wszystkie urzadzenia</button>
+    </form>
   </section>
 
   <section class="panel">
@@ -51,7 +55,7 @@
              minlength="{{ min_dlugosc_hasla }}">
       {# Bez generatora: to haslo trzeba zapamietac, a wylosowane i tak
          zostaloby wpisane recznie w pole ponizej. #}
-      <p class="small muted">Co najmniej {{ min_dlugosc_hasla }} znakow.</p>
+      <p class="small muted">Co najmniej {{ min_dlugosc_hasla }} znakow. Zmiana hasla wyloguje wszystkie sesje.</p>
       <button type="submit" class="btn btn-primary">Zmien haslo</button>
     </form>
   </section>

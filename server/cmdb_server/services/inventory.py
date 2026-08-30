@@ -16,9 +16,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import delete, func, select
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from ..models import Asset, AssetChange, InventorySnapshot, Tenant, utcnow
+from ..models import AssetCurrentReport, ReportReceipt, as_utc, Asset, AssetChange, InventorySnapshot, Tenant, utcnow
 from ..schemas import InventoryReport
 from . import architektura, changes, ustawienia
 from .scoping import TenantContext
@@ -27,6 +28,7 @@ log = logging.getLogger(__name__)
 
 # Pola zmieniajace sie przy kazdym odczycie - nie moga wywolywac nowego snapshotu.
 VOLATILE_PATHS: tuple[str, ...] = (
+    "report_id",
     "agent.collected_at",
     "agent.duration_ms",
     "os.last_boot",
@@ -35,6 +37,7 @@ VOLATILE_PATHS: tuple[str, ...] = (
     "hardware.memory.available_bytes",
     "hardware.storage.logical_disks[].free_bytes",
     "hardware.storage.logical_disks[].free_percent",
+    "hardware.storage.logical_disks[].used_percent",
     "software.processes",
     "users.sessions",
     # Znacznik sprawdzenia i wiek indeksu zmieniaja sie przy KAZDYM raporcie.
@@ -78,11 +81,33 @@ def _split_path(path: str) -> list[str]:
     return segments
 
 
+# Tylko znane zbiory. Kolejnosc nieznanych rozszerzen pozostaje znaczaca.
+SET_PATHS = {
+    "software.packages", "software.services", "software.updates",
+    "users.local_accounts", "users.administrators", "users.sensitive_groups",
+    "hardware.memory.modules", "hardware.storage.physical_disks",
+    "hardware.storage.logical_disks", "network.interfaces",
+    "network.interfaces[].ip_addresses", "network.interfaces[].gateways",
+}
+
+
+def canonicalize_inventory(value: Any, path: str = "") -> Any:
+    if isinstance(value, dict):
+        return {k: canonicalize_inventory(v, f"{path}.{k}" if path else k) for k, v in value.items()}
+    if isinstance(value, list):
+        items = [canonicalize_inventory(v, path + "[]") for v in value]
+        if path in SET_PATHS:
+            items.sort(key=lambda v: json.dumps(v, sort_keys=True, ensure_ascii=False))
+        return items
+    return value
+
+
 def stable_fingerprint(payload: dict) -> str:
     """SHA-256 raportu po odcieciu pol ulotnych."""
     stable = json.loads(json.dumps(payload, default=str))
     for path in VOLATILE_PATHS:
         _prune(stable, _split_path(path))
+    stable = canonicalize_inventory(stable)
     canonical = json.dumps(stable, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -215,64 +240,69 @@ def store_report(
     db: Session, ctx: TenantContext, asset: Asset, report: InventoryReport
 ) -> tuple[InventorySnapshot | None, bool]:
     """Zapisuje raport. Zwraca (snapshot, czy_stan_sie_zmienil)."""
-    payload = report.model_dump(mode="json")
+    # Wszystkie zapisy dla jednej maszyny maja jeden porzadek transakcyjny.
+    asset = db.execute(select(Asset).where(
+        Asset.id == asset.id, Asset.tenant_id == ctx.tenant_id
+    ).with_for_update().execution_options(populate_existing=True)).scalar_one()
+    if asset.enrollment_blocked:
+        raise HTTPException(status_code=403, detail="maszyna zablokowana")
+    payload = report.model_dump(mode="json", exclude_none=False)
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    content_hash = hashlib.sha256(encoded.encode()).hexdigest()
+    report_key = str(report.report_id) if report.report_id else content_hash
+    asset.last_seen = utcnow()
+    receipt = db.get(ReportReceipt, (asset.id, report_key))
+    if receipt is not None:
+        if receipt.content_hash != content_hash:
+            raise HTTPException(status_code=409, detail="report_id uzyty dla innej tresci")
+        return None, False
+    db.add(ReportReceipt(asset_id=asset.id, tenant_id=ctx.tenant_id,
+                         report_key=report_key, content_hash=content_hash))
     fingerprint = stable_fingerprint(payload)
     collected_at = _normalize_collected_at(report.agent.collected_at)
-
-    apply_identity(asset, report, payload)
-    asset.facts = summarize(payload)
-    asset.last_seen = utcnow()
-    asset.is_active = True
-
-    previous = db.execute(
-        select(InventorySnapshot)
+    current = db.get(AssetCurrentReport, asset.id)
+    previous = db.execute(select(InventorySnapshot)
         .where(InventorySnapshot.asset_id == asset.id)
-        .order_by(InventorySnapshot.collected_at.desc())
-        .limit(1)
-    ).scalar_one_or_none()
-
-    if previous is not None and previous.payload_hash == fingerprint:
-        # Stan bez zmian - odswiezamy tylko czas ostatniego kontaktu.
+        .order_by(InventorySnapshot.collected_at.desc(), InventorySnapshot.received_at.desc())
+        .limit(1)).scalar_one_or_none()
+    latest_time = current.collected_at if current else (previous.collected_at if previous else None)
+    # Odczyt starszy nie moze cofnac stanu ani generowac
+    # odwrotnych zmian. Zachowujemy go jako historyczny snapshot.
+    historical = latest_time is not None and collected_at < as_utc(latest_time)
+    if not historical:
+        apply_identity(asset, report, payload)
+        asset.facts = summarize(payload)
+        if current is None:
+            current = AssetCurrentReport(asset_id=asset.id, tenant_id=ctx.tenant_id)
+            db.add(current)
+        current.payload = payload
+        current.payload_hash = fingerprint
+        current.collected_at = collected_at
+        current.received_at = utcnow()
+    previous_hash = stable_fingerprint(previous.payload) if previous else None
+    if previous is not None and previous_hash == fingerprint:
         return previous, False
-
-    # Roznice liczymy wzgledem poprzedniego raportu i zapisujemy - dzieki temu
-    # pytanie "gdzie doszlo konto administratora" jest jednym zapytaniem po
-    # indeksie, a nie porownaniem wszystkich raportow w locie.
-    zmiany = changes.wykryj_zmiany(previous.payload if previous else None, payload)
-
-    encoded = json.dumps(payload, ensure_ascii=False)
+    zmiany = [] if historical else changes.wykryj_zmiany(
+        canonicalize_inventory(previous.payload) if previous else None,
+        canonicalize_inventory(payload),
+    )
     snapshot = InventorySnapshot(
-        tenant_id=ctx.tenant_id,
-        asset_id=asset.id,
-        schema_version=report.schema_version,
-        collected_at=collected_at,
-        payload_hash=fingerprint,
-        size_bytes=len(encoded.encode("utf-8")),
-        payload=payload,
+        tenant_id=ctx.tenant_id, asset_id=asset.id, schema_version=report.schema_version,
+        collected_at=collected_at, payload_hash=fingerprint,
+        size_bytes=len(encoded.encode("utf-8")), payload=payload,
     )
     db.add(snapshot)
     db.flush()
-    asset.last_change_at = utcnow()
-
+    if not historical:
+        asset.last_change_at = utcnow()
     for zmiana in zmiany:
-        db.add(
-            AssetChange(
-                tenant_id=ctx.tenant_id,
-                asset_id=asset.id,
-                snapshot_id=snapshot.id,
-                occurred_at=collected_at,
-                **zmiana,
-            )
-        )
-    if zmiany:
-        log.info("maszyna %s: %d zmian w konfiguracji", asset.hostname, len(zmiany))
-
+        db.add(AssetChange(tenant_id=ctx.tenant_id, asset_id=asset.id,
+                          snapshot_id=snapshot.id, occurred_at=collected_at, **zmiana))
     retencja = ustawienia.retencja_raportow(db.get(Tenant, ctx.tenant_id))
     if retencja > 0:
         db.flush()
         _apply_retention(db, asset.id, retencja)
-
-    return snapshot, True
+    return snapshot, not historical
 
 
 def _apply_retention(db: Session, asset_id: str, keep: int) -> None:

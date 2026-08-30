@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = 1
 
@@ -26,10 +27,10 @@ class MachineIdentity(BaseModel):
     # dostaje propozycji aktualizacji, zamiast dostac plik nie do uruchomienia.
     arch: str | None = Field(default=None, max_length=16)
 
-    @field_validator("hostname")
+    @field_validator("hostname", mode="before")
     @classmethod
     def _strip_hostname(cls, v: str) -> str:
-        return v.strip()
+        return v.strip() if isinstance(v, str) else v
 
 
 class AgentInfo(BaseModel):
@@ -66,6 +67,7 @@ class InventoryReport(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     schema_version: int = SCHEMA_VERSION
+    report_id: UUID | None = None
     machine_id: str = Field(min_length=8, max_length=128)
     agent: AgentInfo
     identity: MachineIdentity
@@ -77,6 +79,75 @@ class InventoryReport(BaseModel):
     users: dict[str, Any] = Field(default_factory=dict)
     # Bledy czastkowe: jeden nieudany kolektor nie psuje calego raportu.
     errors: list[dict[str, Any]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_known_sections(self):
+        # Otwarte rozszerzenia pozostaja dozwolone, ale znane kontenery i
+        # pola musza spelniac kontrakt funkcji summarize/changes i widokow.
+        objects = {
+            "hardware": ("system", "cpu", "memory", "storage", "firmware"),
+            "software": ("updates_pending",),
+        }
+        lists = {
+            "hardware.memory": ("modules",),
+            "hardware.storage": ("physical_disks", "logical_disks"),
+            "network": ("interfaces",),
+            "software": ("packages", "services", "updates", "processes"),
+            "users": ("local_accounts", "administrators", "sessions", "sensitive_groups"),
+            "software.updates_pending": ("packages",),
+        }
+        def get(path):
+            parts = path.split(".")
+            value = getattr(self, parts[0])
+            for part in parts[1:]:
+                value = value.get(part) if isinstance(value, dict) else None
+            return value
+        for path, fields in objects.items():
+            parent = get(path)
+            for field in fields:
+                value = parent.get(field)
+                if value is not None and not isinstance(value, dict):
+                    raise ValueError(f"{path}.{field}: oczekiwano obiektu")
+        for path, fields in lists.items():
+            parent = get(path)
+            if parent is None:
+                continue
+            for field in fields:
+                value = parent.get(field)
+                if value is not None and (not isinstance(value, list) or any(not isinstance(v, dict) for v in value)):
+                    raise ValueError(f"{path}.{field}: oczekiwano listy obiektow")
+        # Znane pola tekstowe wykorzystywane m.in. jako klucze porownania.
+        text_fields = {"name", "model", "serial_number", "slot", "mac_address", "version",
+                       "display_name", "publisher", "manufacturer", "caption"}
+        known_records = {
+            "hardware.system", "hardware.cpu", "hardware.memory", "hardware.firmware",
+            "hardware.memory.modules[]", "hardware.storage.physical_disks[]",
+            "hardware.storage.logical_disks[]", "software.packages[]", "software.services[]",
+            "software.updates[]", "software.processes[]", "software.updates_pending.packages[]",
+            "network.interfaces[]", "users.local_accounts[]", "users.administrators[]",
+            "users.sessions[]", "users.sensitive_groups[]", "os",
+        }
+        def check(node, path):
+            if isinstance(node, list):
+                for item in node:
+                    check(item, path + "[]")
+            elif isinstance(node, dict):
+                for key, value in node.items():
+                    if path in known_records and (key in text_fields or (path == "software.updates[]" and key == "id")) and value is not None and not isinstance(value, str):
+                        raise ValueError(f"{path}.{key}: oczekiwano tekstu")
+                    if path == "network.interfaces[]" and key in {"ip_addresses", "gateways", "dns_servers"} and value is not None:
+                        if not isinstance(value, list) or any(not isinstance(v, str) or len(v) > 255 for v in value):
+                            raise ValueError(f"{path}.{key}: oczekiwano listy tekstow")
+                    check(value, path + "." + key)
+        for section in ("hardware", "network", "software", "users", "os"):
+            check(getattr(self, section), section)
+        for path, limit in {"hardware.system.manufacturer":128, "hardware.system.model":128,
+                            "hardware.system.serial_number":128, "os.name":200,
+                            "os.caption":200, "os.version":100}.items():
+            value = get(path)
+            if isinstance(value, str) and len(value) > limit:
+                raise ValueError(f"{path}: maksymalnie {limit} znakow")
+        return self
 
     @field_validator("schema_version")
     @classmethod

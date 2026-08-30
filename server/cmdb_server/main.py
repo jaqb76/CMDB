@@ -21,6 +21,7 @@ from .api import admin as admin_api
 from .api import agent as agent_api
 from .api import download as download_api
 from .api import raporty_ui
+from .api import asset_management
 from .api import ui as ui_api
 from .config import get_settings
 from .db import init_db
@@ -152,6 +153,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_api.router)
     app.include_router(ui_api.router)
     app.include_router(raporty_ui.router)
+    app.include_router(asset_management.router)
 
     # Agenci wysylaja raporty spakowane gzipem - rozpakowujemy z limitem.
     app.add_middleware(GzipRequestMiddleware, max_bytes=settings.max_report_bytes)
@@ -166,7 +168,7 @@ def create_app() -> FastAPI:
             # Sprawdzenie zywotnosci idzie po HTTP z wnetrza kontenera, przed
             # nginx - nie niesie tokenu ani danych, wiec wymaganie od niego
             # HTTPS oznaczaloby kontener na zawsze uznawany za niesprawny.
-            proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+            proto = request.url.scheme
             if proto != "https":
                 # Zadania z tokenem nie przekierowujemy, tylko odrzucamy:
                 # naglowek juz doszedl po czystym HTTP, wiec token juz wyciekl

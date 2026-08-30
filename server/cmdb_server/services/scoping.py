@@ -7,11 +7,12 @@ bo nie ma wersji zapytania bez tenant_id.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from ..models import Asset, AuditLog, EnrollmentToken, InventorySnapshot, Owner
+from ..models import AssetCurrentReport, Asset, AuditLog, EnrollmentToken, InventorySnapshot, Owner
 
 
 @dataclass(frozen=True)
@@ -89,3 +90,15 @@ def audit(
             ip=ip,
         )
     )
+
+
+def current_reading(db: Session, ctx: TenantContext, asset_id: str):
+    row = db.execute(select(AssetCurrentReport).where(
+        AssetCurrentReport.asset_id == asset_id,
+        AssetCurrentReport.tenant_id == ctx.tenant_id,
+    )).scalar_one_or_none()
+    if row is not None:
+        return SimpleNamespace(id=None, asset_id=asset_id, payload=row.payload,
+                               collected_at=row.collected_at, received_at=row.received_at)
+    # Przed pierwszym raportem po aktualizacji nadal pokazujemy historie.
+    return latest_snapshot(db, ctx, asset_id)

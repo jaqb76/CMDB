@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Jakosc danych - CMDB{% endblock %}
+{% block content %}
+<h1>Jakosc danych</h1>
+<p>{{ affected }} z {{ total }} aktywnych zasobow wymaga sprawdzenia. Jeden zasob moze miec kilka problemow.</p>
+<section class="panel">
+<a class="btn" href="/jakosc">Wszystkie problemy</a>
+{% for key, label in labels.items() %}<a class="btn{% if issue == key %} btn-primary{% endif %}" href="/jakosc?issue={{ key }}">{{ label }}: {{ counts[key] }}</a>{% endfor %}
+</section>
+<p class="muted">Odczyt jest nieaktualny po {{ stale_after_hours }} godzinach bez kontaktu lub bez swiezego pomiaru, albo gdy agent nigdy nie raportowal.
+Zasoby reczne nie wymagaja raportow. Wycofane zasoby sa pomijane. Duplikaty sa sugestia do sprawdzenia, nie sa usuwane automatycznie.</p>
+<section class="panel"><div class="table-wrap"><table>
+<thead><tr><th>Zasob</th><th>Problemy</th><th>Ostatni kontakt</th><th>Data pomiaru</th><th>Dalsze dzialanie</th></tr></thead>
+<tbody>{% for row in rows %}<tr>
+<td><a href="/assets/{{ row.asset.id }}">{{ row.asset.hostname }}</a></td>
+<td>{% for key in row.issues %}<span class="badge badge-warn">{{ labels[key] }}{% if key == 'errors' %}: {{ row.errors }}{% endif %}</span> {% endfor %}</td>
+<td>{% if row.asset.zrodlo == 'agent' %}{{ row.asset.last_seen | dt }}{% else %}nie dotyczy{% endif %}</td>
+<td>{{ row.asset.measured_at | dt }}</td>
+<td><a href="/assets/{{ row.asset.id }}">Sprawdz karte zasobu</a>{% if 'duplicates' in row.issues %} · <a href="/duplikaty">Porownaj duplikaty</a>{% endif %}</td>
+</tr>{% else %}<tr><td colspan="5">Brak problemow w wybranym zakresie.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+<nav aria-label="Strony jakosci danych">{% if page > 1 %}<a class="btn" href="/jakosc?page={{ page - 1 }}&amp;issue={{ issue }}">Poprzednia</a>{% endif %}
+<span>Strona {{ page }}</span>
+{% if has_next %}<a class="btn" href="/jakosc?page={{ page + 1 }}&amp;issue={{ issue }}">Nastepna</a>{% endif %}</nav>
+{% endblock %}

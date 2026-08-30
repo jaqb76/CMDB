@@ -78,6 +78,10 @@ def test_closed_port_reports_refusal():
 
 def test_silent_drop_reports_firewall(monkeypatch):
     """Zapora odrzucajaca pakiety po cichu daje timeout, nie odmowe."""
+    # Nie zakladamy, ze konkretne prywatne IP jest routowalne w CI.
+    def timeout(*args, **kwargs):
+        raise socket.timeout("timed out")
+    monkeypatch.setattr(socket.socket, "connect", timeout)
     monkeypatch.setattr(diagnose, "PROBE_TIMEOUT", 0.4)
     steps, hints = diagnose.run_diagnostics("https://10.255.255.1:8443")
     tcp = [s for s in steps if s.name.startswith("Polaczenie TCP")]

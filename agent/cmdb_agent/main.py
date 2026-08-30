@@ -22,7 +22,7 @@ from pathlib import Path
 from . import __version__
 from .collectors import get_collector
 from .collectors.common import utc_now_iso
-from .config import AgentConfig, default_config_path, load_config
+from .config import AgentConfig, default_config_path, load_config, forget_enrollment_token
 from .report import build_report, report_hash, report_size
 from . import status, upgrade
 from .spool import load_report, pending_reports, spool_report
@@ -103,6 +103,7 @@ def do_enroll(config: AgentConfig, state: AgentState, client: CmdbClient) -> Age
     state.server_url = config.server_url
     state.enrolled_at = utc_now_iso()
     save_state(config.state_path, state)
+    forget_enrollment_token(config)
 
     status.publish(config, state)
     log.info(
@@ -173,19 +174,10 @@ def do_run(config: AgentConfig, state: AgentState, client: CmdbClient) -> int:
     try:
         response = send_report(config, state, client, report)
     except ApiError as exc:
-        if exc.status == 401 and config.enrollment_token:
-            # Poswiadczenie wycofane lub uniewaznione ponowna rejestracja innej instalacji.
-            log.warning("serwer odrzucil poswiadczenie (%s) - probuje zarejestrowac ponownie", exc)
-            state = do_enroll(config, state, client)
-            response = send_report(config, state, client, report)
-        elif exc.status == 409:
-            log.warning("konflikt identyfikatora maszyny - rejestruje ponownie")
-            state = do_enroll(config, state, client)
-            response = send_report(config, state, client, report)
-        else:
-            log.error("serwer odrzucil raport: %s", exc)
-            record_attempt(config, state, "error", str(exc))
-            return 2
+        # Cofniety klucz nie jest zgoda na ponowna rejestracje.
+        log.error("serwer odrzucil raport: %s; rejestracja wymaga dzialania administratora", exc)
+        record_attempt(config, state, "error", str(exc))
+        return 2
     except TransportError as exc:
         log.error("brak lacznosci z serwerem: %s - raport trafia do bufora", exc)
         spool_report(config.spool_dir, report)

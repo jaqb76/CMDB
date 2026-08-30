@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import time
+from uuid import uuid4
 
 from . import SCHEMA_VERSION, __version__
 from .collectors.base import BaseCollector
@@ -22,6 +23,7 @@ def build_report(collector: BaseCollector) -> dict:
 
     report = {
         "schema_version": SCHEMA_VERSION,
+        "report_id": str(uuid4()),
         "machine_id": machine_id,
         "agent": {
             "version": __version__,
@@ -55,6 +57,6 @@ def report_size(report: dict) -> int:
 
 def report_hash(report: dict) -> str:
     """Skrot uzywany lokalnie do logowania, czy cokolwiek sie zmienilo."""
-    stripped = {k: v for k, v in report.items() if k != "agent"}
+    stripped = {k: v for k, v in report.items() if k not in {"agent", "report_id"}}
     canonical = json.dumps(stripped, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

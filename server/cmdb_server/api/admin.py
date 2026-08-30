@@ -535,6 +535,7 @@ def ustaw_haslo_konta(
             detail=f"haslo musi miec co najmniej {MIN_DLUGOSC_HASLA} znakow",
         )
 
+    konto.session_version = PortalUser.session_version + 1
     konto.password_hash = hash_password(password)
     audit(db, None, action="haslo.ustawione_przez_admina", target=konto.email,
           detail={"tenant": konto.tenant.slug if konto.tenant else None},

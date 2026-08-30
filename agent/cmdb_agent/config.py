@@ -8,6 +8,7 @@ Plik konfiguracyjny lezy obok stanu agenta:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -78,6 +79,7 @@ class AgentConfig:
     # ma do niego dostepu - agent dziala dalej na wartosciach domyslnych,
     # a polecenie moze o tym poinformowac.
     config_access_denied: Path | None = None
+    _source_path: Path | None = field(default=None, init=False, repr=False)
 
     @property
     def state_path(self) -> Path:
@@ -161,12 +163,13 @@ def load_config(config_path: Path | None = None, overrides: dict | None = None) 
     if overrides:
         _apply(config, {k: v for k, v in overrides.items() if v is not None})
 
+    config._source_path = path
     return config
 
 
 def _apply(config: AgentConfig, values: dict) -> None:
     for key, value in values.items():
-        if not hasattr(config, key):
+        if key.startswith("_") or not hasattr(config, key):
             continue
         if key in _INT_FIELDS:
             value = int(value)
@@ -175,3 +178,37 @@ def _apply(config: AgentConfig, values: dict) -> None:
         elif key == "data_dir":
             value = Path(value)
         setattr(config, key, value)
+
+
+def forget_enrollment_token(config: AgentConfig) -> None:
+    """Usuwa zuzyty bootstrap z konfiguracji dopiero po zapisaniu klucza maszyny.
+
+    Plik zarzadzany zewnetrznie moze byc tylko do odczytu. Wtedy ostrzegamy,
+    ale nie odrzucamy juz poprawnie zapisanego poswiadczenia agenta.
+    """
+    from .state import _harden_file
+    token, config.enrollment_token = config.enrollment_token, ""
+    os.environ.pop("CMDB_AGENT_TOKEN", None)
+    path = config._source_path
+    if path is None or not path.is_file():
+        return
+    from uuid import uuid4
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.enroll.tmp")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(data, dict) or data.get("enrollment_token") != token:
+            return
+        data.pop("enrollment_token", None)
+        fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            _harden_file(tmp)
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "nie usunieto tokenu rejestracyjnego z konfiguracji; usun go recznie (%s)", type(exc).__name__)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass

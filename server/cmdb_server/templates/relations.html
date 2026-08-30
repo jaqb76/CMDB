@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Relacje zasobow - CMDB{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Relacje zasobow</h1><a class="btn" href="/assets/nowy">Dodaj zasob</a></div>
+<p class="muted">Kierunek: VM → host, host → klaster, aplikacja → serwer. Aplikacja moze korzystac z wielu serwerow.
+Klastry i aplikacje dodaj jako zasoby reczne z odpowiednim typem. Typ „Komputer / serwer” jest zgodny z dotychczasowymi agentami.</p>
+{% if asset_id %}<p><a href="/assets/{{ asset_id }}">Wroc do zasobu</a> · <a href="/relacje">Wszystkie relacje</a></p>{% endif %}
+{% if ctx.can_write %}
+<section class="panel">
+<h2>Dodaj relacje</h2>
+<form method="post" action="/relacje" class="row-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div><label for="source_id">Zasob zrodlowy</label><select id="source_id" name="source_id" required>
+{% for asset in assets %}<option value="{{ asset.id }}" {% if asset.id == asset_id %}selected{% endif %}>{{ asset.hostname }} ({{ asset.typ }})</option>{% endfor %}
+</select></div>
+<div><label for="kind">Relacja</label><select id="kind" name="kind">
+{% for key, label in kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+</select></div>
+<div><label for="target_id">Zasob docelowy</label><select id="target_id" name="target_id" required>
+{% for asset in assets %}<option value="{{ asset.id }}">{{ asset.hostname }} ({{ asset.typ }})</option>{% endfor %}
+</select></div>
+<button type="submit" class="btn btn-primary">Dodaj</button>
+</form>
+</section>
+{% endif %}
+<section class="panel"><div class="table-wrap"><table>
+<thead><tr><th>Zrodlo</th><th>Kierunek</th><th>Cel</th><th>Dodano</th>{% if ctx.can_write %}<th>Akcja</th>{% endif %}</tr></thead>
+<tbody>{% for relation in relations %}<tr>
+<td><a href="/assets/{{ relation.source_id }}">{{ relation.source.hostname }}</a></td>
+<td>{{ kinds[relation.kind] }}</td>
+<td><a href="/assets/{{ relation.target_id }}">{{ relation.target.hostname }}</a></td>
+<td>{{ relation.created_at | dt }}</td>
+{% if ctx.can_write %}<td><form method="post" action="/relacje/{{ relation.id }}/delete" data-confirm="Usunac relacje?">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-small btn-danger" type="submit">Usun</button>
+</form></td>{% endif %}
+</tr>{% else %}<tr><td colspan="5" class="muted">Brak relacji w wybranym zakresie.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+<nav aria-label="Strony relacji">{% if page > 1 %}<a class="btn" href="/relacje?page={{ page - 1 }}&amp;asset_id={{ asset_id }}">Poprzednia</a>{% endif %}
+<span>Strona {{ page }}</span>
+{% if has_next %}<a class="btn" href="/relacje?page={{ page + 1 }}&amp;asset_id={{ asset_id }}">Nastepna</a>{% endif %}</nav>
+{% endblock %}

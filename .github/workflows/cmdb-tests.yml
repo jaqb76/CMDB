@@ -1,0 +1,41 @@
+name: CMDB regression tests
+on:
+  push:
+    branches: ["codex/**"]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cmdb
+          POSTGRES_PASSWORD: cmdb
+          POSTGRES_DB: cmdb_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cmdb -d cmdb_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r server/requirements-dev.txt
+      - run: python -m pytest -q
+        working-directory: server
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - run: python -m pytest -q
+        working-directory: agent

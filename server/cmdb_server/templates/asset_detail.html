@@ -23,7 +23,7 @@
     </p>
   </div>
   <div class="head-actions">
-    <a class="btn btn-small" href="/assets/{{ asset.id }}/raw.json{% if snapshot %}?snapshot={{ snapshot.id }}{% endif %}">Surowy JSON</a>
+    <a class="btn btn-small" href="/assets/{{ asset.id }}/raw.json{% if snapshot and snapshot.id %}?snapshot={{ snapshot.id }}{% endif %}">Surowy JSON</a>
     <a class="btn btn-small btn-ghost" href="/assets">Wroc do listy</a>
   </div>
 </div>
@@ -40,6 +40,21 @@
   {% endif %}
 {% endif %}
 
+{% if snapshot %}
+<p class="muted">Data pomiaru: {{ snapshot.collected_at | dt }} · odebrano {{ snapshot.received_at | dt }}.
+{% if request.query_params.get('snapshot') %}<strong>Odczyt historyczny.</strong> <a href="/assets/{{ asset.id }}">Pokaz aktualny odczyt</a>{% endif %}</p>
+{% endif %}
+
+{% if asset.enrollment_blocked %}
+<div class="alert alert-error">Agent zablokowany. Raportowanie i ponowna rejestracja sa wstrzymane.
+{% if ctx.can_write %}
+<form method="post" action="/assets/{{ asset.id }}/enrollment/unblock">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<button class="btn" type="submit">Zezwol na ponowna rejestracje</button>
+</form>
+{% endif %}</div>
+{% endif %}
+<p><a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakosc danych</a></p>
 {% if collector_errors %}
   <div class="alert alert-warn">
     <b>Kolektory zglosily bledy ({{ collector_errors | length }}):</b>

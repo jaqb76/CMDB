@@ -9,7 +9,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -57,9 +57,15 @@ def enroll(
         can_write=True,
     )
 
+    # Serializuje enrollment takze wtedy, gdy zasob jeszcze nie istnieje.
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+               {"key": tenant.id + ":" + payload.machine_id})
     asset = db.execute(
-        select(Asset).where(Asset.tenant_id == tenant.id, Asset.machine_id == payload.machine_id)
+        select(Asset).where(Asset.tenant_id == tenant.id, Asset.machine_id == payload.machine_id).with_for_update()
     ).scalar_one_or_none()
+
+    if asset is not None and asset.enrollment_blocked:
+        raise HTTPException(status_code=403, detail="maszyna zablokowana; administrator musi zezwolic na rejestracje")
 
     created = asset is None
     if asset is None:

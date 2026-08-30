@@ -86,6 +86,10 @@ def _maszyny(db: Session, tenant_id: str) -> list[Asset]:
 
 
 def _ostatni_raport(db: Session, asset_id: str) -> dict | None:
+    from ..models import AssetCurrentReport
+    current = db.get(AssetCurrentReport, asset_id)
+    if current is not None:
+        return current.payload
     return db.execute(
         select(InventorySnapshot.payload)
         .where(InventorySnapshot.asset_id == asset_id)

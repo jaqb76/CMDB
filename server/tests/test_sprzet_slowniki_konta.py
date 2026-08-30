@@ -391,7 +391,7 @@ def test_administrator_firmy_zmienia_sobie_haslo(client, tenant_a, make_user):
         follow_redirects=False,
     )
     assert odpowiedz.status_code == 303
-    assert "zmienione=1" in odpowiedz.headers["location"]
+    assert odpowiedz.headers["location"] == "/login"
 
     client.post("/logout")
     _login(client, "admin@firma-a.pl", "jeszcze-dluzsze-haslo")

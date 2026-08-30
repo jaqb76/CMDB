@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -52,6 +53,10 @@ TYPY_SPRZETU: dict[str, str] = {
     "monitor": "Monitor",
     "telefon": "Telefon / tablet",
     "inne": "Inne",
+    "vm": "Maszyna wirtualna",
+    "host": "Host wirtualizacji",
+    "klaster": "Klaster",
+    "aplikacja": "Aplikacja",
 }
 
 
@@ -117,6 +122,7 @@ class PortalUser(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(200))
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # admin  - moze zarzadzac tokenami, opiekunami i uzytkownikami swojej firmy
     # viewer - tylko odczyt
     role: Mapped[str] = mapped_column(String(20), default="viewer", nullable=False)
@@ -304,6 +310,7 @@ class Asset(Base):
     serial_number: Mapped[str | None] = mapped_column(String(128), index=True)
     primary_ip: Mapped[str | None] = mapped_column(String(64))
     agent_version: Mapped[str | None] = mapped_column(String(32))
+    enrollment_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Rodzaj sprzetu i sposob, w jaki trafil do bazy. Zasob wpisany recznie
     # (drukarka, switch) nie ma agenta i nigdy sie nie odezwie - bez tego
@@ -379,6 +386,52 @@ class Asset(Base):
     snapshots: Mapped[list["InventorySnapshot"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan", order_by="InventorySnapshot.collected_at.desc()"
     )
+
+
+class AssetCurrentReport(Base):
+    """Ostatni pelny odczyt, niezalezny od historii zmian konfiguracji."""
+    __tablename__ = "asset_current_reports"
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    payload: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ReportReceipt(Base):
+    """Idempotencja takze dla raportow bez zmiany i po retencji snapshotow."""
+    __tablename__ = "report_receipts"
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    report_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+RELATION_KINDS = {
+    "vm_host": "VM → host",
+    "host_cluster": "Host → klaster",
+    "application_server": "Aplikacja → serwer",
+}
+
+
+class AssetRelation(Base):
+    __tablename__ = "asset_relations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "source_id", "target_id", "kind", name="uq_asset_relation"),
+        CheckConstraint("source_id <> target_id", name="ck_relation_not_self"),
+        CheckConstraint("kind IN ('vm_host', 'host_cluster', 'application_server')", name="ck_relation_kind"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[Asset] = relationship(foreign_keys=[source_id])
+    target: Mapped[Asset] = relationship(foreign_keys=[target_id])
 
 
 class AgentCredential(Base):

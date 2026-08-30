@@ -334,7 +334,7 @@ def login_submit(
     response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         settings.session_cookie,
-        sign_session({"uid": user.id}),
+        sign_session({"uid": user.id, "sv": user.session_version}),
         max_age=settings.session_max_age,
         httponly=True,
         secure=settings.require_https,
@@ -350,6 +350,39 @@ def logout(request: Request) -> Response:
     response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(settings.session_cookie, path="/")
     return response
+
+
+@router.post("/konto/wyloguj-wszystkie")
+def logout_all(request: Request, csrf_token: str = Form(""),
+               user: PortalUser = Depends(require_user), db: Session = Depends(get_db)) -> Response:
+    verify_csrf(request, user, csrf_token)
+    user.session_version = PortalUser.session_version + 1
+    audit(db, None, action="session.revoke_all", actor=user.email, ip=client_ip(request))
+    db.commit()
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(get_settings().session_cookie, path="/")
+    return response
+
+
+@router.post("/assets/{asset_id}/enrollment/unblock")
+def unblock_enrollment(asset_id: str, request: Request, csrf_token: str = Form(""),
+                      user: PortalUser = Depends(require_user),
+                      ctx: TenantContext = Depends(resolve_tenant),
+                      db: Session = Depends(get_db)) -> Response:
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+    asset = db.execute(scoping.assets_query(ctx).where(Asset.id == asset_id).with_for_update()).scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono maszyny")
+    # Odblokowanie nie przywraca starych kluczy.
+    for credential in db.execute(select(AgentCredential).where(
+        AgentCredential.asset_id == asset.id, AgentCredential.revoked_at.is_(None)
+    )).scalars():
+        credential.revoked_at = utcnow()
+    asset.enrollment_blocked = False
+    audit(db, ctx, action="agent.enrollment_unblocked", target=asset.hostname, ip=client_ip(request))
+    db.commit()
+    return RedirectResponse(f"/assets/{asset.id}", status_code=303)
 
 
 @router.get("/switch-tenant")
@@ -722,7 +755,7 @@ def asset_detail(
         if current is None or current.asset_id != asset.id:
             raise HTTPException(status_code=404, detail="nie znaleziono snapshotu")
     else:
-        current = scoping.latest_snapshot(db, ctx, asset.id)
+        current = scoping.current_reading(db, ctx, asset.id)
 
     history = db.execute(
         select(InventorySnapshot)
@@ -852,7 +885,7 @@ def asset_raw_json(
     current = (
         scoping.get_snapshot(db, ctx, snapshot)
         if snapshot
-        else scoping.latest_snapshot(db, ctx, asset.id)
+        else scoping.current_reading(db, ctx, asset.id)
     )
     if current is None or current.asset_id != asset.id:
         raise HTTPException(status_code=404, detail="brak snapshotu")
@@ -886,6 +919,7 @@ def revoke_credential(
         raise HTTPException(status_code=404, detail="nie znaleziono poswiadczenia")
 
     credential.revoked_at = utcnow()
+    asset.enrollment_blocked = True
     audit(
         db,
         ctx,
@@ -1243,11 +1277,14 @@ def zmien_wlasne_haslo(
     if nowe == obecne:
         return odmow("Nowe haslo musi rozni sie od dotychczasowego.")
 
+    user.session_version = PortalUser.session_version + 1
     user.password_hash = hash_password(nowe)
     audit(db, None, action="haslo.zmienione", target=user.email,
           ip=client_ip(request), actor=user.email)
     db.commit()
-    return RedirectResponse("/konto?zmienione=1", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie(get_settings().session_cookie, path="/")
+    return response
 
 
 # --- tokeny rejestracyjne ---------------------------------------------------
