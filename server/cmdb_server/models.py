@@ -234,7 +234,12 @@ class Owner(Base):
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(64))
-    department: Mapped[str | None] = mapped_column(String(200))
+    # Odwolanie do wpisu slownika, nie kopia napisu: dopiero wtedy cokolwiek
+    # dopisanego do wpisu jest w zasiegu maszyny.
+    dzial_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("slowniki.id", ondelete="SET NULL"), index=True
+    )
+    dzial: Mapped["WpisSlownika | None"] = relationship(foreign_keys=[dzial_id])
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -275,8 +280,35 @@ class WpisSlownika(Base):
     kategoria: Mapped[str] = mapped_column(String(32), nullable=False)
     wartosc: Mapped[str] = mapped_column(String(200), nullable=False)
     klucz: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Wartosci pol opisanych schematem firmy. Kolumna zamiast osobnej tabeli
+    # wartosci: wzorzec encja-atrybut-wartosc wyglada elegancko i zamienia
+    # kazde pytanie w lancuch zlaczen. Tu wystarczy zwykly WHERE po indeksie.
+    atrybuty: Mapped[dict | None] = mapped_column(JSONType, default=dict)
     utworzony: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     utworzyl: Mapped[str | None] = mapped_column(String(255))
+
+
+class SchematSlownika(Base):
+    """Jakie pola ma wpis slownika w TEJ firmie.
+
+    Schemat jest danymi, nie kolumnami - dodanie atrybutu to zapis wiersza,
+    a nie migracja i wydanie serwera. Firma dostaje kopie wzorca przy pierwszym
+    uzyciu i od tej chwili schemat nalezy wylacznie do niej.
+    """
+
+    __tablename__ = "schematy_slownikow"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "kategoria", name="uq_schemat_kategoria"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kategoria: Mapped[str] = mapped_column(String(32), nullable=False)
+    definicja: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    zmieniony: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    zmienil: Mapped[str | None] = mapped_column(String(255))
 
     tenant: Mapped[Tenant] = relationship()
 
@@ -329,7 +361,12 @@ class Asset(Base):
     )
     # Gdzie sprzet fizycznie stoi. Agent tego nie wie - wpisuje czlowiek,
     # a podpowiedzi biora sie ze slownika lokalizacji firmy.
-    lokalizacja: Mapped[str | None] = mapped_column(String(200), index=True)
+    lokalizacja_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("slowniki.id", ondelete="SET NULL"), index=True
+    )
+    # Miejsce WEWNATRZ lokalizacji nalezy do sprzetu, nie do adresu: dwie
+    # maszyny pod tym samym adresem stoja w innych pomieszczeniach.
+    miejsce: Mapped[str | None] = mapped_column(String(200))
     # Rola maszyny wpisywana recznie w panelu (np. "serwer plikow", "laptop ksiegowosc").
     role_label: Mapped[str | None] = mapped_column(String(200))
     tags: Mapped[list | None] = mapped_column(JSONType, default=list)
@@ -359,7 +396,9 @@ class Asset(Base):
     # sie raport o wygasajacym wsparciu.
     purchase_date: Mapped[date | None] = mapped_column(Date)
     warranty_until: Mapped[date | None] = mapped_column(Date, index=True)
-    vendor: Mapped[str | None] = mapped_column(String(200))
+    dostawca_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("slowniki.id", ondelete="SET NULL"), index=True
+    )
     purchase_price: Mapped[float | None] = mapped_column(Float)
     purchase_currency: Mapped[str | None] = mapped_column(String(8))
     invoice_number: Mapped[str | None] = mapped_column(String(120))
@@ -383,6 +422,10 @@ class Asset(Base):
     # nalezy do ktorej relacji, wiec wskazujemy je jawnie.
     owner: Mapped[Owner | None] = relationship(foreign_keys=[owner_id])
     uzytkownik: Mapped[Owner | None] = relationship(foreign_keys=[uzytkownik_id])
+    # Wpisy slownika jako obiekty, nie napisy: dopiero przez nie widac telefon
+    # dostawcy czy adres lokalizacji.
+    lokalizacja: Mapped["WpisSlownika | None"] = relationship(foreign_keys=[lokalizacja_id])
+    dostawca: Mapped["WpisSlownika | None"] = relationship(foreign_keys=[dostawca_id])
     snapshots: Mapped[list["InventorySnapshot"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan", order_by="InventorySnapshot.collected_at.desc()"
     )
@@ -790,6 +833,9 @@ class DefinicjaRaportu(Base):
     czestotliwosc: Mapped[str] = mapped_column(String(16), nullable=False, default="tygodniowo")
     # Adresaci rozdzieleni przecinkiem albo srednikiem - rozbierane przy wysylce.
     adresaci: Mapped[str] = mapped_column(Text, nullable=False)
+    # Wysylka poza firme nie moze byc niespodzianka - wlacza sie ja jawnie
+    # przy definicji raportu.
+    do_dostawcow: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     aktywny: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Ktore atrybuty pokazac w tabeli. Puste = zestaw domyslny, zeby raport
     # dodany bez zastanowienia i tak byl czytelny.

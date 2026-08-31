@@ -1,69 +1,78 @@
 {% extends "base.html" %}
-{% block title %}Slowniki - CMDB{% endblock %}
+{% block title %}Słowniki firmy - CMDB{% endblock %}
 {% block content %}
-<h1>Slowniki firmy</h1>
-<p class="muted">
-  Dzialy, lokalizacje i dostawcy uzywane w tej firmie. Slownik zapelnia sie
-  sam: wartosc wpisana w dowolnym formularzu trafia tu od razu i od nastepnego
-  razu podpowiada sie na liscie. Ta strona sluzy do posprzatania go - usuniecia
-  literowki albo dopisania nazwy z wyprzedzeniem.
-</p>
 
-<div class="cards">
+<div class="page-head">
+  <div>
+    <h1>Słowniki firmy</h1>
+    <p class="muted">
+      Działy, lokalizacje i dostawcy używani w tej firmie. Słownik nadal zapełnia się
+      sam: nazwa wpisana w dowolnym formularzu trafia tu od razu jako szkic i od
+      następnego razu podpowiada się na liście. Tutaj uzupełnia się resztę —
+      adres, telefon, kanał zgłoszeń — i sprząta literówki.
+    </p>
+  </div>
+</div>
+
 {% for kategoria, etykieta in kategorie.items() %}
-  <section class="panel">
-    <h2>{{ etykieta }} <span class="muted">({{ wpisy[kategoria] | length }})</span></h2>
+<section class="panel">
+  <div class="page-head" style="margin-bottom:12px">
+    <div>
+      <h2>{{ etykieta }} ({{ wpisy[kategoria] | length }})</h2>
+      <p class="muted small">{{ schematy[kategoria].pola | length }} pól w schemacie</p>
+    </div>
+    {% if ctx.can_write %}
+    <div><a class="btn btn-small" href="/slowniki/{{ kategoria }}/schemat">Pola słownika</a></div>
+    {% endif %}
+  </div>
 
-    {% if wpisy[kategoria] %}
+  {% if wpisy[kategoria] %}
+  <div class="tabela-przewijana">
     <table class="table">
-      <thead><tr><th>Wartosc</th><th>Uzyc</th><th>Dodano</th><th></th></tr></thead>
+      <thead>
+        <tr><th>Nazwa</th><th>Stan</th><th class="lp">Używa</th><th>Dodano</th><th></th></tr>
+      </thead>
       <tbody>
       {% for w in wpisy[kategoria] %}
         <tr>
-          <td class="strong">{{ w.wartosc }}</td>
+          <td class="strong"><a href="/slowniki/wpis/{{ w.id }}">{{ w.wartosc }}</a></td>
           <td class="small">
-            {% set ile = uzycia[kategoria].get(w.wartosc, 0) %}
-            {% if ile and kategoria == 'lokalizacja' %}
-              <a href="/assets?lokalizacja={{ w.wartosc | urlencode }}">{{ ile }}</a>
+            {% if braki[w.id] %}
+              <span class="badge badge-warn">szkic</span>
+              <span class="muted">brakuje: {{ braki[w.id] | join(', ') }}</span>
             {% else %}
-              {{ ile }}
+              <span class="badge badge-ok">komplet</span>
             {% endif %}
           </td>
-          <td class="small muted">{{ w.utworzony | dt }}{% if w.utworzyl %}<div>{{ w.utworzyl }}</div>{% endif %}</td>
-          <td>
-            {% if ctx.can_write %}
-            <form method="post" action="/slowniki/{{ w.id }}/usun" class="inline-form"
-                  data-confirm="Usunac '{{ w.wartosc }}' ze slownika? Sprzet zachowa wpisana wartosc, zniknie tylko podpowiedz.">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button type="submit" class="btn btn-small btn-danger">Usun</button>
-            </form>
-            {% endif %}
-          </td>
+          <td class="lp">{{ uzycia[w.id] }}</td>
+          <td class="small muted">{{ w.utworzony | dt }}</td>
+          <td class="small"><a class="btn btn-small" href="/slowniki/wpis/{{ w.id }}">Otwórz</a></td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
-    {% else %}
-      <p class="muted">Pusto - pierwsza wpisana wartosc pojawi sie tutaj sama.</p>
-    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted">Pusto — pierwsza wpisana wartość pojawi się tutaj sama.</p>
+  {% endif %}
 
-    {% if ctx.can_write %}
-    <form method="post" action="/slowniki" class="row-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="kategoria" value="{{ kategoria }}">
-      <div>
-        <label for="wartosc-{{ kategoria }}">Dodaj wartosc</label>
-        <input id="wartosc-{{ kategoria }}" name="wartosc" required maxlength="200">
-      </div>
-      <div><button type="submit" class="btn btn-small btn-primary">Dodaj</button></div>
-    </form>
-    {% endif %}
-  </section>
+  {% if ctx.can_write %}
+  <form method="post" action="/slowniki" class="row-form" style="margin-top:14px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="kategoria" value="{{ kategoria }}">
+    <div>
+      <label for="wartosc_{{ kategoria }}">Dodaj z wyprzedzeniem</label>
+      <input id="wartosc_{{ kategoria }}" name="wartosc" required maxlength="200"
+             placeholder="nazwa">
+    </div>
+    <div><button type="submit" class="btn">Dodaj i uzupełnij</button></div>
+  </form>
+  {% endif %}
+</section>
 {% endfor %}
-</div>
 
-<p class="small muted">
-  Usuniecie wpisu nie zmienia sprzetu ani osob - wartosc zniknie tylko
-  z podpowiedzi. Wpisana ponownie wroci do slownika.
+<p class="muted small">
+  Usunięcie wpisu odpina go od maszyn i osób, które go wskazywały — same rekordy
+  zostają nietknięte. Liczba w kolumnie „Używa” pokazuje, ilu to dotyczy.
 </p>
 {% endblock %}

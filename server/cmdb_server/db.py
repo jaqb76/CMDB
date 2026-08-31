@@ -143,6 +143,7 @@ def _dodaj_brakujace_kolumny() -> None:
         _uzupelnij_architekture_wydan()
 
     _popraw_unikalnosc_wydan()
+    _usun_stare_pola_slownikow()
 
 
 def _popraw_unikalnosc_wydan() -> None:
@@ -268,3 +269,32 @@ def _utworz_indeksy_gin() -> None:
     with engine.begin() as conn:
         for stmt in statements:
             conn.execute(text(stmt))
+
+
+# Kolumny tekstowe zastapione odwolaniem do wpisu slownika. Wartosci nie sa
+# przenoszone swiadomie: to byly luzne napisy bez struktury, a przypisania
+# powstaja od nowa jako relacje. Migracja pomostowa umie tylko DOKLADAC
+# kolumny, wiec usuniecie musi byc wypisane wprost.
+STARE_POLA_SLOWNIKOW = (
+    ("owners", "department"),      # dzial nalezy do osoby, nie do maszyny
+    ("assets", "lokalizacja"),
+    ("assets", "vendor"),
+)
+
+
+def _usun_stare_pola_slownikow() -> None:
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    istniejace = set(inspector.get_table_names())
+    for tabela, kolumna in STARE_POLA_SLOWNIKOW:
+        if tabela not in istniejace:
+            continue
+        if kolumna not in {k["name"] for k in inspector.get_columns(tabela)}:
+            continue
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {tabela} DROP COLUMN {kolumna}"))
+        log.warning(
+            "usunieto kolumne %s.%s wraz z zawartoscia - przypisania slownikowe "
+            "wpisuje sie od nowa jako relacje", tabela, kolumna,
+        )

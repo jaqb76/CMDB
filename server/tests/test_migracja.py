@@ -163,11 +163,11 @@ def test_stare_assets_dostaja_rodzaj_i_zrodlo():
 
     with engine.connect() as conn:
         wiersz = conn.execute(
-            text("SELECT typ, zrodlo, lokalizacja, uzytkownik_id FROM assets")
+            text("SELECT typ, zrodlo, lokalizacja_id, uzytkownik_id FROM assets")
         ).one()
     assert wiersz.typ == "komputer"
     assert wiersz.zrodlo == "agent"
-    assert wiersz.lokalizacja is None
+    assert wiersz.lokalizacja_id is None
     assert wiersz.uzytkownik_id is None
 
 

@@ -77,8 +77,8 @@ def test_reczny_sprzet_trafia_na_liste_i_da_sie_go_edytowac(client, tenant_a, ma
         assert sprzet.typ == "siec"
         assert sprzet.zrodlo == ZRODLO_RECZNE
         assert sprzet.machine_id.startswith("reczne:")
-        assert sprzet.lokalizacja == "Serwerownia A"
-        assert sprzet.vendor == "Komputronik"
+        assert sprzet.lokalizacja.wartosc == "Serwerownia A"
+        assert sprzet.dostawca.wartosc == "Komputronik"
         sprzet_id = sprzet.id
 
     lista = client.get("/assets")
@@ -190,7 +190,7 @@ def test_opiekun_i_uzytkownik_to_dwie_rozne_osoby(client, tenant_a, make_user):
         sprzet = db.get(Asset, asset_id)
         assert sprzet.owner_id == opiekun
         assert sprzet.uzytkownik_id == uzytkownik
-        assert sprzet.lokalizacja == "Pokoj 214"
+        assert sprzet.lokalizacja.wartosc == "Pokoj 214"
 
     lista = client.get("/assets").text
     assert "Anna Nowak" in lista
@@ -252,10 +252,17 @@ def test_ta_sama_wartosc_inaczej_zapisana_nie_tworzy_drugiego_wpisu(client, tena
         ).scalars().all()
         assert [w.wartosc for w in lokalizacje] == ["Serwerownia A"]
         # Drugi sprzet dostaje pisownie ze slownika, nie swoja.
-        assert {a.lokalizacja for a in db.execute(select(Asset)).scalars()} == {"Serwerownia A"}
+        assert {a.lokalizacja.wartosc for a in db.execute(select(Asset)).scalars()} == {"Serwerownia A"}
 
 
-def test_usuniecie_ze_slownika_nie_rusza_sprzetu(client, tenant_a, make_user):
+def test_usuniecie_ze_slownika_odpina_sprzet_ale_go_nie_kasuje(client, tenant_a, make_user):
+    """Zmiana kontraktu wzgledem poprzedniej wersji.
+
+    Wpis nie jest juz sama podpowiedzia, tylko rzecza, na ktora maszyna
+    wskazuje - wiec jego usuniecie faktycznie zdejmuje przypisanie. Maszyna
+    zostaje nietknieta; znika wylacznie odwolanie. Panel pokazuje liczbe
+    dotknietych rekordow, zanim zapyta o potwierdzenie.
+    """
     _admin_firmy(client, tenant_a, make_user)
     _dodaj_sprzet(client)
 
@@ -270,7 +277,9 @@ def test_usuniecie_ze_slownika_nie_rusza_sprzetu(client, tenant_a, make_user):
 
     with SessionLocal() as db:
         assert db.get(WpisSlownika, wpis_id) is None
-        assert db.execute(select(Asset)).scalar_one().lokalizacja == "Serwerownia A"
+        sprzet = db.execute(select(Asset)).scalar_one()
+        assert sprzet.hostname, "maszyna ma zostac"
+        assert sprzet.lokalizacja_id is None, "zostaje zdjete samo przypisanie"
 
 
 def test_slownik_nie_wychodzi_poza_firme(client, tenant_a, tenant_b, make_user):

@@ -134,6 +134,31 @@ def dane_sprzet(db: Session, tenant_id: str) -> dict:
 
 # --- gwarancje --------------------------------------------------------------
 
+def _kontakty_dostawcow(db: Session, tenant_id: str, maszyny: list) -> list[dict]:
+    """Dostawcy maszyn z listy, razem z kanalem zgloszen z ich kart slownika."""
+    from .scoping import TenantContext
+    from . import slowniki
+
+    ctx = TenantContext(tenant_id=tenant_id, tenant_slug="", actor="raport")
+    wynik: dict[str, dict] = {}
+    for maszyna in maszyny:
+        wpis = maszyna.dostawca
+        if wpis is None or wpis.id in wynik:
+            continue
+        wynik[wpis.id] = {
+            "nazwa": wpis.wartosc,
+            "email": slowniki.wg_roli(db, ctx, "dostawca", wpis, "email_zgloszen"),
+            "kanal": slowniki.wg_roli(db, ctx, "dostawca", wpis, "kanal_zgloszen"),
+            "telefon": slowniki.wg_roli(db, ctx, "dostawca", wpis, "telefon_wsparcia"),
+            "maszyny": [],
+        }
+    for maszyna in maszyny:
+        if maszyna.dostawca is not None:
+            wynik[maszyna.dostawca.id]["maszyny"].append(maszyna.hostname)
+    return sorted(wynik.values(), key=lambda k: k["nazwa"])
+
+
+
 def dane_gwarancje(db: Session, tenant_id: str, horyzont: int = HORYZONT_GWARANCJI) -> dict:
     maszyny = _maszyny(db, tenant_id)
     dzisiaj = date.today()
@@ -153,6 +178,12 @@ def dane_gwarancje(db: Session, tenant_id: str, horyzont: int = HORYZONT_GWARANC
     po_terminie.sort(key=lambda m: m.warranty_until, reverse=True)
     koncza_sie.sort(key=lambda m: m.warranty_until)
 
+    # Do kogo zglosic konczaca sie gwarancje. Pytamy o ROLE, nie o nazwe pola:
+    # firma moze nazwac je "E-mail serwisu" i przeniesc do innej grupy, a raport
+    # ma dalej dzialac. Gdy roli nie pelni zadne pole, mowimy o tym wprost -
+    # cicha bezczynnosc wygladalaby jak brak dostawcow do zawiadomienia.
+    kontakty = _kontakty_dostawcow(db, tenant_id, po_terminie + koncza_sie)
+
     return {
         "horyzont": horyzont,
         "dzisiaj": dzisiaj,
@@ -162,6 +193,7 @@ def dane_gwarancje(db: Session, tenant_id: str, horyzont: int = HORYZONT_GWARANC
         # Brak daty to nie to samo co brak gwarancji - znaczy tylko, ze nikt
         # jej nie wpisal. Mieszanie tych dwoch rzeczy dawaloby falszywy obraz.
         "bez_danych": bez_danych,
+        "kontakty": kontakty,
         "wykres": wykres(
             [
                 ("po terminie", len(po_terminie)),
@@ -298,10 +330,21 @@ def nalezy_wyslac(definicja, teraz=None) -> bool:
     return (teraz or utcnow()) - as_utc(definicja.ostatnia_wysylka) >= odstep
 
 
-def adresaci(definicja) -> list[str]:
-    """Adresy rozbierane z pola tekstowego - przecinek, srednik albo nowa linia."""
+def adresaci(definicja, raport: dict | None = None) -> list[str]:
+    """Adresy rozbierane z pola tekstowego - przecinek, srednik albo nowa linia.
+
+    Raport gwarancyjny moze dodatkowo isc do dostawcow, ktorych dotyczy: adres
+    bierzemy z pola pelniacego role ``email_zgloszen``. Wlacza sie to jawnie
+    przy definicji raportu, bo wysylka na zewnatrz firmy nie moze byc
+    niespodzianka.
+    """
     surowe = (definicja.adresaci or "").replace(";", ",").replace("\n", ",")
-    return [a.strip() for a in surowe.split(",") if a.strip() and "@" in a]
+    lista = [a.strip() for a in surowe.split(",") if a.strip() and "@" in a]
+    if raport and getattr(definicja, "do_dostawcow", False):
+        for kontakt in raport.get("dane", {}).get("kontakty", []):
+            if kontakt["email"] and kontakt["email"] not in lista:
+                lista.append(kontakt["email"])
+    return lista
 
 
 # --- renderowanie i wysylka -------------------------------------------------
@@ -402,11 +445,13 @@ def wyslij_raport(db: Session, definicja) -> None:
         return
 
     try:
-        odbiorcy = adresaci(definicja)
+        # Raport budujemy przed ustaleniem odbiorcow: przy wysylce do dostawcow
+        # ich adresy sa w jego danych, a nie w definicji.
+        raport = zbuduj(db, tenant, definicja.rodzaj, definicja.kolumny)
+        odbiorcy = adresaci(definicja, raport)
         if not odbiorcy:
             raise poczta.BladPoczty("brak poprawnych adresow")
 
-        raport = zbuduj(db, tenant, definicja.rodzaj, definicja.kolumny)
         html, tekst = renderuj(raport)
         temat = f"[CMDB] {raport['tytul']} - {tenant.name}"
         poczta.wyslij(db, tenant.id, odbiorcy, temat, html, tekst)

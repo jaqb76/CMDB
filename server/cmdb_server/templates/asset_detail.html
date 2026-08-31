@@ -11,7 +11,7 @@
     </h1>
     <p class="muted">
       {{ typy.get(asset.typ, asset.typ) }}
-      {% if asset.lokalizacja %} &middot; {{ asset.lokalizacja }}{% endif %}
+      {% if asset.lokalizacja %} &middot; <a href="/slowniki/wpis/{{ asset.lokalizacja.id }}">{{ asset.lokalizacja.wartosc }}</a>{% endif %}
       {% if asset.zrodlo == 'reczne' %}
         &middot; wpis reczny, dodany {{ asset.first_seen | dt }}
       {% else %}
@@ -93,11 +93,11 @@
     <div>
       <label for="lokalizacja">Lokalizacja</label>
       <input id="lokalizacja" name="lokalizacja" maxlength="200" list="slownik-lokalizacje"
-             autocomplete="off" value="{{ asset.lokalizacja or '' }}"
+             autocomplete="off" value="{{ asset.lokalizacja.wartosc if asset.lokalizacja else '' }}"
              placeholder="np. Serwerownia A, pokoj 214"
              {% if not ctx.can_write %}disabled{% endif %}>
       <datalist id="slownik-lokalizacje">
-        {% for l in podpowiedzi.lokalizacja %}<option value="{{ l }}"></option>{% endfor %}
+        {% for l in podpowiedzi.lokalizacja %}<option value="{{ l.wartosc }}"></option>{% endfor %}
       </datalist>
     </div>
     <div>
@@ -112,10 +112,10 @@
     do <a href="/slowniki">slownika</a> automatycznie.
   </p>
   {% if asset.owner %}
-    <p class="small muted">Opiekun: {{ asset.owner.email }}{% if asset.owner.phone %} &middot; {{ asset.owner.phone }}{% endif %}{% if asset.owner.department %} &middot; {{ asset.owner.department }}{% endif %}</p>
+    <p class="small muted">Opiekun: {{ asset.owner.email }}{% if asset.owner.phone %} &middot; {{ asset.owner.phone }}{% endif %}{% if asset.owner.dzial %} &middot; {{ asset.owner.dzial.wartosc }}{% endif %}</p>
   {% endif %}
   {% if asset.uzytkownik %}
-    <p class="small muted">Uzytkownik: {{ asset.uzytkownik.email }}{% if asset.uzytkownik.phone %} &middot; {{ asset.uzytkownik.phone }}{% endif %}{% if asset.uzytkownik.department %} &middot; {{ asset.uzytkownik.department }}{% endif %}</p>
+    <p class="small muted">Uzytkownik: {{ asset.uzytkownik.email }}{% if asset.uzytkownik.phone %} &middot; {{ asset.uzytkownik.phone }}{% endif %}{% if asset.uzytkownik.dzial %} &middot; {{ asset.uzytkownik.dzial.wartosc }}{% endif %}</p>
   {% endif %}
 </section>
 
@@ -287,10 +287,10 @@
           </div>
           <div>
             <label for="vendor">Dostawca</label>
-            <input id="vendor" name="vendor" maxlength="200" value="{{ asset.vendor or '' }}"
+            <input id="vendor" name="vendor" maxlength="200" value="{{ asset.dostawca.wartosc if asset.dostawca else '' }}"
                    list="slownik-dostawcy" autocomplete="off">
             <datalist id="slownik-dostawcy">
-              {% for d in podpowiedzi.dostawca %}<option value="{{ d }}"></option>{% endfor %}
+              {% for d in podpowiedzi.dostawca %}<option value="{{ d.wartosc }}"></option>{% endfor %}
             </datalist>
           </div>
         </div>

@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}{{ wpis.wartosc }} - słownik - CMDB{% endblock %}
+{% block content %}
+
+{#
+  Formularz nie jest wpisany na sztywno - powstaje ze schematu firmy. Typ pola
+  decyduje o kontrolce, format o sprawdzaniu i podpowiedzi. Serwer sprawdza to
+  samo jeszcze raz przy zapisie: formularz jest wygodą, nie zabezpieczeniem.
+#}
+
+<div class="page-head">
+  <div>
+    <p class="muted small"><a href="/slowniki">Słowniki</a> · {{ kategorie[wpis.kategoria] }}</p>
+    <h1>{{ wpis.wartosc }}</h1>
+    {% if braki %}
+      <p class="muted">
+        <span class="badge badge-warn">szkic</span>
+        Do uzupełnienia: {{ braki | join(', ') }}
+      </p>
+    {% else %}
+      <p class="muted"><span class="badge badge-ok">komplet</span>
+        Wszystkie wymagane pola wypełnione.</p>
+    {% endif %}
+  </div>
+  <div class="row-form">
+    <div>
+      <span class="muted small">Używa go {{ uzycie }}
+        {% if wpis.kategoria == 'dzial' %}osób{% else %}maszyn{% endif %}</span>
+    </div>
+    {% if ctx.can_write %}
+    <a class="btn" href="/slowniki/{{ wpis.kategoria }}/schemat">Pola słownika</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if bledy %}
+<div class="alert alert-error">
+  Nie zapisano — popraw zaznaczone pola.
+</div>
+{% endif %}
+
+<form method="post" action="/slowniki/wpis/{{ wpis.id }}" class="panel stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div>
+    <label for="nazwa">Nazwa</label>
+    <input id="nazwa" name="nazwa" value="{{ wpis.wartosc }}" required maxlength="200"
+           {% if bledy.get('nazwa') %}aria-invalid="true"{% endif %}>
+    {% if bledy.get('nazwa') %}<div class="blad-pola">{{ bledy['nazwa'] }}</div>{% endif %}
+  </div>
+
+  {% for grupa, pola in grupy.items() %}
+  <fieldset class="kolumny-grupa">
+    <legend>{{ grupa }}</legend>
+    <div class="pola-siatka">
+      {% for p in pola %}
+      {% set wartosc = (wpis.atrybuty or {}).get(p.klucz, '') %}
+      <div class="pole">
+        <label for="pole_{{ p.klucz }}">
+          {{ p.etykieta }}
+          {% if p.wymagane %}<span class="wymagane" title="pole wymagane">*</span>{% endif %}
+          {% if p.rola %}<span class="badge" title="Używane przez system: {{ p.rola }}">rola</span>{% endif %}
+        </label>
+
+        {% if p.typ == 'wybor' %}
+          <select id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}">
+            <option value="">—</option>
+            {% for opcja in p.opcje %}
+              <option value="{{ opcja }}" {% if wartosc == opcja %}selected{% endif %}>{{ opcja }}</option>
+            {% endfor %}
+          </select>
+
+        {% elif p.typ == 'odwolanie' and p.cel == 'osoba' %}
+          <select id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}">
+            <option value="">—</option>
+            {% for o in osoby %}
+              <option value="{{ o.id }}" {% if wartosc == o.id %}selected{% endif %}>{{ o.full_name }}</option>
+            {% endfor %}
+          </select>
+
+        {% elif p.typ == 'odwolanie' %}
+          <select id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}">
+            <option value="">—</option>
+            {% for inny in powiazane if inny.id != wpis.id %}
+              <option value="{{ inny.id }}" {% if wartosc == inny.id %}selected{% endif %}>{{ inny.wartosc }}</option>
+            {% endfor %}
+          </select>
+
+        {% elif p.typ == 'notatka' %}
+          <textarea id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}" rows="3"
+                    maxlength="2000">{{ wartosc }}</textarea>
+
+        {% elif p.typ == 'logiczna' %}
+          <label class="kolumna-wybor">
+            <input type="checkbox" id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}"
+                   value="tak" {% if wartosc %}checked{% endif %}>
+            <span>tak</span>
+          </label>
+
+        {% elif p.typ == 'liczba' %}
+          <input id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}" type="number" step="any"
+                 {% if p.min is not none %}min="{{ p.min }}"{% endif %}
+                 {% if p.max is not none %}max="{{ p.max }}"{% endif %}
+                 value="{{ wartosc }}">
+
+        {% elif p.typ == 'data' %}
+          <input id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}" type="date" value="{{ wartosc }}">
+
+        {% else %}
+          {% set opis = formaty.get(p.format) %}
+          <input id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}"
+                 type="{{ opis.kontrolka if opis else 'text' }}"
+                 value="{{ wartosc }}" maxlength="500"
+                 {% if opis %}data-format="{{ p.format }}"
+                   placeholder="{{ p.podpowiedz or opis.przyklad }}"
+                 {% elif p.podpowiedz %}placeholder="{{ p.podpowiedz }}"{% endif %}
+                 {% if bledy.get(p.klucz) %}aria-invalid="true"{% endif %}>
+        {% endif %}
+
+        {% if bledy.get(p.klucz) %}
+          <div class="blad-pola">{{ bledy[p.klucz] }}</div>
+        {% elif p.format and formaty.get(p.format) %}
+          <div class="muted small">np. {{ formaty[p.format].przyklad }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {% endfor %}
+
+  {% if ctx.can_write %}
+  <div class="row-form">
+    <div><button type="submit" class="btn btn-primary">Zapisz</button></div>
+    <div><a class="btn btn-ghost" href="/slowniki">Wróć do listy</a></div>
+  </div>
+  <p class="muted small">
+    Pola oznaczone gwiazdką są wymagane przy zapisie tej karty. Wpis, który powstał
+    sam przy dodawaniu maszyny, mógł je pominąć — dlatego widnieje jako szkic.
+  </p>
+  {% else %}
+  <p class="muted">Edycja wymaga uprawnień do zapisu.</p>
+  {% endif %}
+</form>
+
+{% if ctx.can_write %}
+<section class="panel">
+  <h2>Usuń wpis</h2>
+  <p class="muted small">
+    {% if uzycie %}
+      Odwołanie zniknie z {{ uzycie }}
+      {% if wpis.kategoria == 'dzial' %}osób{% else %}maszyn{% endif %} —
+      same rekordy zostaną nietknięte.
+    {% else %}
+      Nic go nie używa.
+    {% endif %}
+  </p>
+  <form method="post" action="/slowniki/{{ wpis.id }}/usun" class="inline-form"
+        data-confirm="Usunąć {{ wpis.wartosc }} ze słownika?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-danger">Usuń ze słownika</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

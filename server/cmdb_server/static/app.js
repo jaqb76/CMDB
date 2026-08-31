@@ -248,4 +248,57 @@
     });
   })();
 
+
+  // Rozpoznawanie formatu przy wpisywaniu.
+  //
+  // To jest WYGODA, nie zabezpieczenie: serwer sprawdza dokladnie te same
+  // wzorce jeszcze raz przy zapisie. Tutaj chodzi tylko o to, zeby czlowiek
+  // zobaczyl blad od razu, a nie po przeladowaniu strony.
+  (function () {
+    var wzorce = {
+      kod_pocztowy: /^\d{2}-\d{3}$/,
+      email: /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/,
+      telefon: /^\+?[\d ]{6,20}$/,
+      url: /^https?:\/\/[^\s/]+\.[^\s]*$/,
+      nip: /^\d{10}$/
+    };
+
+    function nipPoprawny(cyfry) {
+      var wagi = [6, 5, 7, 2, 3, 4, 5, 6, 7], suma = 0;
+      for (var i = 0; i < 9; i++) { suma += wagi[i] * parseInt(cyfry[i], 10); }
+      suma = suma % 11;
+      return suma !== 10 && suma === parseInt(cyfry[9], 10);
+    }
+
+    function porzadkuj(format, wartosc) {
+      var czysty = wartosc.trim();
+      if (format === "kod_pocztowy") {
+        var cyfry = czysty.replace(/\D/g, "");
+        return cyfry.length === 5 ? cyfry.slice(0, 2) + "-" + cyfry.slice(2) : czysty;
+      }
+      if (format === "email") { return czysty.toLowerCase(); }
+      if (format === "nip") { return czysty.replace(/\D/g, ""); }
+      if (format === "url" && czysty && !/^https?:\/\//i.test(czysty)) {
+        return "https://" + czysty;
+      }
+      return czysty;
+    }
+
+    document.querySelectorAll("[data-format]").forEach(function (pole) {
+      var format = pole.dataset.format;
+      pole.addEventListener("blur", function () {
+        if (!pole.value.trim()) { pole.setCustomValidity(""); return; }
+        // Porzadkujemy dopiero po wyjsciu z pola - poprawianie w trakcie
+        // pisania przestawia kursor i walczy z czlowiekiem.
+        pole.value = porzadkuj(format, pole.value);
+        var wzorzec = wzorce[format];
+        var dobrze = !wzorzec || wzorzec.test(pole.value);
+        if (dobrze && format === "nip") { dobrze = nipPoprawny(pole.value); }
+        pole.setCustomValidity(dobrze ? "" : "Sprawdz format tego pola.");
+        pole.setAttribute("aria-invalid", dobrze ? "false" : "true");
+      });
+      pole.addEventListener("input", function () { pole.setCustomValidity(""); });
+    });
+  })();
+
 })();

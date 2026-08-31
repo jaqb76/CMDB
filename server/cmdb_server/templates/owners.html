@@ -19,7 +19,7 @@
         <tr>
           <td class="strong">{{ o.full_name }}</td>
           <td class="small">{{ o.email }}{% if o.phone %}<div class="muted">{{ o.phone }}</div>{% endif %}</td>
-          <td class="small">{{ o.department or '—' }}</td>
+          <td class="small">{% if o.dzial %}{{ o.dzial.wartosc }}{% else %}—{% endif %}</td>
           <td><a href="/assets?owner={{ o.id }}">{{ counts.get(o.id, 0) }}</a></td>
           <td>
             {% if ctx.can_write %}
@@ -52,7 +52,7 @@
       <input id="department" name="department" maxlength="200" list="slownik-dzialy"
              autocomplete="off" placeholder="wybierz lub wpisz nowy">
       <datalist id="slownik-dzialy">
-        {% for d in dzialy %}<option value="{{ d }}"></option>{% endfor %}
+        {% for d in dzialy %}<option value="{{ d.wartosc }}"></option>{% endfor %}
       </datalist>
       <p class="small muted">Nowy dzial dopisze sie do <a href="/slowniki">slownika</a> firmy.</p>
       <label for="notes">Notatki</label>

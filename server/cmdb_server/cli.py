@@ -160,13 +160,20 @@ def cmd_owner_add(args: argparse.Namespace) -> None:
         ).scalar_one_or_none()
         if existing:
             sys.exit(f"blad: opiekun {email} juz istnieje w firmie {tenant.slug}")
+        from .services import slowniki
+        from .services.scoping import TenantContext
+
+        ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug,
+                            actor="cli", can_write=True)
+        dzial = slowniki.zapewnij(db, ctx, "dzial", args.department)
+        db.flush()
         db.add(
             Owner(
                 tenant_id=tenant.id,
                 full_name=args.name,
                 email=email,
                 phone=args.phone,
-                department=args.department,
+                dzial_id=dzial.id if dzial else None,
             )
         )
         print(f"dodano opiekuna {args.name} <{email}> do firmy {tenant.slug}")

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Pola słownika {{ kategorie[kategoria] }} - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <p class="muted small"><a href="/slowniki">Słowniki</a> · {{ kategorie[kategoria] }}</p>
+    <h1>Pola słownika</h1>
+    <p class="muted">
+      Schemat rządzi tym, co widzą wszyscy w firmie, więc zmienia go wyłącznie
+      administrator, a każda zmiana trafia do dziennika audytu. Dodanie pola nie
+      wymaga przebudowy bazy — to zapis danych.
+    </p>
+  </div>
+  <div><span class="muted small">wersja {{ schemat.wersja }}</span></div>
+</div>
+
+{% if blad %}
+<div class="alert alert-error"><b>Nie zapisano.</b> {{ blad }}</div>
+{% endif %}
+
+<section class="panel">
+  <h2>Obecne pola ({{ schemat.pola | length }} z {{ limity.pola }})</h2>
+  <div class="tabela-przewijana">
+    <table class="table">
+      <thead>
+        <tr><th>Klucz</th><th>Etykieta</th><th>Typ / format</th><th>Rola</th>
+            <th class="lp">Wartości</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for p in schemat.pola %}
+        <tr>
+          <td><code>{{ p.klucz }}</code></td>
+          <td class="strong">{{ p.etykieta }}
+            {% if p.wymagane %}<span class="wymagane" title="wymagane przy zapisie karty">*</span>{% endif %}
+          </td>
+          <td class="small">{{ p.typ }}{% if p.format %} · {{ p.format }}{% endif %}</td>
+          <td class="small">{% if p.rola %}<span class="badge">{{ p.rola }}</span>{% else %}—{% endif %}</td>
+          <td class="lp">{{ uzycia.get(p.klucz, 0) }}</td>
+          <td class="small">
+            {% if uzycia.get(p.klucz, 0) %}
+            <form method="post" action="/slowniki/{{ kategoria }}/schemat/wyczysc"
+                  class="inline-form"
+                  data-confirm="Wyczyścić wartości pola {{ p.etykieta }} w {{ uzycia[p.klucz] }} wpisach? Tego nie da się cofnąć.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="klucz" value="{{ p.klucz }}">
+              <button type="submit" class="btn btn-small btn-danger">Wyczyść wartości</button>
+            </form>
+            {% else %}
+            <span class="muted">puste — można usunąć</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small">
+    <b>Pole z wartościami nie daje się usunąć.</b> Najpierw jawnie wyczyść jego
+    wartości — kasowanie danych i kasowanie pola to dwie osobne decyzje, więc
+    jedna nie może być skutkiem ubocznym drugiej.
+  </p>
+</section>
+
+<section class="panel">
+  <h2>Definicja</h2>
+  <p class="muted small">
+    Ta sama treść, którą przechowuje baza. Można ją edytować tutaj albo wkleić
+    z zewnątrz — jest sprawdzana przy zapisie, więc błędny zapis nie popsuje
+    słownika.
+  </p>
+  <form method="post" action="/slowniki/{{ kategoria }}/schemat" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <textarea name="definicja" rows="22" spellcheck="false"
+              class="kod-edytor">{{ definicja }}</textarea>
+    <div class="row-form">
+      <div><button type="submit" class="btn btn-primary">Zapisz schemat</button></div>
+      <div><a class="btn btn-ghost" href="/slowniki/{{ kategoria }}/schemat">Odrzuć zmiany</a></div>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Co można wpisać</h2>
+  <div class="kolumny-siatka">
+    <fieldset class="kolumny-grupa">
+      <legend>Typy</legend>
+      <p class="muted small">Czym wartość jest — decyduje o sortowaniu i porównywaniu.</p>
+      <ul class="pola">
+        {% for t in typy %}<li><span class="nazwa"><code>{{ t }}</code></span></li>{% endfor %}
+      </ul>
+    </fieldset>
+
+    <fieldset class="kolumny-grupa">
+      <legend>Formaty</legend>
+      <p class="muted small">Jak wygląda — sprawdzanie i podpowiedź. Tylko dla typu <code>tekst</code>.</p>
+      <ul class="pola">
+        {% for nazwa, opis in formaty.items() %}
+        <li><span class="nazwa"><code>{{ nazwa }}</code></span>
+            <span class="muted small">{{ opis.przyklad }}</span></li>
+        {% endfor %}
+      </ul>
+    </fieldset>
+
+    <fieldset class="kolumny-grupa">
+      <legend>Role</legend>
+      <p class="muted small">Po roli sięgają funkcje systemu. Jedna rola, jedno pole.</p>
+      <ul class="pola">
+        {% for nazwa, opis in role.items() %}
+        <li><span class="nazwa"><code>{{ nazwa }}</code></span>
+            <span class="muted small">{{ opis }}</span></li>
+        {% endfor %}
+      </ul>
+    </fieldset>
+  </div>
+  <p class="muted small">
+    Klucz pola jest jego tożsamością — po nim leżą wartości w istniejących wpisach.
+    Etykietę zmieniaj dowolnie, klucza nigdy: zmiana klucza to w istocie usunięcie
+    pola i dodanie nowego, więc obowiązuje ją ta sama zasada co usuwanie.
+  </p>
+</section>
+{% endblock %}

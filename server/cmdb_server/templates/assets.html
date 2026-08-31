@@ -28,7 +28,7 @@
   <select name="lokalizacja">
     <option value="">kazda lokalizacja</option>
     {% for l in lokalizacje %}
-      <option value="{{ l }}" {% if filters.lokalizacja == l %}selected{% endif %}>{{ l }}</option>
+      <option value="{{ l.id }}" {% if filters.lokalizacja == l %}selected{% endif %}>{{ l }}</option>
     {% endfor %}
   </select>
   <select name="owner">
@@ -83,7 +83,7 @@
         {% if f.storage_gb %} &middot; {{ f.storage_gb }} GB{% endif %}
       </td>
       <td class="small">{{ a.primary_ip or '-' }}</td>
-      <td class="small">{{ a.lokalizacja or '—' }}</td>
+      <td class="small">{% if a.lokalizacja %}{{ a.lokalizacja.wartosc }}{% else %}—{% endif %}</td>
       <td class="small">
         {% if a.owner %}{{ a.owner.full_name }}
         {% else %}<span class="badge badge-warn">brak opiekuna</span>{% endif %}

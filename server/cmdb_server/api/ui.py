@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import urllib.parse
 
 from markupsafe import Markup
 from datetime import date, datetime, timedelta
@@ -42,6 +43,7 @@ from ..models import (
     Owner,
     PortalUser,
     Tenant,
+    WpisSlownika,
     utcnow,
 )
 from ..security import (
@@ -270,6 +272,11 @@ def motyw_z_ciasteczka(request: Request) -> str:
     """
     wybrany = (request.cookies.get("cmdb_motyw") or "").strip().lower()
     return wybrany if wybrany in MOTYWY else ""
+
+
+def _wpis_id(wpis) -> str | None:
+    """Identyfikator wpisu slownika albo None - formularze podaja nazwy."""
+    return wpis.id if wpis is not None else None
 
 
 def _require_write(ctx: TenantContext) -> None:
@@ -504,7 +511,7 @@ def asset_list(
                 Asset.serial_number.ilike(pattern),
                 Asset.primary_ip.ilike(pattern),
                 Asset.role_label.ilike(pattern),
-                Asset.lokalizacja.ilike(pattern),
+                Asset.lokalizacja.has(WpisSlownika.wartosc.ilike(pattern)),
             )
         )
     if os_family:
@@ -512,7 +519,7 @@ def asset_list(
     if typ in TYPY_SPRZETU:
         stmt = stmt.where(Asset.typ == typ)
     if lokalizacja:
-        stmt = stmt.where(Asset.lokalizacja == lokalizacja)
+        stmt = stmt.where(Asset.lokalizacja_id == lokalizacja)
     if owner == "none":
         stmt = stmt.where(Asset.owner_id.is_(None))
     elif owner:
@@ -549,7 +556,7 @@ def asset_list(
         owners=owners,
         families=families,
         typy=TYPY_SPRZETU,
-        lokalizacje=slowniki.wartosci(db, ctx, "lokalizacja"),
+        lokalizacje=slowniki.wpisy(db, ctx, "lokalizacja"),
         filters={"q": q, "os_family": os_family, "owner": owner,
                  "state": state, "lifecycle": lifecycle,
                  "typ": typ, "lokalizacja": lokalizacja},
@@ -656,8 +663,8 @@ def utworz_sprzet(
         zrodlo=ZRODLO_RECZNE,
         owner_id=osoba(owner_id),
         uzytkownik_id=osoba(uzytkownik_id),
-        lokalizacja=slowniki.zapewnij(db, ctx, "lokalizacja", lokalizacja),
-        vendor=slowniki.zapewnij(db, ctx, "dostawca", dostawca),
+        lokalizacja_id=_wpis_id(slowniki.zapewnij(db, ctx, "lokalizacja", lokalizacja)),
+        dostawca_id=_wpis_id(slowniki.zapewnij(db, ctx, "dostawca", dostawca)),
         **pola,
     )
     db.add(sprzet)
@@ -868,7 +875,8 @@ def assign_owner(
     asset.role_label = role_label.strip() or None
     # Nowa lokalizacja od razu trafia do slownika firmy - inaczej kazdy
     # wpisywalby ja po swojemu i podpowiedzi nigdy by nie powstaly.
-    asset.lokalizacja = slowniki.zapewnij(db, ctx, "lokalizacja", lokalizacja)
+    wpis_lokalizacji = slowniki.zapewnij(db, ctx, "lokalizacja", lokalizacja)
+    asset.lokalizacja_id = _wpis_id(wpis_lokalizacji)
 
     audit(
         db,
@@ -880,7 +888,7 @@ def assign_owner(
             "to": new_owner.full_name if new_owner else None,
             "uzytkownik_z": poprzedni_uzytkownik,
             "uzytkownik_na": new_user.full_name if new_user else None,
-            "lokalizacja": asset.lokalizacja,
+            "lokalizacja": wpis_lokalizacji.wartosc if wpis_lokalizacji else None,
         },
         ip=client_ip(request),
     )
@@ -1065,7 +1073,7 @@ def owner_list(
     return render(
         request, "owners.html", user, ctx, db,
         owners=owners, counts=counts,
-        dzialy=slowniki.wartosci(db, ctx, "dzial"),
+        dzialy=slowniki.wpisy(db, ctx, "dzial"),
     )
 
 
@@ -1099,7 +1107,7 @@ def owner_create(
         phone=phone.strip() or None,
         # Nowy dzial od razu zasila slownik firmy - dzieki temu przy nastepnej
         # osobie podpowie sie ta sama nazwa, zamiast powstac jej drugi wariant.
-        department=slowniki.zapewnij(db, ctx, "dzial", department),
+        dzial_id=_wpis_id(slowniki.zapewnij(db, ctx, "dzial", department)),
         notes=notes.strip() or None,
     )
     db.add(owner)
@@ -1140,46 +1148,24 @@ def widok_slownikow(
 ) -> Response:
     """Dzialy, lokalizacje i dostawcy uzywane w tej firmie.
 
-    Slownik zapelnia sie sam - kazda nowa wartosc wpisana w formularzu trafia
-    tu od razu. Ta strona sluzy do posprzatania go: usuniecia literowki albo
-    dopisania wartosci z wyprzedzeniem, zanim pojawi sie pierwszy sprzet.
+    Slownik nadal zapelnia sie sam - kazda nowa nazwa wpisana w formularzu
+    trafia tu od razu jako szkic. Ta strona sluzy do jego uzupelnienia
+    i posprzatania: widac, czego brakuje i ile rekordow uzywa kazdego wpisu.
     """
-    return render(
-        request,
-        "slowniki.html",
-        user,
-        ctx,
-        db,
+    from ..services import schemat as definicje
+
+    schematy = {k: slowniki.schemat(db, ctx, k) for k in KATEGORIE_SLOWNIKA}
+    pozycje = slowniki.wpisy(db, ctx)
+    wynik = render(
+        request, "slowniki.html", user, ctx, db,
         kategorie=KATEGORIE_SLOWNIKA,
-        wpisy=slowniki.wpisy(db, ctx),
-        uzycia=uzycia_slownika(db, ctx),
+        schematy=schematy,
+        wpisy={k: [w for w in pozycje if w.kategoria == k] for k in KATEGORIE_SLOWNIKA},
+        braki={w.id: definicje.braki(schematy[w.kategoria], w.atrybuty) for w in pozycje},
+        uzycia={w.id: slowniki.uzycie_wpisu(db, ctx, w) for w in pozycje},
     )
-
-
-def uzycia_slownika(db: Session, ctx: TenantContext) -> dict[str, dict[str, int]]:
-    """Ile razy kazda wartosc jest faktycznie uzyta.
-
-    Bez tej liczby usuwanie ze slownika byloby zgadywaniem: nie widac, czy
-    kasuje sie literowke uzyta raz, czy nazwe lokalizacji polowy floty.
-    """
-    def zlicz(kolumna) -> dict[str, int]:
-        wiersze = db.execute(
-            select(kolumna, func.count(Asset.id))
-            .where(Asset.tenant_id == ctx.tenant_id, kolumna.is_not(None))
-            .group_by(kolumna)
-        ).all()
-        return {wartosc: liczba for wartosc, liczba in wiersze}
-
-    dzialy = db.execute(
-        select(Owner.department, func.count(Owner.id))
-        .where(Owner.tenant_id == ctx.tenant_id, Owner.department.is_not(None))
-        .group_by(Owner.department)
-    ).all()
-    return {
-        "lokalizacja": zlicz(Asset.lokalizacja),
-        "dostawca": zlicz(Asset.vendor),
-        "dzial": {wartosc: liczba for wartosc, liczba in dzialy},
-    }
+    db.commit()          # schemat zalozony z wzorca przy pierwszym wejsciu
+    return wynik
 
 
 @router.post("/slowniki")
@@ -1194,16 +1180,85 @@ def dodaj_do_slownika(
 ) -> Response:
     verify_csrf(request, user, csrf_token)
     _require_write(ctx)
-
     if kategoria not in KATEGORIE_SLOWNIKA:
         raise HTTPException(status_code=400, detail="nieznana kategoria slownika")
     dodana = slowniki.zapewnij(db, ctx, kategoria, wartosc)
     if dodana is None:
         raise HTTPException(status_code=400, detail="wartosc nie moze byc pusta")
-    audit(db, ctx, action="slownik.dodany", target=f"{kategoria}:{dodana}",
+    db.flush()
+    cel = dodana.id
+    audit(db, ctx, action="slownik.dodany", target=kategoria + ":" + dodana.wartosc,
           ip=client_ip(request))
     db.commit()
-    return RedirectResponse("/slowniki", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/slowniki/wpis/" + cel, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/slowniki/wpis/{wpis_id}", response_class=HTMLResponse)
+def karta_wpisu(
+    wpis_id: str,
+    request: Request,
+    blad: str = Query("", max_length=2000),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Karta wpisu z formularzem zbudowanym ze schematu firmy."""
+    from ..services import schemat as definicje
+
+    wpis = slowniki.wpis(db, ctx, wpis_id)
+    if wpis is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono wpisu slownika")
+    opis = slowniki.schemat(db, ctx, wpis.kategoria)
+    try:
+        bledy = json.loads(blad) if blad else {}
+    except json.JSONDecodeError:
+        bledy = {}
+    wynik = render(
+        request, "slownik_wpis.html", user, ctx, db,
+        wpis=wpis, schemat=opis, grupy=opis.grupy(), formaty=definicje.FORMATY,
+        braki=definicje.braki(opis, wpis.atrybuty),
+        uzycie=slowniki.uzycie_wpisu(db, ctx, wpis),
+        osoby=db.execute(scoping.owners_query(ctx)).scalars().all(),
+        powiazane=slowniki.wpisy(db, ctx, wpis.kategoria),
+        kategorie=KATEGORIE_SLOWNIKA,
+        bledy=bledy if isinstance(bledy, dict) else {},
+    )
+    db.commit()
+    return wynik
+
+
+@router.post("/slowniki/wpis/{wpis_id}")
+async def zapisz_wpis_slownika(
+    wpis_id: str,
+    request: Request,
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Swiadoma edycja w karcie slownika - tu pola wymagane obowiazuja."""
+    from ..services import schemat as definicje
+
+    formularz = await request.form()
+    verify_csrf(request, user, str(formularz.get("csrf_token", "")))
+    _require_write(ctx)
+    wpis = slowniki.wpis(db, ctx, wpis_id)
+    if wpis is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono wpisu slownika")
+    dane = {klucz[5:]: wartosc for klucz, wartosc in formularz.items()
+            if klucz.startswith("pole_")}
+    try:
+        slowniki.zapisz_wpis(db, ctx, wpis, str(formularz.get("nazwa", "")), dane)
+    except definicje.BladPola as exc:
+        db.rollback()
+        # Bledy wracaja przy polach, ktorych dotycza: komunikat "cos jest nie
+        # tak" nie mowi, ktore z jedenastu pol nalezy poprawic.
+        adres = "/slowniki/wpis/" + wpis_id + "?blad=" + urllib.parse.quote(
+            json.dumps(exc.bledy, ensure_ascii=False))
+        return RedirectResponse(adres, status_code=status.HTTP_303_SEE_OTHER)
+    audit(db, ctx, action="slownik.zapisany", target=wpis.kategoria + ":" + wpis.wartosc,
+          ip=client_ip(request))
+    db.commit()
+    return RedirectResponse("/slowniki/wpis/" + wpis_id, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/slowniki/{wpis_id}/usun")
@@ -1217,14 +1272,124 @@ def usun_ze_slownika(
 ) -> Response:
     verify_csrf(request, user, csrf_token)
     _require_write(ctx)
-
     wpis = slowniki.usun(db, ctx, wpis_id)
     if wpis is None:
         raise HTTPException(status_code=404, detail="nie znaleziono wpisu slownika")
-    audit(db, ctx, action="slownik.usuniety", target=f"{wpis.kategoria}:{wpis.wartosc}",
+    audit(db, ctx, action="slownik.usuniety", target=wpis.kategoria + ":" + wpis.wartosc,
           ip=client_ip(request))
     db.commit()
     return RedirectResponse("/slowniki", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- schemat slownika (tylko administrator firmy) ---------------------------
+
+@router.get("/slowniki/{kategoria}/schemat", response_class=HTMLResponse)
+def widok_schematu(
+    kategoria: str,
+    request: Request,
+    blad: str = Query("", max_length=500),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Pola slownika. Schemat rzadzi tym, co widza wszyscy w firmie."""
+    from ..services import schemat as definicje
+
+    _require_write(ctx)
+    if kategoria not in KATEGORIE_SLOWNIKA:
+        raise HTTPException(status_code=404, detail="nieznana kategoria slownika")
+    opis = slowniki.schemat(db, ctx, kategoria)
+    wynik = render(
+        request, "slownik_schemat.html", user, ctx, db,
+        kategoria=kategoria, kategorie=KATEGORIE_SLOWNIKA, schemat=opis,
+        definicja=json.dumps(opis.model_dump(exclude_none=True), ensure_ascii=False, indent=2),
+        typy=definicje.TYPY, formaty=definicje.FORMATY, role=definicje.ROLE,
+        limity={"pola": definicje.MAKS_POL, "opcje": definicje.MAKS_OPCJI},
+        uzycia={p.klucz: slowniki.uzycie_pola(db, ctx, kategoria, p.klucz) for p in opis.pola},
+        blad=blad,
+    )
+    db.commit()
+    return wynik
+
+
+@router.post("/slowniki/{kategoria}/schemat")
+def zapisz_schemat_slownika(
+    kategoria: str,
+    request: Request,
+    definicja: str = Form(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Podmiana calego schematu. Pola z wartosciami nie daja sie usunac."""
+    from pydantic import ValidationError
+
+    from ..services import schemat as definicje
+
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+    if kategoria not in KATEGORIE_SLOWNIKA:
+        raise HTTPException(status_code=404, detail="nieznana kategoria slownika")
+
+    poprzedni = slowniki.schemat(db, ctx, kategoria)
+    try:
+        tresc = json.loads(definicja)
+        tresc["kategoria"] = kategoria
+        nowy = definicje.Schemat.model_validate(tresc)
+    except (json.JSONDecodeError, ValidationError, TypeError, AttributeError) as exc:
+        db.rollback()
+        return _blad_schematu(kategoria, str(exc)[:400])
+
+    # Pole z wartosciami sie nie usuwa: kasowanie danych i kasowanie pola to
+    # dwie osobne decyzje. Wgrany schemat nie moze byc droga na skroty do tej
+    # pierwszej, bo formularz jej broni.
+    znikaja = {p.klucz for p in poprzedni.pola} - {p.klucz for p in nowy.pola}
+    for klucz in sorted(znikaja):
+        ile = slowniki.uzycie_pola(db, ctx, kategoria, klucz)
+        if ile:
+            db.rollback()
+            return _blad_schematu(
+                kategoria,
+                "pole '" + klucz + "' ma wartosci w " + str(ile)
+                + " wpisach - najpierw je wyczysc")
+
+    slowniki.zapisz_schemat(db, ctx, kategoria, nowy)
+    audit(db, ctx, action="slownik.schemat", target=kategoria,
+          detail={"pola": len(nowy.pola), "usuniete": sorted(znikaja)},
+          ip=client_ip(request))
+    db.commit()
+    return RedirectResponse("/slowniki/" + kategoria + "/schemat",
+                            status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _blad_schematu(kategoria: str, tresc: str) -> RedirectResponse:
+    return RedirectResponse(
+        "/slowniki/" + kategoria + "/schemat?blad=" + urllib.parse.quote(tresc),
+        status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/slowniki/{kategoria}/schemat/wyczysc")
+def wyczysc_pole_schematu(
+    kategoria: str,
+    request: Request,
+    klucz: str = Form(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Kasuje wartosci jednego pola - krok, ktory dopiero umozliwia jego usuniecie."""
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+    if kategoria not in KATEGORIE_SLOWNIKA:
+        raise HTTPException(status_code=404, detail="nieznana kategoria slownika")
+    ile = slowniki.wyczysc_pole(db, ctx, kategoria, klucz)
+    audit(db, ctx, action="slownik.pole_wyczyszczone", target=kategoria + ":" + klucz,
+          detail={"wpisow": ile}, ip=client_ip(request))
+    db.commit()
+    return RedirectResponse("/slowniki/" + kategoria + "/schemat",
+                            status_code=status.HTTP_303_SEE_OTHER)
 
 
 # --- wlasne konto -----------------------------------------------------------

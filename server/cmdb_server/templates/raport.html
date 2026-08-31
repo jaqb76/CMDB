@@ -142,7 +142,7 @@
       <tr>
         <td style="border-bottom:1px solid #eef0f3">{{ m.hostname }}</td>
         <td style="border-bottom:1px solid #eef0f3">{{ m.model or '—' }}</td>
-        <td style="border-bottom:1px solid #eef0f3">{{ m.vendor or '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ m.dostawca.wartosc if m.dostawca else '—' }}</td>
         <td style="border-bottom:1px solid #eef0f3; font-weight:700">{{ m.warranty_until }}</td>
       </tr>
       {% endfor %}

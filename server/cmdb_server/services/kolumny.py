@@ -113,7 +113,7 @@ KOLUMNY: list[dict] = [
 
     # --- zakup i gwarancja ---
     {"klucz": "vendor", "etykieta": "Dostawca", "grupa": "Zakup", "zrodlo": "asset",
-     "wartosc": lambda k: k["maszyna"].vendor},
+     "wartosc": lambda k: (k["maszyna"].dostawca.wartosc if k["maszyna"].dostawca else None)},
     {"klucz": "purchase_date", "etykieta": "Data zakupu", "grupa": "Zakup", "zrodlo": "asset",
      "wartosc": lambda k: k["maszyna"].purchase_date},
     {"klucz": "warranty_until", "etykieta": "Gwarancja do", "grupa": "Zakup", "zrodlo": "asset",

@@ -136,7 +136,7 @@
         <tr>
           <td class="strong">{{ m.hostname }}</td>
           <td>{{ m.model or '-' }}</td>
-          <td>{{ m.vendor or '-' }}</td>
+          <td>{% if m.dostawca %}{{ m.dostawca.wartosc }}{% else %}-{% endif %}</td>
           <td class="strong">{{ m.warranty_until }}</td>
         </tr>
       {% endfor %}
