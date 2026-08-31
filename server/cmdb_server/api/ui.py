@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+
+from markupsafe import Markup
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -98,11 +100,26 @@ def _na_date(value):
     return value
 
 
-def _fmt_dt(value) -> str:
+def _fmt_dt(value):
+    """Chwila jako element <time> - przegladarka przelicza ja na strefe czytajacego.
+
+    Serwer liczy wszystko w UTC i tak to zapisuje, bo strefa serwera nie moze
+    wplywac na dane. Ale czlowiek oglada raport w swojej strefie i "16:25 UTC"
+    zmusza go do liczenia w pamieci - a przy sprawdzaniu, czy agent zglosil sie
+    po ostatniej zmianie, latwo sie wtedy pomylic o dwie godziny.
+
+    W atrybucie datetime zostaje zapis UTC z oznaczeniem strefy, wiec jest
+    jednoznaczny; app.js podmienia sama tresc. Bez JavaScriptu widac nadal
+    poprawna godzine UTC - gorzej, ale nie blednie.
+    """
     if _missing(value):
         return "-"
     value = naive_utc(_na_date(value))
-    return value.strftime("%Y-%m-%d %H:%M UTC") if value else "-"
+    if not value:
+        return "-"
+    znacznik = value.strftime("%Y-%m-%dT%H:%M:%SZ")
+    widoczne = value.strftime("%Y-%m-%d %H:%M UTC")
+    return Markup('<time datetime="{}" data-czas>{}</time>').format(znacznik, widoczne)
 
 
 def _fmt_ago(value) -> str:

@@ -30,7 +30,7 @@ from ..config import AgentConfig, default_config_path
 from .common import is_windows, open_in_shell, run_agent_elevated, trigger_scheduled_task
 from .status_window import StatusWindow
 from ..proces import srodowisko_dla_potomka, flagi_bez_okna
-from . import instance
+from . import appearance, instance
 from .appearance import brand_window
 
 log = logging.getLogger(__name__)
@@ -72,6 +72,9 @@ class TrayApp:
         self.restart_requested = False
         self._executable_signature = self._file_signature()
 
+        # Przed pierwszym oknem, inaczej Windows zdazy nadac przyciskowi
+        # na pasku zadan identyfikator wyliczony z nazwy procesu.
+        appearance.use_app_identity()
         self.root = tk.Tk()
         self.root.withdraw()          # ikona zyje w zasobniku, nie na pasku zadan
         self.root.title("CMDB Agent")

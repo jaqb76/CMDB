@@ -245,3 +245,47 @@ def test_brak_pliku_nie_wywraca_strony(tmp_path, monkeypatch):
     monkeypatch.setattr(ui, "STATIC_DIR", tmp_path)
     monkeypatch.setattr(ui, "_ODCISKI", {})
     assert ui._odcisk("nie-ma.css") == "/static/nie-ma.css"
+
+
+# --- czas w strefie czytajacego ----------------------------------------------
+
+def test_daty_wychodza_jako_element_time(client, tenant_a, make_user):
+    """Sam napis "16:25 UTC" zmusza czytajacego do przeliczania w pamieci."""
+    asset_id = _seed(client, tenant_a)
+    make_user(tenant_a["id"], "czas@firma.pl", "bardzo-dlugie-haslo")
+    _login(client, "czas@firma.pl", "bardzo-dlugie-haslo")
+
+    strona = client.get(f"/assets/{asset_id}").text
+    assert "<time datetime=" in strona
+    assert "data-czas" in strona
+
+
+def test_znacznik_czasu_zostaje_w_utc(client, tenant_a, make_user):
+    """Atrybut datetime musi byc jednoznaczny - przeliczaniem zajmuje sie
+    przegladarka, a nie serwer, ktory nie zna strefy czytajacego."""
+    from cmdb_server.api.ui import _fmt_dt
+    from datetime import datetime, timezone
+
+    wynik = str(_fmt_dt(datetime(2026, 8, 31, 16, 25, tzinfo=timezone.utc)))
+    assert 'datetime="2026-08-31T16:25:00Z"' in wynik
+    # Bez JavaScriptu widac nadal poprawna godzine, tyle ze w UTC.
+    assert "2026-08-31 16:25 UTC" in wynik
+
+
+def test_brak_daty_nie_tworzy_pustego_znacznika():
+    from cmdb_server.api.ui import _fmt_dt
+
+    assert _fmt_dt(None) == "-"
+    assert "<time" not in str(_fmt_dt(""))
+
+
+def test_skrypt_przelicza_strefe():
+    from pathlib import Path
+
+    skrypt = (Path(__file__).resolve().parent.parent
+              / "cmdb_server" / "static" / "app.js").read_text(encoding="utf-8")
+    assert "time[data-czas]" in skrypt
+    assert "resolvedOptions" in skrypt
+    # Zapis UTC ma zostac w podpowiedzi - to wspolny punkt odniesienia
+    # przy porownywaniu z logami serwera.
+    assert "el.title" in skrypt

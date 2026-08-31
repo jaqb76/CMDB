@@ -207,4 +207,45 @@
     });
   });
 
+
+  // Czas w strefie czytajacego.
+  //
+  // Serwer liczy i zapisuje wszystko w UTC, bo strefa serwera nie moze wplywac
+  // na dane. Ale czlowiek oglada raport u siebie i "16:25 UTC" zmusza go do
+  // przeliczania w pamieci. Atrybut datetime pozostaje jednoznaczny (UTC),
+  // podmieniamy tylko to, co widac.
+  //
+  // Bez tego skryptu strona nadal pokazuje poprawna godzine UTC - dlatego
+  // przeliczanie jest tutaj, a nie w szablonie.
+  (function () {
+    var elementy = document.querySelectorAll("time[data-czas]");
+    if (!elementy.length) { return; }
+
+    var strefa = "";
+    try {
+      strefa = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch (e) {
+      strefa = "";
+    }
+
+    var format;
+    try {
+      format = new Intl.DateTimeFormat(undefined, {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false
+      });
+    } catch (e) {
+      return;                       // bez Intl zostawiamy zapis UTC
+    }
+
+    elementy.forEach(function (el) {
+      var chwila = new Date(el.getAttribute("datetime"));
+      if (isNaN(chwila.getTime())) { return; }   // nie psujemy tego, co widac
+      // Podpowiedz zachowuje zapis UTC - przy zglaszaniu bledu i porownywaniu
+      // z logami serwera to ta wartosc jest wspolnym punktem odniesienia.
+      el.title = el.textContent.trim() + (strefa ? "  (pokazano w strefie " + strefa + ")" : "");
+      el.textContent = format.format(chwila).replace(",", "");
+    });
+  })();
+
 })();

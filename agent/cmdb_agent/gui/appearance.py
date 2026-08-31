@@ -1,7 +1,30 @@
 """Shared native-window branding; the same C mark as the existing tray."""
 from __future__ import annotations
 
+import sys
 from tkinter import ttk
+
+# Windows grupuje okna na pasku zadan po identyfikatorze aplikacji i stamtad
+# bierze ikone przycisku. Proces, ktory go nie deklaruje, dostaje identyfikator
+# wyliczony przez powloke - i przycisk na pasku pokazuje ikone domyslna zamiast
+# naszej, mimo poprawnie ustawionego iconphoto i ikony wkompilowanej w EXE.
+# Ten sam ciag musi byc w skrocie instalatora, inaczej przypiety skrot i
+# dzialajace okno beda dwoma osobnymi przyciskami.
+APP_ID = "CMDB.Agent.Tray"
+
+
+def use_app_identity() -> None:
+    """Deklaruje identyfikator aplikacji. Musi poprzedzic pierwsze okno."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+    except (AttributeError, OSError):
+        # Starsza powloka albo brak shell32 - ikona bedzie domyslna,
+        # ale to nie powod, zeby agent sie nie uruchomil.
+        pass
 
 BG = "#f3f6fa"
 INK = "#172b3a"
@@ -30,6 +53,7 @@ def brand_window(window):
 
 
 def apply_style(window):
+    use_app_identity()
     window.configure(background=BG)
     style = ttk.Style(window)
     style.theme_use("clam")

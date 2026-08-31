@@ -6,8 +6,12 @@
   <div>
     <h1>{{ raport.tytul }}</h1>
     <p class="muted">
+      {{ raport.firma }} &middot; stan na {{ raport.wygenerowano | dt }}
+    </p>
+    <p class="muted small">
       Ta sama tresc idzie poczta — widok rozniacy sie od wysylki bylby gorszy
-      niz jego brak.
+      niz jego brak. W wiadomosci czas pozostaje w UTC, bo klient poczty nie
+      wykona skryptu przeliczajacego strefe.
     </p>
   </div>
   <div class="row-form">

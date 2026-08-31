@@ -52,7 +52,9 @@ Source: "install-agent.ps1";          DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-agent.ps1";        DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Status agenta CMDB"; Filename: "{app}\{#AgentExe}"; Parameters: "gui"
+; AppUserModelID musi byc taki sam jak w gui/appearance.py - inaczej
+; przypiety skrot i dzialajace okno to dla paska zadan dwa rozne programy.
+Name: "{group}\Status agenta CMDB"; Filename: "{app}\{#AgentExe}"; Parameters: "gui"; AppUserModelID: "CMDB.Agent.Tray"
 Name: "{group}\Odinstaluj agenta CMDB"; Filename: "{uninstallexe}"
 
 [Code]
