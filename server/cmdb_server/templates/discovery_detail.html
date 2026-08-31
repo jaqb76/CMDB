@@ -9,10 +9,18 @@
 <p class="muted">Podpowiedzi pochodzą z portów i banerów usług; nie potwierdzają dokładnego OS, modelu ani numeru seryjnego. DNS także może być nieaktualny. MAC jest dostępny zwykle tylko w lokalnej podsieci.</p>
 <h3>Podstawa rozpoznania</h3><ul>{% for evidence in device.observation.evidence %}<li>{{ evidence }}</li>{% else %}<li>Odpowiedź TCP; brak otwartych usług w badanym zestawie.</li>{% endfor %}</ul>
 </section>
-{% if device.asset_id %}<p>Powiązano z <a href="/assets/{{ device.asset_id }}">zasobem w ewidencji</a>.</p>
+{% if device.asset_id %}
+<p>Powiązano z <a href="/assets/{{ device.asset_id }}">zasobem w ewidencji</a>.
+  {% if device.link_mode in ('mac', 'ip') %}<span class="badge badge-ok">automatycznie</span>
+  {% elif device.link_mode == 'reczne' %}<span class="badge">potwierdzone ręcznie</span>{% endif %}
+  {% if device.link_reason %}<br><span class="muted small">Podstawa: {{ device.link_reason }}</span>{% endif %}
+</p>
 {% elif ctx.can_write %}
 <section class="panel"><h2>Zweryfikuj i dodaj do ewidencji</h2>
 <p>Najpierw sprawdź istniejące zasoby. Ten sam adres w różnych sieciach nie oznacza tego samego urządzenia.</p>
+{% if device.link_reason %}
+<p class="muted small">Automat nie przypisał tego urządzenia: {{ device.link_reason }}.</p>
+{% endif %}
 {% if matches %}<p>Możliwe dopasowania (IP lub nazwa; wymagają potwierdzenia):</p><ul>{% for asset in matches %}<li><a href="/assets/{{ asset.id }}">{{ asset.hostname }}</a> — {{ asset.primary_ip or '—' }} · ID: {{ asset.id }}</li>{% endfor %}</ul>{% endif %}
 <form method="post" action="/wykrywanie/{{ device.id }}/adopt">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

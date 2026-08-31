@@ -841,3 +841,7 @@ class DiscoveryDevice(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     observation: Mapped[dict] = mapped_column(JSONType, nullable=False)
     asset_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("assets.id", ondelete="SET NULL"))
+    # Skad wzielo sie powiazanie: "mac", "ip" albo "reczne". Automat, ktorego
+    # nie widac, jest gorszy od reki - tego pola uzywa panel i dziennik audytu.
+    link_mode: Mapped[str | None] = mapped_column(String(16))
+    link_reason: Mapped[str | None] = mapped_column(String(200))
