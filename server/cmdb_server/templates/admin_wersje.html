@@ -76,7 +76,14 @@
     <code>/opt/cmdb-agent</code>: agent pobiera paczke, sprawdza jej skrot,
     uruchamia nowa wersje probnie i cofa zmiane, gdy ta nie wstaje.
   </p>
-  {% if paczka_zrodel %}
+  {% if import_enabled %}
+  <p class="muted small">
+    Paczki Linux pochodzą z tego samego przetestowanego wydania CI co agent Windows.
+    Ich wersje i stan dopuszczenia są widoczne w katalogu poniżej.
+    Instalacja nowej maszyny po wybraniu wersji:
+    <code>curl -fsSL &lt;adres&gt;/download/install.sh | sudo bash -s -- --token ...</code>
+  </p>
+  {% elif paczka_zrodel %}
   <p class="muted small">
     Serwer zbudowal paczke w wersji <code class="strong">{{ paczka_zrodel.version }}</code>
     i wpisal ja do magazynu wydan.

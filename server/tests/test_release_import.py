@@ -148,6 +148,9 @@ def test_import_status_and_existing_rollout_controls(client, signed_release, mak
     page = client.get("/admin/wersje")
     assert page.status_code == 200 and "Automatyczny katalog" in page.text
     assert "Wgraj nowa wersje" not in page.text
+    assert "Paczki Linux pochodzą" in page.text
+    assert "Serwer nie zbudowal paczki" not in page.text
+    assert "Serwer zbudowal paczke w wersji" not in page.text
     assert _wgraj_wersje(client, csrf, trust_worker=False).status_code == 403
     with SessionLocal() as db:
         release = db.scalar(select(AgentRelease).where(AgentRelease.os_family == "windows"))
