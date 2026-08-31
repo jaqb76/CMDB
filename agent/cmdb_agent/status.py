@@ -62,6 +62,7 @@ class AgentStatus:
     spooled_reports: int = 0
     published_at: str = ""
     warnings: list = field(default_factory=list)
+    discovery: dict = field(default_factory=dict)
 
     @property
     def status_label(self) -> str:
@@ -116,6 +117,7 @@ def build_status(config, state: AgentState, spooled: int = 0) -> AgentStatus:
         spooled_reports=spooled,
         published_at=datetime.now(timezone.utc).isoformat(),
         warnings=warnings,
+        discovery=state.discovery_status,
     )
 
 
@@ -161,9 +163,34 @@ def read(config) -> AgentStatus:
         return AgentStatus(hostname=platform.node(), last_status="not_configured")
     known = {name: raw[name] for name in AgentStatus.__dataclass_fields__ if name in raw}
     try:
-        return AgentStatus(**known)
+        snapshot = AgentStatus(**known)
+        # Stored success is historical. Re-evaluate freshness in every GUI read.
+        if is_stale(snapshot) and "Status jest nieaktualny — brak świeżej synchronizacji." not in snapshot.warnings:
+            snapshot.warnings = [*snapshot.warnings, "Status jest nieaktualny — brak świeżej synchronizacji."]
+        return snapshot
     except TypeError:
         return AgentStatus(hostname=platform.node(), last_status="not_configured")
+
+
+def is_stale(snapshot) -> bool:
+    last = _parse_iso(snapshot.last_sync_at)
+    return bool(last and datetime.now(timezone.utc) - last > timedelta(
+        seconds=max(3600, snapshot.report_interval_seconds * 3)))
+
+
+def discovery_label(snapshot) -> str:
+    data = snapshot.discovery if isinstance(snapshot.discovery, dict) else {}
+    labels = {"disabled": "Wyłączone przez politykę CMDB", "unavailable": "Zablokowane — brak ważnej polityki CMDB",
+              "waiting": "Dozwolone — oczekiwanie na termin skanu", "running": "Skanowanie w toku",
+              "completed": "Ostatni skan zakończony", "partial": "Ostatni skan niepełny lub z błędem"}
+    label = labels.get(data.get("state"), "Brak aktualnej informacji o polityce CMDB")
+    measured = _parse_iso(snapshot.published_at)
+    if measured is None or datetime.now(timezone.utc) - measured > timedelta(
+            seconds=max(3600, snapshot.report_interval_seconds * 3)):
+        label = "Nieaktualny status skanera — " + label.lower()
+    if data.get("last_scan_at"):
+        label += " · " + format_local(data["last_scan_at"])
+    return label
 
 
 def format_local(value: str) -> str:

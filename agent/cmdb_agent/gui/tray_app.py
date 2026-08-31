@@ -31,6 +31,7 @@ from .common import is_windows, open_in_shell, run_agent_elevated, trigger_sched
 from .status_window import StatusWindow
 from ..proces import srodowisko_dla_potomka, flagi_bez_okna
 from . import instance
+from .appearance import brand_window
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class TrayApp:
         self.root = tk.Tk()
         self.root.withdraw()          # ikona zyje w zasobniku, nie na pasku zadan
         self.root.title("CMDB Agent")
+        brand_window(self.root)
 
         self.status_window = StatusWindow(
             self.root,

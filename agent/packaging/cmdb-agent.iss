@@ -10,7 +10,7 @@
 
 #define AppName        "CMDB Agent"
 #ifndef AppVersion
-#define AppVersion     "0.5.9"
+#define AppVersion     "0.5.10"
 #endif
 #ifndef BuildDir
 #define BuildDir       "..\dist"

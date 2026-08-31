@@ -31,7 +31,9 @@ def _plik_pe(maszyna: int = 0x8664, wypelniacz: bytes = b"") -> bytes:
     naglowek = bytearray(b"MZ" + bytes(0x3E))
     naglowek[0x3C:0x40] = (0x40).to_bytes(4, "little")
     naglowek += b"PE" + bytes(2) + maszyna.to_bytes(2, "little")
-    return bytes(naglowek) + b"testowa zawartosc agenta" * 40 + wypelniacz
+    body = naglowek + b"testowa zawartosc agenta" * 40 + wypelniacz
+    body[0x40 + 92:0x40 + 94] = (3).to_bytes(2, "little")
+    return bytes(body)
 
 
 def _plik_elf(maszyna: int = 0xB7, wypelniacz: bytes = b"") -> bytes:
@@ -68,7 +70,26 @@ PLIK_LINUKSOWY_X86 = _plik_elf(0x3E)  # x86-64
 SKROT_LINUKSOWY = hashlib.sha256(PLIK_LINUKSOWY).hexdigest()
 
 
-def _wgraj_wersje(client, csrf, wersja="0.2.0", tresc=PLIK_AGENTA, system="windows"):
+def _trust_test_worker(tresc, wersja):
+    """Test-only equivalent of the independent deployment trust catalog."""
+    from cmdb_server.config import get_settings
+    from cmdb_server.services.architektura import PE_MASZYNY
+    arch = PE_MASZYNY[int.from_bytes(tresc[0x44:0x46], "little")]
+    get_settings().trusted_windows_builds[hashlib.sha256(tresc).hexdigest()] = {"version": wersja, "arch": arch}
+
+
+def _wgraj_wersje(client, csrf, wersja="0.2.0", tresc=PLIK_AGENTA, system="windows", *, trust_worker=None):
+    # Existing fixtures represent vetted console workers; GUI and security
+    # regressions must explicitly provision trust separately from the upload.
+    if system == "windows" and tresc[:2] == b"MZ":
+        console = int.from_bytes(tresc[0x40 + 92:0x40 + 94], "little") == 3
+        if trust_worker is True or (trust_worker is None and console):
+            from cmdb_server.config import get_settings
+            previous = get_settings().trusted_windows_builds.get(hashlib.sha256(tresc).hexdigest())
+            if previous and previous["version"] != wersja:
+                # Different fixture versions must represent different binaries.
+                tresc += ("\nfixture-version:" + wersja).encode()
+            _trust_test_worker(tresc, wersja)
     return client.post(
         "/admin/releases",
         data={"version": wersja, "os_family": system, "notes": "testowa", "csrf_token": csrf},

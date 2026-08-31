@@ -25,6 +25,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import json
+import secrets
 import os
 import shutil
 import subprocess
@@ -172,8 +174,8 @@ def _pobierz_i_sprawdz(client: CmdbClient, token: str, oferta: dict, cel: Path) 
             )
 
 
-def _czy_dziala(plik: Path) -> tuple[bool, str]:
-    """Uruchamia nowy plik z --version. To ostatnia bariera przed podmiana."""
+def _czy_dziala(plik: Path, expected_version: str) -> tuple[bool, str]:
+    """Health/compatibility check, NOT a trust root. Server pins tested bytes."""
     try:
         wynik = subprocess.run(
             [str(plik), "--version"],
@@ -188,7 +190,20 @@ def _czy_dziala(plik: Path) -> tuple[bool, str]:
         return False, f"{type(exc).__name__}: {exc}"
 
     opis = (wynik.stdout or wynik.stderr or b"").decode("utf-8", errors="replace").strip()
-    return wynik.returncode == 0, opis
+    if wynik.returncode != 0 or opis != f"cmdb-agent {expected_version}":
+        return False, "niezgodna wersja lub odpowiedz --version"
+    if sys.platform == "win32":
+        nonce = secrets.token_hex(16)
+        try:
+            probe = subprocess.run([str(plik), "worker-probe", "--nonce", nonce], capture_output=True,
+                timeout=30, creationflags=flagi_bez_okna(), env=srodowisko_dla_potomka())
+            payload = json.loads(probe.stdout)
+            if (probe.returncode != 0 or payload != {"protocol": 1, "version": expected_version,
+                    "nonce": nonce, "commands": ["run", "enroll", "status"], "discovery_control": "cmdb-policy-v1"}):
+                return False, "brak zgodnego protokolu workera/polityki CMDB"
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return False, "test protokolu workera nie powiodl sie"
+    return True, opis
 
 
 def _podmien(biezacy: Path, nowy: Path) -> Path:
@@ -263,6 +278,14 @@ def zastosuj(config, state, client: CmdbClient) -> str | None:
         nowy.unlink(missing_ok=True)
         return None
 
+    # Validate BEFORE renaming: the live tray watches the installed path and
+    # must never restart into an unverified/unsupported candidate.
+    dziala, opis = _czy_dziala(nowy, wersja)
+    if not dziala:
+        _zglos(client, state.agent_token, wersja, "odrzucona", opis)
+        nowy.unlink(missing_ok=True)
+        return None
+
     try:
         stara = _podmien(biezacy, nowy)
     except OSError as exc:
@@ -271,7 +294,7 @@ def zastosuj(config, state, client: CmdbClient) -> str | None:
         nowy.unlink(missing_ok=True)
         return None
 
-    dziala, opis = _czy_dziala(biezacy)
+    dziala, opis = _czy_dziala(biezacy, wersja)
     if not dziala:
         # Wycofujemy sie, zanim maszyna zostanie z niedzialajacym agentem.
         log.error("nowa wersja %s nie uruchamia sie (%s) - przywracam poprzednia", wersja, opis)

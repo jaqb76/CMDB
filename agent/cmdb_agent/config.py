@@ -72,7 +72,8 @@ class AgentConfig:
     # Maksymalna liczba pozycji na liste - zabezpieczenie przed gigantycznym raportem.
     max_items_per_section: int = 5000
 
-    # Skanuj tylko sieci, do ktorych administrator upowaznil tego agenta.
+    # Runtime values from the authenticated CMDB policy only. Local files/env
+    # and the GUI cannot enable/configure discovery (see _apply).
     discovery_enabled: bool = False
     discovery_auto_subnets: bool = True
     discovery_cidrs: list[str] = field(default_factory=list)
@@ -181,6 +182,8 @@ def load_config(config_path: Path | None = None, overrides: dict | None = None) 
 
 def _apply(config: AgentConfig, values: dict) -> None:
     for key, value in values.items():
+        if key.startswith("discovery_"):
+            continue
         if key.startswith("_") or not hasattr(config, key):
             continue
         if key in _INT_FIELDS:

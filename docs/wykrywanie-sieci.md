@@ -1,4 +1,4 @@
-# Agent 0.5.9: jeden EXE, zasobnik i wykrywanie sieci
+# Agent 0.5.10: jeden EXE, zasobnik i wykrywanie sieci
 
 ## Uruchamianie Windows
 
@@ -10,15 +10,29 @@ monit UAC przy operacji wymagającej administratora jest zachowany.
 
 ## Włączenie skanera
 
-1. Na wybranym komputerze: ikona → **Ustawienia** (administrator).
-2. Zaznacz **Włącz skanowanie sieci** tylko dla sieci, do których masz zgodę.
-3. Pozostaw automatyczne wykrywanie lokalnych podsieci albo odznacz je i podaj
-   zakresy, np. `192.168.10.0/24, 10.20.30.0/24`. Ręczne zakresy są dodawane do
-   automatycznych, gdy obie opcje są włączone.
-4. Zapisz. Zarejestrowany agent nie wymaga ponownego tokenu. Wybierz
-   **Synchronizuj teraz**; kolejne skany wykonują się podczas raportowania,
-   domyślnie nie częściej niż co 24 godziny.
-5. W panelu CMDB otwórz **Wykrywanie sieci** (`/wykrywanie`).
+1. Zaloguj się jako administrator firmy w CMDB.
+2. Otwórz kartę wybranego komputera → **Polityka skanowania** albo wybierz
+   komputer na stronie **Wykrywanie sieci**.
+3. Włącz moduł wyłącznie dla sieci objętych zgodą administratora. Wybierz
+   automatyczne podsieci i/lub zakresy CIDR, np. `192.168.10.0/24`.
+4. Zapisz politykę. Agent 0.5.10 pobierze ją podczas następnego cyklu
+   raportowania; zmieniona polityka inicjuje skan w tym cyklu, następne
+   skany domyślnie nie częściej niż co 24 godziny.
+5. Wyniki są na stronie **Wykrywanie sieci** (`/wykrywanie`).
+
+Lokalne ustawienia i okno statusu pokazują wyłącznie stan skanera.
+Nie zawierają przełącznika, edytora zakresów ani przycisku uruchomienia skanu.
+Zwykła synchronizacja inwentarza nie omija centralnej polityki ani harmonogramu.
+Zapis polityki wymaga administratora firmy/superadministratora, CSRF i zgodnej
+rewizji formularza; widzowie mogą ją tylko odczytać. Zmiany trafiają do audytu.
+
+Przed każdym cyklem skanera agent pobiera świeżą politykę przez uwierzytelnione
+HTTPS. Odpowiedź wiąże losowy nonce, maszynę i jej zasób; ważność wynosi 60 s.
+Brak połączenia, błędna odpowiedź lub brak polityki blokują nowy skan.
+Zapisana poprzednio zgoda nie jest używana awaryjnie. Inwentaryzacja pracuje dalej.
+Wyłączenie blokuje następne skany, ale nie przerywa już rozpoczętego sondowania
+(maksymalny budżet poniżej). Polityka nie obejmuje agenta starszego niż 0.5.10:
+najpierw zaktualizuj wybrane komputery; starych lokalnych zgód nie importujemy.
 
 Warto włączyć jeden skaner na lokalizację/podsieć, nie na wszystkich stacjach.
 Automatyka czyta rzeczywiste prefiksy aktywnych interfejsów (również wirtualnych
@@ -52,19 +66,9 @@ zachowuje pełną weryfikację TLS i przypięcie certyfikatu.
 
 ## Limity i konfiguracja
 
-Przykładowy fragment `agent.conf`:
-
-```json
-{
-  "discovery_enabled": true,
-  "discovery_auto_subnets": false,
-  "discovery_cidrs": ["192.168.10.0/24"],
-  "discovery_interval_seconds": 86400,
-  "discovery_max_hosts": 1024,
-  "discovery_rate": 32,
-  "discovery_budget_seconds": 300
-}
-```
+Limity ustawia administrator w formularzu polityki CMDB. Lokalne klucze
+`discovery_*` w `agent.conf`, zmiennych środowiska i nadpisaniach są ignorowane.
+Zapis z nowego GUI usuwa stare lokalne ustawienia skanowania.
 
 Dozwolone są wyłącznie prywatne IPv4 RFC1918. IPv6 oraz publiczne zakresy nie
 są skanowane. Domyślnie: do 1024 hostów, 8 pracowników, maks. 32 połączenia
@@ -105,11 +109,12 @@ obserwacji. Starszy lub ponowiony raport nie cofa wyników.
 ## Aktualizacja i sprawdzenie
 
 Najpierw zaktualizuj serwer: nowe tabele `discovery_scanners` i
-`discovery_devices` tworzy istniejące `init_db()`. Następnie zainstaluj agenta
-0.5.9. Dotychczasowe binaria w repozytorium nie są automatycznie zmieniane.
-Workflow testów buduje **CMDB-Agent-Windows-0.5.9** jako artefakt GitHub Actions:
+`discovery_devices` oraz `discovery_policies` tworzy istniejące `init_db()`.
+Następnie zainstaluj agenta 0.5.10 i ustaw politykę centralnie.
+[Zaufanie do binariów i wymagany katalog SHA-256](zaufane-wydania-windows.md). Dotychczasowe binaria w repozytorium nie są automatycznie zmieniane.
+Workflow testów buduje **CMDB-Agent-Windows-0.5.10** jako artefakt GitHub Actions:
 jeden `cmdb-agent.exe` (worker + tray) oraz opcjonalny instalator
-`CMDB-Agent-Setup-0.5.9.exe`. Jest to build bez podpisu
+`CMDB-Agent-Setup-0.5.10.exe`. Jest to build bez podpisu
 Authenticode; wydanie produkcyjne należy podpisać firmowym certyfikatem.
 Przejście z dwóch plików na jeden wykonaj instalatorem: zmienia autostart,
 zatrzymuje starą ikonę i zachowuje stary plik jako `.legacy.bak`. Kolejne

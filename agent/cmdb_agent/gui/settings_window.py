@@ -29,8 +29,10 @@ from ..config import (
     AgentConfig,
     default_config_path,
 )
-from ..state import load_state, save_state, _harden_file
+from ..state import load_state, _harden_file
+from .. import status as status_module
 from .common import is_admin, run_agent
+from .appearance import apply_style
 
 log = logging.getLogger(__name__)
 
@@ -55,9 +57,10 @@ class SettingsWindow:
         self.check_results: queue.Queue = queue.Queue()
 
         self.root = tk.Tk()
+        apply_style(self.root)
         self.root.title("CMDB Agent - konfiguracja")
         self.root.resizable(False, False)
-        self.root.minsize(560, 0)
+        self.root.minsize(640, 0)
 
         self.server_var = tk.StringVar(value=config.server_url)
         self.token_var = tk.StringVar(value=config.enrollment_token)
@@ -67,9 +70,6 @@ class SettingsWindow:
         self.interval_var = tk.StringVar(value=str(default_hours))
         self.processes_var = tk.BooleanVar(value=config.collect_processes)
         self.show_token_var = tk.BooleanVar(value=False)
-        self.discovery_var = tk.BooleanVar(value=config.discovery_enabled)
-        self.discovery_auto_var = tk.BooleanVar(value=config.discovery_auto_subnets)
-        self.discovery_cidrs_var = tk.StringVar(value=", ".join(config.discovery_cidrs))
         self.message_var = tk.StringVar(value="")
 
         self._build()
@@ -78,13 +78,13 @@ class SettingsWindow:
     # --- budowa okna ------------------------------------------------------
 
     def _build(self) -> None:
-        frame = ttk.Frame(self.root, padding=16)
+        frame = ttk.Frame(self.root, padding=24)
         frame.grid(sticky="nsew")
 
         ttk.Label(
             frame,
-            text="Podaj adres serwera CMDB i token otrzymany od administratora.",
-            wraplength=520,
+            text="Połączenie z CMDB",
+            style="Title.TLabel",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
 
         ttk.Label(frame, text="Adres serwera").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 14))
@@ -125,16 +125,12 @@ class SettingsWindow:
 
         discovery = ttk.LabelFrame(frame, text="Wykrywanie urzadzen w sieci", padding=8)
         discovery.grid(row=10, column=0, columnspan=3, sticky="we", pady=(12, 4))
-        ttk.Checkbutton(discovery, text="Wlacz skanowanie sieci (mam zgode administratora sieci)",
-                        variable=self.discovery_var).pack(anchor="w")
-        ttk.Checkbutton(discovery, text="Automatycznie wykryj lokalne prywatne podsieci IPv4",
-                        variable=self.discovery_auto_var).pack(anchor="w")
-        ttk.Label(discovery, text="Dodatkowe zakresy CIDR, oddzielone przecinkiem:").pack(anchor="w")
-        ttk.Entry(discovery, textvariable=self.discovery_cidrs_var, width=64).pack(fill="x")
-        ttk.Label(discovery, text="Np. 192.168.10.0/24. Tylko dostepne prywatne sieci IPv4. "
-                  "Domyslnie co 24 h, do 1024 adresow i 5 min. Wyniki: CMDB → Wykrywanie sieci. "
-                  "Pierwszy skan: nastepna synchronizacja. Typ i OS wymagaja weryfikacji.",
-                  wraplength=500, foreground="#666").pack(anchor="w", pady=(6, 0))
+        ttk.Label(discovery, text="Zarządzane centralnie przez administratora CMDB.",
+                  wraplength=500).pack(anchor="w")
+        self.discovery_state_var = tk.StringVar(value="Odczytywanie stanu…")
+        ttk.Label(discovery, textvariable=self.discovery_state_var, wraplength=500,
+                  foreground="#526176").pack(anchor="w", pady=(6, 0))
+        self._refresh_discovery()
 
         self.message = ttk.Label(frame, textvariable=self.message_var, wraplength=520)
         self.message.grid(row=11, column=0, columnspan=3, sticky="w", pady=(12, 4))
@@ -150,7 +146,7 @@ class SettingsWindow:
         )
         self.check_button.pack(side="left")
         self.save_button = ttk.Button(
-            buttons, text="Zapisz", command=self._on_save
+            buttons, text="Zapisz ustawienia", command=self._on_save, style="Primary.TButton"
         )
         self.save_button.pack(side="right", padx=(8, 0))
         ttk.Button(buttons, text="Anuluj", command=self.root.destroy).pack(side="right")
@@ -164,6 +160,11 @@ class SettingsWindow:
                 "moze sie nie powiesc.",
                 "#8a6100",
             )
+
+    def _refresh_discovery(self):
+        snapshot = status_module.read(self.config)
+        self.discovery_state_var.set(status_module.discovery_label(snapshot))
+        self.root.after(5000, self._refresh_discovery)
 
     def _center(self) -> None:
         self.root.update_idletasks()
@@ -237,9 +238,6 @@ class SettingsWindow:
             ca_bundle=ca or None,
             report_interval_seconds=hours * 3600,
             collect_processes=self.processes_var.get(),
-            discovery_enabled=self.discovery_var.get(),
-            discovery_auto_subnets=self.discovery_auto_var.get(),
-            discovery_cidrs=[v.strip() for v in self.discovery_cidrs_var.get().split(",") if v.strip()],
             data_dir=self.config.data_dir,
         )
         try:
@@ -262,7 +260,9 @@ class SettingsWindow:
             except FileNotFoundError:
                 payload = {}
             payload.update({k: str(v) if isinstance(v, Path) else v for k, v in asdict(candidate).items()
-                            if not k.startswith("_") and k != "config_access_denied"})
+                            if not k.startswith(("_", "discovery_")) and k != "config_access_denied"})
+            # Remove obsolete local scan controls, never persist server policy.
+            payload = {k: v for k, v in payload.items() if not k.startswith("discovery_")}
             if not candidate.enrollment_token:
                 payload.pop("enrollment_token", None)
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -339,15 +339,6 @@ class SettingsWindow:
             return
 
         if self._already_enrolled(candidate.server_url) and not candidate.enrollment_token:
-            if any(getattr(candidate, key) != getattr(self.config, key) for key in
-                   ("discovery_enabled", "discovery_auto_subnets", "discovery_cidrs")):
-                state = load_state(self.config.state_path)
-                state.last_discovery_at = ""
-                try:
-                    save_state(self.config.state_path, state)
-                except RuntimeError as exc:
-                    self._set_message(f"Zapisano konfiguracje, ale nie odswiezono terminu skanu: {exc}", "#a52222")
-                    return
             self.saved = True
             messagebox.showinfo("Gotowe", "Zapisano ustawienia. Zostana uzyte przy nastepnej synchronizacji. "
                                 "Mozesz wybrac Synchronizuj teraz z menu ikony.")

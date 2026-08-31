@@ -22,7 +22,7 @@ from ..models import (
     TenantAgentTarget,
     utcnow,
 )
-from . import architektura, pakiet
+from . import architektura, pakiet, release_trust
 
 log = logging.getLogger(__name__)
 
@@ -125,6 +125,8 @@ def _zgodne(wydanie: AgentRelease, os_family: str, arch: str | None) -> bool:
     """Czy wydanie pasuje do pary system + architektura."""
     system = (os_family or "").lower()
     if not system or (wydanie.os_family or "").lower() != system:
+        return False
+    if system == "windows" and not release_trust.distributable(wydanie):
         return False
 
     # Paczka zrodel nie jest zbudowana pod zadna architekture - agent stoi na

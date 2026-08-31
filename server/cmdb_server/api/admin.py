@@ -685,6 +685,9 @@ def widok_wersji(
 ) -> Response:
     wszystkie, wersje, wedlug_systemu = _wydania(db)
 
+    from ..services.release_trust import distributable
+    release_admitted = {release.id: distributable(release) for release in wszystkie}
+
     cele: dict[str, dict[str, AgentRelease]] = {}
     for cel in db.execute(select(TenantAgentTarget)).scalars():
         wydanie = wersje.get(cel.release_id)
@@ -702,7 +705,7 @@ def widok_wersji(
     }
 
     return render_admin(
-        request, "admin_wersje.html", user, "wersje",
+        request, "admin_wersje.html", user, "wersje", release_admitted=release_admitted,
         etykiety_arch=architektura.ETYKIETY,
         wydania=wszystkie,
         wydania_wg_systemu=wedlug_systemu,
@@ -865,15 +868,15 @@ async def wgraj_wersje(
                     detail="nie rozpoznaje architektury pliku - czy to na pewno program?",
                 )
 
-            # Stary osobny tray nie moze zastapic workera. Nowy pojedynczy
-            # EXE tez jest okienkowy (cichy start), ale obsluguje CLI/workera.
-            # Jego build jawnie deklaruje ten kontrakt w metadanych. To nie
-            # podpis: pliki nadal wgrywa zaufany administrator, bez wykonania.
-            unified = (metadane.get("entry_mode") == "unified"
-                       and wykryty_system == "windows" and bool(wykryta))
-            if (system == "windows" and architektura.czy_okienkowy(tymczasowy)
-                    and not unified):
-                arch = architektura.ARCH_TRAY
+            # A footer is not proof of worker support. Only independently
+            # approved, tested bytes may be classified as a windowed worker.
+            from ..services.release_trust import trusted_build
+            if system == "windows" and architektura.czy_okienkowy(tymczasowy):
+                if not trusted_build(skrot.hexdigest(), numer, arch):
+                    if metadane.get("entry_mode") == "unified":
+                        raise HTTPException(400, "Niezweryfikowany worker Windows: stopka unified nie wystarcza. "
+                            "Wymagany SHA-256 sprawdzonego buildu w konfiguracji serwera.")
+                    arch = architektura.ARCH_TRAY
 
         if not numer:
             raise HTTPException(
@@ -958,6 +961,10 @@ def ustaw_oficjalna(
     wydanie = db.get(AgentRelease, release_id)
     if wydanie is None:
         raise HTTPException(status_code=404, detail="nie znaleziono wersji")
+
+    from ..services.release_trust import distributable
+    if not distributable(wydanie):
+        raise HTTPException(400, "Wydanie nie jest zatwierdzonym workerem Windows; nie mozna go aktywowac.")
 
     cel = db.execute(
         select(GlobalAgentTarget).where(GlobalAgentTarget.os_family == wydanie.os_family)
@@ -1093,6 +1100,9 @@ async def zlec_aktualizacje(
         wydanie = db.get(AgentRelease, release_id)
         if wydanie is None:
             raise HTTPException(status_code=400, detail="nie znaleziono wskazanej wersji")
+        from ..services.release_trust import distributable
+        if not distributable(wydanie):
+            raise HTTPException(400, "Wydanie nie jest zatwierdzonym workerem Windows; nie mozna go rozeslac.")
 
     if zakres == "firma":
         system = (formularz.get("os_family") or "").strip().lower()

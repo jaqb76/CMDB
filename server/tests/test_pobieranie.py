@@ -894,6 +894,8 @@ def test_unified_exe_jest_workerem_i_jest_dostepny_do_aktualizacji(client, tenan
     payload = _plik_gui() + b"\n<<<CMDB-AGENT-META>>>" + metadata + b"<<<KONIEC>>>"
     # Podpis/certyfikat moze wystapic za stopka. Serwer nie wykonuje pliku.
     payload += bytes(8192)
+    from .test_admin import _trust_test_worker
+    _trust_test_worker(payload, "0.5.9")
     assert _wgraj_wersje(client, csrf, "", payload, "windows").status_code == 303
     with SessionLocal() as db:
         release = db.execute(select(AgentRelease)).scalar_one()

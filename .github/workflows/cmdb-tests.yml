@@ -54,7 +54,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pytest
-      - run: python -m pytest -q tests/test_discovery.py tests/test_tray_startup.py tests/test_unified_exe.py
+      - run: python -m pytest -q tests/test_discovery.py tests/test_tray_startup.py tests/test_unified_exe.py tests/test_central_policy.py tests/test_gui_status.py
         working-directory: agent
       - name: Check Windows subnet and ARP readers (no active scan)
         working-directory: agent
@@ -84,11 +84,15 @@ jobs:
           if ($programs.Count -ne 1 -or $programs[0].Name -ne 'cmdb-agent.exe') { throw "Expected one application EXE" }
           python agent/packaging/smoke-unified.py agent/dist/unified/cmdb-agent.exe
           if ($LASTEXITCODE -ne 0) { throw "Unified EXE smoke test failed" }
-          if (-not (Test-Path ./agent/dist/unified/CMDB-Agent-Setup-0.5.9.exe)) { throw "Installer missing" }
+          if (-not (Test-Path ./agent/dist/unified/CMDB-Agent-Setup-0.5.10.exe)) { throw "Installer missing" }
+      - name: Render and verify native windows with synthetic status
+        run: python agent/packaging/smoke-gui.py agent/dist/unified/gui-preview
       - uses: actions/upload-artifact@v4
         with:
-          name: CMDB-Agent-Windows-0.5.9
+          name: CMDB-Agent-Windows-0.5.10
           path: |
             agent/dist/unified/cmdb-agent.exe
-            agent/dist/unified/CMDB-Agent-Setup-0.5.9.exe
+            agent/dist/unified/CMDB-Agent-Setup-0.5.10.exe
+            agent/dist/unified/verified-worker.json
+            agent/dist/unified/gui-preview/*.png
           if-no-files-found: error

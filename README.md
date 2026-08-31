@@ -163,11 +163,11 @@ w serwer.
 Wariant z kreatorem graficznym:
 
 ```powershell
-# na maszynie budującej (raz) — powstaje CMDB-Agent-Setup-0.5.9.exe
+# na maszynie budującej (raz) — powstaje CMDB-Agent-Setup-0.5.10.exe
 .\agent\packaging\build-agent.ps1 -Installer
 
 # na maszynie docelowej — kreator pyta o adres serwera i token
-CMDB-Agent-Setup-0.5.9.exe
+CMDB-Agent-Setup-0.5.10.exe
 
 # albo bez kreatora, np. przez GPO
 .\install-agent.ps1 -ServerUrl https://cmdb.firma.pl -Token cmdb_ent_... -Silent
@@ -283,11 +283,16 @@ Sesje z unieważnianiem, blokada ponownej rejestracji agenta, bieżący pełny
 odczyt niezależny od historii, relacje VM/host/klaster/aplikacja oraz widok
 jakości danych opisano w [instrukcji aktualizacji](docs/przeglad-poprawki.md).
 
-### Jeden EXE i wykrywanie urządzeń w sieci (agent 0.5.9)
+### Jeden EXE i wykrywanie urządzeń w sieci (agent 0.5.10)
 
 Jeden `cmdb-agent.exe` zawiera worker i tray. Bez argumentów uruchamia się
 do zasobnika bez otwierania statusu; `run` wykonuje pracę w tle. Opcjonalny
-moduł wykrywania włącza administrator w ustawieniach ikony. Podpowiedzi IP,
+moduł wykrywania włącza administrator centralnie w CMDB, na karcie zasobu.
+Ikona pokazuje wyłącznie stan modułu. Okna używają znaku C i oddzielają
+wersję uruchomionego programu od wersji historycznego statusu. Podpowiedzi IP,
 MAC, DNS, typu sprzętu i OS trafiają do **Wykrywanie sieci** w panelu;
 elementy zatwierdza się do ewidencji po sprawdzeniu.
 [Konfiguracja, limity i aktualizacja](docs/wykrywanie-sieci.md).
+Dystrybucja Windows wymaga zaufanego skrótu gotowego buildu w konfiguracji
+serwera — sama stopka `unified` nie daje uprawnień do samoaktualizacji.
+[Przygotowanie zaufanych wydań](docs/zaufane-wydania-windows.md).

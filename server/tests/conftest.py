@@ -92,6 +92,8 @@ _guard_polaczenie()
 
 @pytest.fixture(autouse=True)
 def clean_database():
+    from cmdb_server.config import get_settings
+    get_settings().trusted_windows_builds = {}
     Base.metadata.drop_all(bind=engine)
     init_db()
     yield

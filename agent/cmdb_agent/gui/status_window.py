@@ -11,7 +11,8 @@ import logging
 import tkinter as tk
 from tkinter import ttk
 
-from .. import status as status_module
+from .. import __version__, status as status_module
+from .appearance import apply_style
 
 log = logging.getLogger(__name__)
 
@@ -44,52 +45,59 @@ class StatusWindow:
 
     def _build(self) -> None:
         self.window = tk.Toplevel(self.root)
-        self.window.title("CMDB Agent - status")
+        icon = apply_style(self.window)
+        self.window.title("CMDB Agent · Status")
         self.window.resizable(False, False)
         self.window.protocol("WM_DELETE_WINDOW", self.hide)
-
-        frame = ttk.Frame(self.window, padding=16)
+        frame = ttk.Frame(self.window, padding=24)
         frame.grid(sticky="nsew")
 
-        ttk.Label(frame, text="Agent inwentaryzacyjny CMDB", font=("Segoe UI", 12, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky="w"
-        )
+        header = ttk.Frame(frame)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 18))
+        if icon:
+            ttk.Label(header, image=icon).pack(side="left", padx=(0, 12))
+        title = ttk.Frame(header)
+        title.pack(side="left")
+        ttk.Label(title, text="CMDB Agent", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(title, text="Inwentaryzacja i stan połączenia", style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(header, text=f"v{__version__}", style="Muted.TLabel").pack(side="right", padx=(25, 0))
 
+        health = ttk.Frame(frame, style="Card.TFrame", padding=18)
+        health.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         self.state_var = tk.StringVar()
-        self.state_label = ttk.Label(frame, textvariable=self.state_var, font=("Segoe UI", 10, "bold"))
-        self.state_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 14))
+        self.state_label = ttk.Label(health, textvariable=self.state_var, style="Card.TLabel", font=("Segoe UI", 14, "bold"))
+        self.state_label.pack(anchor="w")
+        self.values["last_sync"] = tk.StringVar(value="—")
+        ttk.Label(health, text="Ostatnia poprawna synchronizacja", style="CardMuted.TLabel").pack(anchor="w", pady=(12, 3))
+        ttk.Label(health, textvariable=self.values["last_sync"], style="Card.TLabel").pack(anchor="w")
 
-        rows = [
-            ("last_sync", "Ostatnia poprawna synchronizacja"),
-            ("last_attempt", "Ostatnia proba"),
-            ("next_sync", "Nastepna okolo"),
-            ("machine", "Maszyna"),
-            ("tenant", "Firma"),
-            ("server", "Serwer"),
-            ("version", "Wersja agenta"),
-        ]
-        for index, (key, label) in enumerate(rows, start=2):
-            ttk.Label(frame, text=label, foreground="#555").grid(
-                row=index, column=0, sticky="w", pady=3, padx=(0, 18)
-            )
-            var = tk.StringVar(value="-")
-            self.values[key] = var
-            ttk.Label(frame, textvariable=var).grid(row=index, column=1, sticky="w", pady=3)
+        detail = ttk.Frame(frame, style="Card.TFrame", padding=18)
+        detail.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        rows = [("machine", "Komputer"), ("tenant", "Firma"), ("server", "Serwer CMDB"),
+                ("version", "Wersja bieżącego programu"), ("report_version", "Wersja z ostatniego statusu"),
+                ("last_attempt", "Ostatnia próba"), ("next_sync", "Planowana synchronizacja")]
+        for index, (key, label) in enumerate(rows):
+            ttk.Label(detail, text=label, style="CardMuted.TLabel").grid(row=index, column=0, sticky="nw", pady=5, padx=(0, 22))
+            self.values[key] = tk.StringVar(value="—")
+            ttk.Label(detail, textvariable=self.values[key], style="Card.TLabel", wraplength=365).grid(row=index, column=1, sticky="w", pady=5)
+
+        scan = ttk.Frame(frame, style="Card.TFrame", padding=18)
+        scan.grid(row=3, column=0, sticky="ew")
+        ttk.Label(scan, text="SKANOWANIE SIECI", style="Section.TLabel").pack(anchor="w")
+        self.values["discovery"] = tk.StringVar(value="Brak informacji")
+        ttk.Label(scan, textvariable=self.values["discovery"], style="Card.TLabel", wraplength=560).pack(anchor="w", pady=(8, 5))
+        ttk.Label(scan, text="Zarządzane przez administratora w CMDB · tylko podgląd", style="CardMuted.TLabel").pack(anchor="w")
 
         self.problem_var = tk.StringVar()
-        self.problem_label = ttk.Label(
-            frame, textvariable=self.problem_var, wraplength=430, foreground="#a52222"
-        )
-        self.problem_label.grid(row=20, column=0, columnspan=2, sticky="w", pady=(12, 0))
-
+        self.problem_label = ttk.Label(frame, textvariable=self.problem_var, wraplength=580, foreground="#946000")
+        self.problem_label.grid(row=4, column=0, sticky="w", pady=(12, 0))
         buttons = ttk.Frame(frame)
-        buttons.grid(row=21, column=0, columnspan=2, sticky="we", pady=(18, 0))
-        self.sync_button = ttk.Button(buttons, text="Synchronizuj teraz", command=self._sync_clicked)
+        buttons.grid(row=5, column=0, sticky="we", pady=(18, 0))
+        self.sync_button = ttk.Button(buttons, text="Synchronizuj dane", command=self._sync_clicked, style="Primary.TButton")
         self.sync_button.pack(side="left")
-        ttk.Button(buttons, text="Ustawienia...", command=self.on_settings).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Ustawienia", command=self.on_settings).pack(side="left", padx=8)
         ttk.Button(buttons, text="Dziennik", command=self.on_open_log).pack(side="left")
-        ttk.Button(buttons, text="Zamknij", command=self.hide).pack(side="right")
-
+        ttk.Button(buttons, text="Ukryj", command=self.hide).pack(side="right", padx=(20, 0))
         self._center()
 
     def _center(self) -> None:
@@ -105,10 +113,14 @@ class StatusWindow:
     def refresh(self) -> None:
         if self.window is None or not self.window.winfo_exists():
             return
+        if self._refresh_job is not None:
+            self.window.after_cancel(self._refresh_job)
+            self._refresh_job = None
         snapshot = status_module.read(self.config)
 
-        self.state_var.set(snapshot.status_label.capitalize())
-        self.state_label.configure(foreground=STATUS_COLORS.get(snapshot.last_status, "#333"))
+        stale = status_module.is_stale(snapshot)
+        self.state_var.set("Brak świeżej synchronizacji" if stale else snapshot.status_label.capitalize())
+        self.state_label.configure(foreground="#946000" if stale else STATUS_COLORS.get(snapshot.last_status, "#333"))
 
         if snapshot.last_sync_at:
             self.values["last_sync"].set(
@@ -134,7 +146,9 @@ class StatusWindow:
         self.values["machine"].set(snapshot.hostname or "-")
         self.values["tenant"].set(snapshot.tenant_slug or "-")
         self.values["server"].set(snapshot.server_url or "(nie ustawiono)")
-        self.values["version"].set(snapshot.agent_version)
+        self.values["version"].set(__version__)
+        self.values["report_version"].set(snapshot.agent_version if snapshot.published_at or snapshot.last_sync_at else "Brak statusu")
+        self.values["discovery"].set(status_module.discovery_label(snapshot))
 
         problems = list(snapshot.warnings)
         if snapshot.last_error:
@@ -151,7 +165,7 @@ class StatusWindow:
 
     def _restore_sync_button(self) -> None:
         if self.window is not None and self.window.winfo_exists():
-            self.sync_button.configure(state="normal", text="Synchronizuj teraz")
+            self.sync_button.configure(state="normal", text="Synchronizuj dane")
             self.refresh()
 
     # --- widocznosc -------------------------------------------------------

@@ -172,7 +172,7 @@ def do_run(config: AgentConfig, state: AgentState, client: CmdbClient) -> int:
     flush_spool(config, state, client)
 
     from .discovery import attach_discovery
-    attach_discovery(config, state, report)
+    attach_discovery(config, state, report, client=client)
 
     try:
         response = send_report(config, state, client, report)
@@ -328,6 +328,8 @@ def build_parser() -> argparse.ArgumentParser:
                         action="store_true", help=argparse.SUPPRESS)
 
     sub = parser.add_subparsers(dest="command", required=True)
+    probe = sub.add_parser("worker-probe", help="bezpieczny test protokolu workera, bez konfiguracji i sieci")
+    probe.add_argument("--nonce", required=True)
     sub.add_parser("enroll", help="rejestruje maszyne i zapisuje wlasne poswiadczenie")
     sub.add_parser("run", help="zbiera i wysyla jeden raport")
     sub.add_parser("loop", help="dziala w petli z ustawionym interwalem")
@@ -362,6 +364,13 @@ def _argumenty_cyklu(args) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "worker-probe":
+        import re
+        if not re.fullmatch(r"[0-9a-f]{32}", args.nonce):
+            return 2
+        print(json.dumps({"protocol": 1, "version": __version__, "nonce": args.nonce,
+                          "commands": ["run", "enroll", "status"], "discovery_control": "cmdb-policy-v1"}))
+        return 0
 
     overrides = {
         "server_url": args.server,

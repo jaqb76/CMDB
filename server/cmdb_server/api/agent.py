@@ -6,15 +6,17 @@ Agent nie moze wiec zaraportowac maszyny do cudzej firmy.
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..models import AgentCredential, Asset, EnrollmentToken, Tenant, utcnow
+from ..models import AgentCredential, Asset, DiscoveryPolicy, EnrollmentToken, Tenant, utcnow
+from ..discovery_policy import ScanPolicy
 from ..schemas import (
     EnrollRequest,
     EnrollResponse,
@@ -178,6 +180,27 @@ def submit_inventory(
         ),
         upgrade=_oferta_aktualizacji(db, asset),
     )
+
+
+@router.get("/agent/discovery-policy")
+def discovery_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9a-f]{32}$"),
+                     db: Session = Depends(get_db),
+                     auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    credential, ctx = auth
+    asset = db.get(Asset, credential.asset_id)
+    if asset is None or asset.tenant_id != ctx.tenant_id:
+        raise HTTPException(404, "maszyna nie istnieje")
+    row = db.get(DiscoveryPolicy, asset.id)
+    if row is not None and row.tenant_id != ctx.tenant_id:
+        raise HTTPException(403, "niezgodna firma polityki")
+    policy = ScanPolicy.model_validate(row.config) if row else ScanPolicy()
+    if not asset.is_active or asset.enrollment_blocked:
+        policy = ScanPolicy()
+    response.headers["Cache-Control"] = "no-store"
+    return {"protocol": 1, "nonce": nonce, "asset_id": asset.id, "machine_id": asset.machine_id,
+            "revision": row.revision if row else "unassigned",
+            "expires_at": (utcnow() + timedelta(seconds=60)).isoformat(),
+            "policy": policy.model_dump()}
 
 
 # --- aktualizacja agenta ----------------------------------------------------

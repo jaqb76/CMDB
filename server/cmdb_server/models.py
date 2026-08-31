@@ -777,6 +777,17 @@ class DefinicjaRaportu(Base):
     utworzyl: Mapped[str | None] = mapped_column(String(255))
 
 
+class DiscoveryPolicy(Base):
+    """Desired scan settings, writable only by CMDB administrators."""
+    __tablename__ = "discovery_policies"
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    config: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    revision: Mapped[str] = mapped_column(String(36), nullable=False, default=new_id)
+    updated_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class DiscoveryScanner(Base):
     """Last scan status, including empty, failed and partial scans."""
     __tablename__ = "discovery_scanners"

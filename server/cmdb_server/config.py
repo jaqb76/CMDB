@@ -45,6 +45,28 @@ class Settings(BaseSettings):
 
     # Katalog z wgranymi wersjami agenta (pliki .exe rozsylane na maszyny).
     release_dir: str = "./releases"
+    # Independent trust root, deployed by server operations, NEVER populated
+    # from an upload/footer. SHA-256 -> {version, arch} of tested Windows workers.
+    # Empty by default: no Windows worker can be activated/distributed.
+    trusted_windows_builds: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+    @field_validator("trusted_windows_builds", mode="before")
+    @classmethod
+    def empty_trust_catalog(cls, value):
+        return {} if value is None else value
+
+    @field_validator("trusted_windows_builds")
+    @classmethod
+    def validate_trusted_builds(cls, value):
+        import re
+        for digest, build in value.items():
+            if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                raise ValueError("trusted_windows_builds: wymagany maly hex SHA-256")
+            if (set(build) != {"version", "arch"} or
+                    not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?", build["version"]) or
+                    build["arch"] not in {"x86_64", "x86", "aarch64", "arm"}):
+                raise ValueError("trusted_windows_builds: wymagane version i arch sprawdzonego workera")
+        return value
     # Wgrywana wersja agenta jest znacznie wieksza niz raport - spakowany
     # PyInstallerem agent z interfejsem ma okolo 30 MB.
     max_release_bytes: int = 128 * 1024 * 1024

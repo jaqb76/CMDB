@@ -31,7 +31,7 @@ cd agent\packaging
 | Plik | Rola |
 |---|---|
 | `cmdb-agent.exe` | bez argumentów: tray; `run`: worker SYSTEM; `configure`: ustawienia |
-| `CMDB-Agent-Setup-0.5.9.exe` | opcjonalny instalator jednego programu |
+| `CMDB-Agent-Setup-0.5.10.exe` | opcjonalny instalator jednego programu |
 
 Budowanie instalatora wymaga **Inno Setup 6** (`winget install JRSoftware.InnoSetup`).
 Bez niego powstaną same pliki `.exe`, a instalacja przebiegnie skryptem
@@ -41,7 +41,7 @@ Zgodność wydania sprawdź na najstarszej wspieranej wersji Windows w swojej fl
 
 ## Instalacja z kreatora
 
-Uruchom `CMDB-Agent-Setup-0.5.9.exe` i podaj dane otrzymane od administratora:
+Uruchom `CMDB-Agent-Setup-0.5.10.exe` i podaj dane otrzymane od administratora:
 
 ```
 ┌─ Połączenie z serwerem CMDB ─────────────────────────────┐
@@ -366,7 +366,7 @@ powinna znikać razem z agentem.
 ## Historia zbudowanych wersji
 
 Domyślny build zostawia jeden program `agent/dist/cmdb-agent.exe`.
-Opcja `-Archive` dodatkowo zapisuje kopię `history/cmdb-agent-0.5.9.exe`;
+Opcja `-Archive` dodatkowo zapisuje kopię `history/cmdb-agent-0.5.10.exe`;
 opcja `-Installer` tworzy osobny, opcjonalny pakiet instalacyjny.
 Stare pliki z wcześniejszych buildów nie są automatycznie usuwane.
 
@@ -384,11 +384,18 @@ potoku, np. `& .\cmdb-agent.exe status --json | Out-String`.
 
 ### Magazyn i aktualizacje
 
-Wgraj tylko `cmdb-agent.exe`. Najpierw wdroż serwer z obsługą metadanych
-`entry_mode=unified`, następnie aktywuj wydanie 0.5.9 dla firmy. Podsystem PE
-pozostaje okienkowy, ale znacznik odróżnia program od starszego osobnego tray.
-Starszy tray nadal nie jest proponowany jako aktualizacja workera.
-Nowy skrypt instalacji odrzuca plik bez znacznika przed zmianą instalacji.
+Wgraj tylko `cmdb-agent.exe`, ale najpierw administrator wdrożenia musi
+przypiąć SHA-256 przetestowanego pliku, jego wersję i architekturę w konfiguracji
+serwera. Stopka `entry_mode=unified` i podsystem PE nie są dowodem zaufania.
+Bez przypięcia Windows nie otrzyma aktualizacji ani instalatora sieciowego;
+dotyczy to również wydań wcześniej aktywowanych w bazie.
+[Procedura dla wersji 0.5.10](zaufane-wydania-windows.md).
+Instalacja ręczna setupem pozostaje osobną operacją administratora.
+
+Okno pokazuje **Wersję bieżącego programu** niezależnie od publicznego pliku
+statusu. Historyczna wersja workera ma osobny opis, a przeterminowany sukces
+jest oznaczany ostrzeżeniem. Wszystkie okna mają ikonę C zamiast domyślnego
+pióra Tk. Skaner w GUI jest wyłącznie do podglądu.
 
 Przy pierwszym przejściu z dwóch EXE uruchom instalator, który zmieni
 autostart i zachowa stary tray jako `.legacy.bak`. Późniejsze aktualizacje

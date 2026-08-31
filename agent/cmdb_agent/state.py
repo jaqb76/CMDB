@@ -12,7 +12,7 @@ import os
 import subprocess
 import sys
 from functools import lru_cache
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -38,6 +38,8 @@ class AgentState:
     last_sync_changed: bool = False
     last_report_hash: str = ""
     last_discovery_at: str = ""
+    discovery_policy_revision: str = ""
+    discovery_status: dict = field(default_factory=dict)
 
     @property
     def is_enrolled(self) -> bool:

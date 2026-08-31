@@ -31,10 +31,11 @@ def test_disabled_module_never_touches_network(monkeypatch):
     scan.assert_not_called()
 
 
-def test_scan_schedule_and_errors_are_in_report(monkeypatch):
+def test_scan_schedule_and_errors_are_in_report(monkeypatch, tmp_path):
     scan = Mock(return_value={"errors": ["limit czasu"], "devices": []})
     monkeypatch.setattr(discovery, "scan", scan)
-    config, state, report = AgentConfig(discovery_enabled=True), AgentState(), {}
+    config, state, report = AgentConfig(discovery_enabled=True, data_dir=tmp_path), AgentState(), {}
+    monkeypatch.setattr(discovery, "authorized_config", lambda *args: (config, "policy-1"))
     discovery.attach_discovery(config, state, report)
     assert report["errors"][0]["section"] == "network_discovery"
     assert state.last_discovery_at
@@ -110,7 +111,8 @@ def test_configuration_round_trip(tmp_path):
                                "discovery_cidrs": ["10.1.1.0/24"], "discovery_rate": 8}))
     config = load_config(path)
     discovery.validate_config(config)
-    assert config.discovery_enabled and config.discovery_rate == 8
+    assert not config.discovery_enabled and config.discovery_rate == 32
+    assert config.discovery_cidrs == []  # local file is no longer a policy source
 
 
 @pytest.mark.parametrize("field,value", [("discovery_rate", 0), ("discovery_max_hosts", 1000000),

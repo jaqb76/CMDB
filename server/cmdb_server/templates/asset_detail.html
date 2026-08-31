@@ -54,7 +54,7 @@
 </form>
 {% endif %}</div>
 {% endif %}
-<p><a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakosc danych</a></p>
+<p><a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakosc danych</a>{% if asset.zrodlo != 'reczne' %} · <a href="/assets/{{ asset.id }}/discovery-policy">Polityka skanowania sieci</a>{% endif %}</p>
 {% if collector_errors %}
   <div class="alert alert-warn">
     <b>Kolektory zglosily bledy ({{ collector_errors | length }}):</b>

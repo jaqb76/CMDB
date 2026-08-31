@@ -1,5 +1,6 @@
 """Run only on disposable Windows CI: no inventory/network scan/install."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -22,7 +23,19 @@ def command(*args):
 
 
 version = command("--version")
-assert version.returncode == 0 and b"0.5.9" in version.stdout, (version.returncode, version.stdout, version.stderr)
+assert version.returncode == 0 and b"0.5.10" in version.stdout, (version.returncode, version.stdout, version.stderr)
+probe = command("worker-probe", "--nonce", "a" * 32)
+assert probe.returncode == 0 and json.loads(probe.stdout) == {"protocol": 1, "version": "0.5.10",
+    "nonce": "a" * 32, "commands": ["run", "enroll", "status"], "discovery_control": "cmdb-policy-v1"}
+# The updater checks the candidate before rename, with its actual .nowa suffix.
+candidate = exe.with_suffix(".exe.nowa")
+shutil.copy2(exe, candidate)
+try:
+    checked = subprocess.run([str(candidate), "worker-probe", "--nonce", "b" * 32],
+        capture_output=True, timeout=60, creationflags=flags, env=environment)
+    assert checked.returncode == 0 and json.loads(checked.stdout)["nonce"] == "b" * 32
+finally:
+    candidate.unlink(missing_ok=True)
 status = command("status", "--json")
 assert status.returncode == 0, status.stderr
 assert isinstance(json.loads(status.stdout), dict)
@@ -64,6 +77,10 @@ try:
     assert all(not row["Visible"] for row in after)
     assert command("--version").returncode == 0
     print("Unified EXE: CLI pipes, errors, worker, silent tray, singleton and hot replacement OK")
+    digest = hashlib.sha256(exe.read_bytes()).hexdigest()
+    catalog = {digest: {"version": "0.5.10", "arch": "x86_64"}}
+    (exe.parent / "verified-worker.json").write_text(json.dumps(catalog, indent=2), encoding="utf-8")
+    print("VERIFIED_WINDOWS_BUILD " + json.dumps(catalog))
 finally:
     subprocess.run(["powershell.exe", "-NoProfile", "-Command",
         "Get-Process -Name cmdb-agent -ErrorAction SilentlyContinue | Stop-Process -Force"], creationflags=flags)

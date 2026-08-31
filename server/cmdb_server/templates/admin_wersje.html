@@ -6,6 +6,9 @@
   <div>
     <h1>Wersje agentow</h1>
     <p class="muted">Agent jest osobnym plikiem dla kazdego systemu operacyjnego.</p>
+    <p class="muted">Windows: samo wgranie pliku ani stopka „unified” nie pozwala na dystrybucję.
+    Pełny SHA-256, wersja i architektura muszą pasować do sprawdzonego buildu w konfiguracji serwera
+    (CMDB_TRUSTED_WINDOWS_BUILDS). Tego zatwierdzenia nie można nadać w panelu.</p>
   </div>
 </div>
 
@@ -96,7 +99,8 @@
           <div class="muted">{{ etykiety_arch.get(w.arch, '') }}</div></td>
         <td class="strong">{{ w.version }}</td>
         <td>
-          {% if jest_oficjalna %}<span class="badge badge-ok">aktywna</span>
+          {% if not release_admitted.get(w.id) %}<span class="badge">zablokowana — brak zatwierdzonego workera</span>
+          {% elif jest_oficjalna %}<span class="badge badge-ok">aktywna</span>
           {% else %}<span class="badge">wgrana</span>{% endif %}
         </td>
         <td class="small">{{ w.size_bytes | bytes }}</td>
@@ -104,7 +108,7 @@
         <td class="small">{{ w.created_by or '—' }}</td>
         <td class="small muted">{{ w.notes or '' }}</td>
         <td class="small">
-          {% if not jest_oficjalna %}
+          {% if not jest_oficjalna and release_admitted.get(w.id) %}
             <form method="post" action="/admin/releases/{{ w.id }}/oficjalna" class="inline-form"
                   data-confirm="Uczynic {{ w.version }} wersja oficjalna dla {{ w.os_family }}? Obejmie to wszystkie firmy bez wlasnego ustawienia.">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

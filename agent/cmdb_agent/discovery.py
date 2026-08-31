@@ -10,6 +10,7 @@ import ipaddress
 import json
 import logging
 import re
+import secrets
 import socket
 import ssl
 import subprocess
@@ -18,6 +19,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from dataclasses import replace
 
 log = logging.getLogger(__name__)
 PRIVATE = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
@@ -287,19 +289,60 @@ def limit_result(result, max_bytes=1024 * 1024):
     return result
 
 
-def attach_discovery(config, state, report):
-    if not config.discovery_enabled:
-        return
+def authorized_config(config, state, client):
+    """Fresh, nonce-bound policy only. Persisted state is NEVER authorization."""
+    if client is None or not state.is_enrolled:
+        raise ValueError("brak uwierzytelnionego polaczenia z CMDB")
+    nonce = secrets.token_hex(16)
+    payload = client.get("/api/v1/agent/discovery-policy?nonce=" + nonce, state.agent_token)
+    if (not isinstance(payload, dict) or type(payload.get("protocol")) is not int or payload.get("protocol") != 1 or
+            payload.get("nonce") != nonce or payload.get("asset_id") != state.asset_id or
+            payload.get("machine_id") != state.machine_id):
+        raise ValueError("niezgodna odpowiedz polityki CMDB")
+    expires = datetime.fromisoformat(payload["expires_at"].replace("Z", "+00:00"))
+    if expires.tzinfo is None or not 0 < (expires - datetime.now(timezone.utc)).total_seconds() <= 65:
+        raise ValueError("wygasla lub niepoprawna waznosc polityki CMDB")
+    revision = payload["revision"]
+    policy = payload["policy"]
+    expected = {"enabled", "auto_subnets", "cidrs", "interval_seconds", "max_hosts", "rate", "budget_seconds"}
+    if (not isinstance(revision, str) or not 1 <= len(revision) <= 36 or
+            not isinstance(policy, dict) or set(policy) != expected or
+            type(policy["enabled"]) is not bool or type(policy["auto_subnets"]) is not bool):
+        raise ValueError("niepoprawny format polityki CMDB")
+    effective = replace(config, **{"discovery_" + name: value for name, value in policy.items()})
+    validate_config(effective)
+    return effective, revision
+
+
+def attach_discovery(config, state, report, client=None):
     now = datetime.now(timezone.utc)
+    try:
+        effective, revision = authorized_config(config, state, client)
+    except Exception as exc:
+        # A failed policy fetch must not stop normal inventory or use a cached grant.
+        log.warning("skanowanie zablokowane: %s", exc)
+        state.discovery_status = {"state": "unavailable", "enabled": False, "checked_at": now.isoformat()}
+        return
+    state.discovery_status = {"state": "waiting" if effective.discovery_enabled else "disabled",
+                              "enabled": effective.discovery_enabled, "checked_at": now.isoformat(),
+                              "revision": revision, "last_scan_at": state.last_discovery_at}
+    if revision != state.discovery_policy_revision:
+        state.last_discovery_at = ""
+        state.discovery_policy_revision = revision
+    if not effective.discovery_enabled:
+        return
     try:
         last = datetime.fromisoformat(state.last_discovery_at)
         last = last.replace(tzinfo=timezone.utc) if last.tzinfo is None else last.astimezone(timezone.utc)
-        if 0 <= (now - last).total_seconds() < config.discovery_interval_seconds:
+        if 0 <= (now - last).total_seconds() < effective.discovery_interval_seconds:
             return
     except (ValueError, TypeError):
         pass
     try:
-        observation = scan(config)
+        from . import status as public_status
+        state.discovery_status["state"] = "running"
+        public_status.publish(config, state)
+        observation = scan(effective)
     except Exception as exc:
         log.exception("blad wykrywania sieci")
         observation = {"scanned_at": now.isoformat(), "ranges": [], "devices": [],
@@ -310,3 +353,5 @@ def attach_discovery(config, state, report):
     for error in observation["errors"]:
         report.setdefault("errors", []).append({"section": "network_discovery", "message": error})
     state.last_discovery_at = now.isoformat()
+    state.discovery_status.update(state="completed" if observation.get("complete") else "partial",
+                                  last_scan_at=state.last_discovery_at, ranges=observation.get("ranges", []))

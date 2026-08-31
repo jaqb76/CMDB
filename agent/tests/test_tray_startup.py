@@ -14,6 +14,7 @@ from cmdb_agent.gui import tray_app, common, settings_window
 def test_startup_only_schedules_tray_maintenance(monkeypatch, enrolled):
     root = Mock()
     monkeypatch.setattr(tray_app.tk, "Tk", lambda: root)
+    monkeypatch.setattr(tray_app, "brand_window", Mock())
     monkeypatch.setattr(tray_app.threading, "Thread", Mock())
     monkeypatch.setattr(tray_app.TrayApp, "_build_icon", Mock())
     monkeypatch.setattr(tray_app.status_module, "read", Mock(return_value=Mock(configured=enrolled, enrolled=enrolled)))
@@ -56,8 +57,8 @@ def test_settings_save_keeps_advanced_fields_and_does_not_require_bootstrap(tmp_
     candidate = replace(window.config, discovery_enabled=True)
     assert window._write_config(candidate)
     payload = json.loads(window.config_path.read_text())
-    assert payload["future_setting"] and payload["discovery_enabled"]
-    assert payload["discovery_rate"] == 7 and not payload["collect_updates"]
+    assert payload["future_setting"] and not any(k.startswith("discovery_") for k in payload)
+    assert not payload["collect_updates"]
     assert payload["pin_sha256"] == "ab" * 32
     assert "enrollment_token" not in payload and "_source_path" not in payload
 
@@ -76,7 +77,8 @@ def test_registered_settings_accept_empty_token_and_retain_limits(tmp_path, monk
     monkeypatch.setattr(settings_window, "load_state", lambda _: AgentState(
         server_url="https://cmdb.example", agent_token="key", asset_id="asset"))
     candidate = window._collect()
-    assert candidate is not None and candidate.discovery_cidrs == ["10.1.1.0/24"]
+    assert candidate is not None and candidate.discovery_cidrs == []
+    assert not candidate.discovery_enabled  # local controls cannot grant a scan
     assert not candidate.enrollment_token and not candidate.collect_updates
     assert candidate.discovery_budget_seconds == 123
     window._set_message.assert_not_called()
