@@ -31,6 +31,7 @@ OutputBaseFilename=CMDB-Agent-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#BuildDir}\build\cmdb-agent.ico
 ; Agent zbiera dane systemowe i zaklada zadanie dzialajace jako SYSTEM.
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible

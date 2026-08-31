@@ -6,7 +6,7 @@ from tkinter import ttk
 BG = "#f3f6fa"
 INK = "#172b3a"
 MUTED = "#5b6d7c"
-GREEN = "#218b40"
+GREEN = "#228b40"
 
 
 def icon_image(color=GREEN, size=64):

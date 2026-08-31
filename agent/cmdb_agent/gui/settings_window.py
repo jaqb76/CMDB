@@ -61,6 +61,7 @@ class SettingsWindow:
         self.root.title("CMDB Agent - konfiguracja")
         self.root.resizable(False, False)
         self.root.minsize(640, 0)
+        self.root.columnconfigure(0, weight=1)
 
         self.server_var = tk.StringVar(value=config.server_url)
         self.token_var = tk.StringVar(value=config.enrollment_token)

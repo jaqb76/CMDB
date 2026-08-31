@@ -61,7 +61,7 @@ def capture(window, name):
         header = Header(size=ctypes.sizeof(Header), width=width, height=-height, planes=1, bits=32)
         pixels = ctypes.create_string_buffer(width * height * 4)
         assert gdi.GetDIBits(dc, bitmap, 0, height, pixels, ctypes.byref(header), 0) == height
-        picture = Image.frombuffer("RGB", (width, height), pixels, "raw", "BGRX", 0, 1)
+        picture = Image.frombuffer("RGB", (width, height), pixels.raw, "raw", "BGRX", 0, 1)
         path = out / (name + ".png")
         picture.save(path)
         print("GUI_RENDER " + name + " " + base64.b64encode(path.read_bytes()).decode())

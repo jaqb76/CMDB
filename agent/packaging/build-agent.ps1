@@ -57,6 +57,12 @@ if ($LASTEXITCODE -ne 0) { throw "Nie udalo sie zainstalowac zaleznosci interfej
 
 Push-Location $agentRoot
 try {
+    # Embed the same C mark in Explorer/taskbar/setup, not only in Tk windows.
+    $brandDir = Join-Path $OutputDir "build"
+    New-Item -ItemType Directory -Force -Path $brandDir | Out-Null
+    $brandIcon = Join-Path $brandDir "cmdb-agent.ico"
+    python -c "import sys; from cmdb_agent.gui.appearance import icon_image; icon_image(size=256).save(sys.argv[1], sizes=[(16,16),(32,32),(48,48),(64,64),(256,256)])" $brandIcon
+    if ($LASTEXITCODE -ne 0) { throw "Nie udalo sie utworzyc ikony C" }
     # Jedyny build: subsystem WINDOWS nie tworzy okna konsoli nawet na moment.
     python -m PyInstaller `
         --onefile `
@@ -65,6 +71,7 @@ try {
         --workpath "$OutputDir\build" `
         --specpath "$OutputDir\build" `
         --windowed `
+        --icon $brandIcon `
         --noupx `
         --paths . `
         --hidden-import pystray._win32 `
