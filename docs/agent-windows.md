@@ -369,6 +369,10 @@ Domyślny build zostawia jeden program `agent/dist/cmdb-agent.exe`.
 Opcja `-Archive` dodatkowo zapisuje kopię `history/cmdb-agent-0.5.10.exe`;
 opcja `-Installer` tworzy osobny, opcjonalny pakiet instalacyjny.
 Stare pliki z wcześniejszych buildów nie są automatycznie usuwane.
+Build w CI nadaje wspólną wersję `0.6.<numer uruchomienia>+<numer próby>`
+agentowi, instalatorowi i paczce Linux. Po testach wydanie z zatwierdzonej gałęzi
+jest podpisywane, publikowane i importowane do katalogu CMDB.
+[Jednorazowa konfiguracja automatycznych wydań](automatyczne-wydania.md).
 
 ## Jeden plik: agent i ikona w zasobniku
 
@@ -384,18 +388,23 @@ potoku, np. `& .\cmdb-agent.exe status --json | Out-String`.
 
 ### Magazyn i aktualizacje
 
-Wgraj tylko `cmdb-agent.exe`, ale najpierw administrator wdrożenia musi
+W trybie automatycznym podpisane wydania trafiają do katalogu bez uploadu;
+administrator nadal wybiera wersję dla maszyn i firm w CMDB.
+Stopka `entry_mode=unified` i podsystem PE nie są dowodem zaufania.
+
+W starszym trybie ręcznym wgraj tylko `cmdb-agent.exe`, ale najpierw administrator wdrożenia musi
 przypiąć SHA-256 przetestowanego pliku, jego wersję i architekturę w konfiguracji
-serwera. Stopka `entry_mode=unified` i podsystem PE nie są dowodem zaufania.
+serwera.
 Bez przypięcia Windows nie otrzyma aktualizacji ani instalatora sieciowego;
 dotyczy to również wydań wcześniej aktywowanych w bazie.
 [Procedura dla wersji 0.5.10](zaufane-wydania-windows.md).
 Instalacja ręczna setupem pozostaje osobną operacją administratora.
 
-Okno pokazuje **Wersję bieżącego programu** niezależnie od publicznego pliku
-statusu. Historyczna wersja workera ma osobny opis, a przeterminowany sukces
-jest oznaczany ostrzeżeniem. Wszystkie okna mają ikonę C zamiast domyślnego
-pióra Tk. Skaner w GUI jest wyłącznie do podglądu.
+Okno pokazuje wersję bieżącego programu wyłącznie w nagłówku, niezależnie od
+publicznego pliku statusu. Nie wyświetla historycznej wersji workera;
+przeterminowany sukces jest oznaczany ostrzeżeniem. Wszystkie okna mają ikonę C
+zamiast domyślnego pióra Tk. Informacja o skanerze jest widoczna wyłącznie
+w ustawieniach otwartych z uprawnieniami administratora, tylko do odczytu.
 
 Przy pierwszym przejściu z dwóch EXE uruchom instalator, który zmieni
 autostart i zachowa stary tray jako `.legacy.bak`. Późniejsze aktualizacje

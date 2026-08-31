@@ -59,7 +59,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
-WERSJA_RE = re.compile(r"^[0-9][0-9a-zA-Z._-]{0,31}$")
+WERSJA_RE = re.compile(r"[0-9][0-9a-zA-Z._+-]{0,31}")
 
 # Agent budowany jest osobno dla kazdego systemu. Sygnatura pliku pozwala
 # odrzucic pomylke juz przy wgrywaniu, a nie dopiero na maszynie klienta.
@@ -890,7 +890,7 @@ async def wgraj_wersje(
                 detail="plik nie zawiera numeru wersji - zbuduj go aktualnym "
                        "build-agent.ps1 albo podaj numer recznie",
             )
-        if not WERSJA_RE.match(numer):
+        if not WERSJA_RE.fullmatch(numer):
             raise HTTPException(status_code=400, detail="niepoprawny numer wersji")
         # Numer podany recznie nie moze byc sprzeczny z tym z pliku - taka
         # rozbieznosc konczylaby sie aktualizacja proponowana bez konca.

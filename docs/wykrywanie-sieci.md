@@ -1,4 +1,4 @@
-# Agent 0.5.10: jeden EXE, zasobnik i wykrywanie sieci
+# Agent: jeden EXE, zasobnik i wykrywanie sieci
 
 ## Uruchamianie Windows
 
@@ -15,13 +15,14 @@ monit UAC przy operacji wymagającej administratora jest zachowany.
    komputer na stronie **Wykrywanie sieci**.
 3. Włącz moduł wyłącznie dla sieci objętych zgodą administratora. Wybierz
    automatyczne podsieci i/lub zakresy CIDR, np. `192.168.10.0/24`.
-4. Zapisz politykę. Agent 0.5.10 pobierze ją podczas następnego cyklu
+4. Zapisz politykę. Agent od wersji 0.5.10 pobierze ją podczas następnego cyklu
    raportowania; zmieniona polityka inicjuje skan w tym cyklu, następne
    skany domyślnie nie częściej niż co 24 godziny.
 5. Wyniki są na stronie **Wykrywanie sieci** (`/wykrywanie`).
 
-Lokalne ustawienia i okno statusu pokazują wyłącznie stan skanera.
-Nie zawierają przełącznika, edytora zakresów ani przycisku uruchomienia skanu.
+Główne okno statusu nie pokazuje informacji o skanerze. Jego stan jest widoczny
+wyłącznie w lokalnych ustawieniach otwartych z uprawnieniami administratora.
+To podgląd: bez przełącznika, edytora zakresów ani przycisku uruchomienia skanu.
 Zwykła synchronizacja inwentarza nie omija centralnej polityki ani harmonogramu.
 Zapis polityki wymaga administratora firmy/superadministratora, CSRF i zgodnej
 rewizji formularza; widzowie mogą ją tylko odczytać. Zmiany trafiają do audytu.

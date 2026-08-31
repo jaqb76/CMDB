@@ -270,6 +270,13 @@ def test_ta_sama_wersja_dla_dwoch_systemow_jest_dozwolona(client, make_user):
         assert len(db.execute(select(AgentRelease)).scalars().all()) == 2
 
 
+def test_reczny_upload_przyjmuje_numer_ci_z_proba(client, make_user):
+    csrf = _superadmin(client, make_user)
+    assert _wgraj_wersje(client, csrf, "0.6.42+2").status_code == 303
+    with SessionLocal() as db:
+        assert db.scalar(select(AgentRelease.version)) == "0.6.42+2"
+
+
 def test_odrzuca_duplikat_wersji(client, make_user):
     csrf = _superadmin(client, make_user)
     _wgraj_wersje(client, csrf)
