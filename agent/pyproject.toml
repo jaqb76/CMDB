@@ -1,6 +1,6 @@
 [project]
 name = "cmdb-agent"
-version = "0.5.10"
+dynamic = ["version"]
 description = "Agent inwentaryzacyjny CMDB - zbiera dane o sprzecie, oprogramowaniu i uzytkownikach"
 requires-python = ">=3.9"
 # Swiadomie zero zaleznosci: agent ma dzialac na kazdej maszynie klienta
@@ -17,6 +17,9 @@ cmdb-agent-tray = "cmdb_agent.main:main_tray"
 
 [tool.setuptools]
 packages = ["cmdb_agent", "cmdb_agent.collectors", "cmdb_agent.gui"]
+
+[tool.setuptools.dynamic]
+version = {attr = "cmdb_agent.__version__"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

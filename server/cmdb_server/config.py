@@ -4,7 +4,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,6 +49,34 @@ class Settings(BaseSettings):
     # from an upload/footer. SHA-256 -> {version, arch} of tested Windows workers.
     # Empty by default: no Windows worker can be activated/distributed.
     trusted_windows_builds: dict[str, dict[str, str]] = Field(default_factory=dict)
+    release_import_enabled: bool = False
+    release_repository: str = "jaqb76/CMDB"
+    release_ref: str = "refs/heads/claude/os-data-collection-agent-gfz2o8"
+    release_public_keys: dict[str, str] = Field(default_factory=dict)
+    release_github_token: SecretStr = SecretStr("")
+    release_import_interval: int = Field(default=300, ge=60, le=86400)
+
+    @field_validator("release_public_keys", mode="before")
+    @classmethod
+    def empty_release_keys(cls, value):
+        return {} if value is None else value
+
+    @field_validator("release_public_keys")
+    @classmethod
+    def check_release_keys(cls, value):
+        from .release_manifest import decode, key_id
+        for identifier, public in value.items():
+            if key_id(decode(public, 32)) != identifier:
+                raise ValueError("release_public_keys: identyfikator nie odpowiada kluczowi")
+        return value
+
+    @field_validator("release_repository")
+    @classmethod
+    def check_release_repository(cls, value):
+        import re
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value):
+            raise ValueError("release_repository wymaga owner/repository")
+        return value
 
     @field_validator("trusted_windows_builds", mode="before")
     @classmethod
@@ -110,6 +138,8 @@ class Settings(BaseSettings):
         # Kod uzywa JSONB, blokad doradczych i indeksow GIN - na innym silniku
         # nie tyle dziala gorzej, co nie dziala wcale, a komunikat "nieznana
         # funkcja pg_advisory_lock" w polowie startu nie mowi nikomu, o co chodzi.
+        if self.release_import_enabled and (not self.release_public_keys or not self.release_ref.startswith("refs/heads/")):
+            raise RuntimeError("Import wydań wymaga zaufanych kluczy i zatwierdzonej gałęzi")
         if not self.database_url.startswith("postgresql"):
             raise RuntimeError(
                 "CMDB dziala wylacznie na PostgreSQL - ustaw CMDB_DATABASE_URL "

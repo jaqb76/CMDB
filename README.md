@@ -285,11 +285,17 @@ jakości danych opisano w [instrukcji aktualizacji](docs/przeglad-poprawki.md).
 
 ### Jeden EXE i wykrywanie urządzeń w sieci (agent 0.5.10)
 
+Nowe wydania z CI otrzymują automatyczny numer `0.6.<run>+<attempt>`.
+Po jednorazowej konfiguracji podpisu i dostępu do repozytorium trafiają
+automatycznie do katalogu CMDB, bez uploadu i bez zmiany przypisań maszyn.
+[Automatyczne wydania — konfiguracja i wdrożenie](docs/automatyczne-wydania.md).
+
 Jeden `cmdb-agent.exe` zawiera worker i tray. Bez argumentów uruchamia się
 do zasobnika bez otwierania statusu; `run` wykonuje pracę w tle. Opcjonalny
 moduł wykrywania włącza administrator centralnie w CMDB, na karcie zasobu.
-Ikona pokazuje wyłącznie stan modułu. Okna używają znaku C i oddzielają
-wersję uruchomionego programu od wersji historycznego statusu. Podpowiedzi IP,
+Główne okno pokazuje wersję tylko w nagłówku i nie pokazuje skanera.
+Podgląd modułu jest dostępny wyłącznie administratorowi w ustawieniach.
+Okna używają znaku C. Podpowiedzi IP,
 MAC, DNS, typu sprzętu i OS trafiają do **Wykrywanie sieci** w panelu;
 elementy zatwierdza się do ewidencji po sprawdzeniu.
 [Konfiguracja, limity i aktualizacja](docs/wykrywanie-sieci.md).

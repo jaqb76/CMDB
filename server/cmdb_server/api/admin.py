@@ -37,6 +37,7 @@ from ..models import (
     LIFECYCLE_AKTYWNY,
     as_utc,
     AgentRelease,
+    ReleaseImportStatus,
     Asset,
     AuditLog,
     CveFeed,
@@ -706,6 +707,9 @@ def widok_wersji(
 
     return render_admin(
         request, "admin_wersje.html", user, "wersje", release_admitted=release_admitted,
+        import_enabled=get_settings().release_import_enabled,
+        import_status=db.get(ReleaseImportStatus, 1),
+        import_repository=get_settings().release_repository,
         etykiety_arch=architektura.ETYKIETY,
         wydania=wszystkie,
         wydania_wg_systemu=wedlug_systemu,
@@ -809,6 +813,8 @@ async def wgraj_wersje(
     settings = get_settings()
 
     system = os_family.strip().lower()
+    if settings.release_import_enabled:
+        raise HTTPException(403, "Wlaczony automatyczny import: reczny upload wydan jest zablokowany")
     if system not in SYSTEMY:
         raise HTTPException(status_code=400, detail="nieznany system operacyjny")
 
@@ -1023,6 +1029,8 @@ def usun_wersje(
         )
 
     (katalog_wersji() / wydanie.storage_name).unlink(missing_ok=True)
+    if wydanie.provenance and wydanie.provenance.setup_storage_name:
+        (katalog_wersji() / wydanie.provenance.setup_storage_name).unlink(missing_ok=True)
     db.delete(wydanie)
     audit(db, None, action="release.deleted", target=f"{wydanie.version} ({wydanie.os_family})",
           ip=client_ip(request), actor=user.email)
@@ -1031,6 +1039,28 @@ def usun_wersje(
 
 
 # --- zlecanie aktualizacji --------------------------------------------------
+
+@router.get("/releases/{release_id}/setup")
+def pobierz_setup(release_id: str, user: PortalUser = Depends(require_superadmin), db: Session = Depends(get_db)):
+    from fastapi.responses import FileResponse
+    from ..services.release_trust import verified_artifact, distributable
+    from ..services.release_import import check_bytes, ImportFailure
+    wydanie = db.get(AgentRelease, release_id)
+    if wydanie is None or not distributable(wydanie):
+        raise HTTPException(404, "Brak zatwierdzonego wydania")
+    artifact = verified_artifact(wydanie, "setup")
+    evidence = wydanie.provenance
+    if not artifact or not evidence or not evidence.setup_storage_name:
+        raise HTTPException(404, "Brak instalatora")
+    root = katalog_wersji().resolve()
+    path = root / evidence.setup_storage_name
+    if path.resolve().parent != root:
+        raise HTTPException(404, "Brak instalatora")
+    try:
+        check_bytes(path, artifact)
+    except (OSError, ImportFailure):
+        raise HTTPException(404, "Brak poprawnego instalatora")
+    return FileResponse(path, filename=artifact["name"], media_type="application/octet-stream")
 
 @router.get("/tenants/{tenant_id}/upgrade", response_class=HTMLResponse)
 def widok_aktualizacji(

@@ -77,12 +77,17 @@ async def lifespan(app: FastAPI):
     from .services.harmonogram import petla
 
     zadanie = asyncio.create_task(petla())
+    from .services.release_import import loop as release_loop
+    import_job = asyncio.create_task(release_loop())
     try:
         yield
     finally:
         zadanie.cancel()
+        import_job.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await zadanie
+        with contextlib.suppress(asyncio.CancelledError):
+            await import_job
 
 
 # Endpoint zywotnosci: bez tokenu, bez danych, odpytywany lokalnie.
@@ -102,6 +107,8 @@ def _odswiez_paczke_agenta(settings) -> None:
        instalacja jednym poleceniem zwraca 503 - a wlasnie tak zachowywal sie
        obraz produkcyjny, w ktorym plik lezal na dysku, ale nikt go nie wpisal.
     """
+    if settings.release_import_enabled:
+        return  # signed CI package, not a second independently rebuilt release
     from .services import pakiet
 
     katalog = pakiet.katalog_paczki()

@@ -124,14 +124,15 @@ class SettingsWindow:
             frame, text="Zbieraj liste uruchomionych procesow", variable=self.processes_var
         ).grid(row=9, column=1, columnspan=2, sticky="w", pady=4)
 
-        discovery = ttk.LabelFrame(frame, text="Wykrywanie urzadzen w sieci", padding=8)
-        discovery.grid(row=10, column=0, columnspan=3, sticky="we", pady=(12, 4))
-        ttk.Label(discovery, text="Zarządzane centralnie przez administratora CMDB.",
-                  wraplength=500).pack(anchor="w")
-        self.discovery_state_var = tk.StringVar(value="Odczytywanie stanu…")
-        ttk.Label(discovery, textvariable=self.discovery_state_var, wraplength=500,
-                  foreground="#526176").pack(anchor="w", pady=(6, 0))
-        self._refresh_discovery()
+        if is_admin():
+            discovery = ttk.LabelFrame(frame, text="Wykrywanie urzadzen w sieci", padding=8)
+            discovery.grid(row=10, column=0, columnspan=3, sticky="we", pady=(12, 4))
+            ttk.Label(discovery, text="Zarządzane centralnie przez administratora CMDB.",
+                      wraplength=500).pack(anchor="w")
+            self.discovery_state_var = tk.StringVar(value="Odczytywanie stanu…")
+            ttk.Label(discovery, textvariable=self.discovery_state_var, wraplength=500,
+                      foreground="#526176").pack(anchor="w", pady=(6, 0))
+            self._refresh_discovery()
 
         self.message = ttk.Label(frame, textvariable=self.message_var, wraplength=520)
         self.message.grid(row=11, column=0, columnspan=3, sticky="w", pady=(12, 4))

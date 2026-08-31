@@ -60,7 +60,8 @@ class StatusWindow:
         title.pack(side="left")
         ttk.Label(title, text="CMDB Agent", style="Title.TLabel").pack(anchor="w")
         ttk.Label(title, text="Inwentaryzacja i stan połączenia", style="Muted.TLabel").pack(anchor="w")
-        ttk.Label(header, text=f"v{__version__}", style="Muted.TLabel").pack(side="right", padx=(25, 0))
+        self.version_label = ttk.Label(header, text=f"v{__version__}", style="Muted.TLabel")
+        self.version_label.pack(side="right", padx=(25, 0))
 
         health = ttk.Frame(frame, style="Card.TFrame", padding=18)
         health.grid(row=1, column=0, sticky="ew", pady=(0, 12))
@@ -74,19 +75,11 @@ class StatusWindow:
         detail = ttk.Frame(frame, style="Card.TFrame", padding=18)
         detail.grid(row=2, column=0, sticky="ew", pady=(0, 12))
         rows = [("machine", "Komputer"), ("tenant", "Firma"), ("server", "Serwer CMDB"),
-                ("version", "Wersja bieżącego programu"), ("report_version", "Wersja z ostatniego statusu"),
                 ("last_attempt", "Ostatnia próba"), ("next_sync", "Planowana synchronizacja")]
         for index, (key, label) in enumerate(rows):
             ttk.Label(detail, text=label, style="CardMuted.TLabel").grid(row=index, column=0, sticky="nw", pady=5, padx=(0, 22))
             self.values[key] = tk.StringVar(value="—")
             ttk.Label(detail, textvariable=self.values[key], style="Card.TLabel", wraplength=365).grid(row=index, column=1, sticky="w", pady=5)
-
-        scan = ttk.Frame(frame, style="Card.TFrame", padding=18)
-        scan.grid(row=3, column=0, sticky="ew")
-        ttk.Label(scan, text="SKANOWANIE SIECI", style="Section.TLabel").pack(anchor="w")
-        self.values["discovery"] = tk.StringVar(value="Brak informacji")
-        ttk.Label(scan, textvariable=self.values["discovery"], style="Card.TLabel", wraplength=560).pack(anchor="w", pady=(8, 5))
-        ttk.Label(scan, text="Zarządzane przez administratora w CMDB · tylko podgląd", style="CardMuted.TLabel").pack(anchor="w")
 
         self.problem_var = tk.StringVar()
         self.problem_label = ttk.Label(frame, textvariable=self.problem_var, wraplength=580, foreground="#946000")
@@ -146,9 +139,6 @@ class StatusWindow:
         self.values["machine"].set(snapshot.hostname or "-")
         self.values["tenant"].set(snapshot.tenant_slug or "-")
         self.values["server"].set(snapshot.server_url or "(nie ustawiono)")
-        self.values["version"].set(__version__)
-        self.values["report_version"].set(snapshot.agent_version if snapshot.published_at or snapshot.last_sync_at else "Brak statusu")
-        self.values["discovery"].set(status_module.discovery_label(snapshot))
 
         problems = list(snapshot.warnings)
         if snapshot.last_error:

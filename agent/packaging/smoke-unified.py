@@ -9,6 +9,9 @@ import sys
 import tempfile
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from cmdb_agent import __version__
+
 exe = Path(sys.argv[1]).resolve()
 temporary = Path(tempfile.mkdtemp(prefix="cmdb-unified-smoke-"))
 environment = os.environ.copy()
@@ -23,9 +26,9 @@ def command(*args):
 
 
 version = command("--version")
-assert version.returncode == 0 and b"0.5.10" in version.stdout, (version.returncode, version.stdout, version.stderr)
+assert version.returncode == 0 and version.stdout.strip() == f"cmdb-agent {__version__}".encode(), (version.returncode, version.stdout, version.stderr)
 probe = command("worker-probe", "--nonce", "a" * 32)
-assert probe.returncode == 0 and json.loads(probe.stdout) == {"protocol": 1, "version": "0.5.10",
+assert probe.returncode == 0 and json.loads(probe.stdout) == {"protocol": 1, "version": __version__,
     "nonce": "a" * 32, "commands": ["run", "enroll", "status"], "discovery_control": "cmdb-policy-v1"}
 # The updater checks the candidate before rename, with its actual .nowa suffix.
 candidate = exe.with_suffix(".exe.nowa")
@@ -78,7 +81,7 @@ try:
     assert command("--version").returncode == 0
     print("Unified EXE: CLI pipes, errors, worker, silent tray, singleton and hot replacement OK")
     digest = hashlib.sha256(exe.read_bytes()).hexdigest()
-    catalog = {digest: {"version": "0.5.10", "arch": "x86_64"}}
+    catalog = {digest: {"version": __version__, "arch": "x86_64"}}
     (exe.parent / "verified-worker.json").write_text(json.dumps(catalog, indent=2), encoding="utf-8")
     print("VERIFIED_WINDOWS_BUILD " + json.dumps(catalog))
 finally:

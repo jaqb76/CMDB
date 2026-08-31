@@ -1,5 +1,9 @@
 # Zaufane wydania Windows — 0.5.10
 
+Poniżej opisano dotychczasową ręczną dystrybucję. Nowy pipeline obsługuje
+[automatyczne, podpisane wydania](automatyczne-wydania.md): jednorazowo
+konfigurujesz klucz publiczny, bez ręcznego dopisywania każdego SHA-256.
+
 `entry_mode: unified` jest metadanymi, a nie dowodem obsługi workera. Sam
 podsystem PE też nie stanowi dowodu: można go zmienić w pliku. Dlatego zarówno
 okienkowe, jak i konsolowe wydania Windows wymagają niezależnego przypięcia

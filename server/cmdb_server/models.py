@@ -524,6 +524,34 @@ class AgentRelease(Base):
     created_by: Mapped[str | None] = mapped_column(String(255))
 
 
+    provenance: Mapped[ReleaseProvenance | None] = relationship(
+        "ReleaseProvenance", lazy="joined", uselist=False, passive_deletes="all")
+
+
+class ReleaseProvenance(Base):
+    """Signed evidence and import tombstone. Never just a trusted boolean."""
+    __tablename__ = "release_provenance"
+    __table_args__ = (UniqueConstraint("repository", "tag", "kind", name="uq_release_import_source"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    release_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("agent_releases.id", ondelete="SET NULL"), unique=True)
+    repository: Mapped[str] = mapped_column(String(255))
+    tag: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(16))
+    envelope: Mapped[dict] = mapped_column(JSONType)
+    setup_storage_name: Mapped[str | None] = mapped_column(String(128))
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReleaseImportStatus(Base):
+    __tablename__ = "release_import_status"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    last_attempt: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    state: Mapped[str] = mapped_column(String(32), default="waiting")
+    detail: Mapped[str | None] = mapped_column(Text)
+    next_page: Mapped[int] = mapped_column(Integer, default=2)
+
+
 class AgentUpgradeLog(Base):
     """Slad kazdej proby aktualizacji - kto zlecil, co sie stalo na maszynie."""
 

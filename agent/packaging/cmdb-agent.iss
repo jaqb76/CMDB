@@ -22,6 +22,9 @@
 AppId={{7B3A9C42-5E1D-4F8B-9A67-CMDBAGENT0001}
 AppName={#AppName}
 AppVersion={#AppVersion}
+#ifdef NumericVersion
+VersionInfoVersion={#NumericVersion}
+#endif
 AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\CMDB Agent
 DefaultGroupName=CMDB Agent

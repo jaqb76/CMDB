@@ -150,7 +150,8 @@ if ($Installer) {
     }
     else {
         Write-Host "Buduje instalator..." -ForegroundColor Cyan
-        & $iscc "/DAppVersion=$wersjaZrodel" "/DBuildDir=$OutputDir" (Join-Path $scriptDir "cmdb-agent.iss")
+        $numericVersion = $wersjaZrodel.Replace('+', '.')
+        & $iscc "/DAppVersion=$wersjaZrodel" "/DNumericVersion=$numericVersion" "/DBuildDir=$OutputDir" (Join-Path $scriptDir "cmdb-agent.iss")
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup zakonczyl sie bledem" }
         $setup = Get-ChildItem (Join-Path $OutputDir "CMDB-Agent-Setup-*.exe") |
                  Sort-Object LastWriteTime -Descending | Select-Object -First 1

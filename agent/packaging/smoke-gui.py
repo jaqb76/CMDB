@@ -16,6 +16,7 @@ from cmdb_agent import __version__, status
 from cmdb_agent.config import AgentConfig
 from cmdb_agent.gui.status_window import StatusWindow
 from cmdb_agent.gui.settings_window import SettingsWindow
+from cmdb_agent.gui import settings_window
 
 out = Path(sys.argv[1])
 out.mkdir(parents=True, exist_ok=True)
@@ -76,14 +77,17 @@ with patch.object(status, "read", return_value=snapshot):
     root.withdraw()
     app = StatusWindow(root, config, lambda: None, lambda: None, lambda: None)
     app.show()
-    assert app.values["version"].get() == __version__
-    assert app.values["report_version"].get() == "0.5.5"
+    assert app.version_label.cget("text") == "v" + __version__
+    assert not {"version", "report_version", "discovery"} & set(app.values)
     assert app.state_var.get() == "Brak świeżej synchronizacji"
     capture(app.window, "status")
     app.hide()
     root.destroy()
-    settings = SettingsWindow(config, config.data_dir / "agent.conf")
-    assert not hasattr(settings, "discovery_var") and not hasattr(settings, "discovery_cidrs_var")
-    capture(settings.root, "settings")
-    settings.root.destroy()
-print("GUI: current/historical version, stale warning, C icons and read-only scan status OK")
+    for administrator in (True, False):
+        with patch.object(settings_window, "is_admin", return_value=administrator):
+            settings = SettingsWindow(config, config.data_dir / "agent.conf")
+            assert not hasattr(settings, "discovery_var") and not hasattr(settings, "discovery_cidrs_var")
+            assert hasattr(settings, "discovery_state_var") == administrator
+            capture(settings.root, "settings-admin" if administrator else "settings-user")
+            settings.root.destroy()
+print("GUI: header version only, no scanner in status, scanner visible in administrator settings only OK")
