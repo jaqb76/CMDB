@@ -165,3 +165,70 @@ def test_nowy_brak_jest_jednak_zmiana(client, tenant_a):
 
     raport["software"]["updates_pending"] = _braki([POPRAWKA_BEZPIECZENSTWA])
     assert inventory.stable_fingerprint(raport) != przed
+
+
+# --- slad po nieudanej probie aktualizacji ------------------------------------
+
+def _agent(client, tenant):
+    dane = enroll(client, tenant["token"], machine_id="maszyna-slad-0001").json()
+    return dane["agent_token"], dane["asset_id"]
+
+
+def _ustaw_wersje(asset_id, wersja, status, detail):
+    from cmdb_server.models import Asset
+
+    with SessionLocal() as db:
+        maszyna = db.get(Asset, asset_id)
+        maszyna.agent_version = wersja
+        maszyna.upgrade_status = status
+        maszyna.upgrade_detail = detail
+        db.commit()
+
+
+def _stan(asset_id):
+    from cmdb_server.models import Asset
+
+    with SessionLocal() as db:
+        maszyna = db.get(Asset, asset_id)
+        return maszyna.upgrade_status, maszyna.upgrade_detail
+
+
+def test_odrzucenie_znika_gdy_maszyna_doszla_do_wersji_docelowej(client, tenant_a):
+    """Panel pokazywal obok siebie "aktualna" i "odrzucona" z komunikatem
+    sprzed naprawy. Nie bylo juz czego proponowac, wiec nic tego nie kasowalo."""
+    token, asset_id = _agent(client, tenant_a)
+    _ustaw_wersje(asset_id, "0.6.16+1", "odrzucona", "agent nie dziala z instalacji zalozonej instalatorem")
+
+    odpowiedz = client.get("/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"})
+    assert odpowiedz.status_code == 200
+    assert odpowiedz.json()["available"] is False
+    assert _stan(asset_id) == (None, None)
+
+
+def test_przebieg_w_toku_nie_jest_kasowany(client, tenant_a):
+    """"zlecona" i "pobrana" opisuja aktualizacje w trakcie, a nie jej porazke."""
+    token, asset_id = _agent(client, tenant_a)
+    _ustaw_wersje(asset_id, "0.6.16+1", "zlecona", None)
+
+    client.get("/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"})
+    assert _stan(asset_id)[0] == "zlecona"
+
+
+def test_historia_prob_zostaje_w_dzienniku(client, tenant_a):
+    """Kasujemy znacznik stanu przy maszynie, nie zapis zdarzenia."""
+    from cmdb_server.models import Asset, AgentUpgradeLog
+    from cmdb_server.services import upgrades
+
+    token, asset_id = _agent(client, tenant_a)
+    with SessionLocal() as db:
+        maszyna = db.get(Asset, asset_id)
+        upgrades.zapisz_wynik(db, maszyna, None, "odrzucona", "stara przyczyna")
+        maszyna.agent_version = "0.6.16+1"
+        db.commit()
+
+    client.get("/api/v1/agent/version", headers={"Authorization": f"Bearer {token}"})
+    with SessionLocal() as db:
+        wpisy = db.execute(select(AgentUpgradeLog).where(AgentUpgradeLog.asset_id == asset_id)).scalars().all()
+        assert [w.status for w in wpisy] == ["odrzucona"]
+        assert wpisy[0].detail == "stara przyczyna"
+    assert _stan(asset_id) == (None, None)

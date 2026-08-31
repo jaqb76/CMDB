@@ -212,6 +212,13 @@ def discovery_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9
 def _oferta_aktualizacji(db: Session, asset: Asset) -> UpgradeOffer:
     wydanie = upgrades.wersja_docelowa(db, asset)
     if not upgrades.czy_wymaga_aktualizacji(asset, wydanie):
+        # Maszyna jest na wersji docelowej, wiec poprzednie niepowodzenie
+        # przestalo cokolwiek opisywac. Bez tego panel pokazywal obok siebie
+        # "aktualna" i "odrzucona" z komunikatem sprzed naprawy - a poniewaz
+        # nie ma juz czego proponowac, nic by tego stanu nie nadpisalo.
+        # Przebieg zostaje w dzienniku aktualizacji; kasujemy tylko znacznik
+        # przy maszynie, ktory ma opisywac stan biezacy.
+        upgrades.wyczysc_nieaktualne_niepowodzenie(asset, wydanie)
         return UpgradeOffer(available=False, current_version=asset.agent_version)
     return UpgradeOffer(
         available=True,

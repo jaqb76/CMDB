@@ -186,6 +186,31 @@ def czy_wymaga_aktualizacji(asset: Asset, wydanie: AgentRelease | None) -> bool:
     return (asset.agent_version or "") != wydanie.version
 
 
+# Stany opisujace nieudana probe. "zlecona" i "pobrana" opisuja przebieg
+# w toku, wiec ich nie ruszamy.
+NIEPOWODZENIA = {"odrzucona", "blad"}
+
+
+def wyczysc_nieaktualne_niepowodzenie(asset: Asset, wydanie: AgentRelease | None) -> bool:
+    """Kasuje slad po probie, ktora dotyczyla innej wersji niz obecna.
+
+    Znacznik przy maszynie ma odpowiadac na pytanie "czy z ta maszyna jest
+    teraz cos nie tak". Gdy agent doszedl do wersji docelowej, odpowiedz brzmi
+    "nie" - niezaleznie od tego, ile prob sie wczesniej nie udalo. Historia
+    zostaje w AgentUpgradeLog, bo tam opisuje zdarzenia, a nie stan.
+    """
+    if asset.upgrade_status not in NIEPOWODZENIA:
+        return False
+    if wydanie is not None and (asset.agent_version or "") != wydanie.version:
+        # Nie ma czego proponowac z innego powodu niz zgodnosc wersji
+        # (np. wydanie wycofane) - niepowodzenie nadal moze byc aktualne.
+        return False
+    asset.upgrade_status = None
+    asset.upgrade_detail = None
+    asset.upgrade_updated_at = utcnow()
+    return True
+
+
 def sciezka_pliku(wydanie: AgentRelease) -> Path:
     return Path(get_settings().release_dir) / wydanie.storage_name
 
