@@ -475,3 +475,65 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   font-family: var(--mono); font-size: 13px; line-height: 1.55;
   white-space: pre; overflow-wrap: normal; overflow-x: auto;
 }
+
+
+/* --- wizualny edytor schematu --- */
+/* Karty pol zamiast surowego JSON-a. Numer po lewej niesie informacje:
+   kolejnosc pol to kolejnosc w formularzu, wiec da sie ja przestawiac. */
+.pole-karta { padding: 0; margin-bottom: 14px; }
+.pole-glowa {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.pole-numer {
+  width: 26px; height: 26px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; font-size: 12px; font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.pole-tytul { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pole-klucz {
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 3px 7px;
+}
+.pole-akcje { display: flex; gap: 6px; flex: none; }
+.pole-cialo { padding: 16px; }
+
+.siatka-edytora {
+  display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px;
+}
+.pole-edytora { min-width: 0; }
+.szer-3 { grid-column: span 3; }
+.szer-4 { grid-column: span 4; }
+.szer-6 { grid-column: span 6; }
+.szer-12 { grid-column: span 12; }
+@media (max-width: 860px) {
+  .szer-3, .szer-4, .szer-6 { grid-column: span 12; }
+}
+
+/* Sekcja zalezna od typu pola - widac, ze nalezy do pola powyzej, a nie
+   jest kolejnym niezaleznym ustawieniem. */
+.warunkowe {
+  margin-top: 14px; padding: 14px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.warunkowe-tytul {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+}
+.opcja-rzad {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 8px;
+}
+
+/* Przelacznik widoku wyglada jak zakladki, wiec musi tez tak dzialac. */
+.podzakladki button {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  font: inherit; color: var(--muted); cursor: pointer;
+  padding: 6px 2px; margin-right: 18px;
+}
+.podzakladki button.is-active { color: var(--text); border-bottom-color: var(--accent); }
+.podzakladki button:hover { color: var(--text); }

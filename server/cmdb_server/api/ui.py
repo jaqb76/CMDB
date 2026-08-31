@@ -1299,14 +1299,24 @@ def widok_schematu(
     if kategoria not in KATEGORIE_SLOWNIKA:
         raise HTTPException(status_code=404, detail="nieznana kategoria slownika")
     opis = slowniki.schemat(db, ctx, kategoria)
+    limity = {"pola": definicje.MAKS_POL, "opcje": definicje.MAKS_OPCJI}
+    uzycia = {p.klucz: slowniki.uzycie_pola(db, ctx, kategoria, p.klucz) for p in opis.pola}
     wynik = render(
         request, "slownik_schemat.html", user, ctx, db,
         kategoria=kategoria, kategorie=KATEGORIE_SLOWNIKA, schemat=opis,
         definicja=json.dumps(opis.model_dump(exclude_none=True), ensure_ascii=False, indent=2),
         typy=definicje.TYPY, formaty=definicje.FORMATY, role=definicje.ROLE,
-        limity={"pola": definicje.MAKS_POL, "opcje": definicje.MAKS_OPCJI},
-        uzycia={p.klucz: slowniki.uzycie_pola(db, ctx, kategoria, p.klucz) for p in opis.pola},
-        blad=blad,
+        limity=limity, uzycia=uzycia, blad=blad,
+        # Slownik pojec dla edytora w przegladarce - te same typy, formaty
+        # i role, ktore sprawdza serwer. Jedno zrodlo, dwa miejsca uzycia.
+        slownik_edytora=json.dumps({
+            "typy": list(definicje.TYPY),
+            "formaty": {n: o["przyklad"] for n, o in definicje.FORMATY.items()},
+            "role": definicje.ROLE,
+            "cele": ["osoba"] + list(KATEGORIE_SLOWNIKA),
+        }, ensure_ascii=False),
+        uzycia_json=json.dumps(uzycia),
+        limity_json=json.dumps(limity),
     )
     db.commit()
     return wynik

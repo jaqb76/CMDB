@@ -19,6 +19,65 @@
 <div class="alert alert-error"><b>Nie zapisano.</b> {{ blad }}</div>
 {% endif %}
 
+{#
+  Jeden formularz, dwa widoki tej samej treści. Wysyłane jest zawsze pole
+  z definicją JSON; widok „Formularz” tylko je zapisuje przyciskami. Dzięki
+  temu obie drogi nie mogą się rozjechać, a serwer nie musi wiedzieć, której
+  użyto.
+#}
+<form method="post" action="/slowniki/{{ kategoria }}/schemat">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div data-edytor-schematu
+       data-slownik='{{ slownik_edytora }}'
+       data-uzycia='{{ uzycia_json }}'
+       data-limity='{{ limity_json }}'>
+
+    <div class="page-head" style="margin-bottom:10px">
+      <nav class="podzakladki">
+        <button type="button" class="is-active" data-widok="formularz">Formularz</button>
+        <button type="button" data-widok="json">Edycja zaawansowana</button>
+      </nav>
+      <div>
+        <button type="button" class="btn" data-dodaj-pole>+ Dodaj pole</button>
+      </div>
+    </div>
+
+    <p class="alert alert-error" data-komunikat hidden></p>
+
+    <div data-panel-widok="formularz">
+      <div data-pola></div>
+    </div>
+
+    <div data-panel-widok="json" hidden>
+      <p class="muted small">
+        Ta sama treść, którą przechowuje baza. Można ją edytować tutaj albo wkleić
+        z zewnątrz — jest sprawdzana przy zapisie, więc błędny zapis nie popsuje
+        słownika. Po powrocie do widoku formularza zobaczysz swoją wersję.
+      </p>
+    </div>
+  </div>
+
+  {#
+    Pole zostaje w drzewie także w widoku formularza - to ono jest wysyłane.
+    Bez skryptu widać je normalnie, więc edycja działa również wtedy.
+  #}
+  <textarea id="definicja" name="definicja" rows="22" spellcheck="false"
+            class="kod-edytor" data-panel-widok="json" hidden>{{ definicja }}</textarea>
+
+  <div class="row-form" style="margin-top:16px">
+    <div><button type="submit" class="btn btn-primary">Zapisz schemat</button></div>
+    <div><a class="btn btn-ghost" href="/slowniki/{{ kategoria }}/schemat">Odrzuć zmiany</a></div>
+  </div>
+</form>
+
+<noscript>
+  <p class="uwaga-raportu">
+    Bez JavaScriptu widoczna jest wyłącznie edycja definicji w postaci tekstowej —
+    działa tak samo, tylko trzeba pisać ręcznie.
+  </p>
+</noscript>
+
 <section class="panel">
   <h2>Obecne pola ({{ schemat.pola | length }} z {{ limity.pola }})</h2>
   <div class="tabela-przewijana">
@@ -58,65 +117,12 @@
   <p class="muted small">
     <b>Pole z wartościami nie daje się usunąć.</b> Najpierw jawnie wyczyść jego
     wartości — kasowanie danych i kasowanie pola to dwie osobne decyzje, więc
-    jedna nie może być skutkiem ubocznym drugiej.
+    jedna nie może być skutkiem ubocznym drugiej. Klucz pola też jest wtedy
+    zablokowany: po nim leżą zapisane wartości.
   </p>
 </section>
+{% endblock %}
 
-<section class="panel">
-  <h2>Definicja</h2>
-  <p class="muted small">
-    Ta sama treść, którą przechowuje baza. Można ją edytować tutaj albo wkleić
-    z zewnątrz — jest sprawdzana przy zapisie, więc błędny zapis nie popsuje
-    słownika.
-  </p>
-  <form method="post" action="/slowniki/{{ kategoria }}/schemat" class="stack">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <textarea name="definicja" rows="22" spellcheck="false"
-              class="kod-edytor">{{ definicja }}</textarea>
-    <div class="row-form">
-      <div><button type="submit" class="btn btn-primary">Zapisz schemat</button></div>
-      <div><a class="btn btn-ghost" href="/slowniki/{{ kategoria }}/schemat">Odrzuć zmiany</a></div>
-    </div>
-  </form>
-</section>
-
-<section class="panel">
-  <h2>Co można wpisać</h2>
-  <div class="kolumny-siatka">
-    <fieldset class="kolumny-grupa">
-      <legend>Typy</legend>
-      <p class="muted small">Czym wartość jest — decyduje o sortowaniu i porównywaniu.</p>
-      <ul class="pola">
-        {% for t in typy %}<li><span class="nazwa"><code>{{ t }}</code></span></li>{% endfor %}
-      </ul>
-    </fieldset>
-
-    <fieldset class="kolumny-grupa">
-      <legend>Formaty</legend>
-      <p class="muted small">Jak wygląda — sprawdzanie i podpowiedź. Tylko dla typu <code>tekst</code>.</p>
-      <ul class="pola">
-        {% for nazwa, opis in formaty.items() %}
-        <li><span class="nazwa"><code>{{ nazwa }}</code></span>
-            <span class="muted small">{{ opis.przyklad }}</span></li>
-        {% endfor %}
-      </ul>
-    </fieldset>
-
-    <fieldset class="kolumny-grupa">
-      <legend>Role</legend>
-      <p class="muted small">Po roli sięgają funkcje systemu. Jedna rola, jedno pole.</p>
-      <ul class="pola">
-        {% for nazwa, opis in role.items() %}
-        <li><span class="nazwa"><code>{{ nazwa }}</code></span>
-            <span class="muted small">{{ opis }}</span></li>
-        {% endfor %}
-      </ul>
-    </fieldset>
-  </div>
-  <p class="muted small">
-    Klucz pola jest jego tożsamością — po nim leżą wartości w istniejących wpisach.
-    Etykietę zmieniaj dowolnie, klucza nigdy: zmiana klucza to w istocie usunięcie
-    pola i dodanie nowego, więc obowiązuje ją ta sama zasada co usuwanie.
-  </p>
-</section>
+{% block skrypty %}
+<script src="{{ zasob('schemat.js') }}"></script>
 {% endblock %}

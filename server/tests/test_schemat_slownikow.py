@@ -289,3 +289,52 @@ def test_brak_roli_nie_wywraca_raportu(client, tenant_a, make_user):
     with SessionLocal() as db:
         wpis = db.get(WpisSlownika, wpis_id)
         assert slowniki.wg_roli(db, ctx, "dostawca", wpis, "email_zgloszen") is None
+
+
+# --- wizualny edytor --------------------------------------------------------
+
+def test_strona_schematu_daje_edytor_i_surowy_json(client, tenant_a, make_user):
+    """Przyciski dla wiekszosci, JSON dla tych, ktorzy go wola."""
+    _admin(client, tenant_a, make_user)
+    strona = client.get("/slowniki/dostawca/schemat").text
+    assert "data-edytor-schematu" in strona
+    assert 'data-widok="formularz"' in strona and 'data-widok="json"' in strona
+    assert 'name="definicja"' in strona, "wysylane jest nadal jedno pole"
+
+
+def test_edytor_dostaje_te_same_pojecia_co_serwer(client, tenant_a, make_user):
+    """Gdyby lista typow w przegladarce byla wlasna, rozjechalaby sie z ta,
+    ktora sprawdza serwer - i formularz proponowalby wartosci do odrzucenia."""
+    _admin(client, tenant_a, make_user)
+    strona = client.get("/slowniki/dostawca/schemat").text
+    for typ in definicje.TYPY:
+        assert typ in strona
+    for format_ in definicje.FORMATY:
+        assert format_ in strona
+    for rola in definicje.ROLE:
+        assert rola in strona
+
+
+def test_edytor_wie_ktore_pola_maja_wartosci(client, tenant_a, make_user):
+    """Bez tego przycisk usuwania dalby sie kliknac i odbil od serwera."""
+    _admin(client, tenant_a, make_user)
+    wpis_id = _wpis(client)
+    csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
+    client.post(f"/slowniki/wpis/{wpis_id}", data={
+        "nazwa": "Dell", "pole_kanal_zgloszen": "portal", "pole_nip": "1234563218",
+        "csrf_token": csrf}, follow_redirects=False)
+
+    strona = client.get("/slowniki/dostawca/schemat").text
+    assert "data-uzycia" in strona
+    assert '"nip": 1' in strona.replace("&#34;", '"')
+
+
+def test_skrypt_edytora_nie_uzywa_procedur_w_znacznikach():
+    """Polityka bezpieczenstwa dopuszcza wylacznie skrypty z tego serwera,
+    wiec onclick w tresci strony po prostu by nie zadzialal."""
+    from pathlib import Path
+
+    katalog = Path(__file__).resolve().parent.parent / "cmdb_server"
+    szablon = (katalog / "templates" / "slownik_schemat.html").read_text(encoding="utf-8")
+    assert "onclick" not in szablon and "oninput" not in szablon
+    assert (katalog / "static" / "schemat.js").is_file()
