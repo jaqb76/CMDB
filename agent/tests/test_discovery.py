@@ -148,3 +148,69 @@ def test_large_banners_cannot_fill_inventory_report():
     assert 0 < len(limited["devices"]) < 2000
     assert not limited["complete"] and limited["errors"]
     assert len(json.dumps(limited).encode()) <= 1024 * 1024
+
+
+# --- wlasne adresy skanera ---------------------------------------------------
+
+def _config(cidrs, max_hosts):
+    return AgentConfig(discovery_enabled=True, discovery_auto_subnets=False,
+                       discovery_cidrs=cidrs, discovery_max_hosts=max_hosts,
+                       discovery_rate=128, discovery_budget_seconds=30)
+
+
+def test_wlasny_adres_dostaje_mac_z_interfejsu(monkeypatch):
+    """Host nie pyta ARP o samego siebie, wiec jego wlasny adres nigdy nie
+    trafia do tablicy sasiadow - skaner zostawal bez MAC-a maszyny, na ktorej
+    sam stoi, mimo ze zna go bezposrednio z karty sieciowej."""
+    from cmdb_agent import discovery
+
+    monkeypatch.setattr(discovery, "neighbors", lambda: {})
+    monkeypatch.setattr(discovery, "own_addresses",
+                        lambda: {"192.168.1.165": {"mac": "84:5c:f3:51:17:fb",
+                                                   "reachable": True, "self": True}})
+    monkeypatch.setattr(discovery, "probe_host",
+                        lambda ip, limiter: ({"ip": ip, "hostname": "", "mac": "", "ports": [445],
+                                              **discovery.classify([445], [])}, True)
+                        if ip == "192.168.1.165" else (None, True))
+
+    wynik = discovery.scan(_config(cidrs=["192.168.1.160/29"], max_hosts=8))
+    znalezione = {d["ip"]: d for d in wynik["devices"]}
+    assert znalezione["192.168.1.165"]["mac"] == "84:5c:f3:51:17:fb"
+    assert "wlasnego interfejsu" in znalezione["192.168.1.165"]["evidence"][0]
+
+
+def test_wlasny_interfejs_wygrywa_z_tablica_arp(monkeypatch):
+    """Dla wlasnego adresu karta sieciowa jest pewniejszym zrodlem niz ARP."""
+    from cmdb_agent import discovery
+
+    monkeypatch.setattr(discovery, "neighbors",
+                        lambda: {"192.168.1.165": {"mac": "00:00:00:aa:bb:cc", "reachable": True}})
+    monkeypatch.setattr(discovery, "own_addresses",
+                        lambda: {"192.168.1.165": {"mac": "84:5c:f3:51:17:fb",
+                                                   "reachable": True, "self": True}})
+    monkeypatch.setattr(discovery, "probe_host",
+                        lambda ip, limiter: ({"ip": ip, "hostname": "", "mac": "", "ports": [445],
+                                              **discovery.classify([445], [])}, True)
+                        if ip == "192.168.1.165" else (None, True))
+
+    wynik = discovery.scan(_config(cidrs=["192.168.1.160/29"], max_hosts=8))
+    assert wynik["devices"][0]["mac"] == "84:5c:f3:51:17:fb"
+
+
+def test_blad_odczytu_interfejsow_nie_przerywa_skanu(monkeypatch):
+    """Skan bez adresow MAC jest gorszy, ale nadal uzyteczny."""
+    from cmdb_agent import discovery
+
+    def wybuch():
+        raise OSError("brak dostepu do interfejsow")
+
+    monkeypatch.setattr(discovery, "neighbors", lambda: {})
+    monkeypatch.setattr(discovery, "own_addresses", wybuch)
+    monkeypatch.setattr(discovery, "probe_host",
+                        lambda ip, limiter: ({"ip": ip, "hostname": "", "mac": "", "ports": [445],
+                                              **discovery.classify([445], [])}, True)
+                        if ip == "192.168.1.165" else (None, True))
+
+    wynik = discovery.scan(_config(cidrs=["192.168.1.160/29"], max_hosts=8))
+    assert wynik["devices"][0]["ip"] == "192.168.1.165"
+    assert wynik["devices"][0]["mac"] == ""

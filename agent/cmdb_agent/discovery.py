@@ -93,6 +93,38 @@ def local_subnets():
     return result
 
 
+def own_addresses():
+    """Wlasne adresy IPv4 skanera razem z adresami sprzetowymi.
+
+    Tablica sasiadow opisuje INNE maszyny w segmencie - host nie pyta ARP
+    o samego siebie, wiec jego wlasne adresy nigdy sie w niej nie pojawiaja.
+    Skaner, ktory znajdzie sam siebie, zostawal wiec bez adresu MAC, mimo ze
+    zna go bezposrednio z wlasnego interfejsu.
+
+    To nie jest zgadywanie: adres sprzetowy wlasnej karty jest pewniejszy niz
+    cokolwiek odczytanego z tablicy ARP.
+    """
+    if sys.platform == "win32":
+        rows = _powershell(
+            "@(Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | "
+            "ForEach-Object { $a = Get-NetAdapter -InterfaceIndex $_.InterfaceIndex "
+            "-ErrorAction SilentlyContinue; if ($a) { [pscustomobject]@{ "
+            "IPAddress = $_.IPAddress; Mac = $a.MacAddress } } }) | ConvertTo-Json -Compress")
+        pairs = ((r.get("IPAddress"), r.get("Mac")) for r in rows)
+    elif sys.platform.startswith("linux"):
+        rows = json.loads(_command(["ip", "-j", "-4", "address", "show", "up"]))
+        pairs = ((a.get("local"), r.get("address"))
+                 for r in rows for a in r.get("addr_info", []) if a.get("scope") == "global")
+    else:
+        return {}
+    result = {}
+    for ip, mac in pairs:
+        mac = (mac or "").replace("-", ":").lower()
+        if ip and re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac) and mac != "00:00:00:00:00:00":
+            result[ip] = {"mac": mac, "reachable": True, "self": True}
+    return result
+
+
 def neighbors():
     if sys.platform == "win32":
         rows = _powershell("@(Get-NetNeighbor -AddressFamily IPv4 | "
@@ -254,16 +286,30 @@ def scan(config):
                 result["devices"].append(device)
     try:
         cache = neighbors()
+        # Wlasne interfejsy dokladamy PO tablicy sasiadow i pozwalamy im
+        # nadpisac jej wpisy: dla wlasnego adresu wiemy lepiej niz ARP.
+        try:
+            cache.update(own_addresses())
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            log.debug("nie odczytano wlasnych interfejsow: %s", exc)
         found = {d["ip"] for d in result["devices"]}
         targets = set(hosts)
         for device in result["devices"]:
-            device["mac"] = cache.get(device["ip"], {}).get("mac", "")
+            wpis = cache.get(device["ip"], {})
+            device["mac"] = wpis.get("mac", "")
+            if wpis.get("self"):
+                # Bez tego wiersz "maszyna znalazla sama siebie" niczym sie nie
+                # rozni od zwyklego znaleziska, a to inna klasa pewnosci.
+                device["evidence"] = ["Adres wlasnego interfejsu skanera."] + device["evidence"][:31]
         # A local host may answer ARP but filter every TCP probe. Only a
         # Reachable entry is evidence of activity; Stale/Permanent is not.
         for ip, entry in cache.items():
             if ip in targets and ip not in found and entry["reachable"]:
+                podstawa = ("Adres wlasnego interfejsu skanera; brak odpowiedzi TCP w badanym zestawie."
+                            if entry.get("self") else
+                            "Aktywny wpis ARP (Reachable); brak odpowiedzi TCP w badanym zestawie.")
                 result["devices"].append({"ip": ip, "mac": entry["mac"], "hostname": "", "ports": [],
-                    **classify([], ["Aktywny wpis ARP (Reachable); brak odpowiedzi TCP w badanym zestawie."])})
+                    **classify([], [podstawa])})
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         result["errors"].append("Nie odczytano MAC: " + clean_text(str(exc), 400))
     result["complete"] = complete
