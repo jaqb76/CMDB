@@ -21,6 +21,7 @@
         <a href="/slowniki">Słowniki</a>
     <a href="/tokens">Tokeny agentów</a>
     <a href="/pobierz">Instalacja agenta</a>
+    {% if ctx and ctx.can_write %}<a href="/wersje-agentow">Wersje agentów</a>{% endif %}
     <a href="/raporty">Raporty</a>
     <a href="/audit">Audyt</a>
     <a href="/pomoc">Pomoc</a>

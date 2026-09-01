@@ -976,3 +976,51 @@ def test_brak_paczki_jest_zglaszany_wprost(client, make_user, tmp_path, monkeypa
     monkeypatch.setattr(pakiet, "katalog_paczki", lambda: tmp_path / "pusto")
     _superadmin(client, make_user)
     assert "nie zbudował paczki źródeł" in client.get("/admin/wersje").text
+
+
+# --- sprzet bez agenta ------------------------------------------------------
+
+def _reczny_sprzet(tenant_id, hostname="Drukarka w sekretariacie"):
+    """Sprzet wpisany recznie: nie ma agenta i nigdy sie nie odezwie."""
+    with SessionLocal() as db:
+        sprzet = Asset(tenant_id=tenant_id, machine_id="reczne:adm-0001",
+                       hostname=hostname, typ="drukarka", zrodlo="reczne")
+        db.add(sprzet)
+        db.commit()
+        return sprzet.id
+
+
+def test_przeglad_nie_liczy_wpisow_recznych_jako_agentow(client, tenant_a, make_user):
+    """Wpis reczny nie ma agenta ani wersji. Liczony razem z agentami wychodzil
+    jako 'nieaktywny agent w wersji nieznanej' - czyli stala falszywa alarmowka
+    na przegladzie."""
+    _reczny_sprzet(tenant_a["id"])
+    _superadmin(client, make_user)
+
+    strona = client.get("/admin").text
+    assert "nieznana" not in strona, "wpis reczny nie jest wersja agenta"
+
+
+def test_widok_aktualizacji_pomija_wpisy_reczne(client, tenant_a, make_user):
+    reczny = _reczny_sprzet(tenant_a["id"], "Drukarka w sekretariacie")
+    _superadmin(client, make_user)
+
+    strona = client.get(f"/admin/tenants/{tenant_a['id']}/upgrade").text
+    assert "Drukarka w sekretariacie" not in strona
+    assert reczny not in strona
+
+
+def test_nie_da_sie_zlecic_wersji_wpisowi_recznemu(client, tenant_a, make_user):
+    """Identyfikator da sie wyslac z pominieciem formularza - odmowa musi byc
+    po stronie zapisu, a nie tylko w widoku."""
+    reczny = _reczny_sprzet(tenant_a["id"])
+    csrf = _superadmin(client, make_user)
+
+    odpowiedz = client.post(
+        f"/admin/tenants/{tenant_a['id']}/upgrade",
+        data={"zakres": "wybrane", "asset_id": reczny, "release_id": "",
+              "csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert odpowiedz.status_code == 400
+    assert "reczny" in odpowiedz.text

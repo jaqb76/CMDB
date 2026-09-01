@@ -1266,6 +1266,69 @@ def owner_list(user: PortalUser = Depends(require_user)) -> Response:
                             status_code=status.HTTP_303_SEE_OTHER)
 
 
+# --- wersje agentow ---------------------------------------------------------
+
+@router.get("/wersje-agentow", response_class=HTMLResponse)
+def widok_wersji_agentow(
+    request: Request,
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Gdzie aktualizacja agenta juz doszla, a gdzie jeszcze nie.
+
+    Widok jest TYLKO DO ODCZYTU. Ktora wersja jest rozsylana, decyduje operator
+    systemu - to on odpowiada za to, ze plik jest sprawdzony i podpisany.
+    Administrator firmy musi natomiast widziec, co sie z jego flota dzieje:
+    bez tego jedyna odpowiedzia na pytanie "czy wszyscy maja nowego agenta"
+    jest obchodzenie kart maszyn po kolei.
+    """
+    from ..models import AgentRelease, GlobalAgentTarget, TenantAgentTarget
+
+    _require_write(ctx)          # widok operacyjny - dla administratora firmy
+
+    maszyny = db.execute(
+        select(Asset).where(
+            Asset.tenant_id == ctx.tenant_id,
+            Asset.lifecycle == LIFECYCLE_AKTYWNY,
+            # Wpis reczny nie ma agenta i nigdy go nie bedzie mial.
+            Asset.zrodlo == ZRODLO_AGENT,
+        ).order_by(Asset.os_family, Asset.hostname)
+    ).scalars().all()
+
+    wersje = {w.id: w for w in db.execute(select(AgentRelease)).scalars()}
+    firmowe = {c.os_family: wersje.get(c.release_id) for c in db.execute(
+        select(TenantAgentTarget).where(TenantAgentTarget.tenant_id == ctx.tenant_id)
+    ).scalars()}
+    oficjalne = {c.os_family: wersje.get(c.release_id)
+                 for c in db.execute(select(GlobalAgentTarget)).scalars()}
+
+    wiersze = []
+    zalegaja = 0
+    for maszyna in maszyny:
+        system = (maszyna.os_family or "").lower()
+        # Ustawienie maszyny ma pierwszenstwo przed firmowym, a firmowe przed
+        # oficjalnym - tak samo jak przy wydawaniu wersji agentowi.
+        cel = (wersje.get(maszyna.target_release_id)
+               or firmowe.get(system) or oficjalne.get(system))
+        rozna = bool(cel and maszyna.agent_version != cel.version)
+        if rozna:
+            zalegaja += 1
+        wiersze.append({
+            "maszyna": maszyna,
+            "cel": cel,
+            "rozna": rozna,
+            "skad": ("ta maszyna" if maszyna.target_release_id
+                     else "firma" if firmowe.get(system) else "wersja oficjalna"),
+        })
+
+    return render(
+        request, "wersje_agentow.html", user, ctx, db,
+        wiersze=wiersze, zalegaja=zalegaja,
+        firmowe=firmowe, oficjalne=oficjalne,
+    )
+
+
 # --- slowniki firmowe -------------------------------------------------------
 
 # Ile pol schematu trafia do tabeli slownika. Szerzej tabela przestaje sie

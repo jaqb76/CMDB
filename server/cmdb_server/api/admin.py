@@ -36,6 +36,7 @@ from ..config import get_settings
 from ..db import get_db
 from ..models import (
     LIFECYCLE_AKTYWNY,
+    ZRODLO_AGENT,
     as_utc,
     AgentRelease,
     ReleaseImportStatus,
@@ -184,9 +185,12 @@ def _statystyki_agentow(db: Session):
     kilkunastu firmach i setkach maszyn roznica w czasie wykonania jest
     niemierzalna.
     """
+    # Tylko maszyny z agentem. Sprzet wpisany recznie nie ma agenta, nigdy sie
+    # nie odezwie i nie ma wersji - liczenie go jako "nieaktywny agent w wersji
+    # nieznanej" zamienialo przeglad w stala falszywa alarmowke.
     wiersze = db.execute(
         select(Asset.tenant_id, Asset.os_family, Asset.agent_version, Asset.last_seen)
-        .where(Asset.lifecycle == LIFECYCLE_AKTYWNY)
+        .where(Asset.lifecycle == LIFECYCLE_AKTYWNY, Asset.zrodlo == ZRODLO_AGENT)
     ).all()
 
     granice = {
@@ -1077,9 +1081,13 @@ def widok_aktualizacji(
     db: Session = Depends(get_db),
 ) -> Response:
     firma = znajdz_firme(db, tenant_id)
+    # Wpisow recznych tu nie ma: nie da sie zlecic aktualizacji agenta
+    # maszynie, na ktorej agenta nie ma. Na liscie wygladalyby jak sprzet
+    # zalegajacy z aktualizacja.
     maszyny = db.execute(
         select(Asset)
-        .where(Asset.tenant_id == firma.id, Asset.lifecycle == LIFECYCLE_AKTYWNY)
+        .where(Asset.tenant_id == firma.id, Asset.lifecycle == LIFECYCLE_AKTYWNY,
+               Asset.zrodlo == ZRODLO_AGENT)
         .order_by(Asset.os_family, Asset.hostname)
     ).scalars().all()
 
@@ -1218,6 +1226,14 @@ def _ustaw_cel_maszyn(
     ).scalars().all()
     if len(maszyny) != len(set(wybrane)):
         raise HTTPException(status_code=400, detail="maszyna spoza tej firmy")
+
+    reczne = [m.hostname for m in maszyny if m.zrodlo != ZRODLO_AGENT]
+    if reczne:
+        raise HTTPException(
+            status_code=400,
+            detail="wpis reczny nie ma agenta, wiec nie da sie mu zlecic wersji: "
+                   + ", ".join(reczne[:5]),
+        )
 
     if wydanie is not None:
         niezgodne = [m.hostname for m in maszyny if (m.os_family or "") != wydanie.os_family]
