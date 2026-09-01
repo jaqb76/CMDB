@@ -19,8 +19,15 @@
   <form method="post" action="/assets/nowy" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-    <label for="typ">Rodzaj sprzetu</label>
-    <select id="typ" name="typ">
+    {#
+      Rodzaj jest pierwszym pytaniem, bo buduje reszte formularza: monitor
+      pyta o przekatna, przelacznik o liczbe portow. Zestawy pol wszystkich
+      rodzajow ida do strony naraz, wiec zmiana rodzaju przestawia formularz
+      od razu - przeladowanie skasowaloby to, co juz wpisano.
+    #}
+    <label for="typ">Rodzaj sprzętu</label>
+    <select id="typ" name="typ" data-rodzaj-sprzetu
+            data-pola='{{ pola_rodzajow }}'>
       {% for klucz, etykieta in typy.items() %}
         <option value="{{ klucz }}" {% if klucz == domyslny_typ %}selected{% endif %}>{{ etykieta }}</option>
       {% endfor %}
@@ -94,7 +101,16 @@
     <label for="uwagi">Uwagi</label>
     <textarea id="uwagi" name="uwagi" rows="3"></textarea>
 
-    <button type="submit" class="btn btn-primary">Dodaj sprzet</button>
+    <fieldset class="kolumny-grupa" data-pola-rodzaju hidden>
+      <legend data-legenda-rodzaju>Właściwe dla rodzaju</legend>
+      <div class="pola-siatka" data-pola-rodzaju-lista></div>
+      <p class="muted small">
+        Zestaw pól ustawia administrator w
+        <a href="/slowniki?kategoria=rodzaj">słowniku rodzajów</a>.
+      </p>
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary">Dodaj sprzęt</button>
   </form>
 </section>
 

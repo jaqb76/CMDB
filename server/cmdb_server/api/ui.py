@@ -637,7 +637,7 @@ def formularz_nowego_sprzetu(
     wpisal czlowiek: gdzie stoi, kto go uzywa i skad pochodzi.
     """
     _require_write(ctx)
-    return render(
+    wynik = render(
         request,
         "asset_nowy.html",
         user,
@@ -647,11 +647,22 @@ def formularz_nowego_sprzetu(
         typy=rodzaje.etykiety(db, ctx),
         podpowiedzi=slowniki.podpowiedzi(db, ctx),
         domyslny_typ="siec",
+        # Zestawy pol WSZYSTKICH rodzajow ida do strony naraz, zeby zmiana
+        # rodzaju przestawiala formularz od razu - bez przeladowania, ktore
+        # skasowaloby to, co czlowiek zdazyl juz wpisac.
+        pola_rodzajow=json.dumps(
+            {klucz: [p.model_dump(exclude_none=True)
+                     for p in rodzaje.schemat_pol(db, ctx, klucz).pola]
+             for klucz in rodzaje.etykiety(db, ctx)},
+            ensure_ascii=False),
+        formaty=definicje_pol.FORMATY,
     )
+    db.commit()          # schematy rodzajow zalozone z wzorca przy pierwszym wejsciu
+    return wynik
 
 
 @router.post("/assets/nowy")
-def utworz_sprzet(
+async def utworz_sprzet(
     request: Request,
     nazwa: str = Form(...),
     typ: str = Form("siec"),
@@ -711,6 +722,13 @@ def utworz_sprzet(
     )
     db.add(sprzet)
     db.flush()
+    formularz = {klucz[5:]: wartosc for klucz, wartosc in (await request.form()).items()
+                 if klucz.startswith("pole_")}
+    try:
+        rodzaje.zapisz_atrybuty(db, ctx, sprzet, formularz)
+    except definicje_pol.BladPola as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     audit(db, ctx, action="asset.dodany_recznie", target=sprzet.hostname,
           detail={"typ": typ}, ip=client_ip(request))
     db.commit()

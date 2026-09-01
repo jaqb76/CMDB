@@ -209,3 +209,43 @@ def test_schematy_rodzajow_nie_wychodza_poza_firme(client, tenant_a, tenant_b, m
         wiersze = db.execute(select(SchematSlownika).where(
             SchematSlownika.kategoria == "sprzet")).scalars().all()
         assert {w.tenant_id for w in wiersze} == {tenant_a["id"]}
+
+
+# --- formularz dodawania ----------------------------------------------------
+
+def test_formularz_dodawania_zna_pola_wszystkich_rodzajow(client, tenant_a, make_user):
+    """Zestawy ida do strony naraz, zeby zmiana rodzaju przestawiala formularz
+    bez przeladowania - to skasowaloby wpisane juz wartosci."""
+    _admin_firmy(client, tenant_a, make_user)
+    strona = client.get("/assets/nowy").text
+    assert "data-rodzaj-sprzetu" in strona
+    assert "przekatna_cale" in strona, "pola monitora"
+    assert "liczba_portow" in strona, "pola przelacznika"
+    assert "data-pola-rodzaju-lista" in strona
+
+
+def test_dodany_sprzet_zapisuje_pola_swojego_rodzaju(client, tenant_a, make_user):
+    _admin_firmy(client, tenant_a, make_user)
+    csrf = _extract_csrf(client.get("/assets/nowy").text)
+    odpowiedz = client.post("/assets/nowy", data={
+        "nazwa": "MON-NOWY", "typ": "monitor", "producent": "Dell", "model": "U2723",
+        "numer_seryjny": "", "ip": "", "lokalizacja_id": "", "rola": "",
+        "owner_id": "", "uzytkownik_id": "", "dostawca_id": "", "uwagi": "",
+        "pole_przekatna_cale": "27", "pole_matryca": "IPS",
+        "csrf_token": csrf}, follow_redirects=False)
+    assert odpowiedz.status_code == 303, odpowiedz.text
+
+    with SessionLocal() as db:
+        sprzet = db.execute(select(Asset).where(Asset.hostname == "MON-NOWY")).scalar_one()
+        assert sprzet.atrybuty["przekatna_cale"] == 27
+        assert sprzet.atrybuty["matryca"] == "IPS"
+
+
+def test_skrypt_przestawia_pola_bez_przeladowania():
+    """Przeladowanie skasowaloby to, co czlowiek zdazyl juz wpisac wyzej."""
+    from pathlib import Path
+
+    skrypt = (Path(__file__).resolve().parent.parent
+              / "cmdb_server" / "static" / "app.js").read_text(encoding="utf-8")
+    assert "data-rodzaj-sprzetu" in skrypt
+    assert "data-pola-rodzaju-lista" in skrypt

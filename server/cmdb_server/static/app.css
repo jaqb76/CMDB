@@ -77,6 +77,10 @@ code { font-family: var(--mono); font-size: 0.9em; }
   font-size: 13px; color: var(--muted); min-width: 0;
 }
 .userbox > * { flex: none; }
+/* Formularz przelacznika firmy jest jednym elementem paska, ale w srodku ma
+   liste i przycisk - bez tego lamal sie wewnatrz siebie, niezaleznie od tego,
+   ze sam pasek juz sie nie lamie. */
+.userbox form { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
 .user-email {
   min-width: 0; max-width: 190px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

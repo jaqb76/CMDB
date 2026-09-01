@@ -324,4 +324,101 @@
     });
   })();
 
+
+  // Formularz dodawania sprzetu dostraja sie do wybranego rodzaju.
+  //
+  // Zestawy pol wszystkich rodzajow przychodza ze strona, wiec zmiana rodzaju
+  // przestawia formularz od razu. Przeladowanie strony byloby prostsze, ale
+  // skasowaloby wszystko, co czlowiek zdazyl juz wpisac wyzej - a rodzaj
+  // zmienia sie zwykle po zorientowaniu sie, ze wybralo sie zly.
+  (function () {
+    var wybor = document.querySelector("[data-rodzaj-sprzetu]");
+    if (!wybor) { return; }
+    var blok = document.querySelector("[data-pola-rodzaju]");
+    var lista = document.querySelector("[data-pola-rodzaju-lista]");
+    var legenda = document.querySelector("[data-legenda-rodzaju]");
+    if (!blok || !lista) { return; }
+
+    var wszystkie;
+    try {
+      wszystkie = JSON.parse(wybor.dataset.pola || "{}");
+    } catch (e) {
+      return;                       // bez danych zostawiamy formularz w spokoju
+    }
+
+    function el(nazwa, klasa, tresc) {
+      var w = document.createElement(nazwa);
+      if (klasa) { w.className = klasa; }
+      if (tresc !== undefined) { w.textContent = tresc; }
+      return w;
+    }
+
+    function kontrolka(pole) {
+      var nazwa = "pole_" + pole.klucz;
+      if (pole.typ === "wybor") {
+        var select = el("select");
+        select.id = nazwa; select.name = nazwa;
+        select.appendChild(new Option("—", ""));
+        (pole.opcje || []).forEach(function (o) { select.appendChild(new Option(o, o)); });
+        return select;
+      }
+      if (pole.typ === "logiczna") {
+        var etykieta = el("label", "kolumna-wybor");
+        var znacznik = el("input");
+        znacznik.type = "checkbox"; znacznik.id = nazwa; znacznik.name = nazwa;
+        znacznik.value = "tak";
+        etykieta.appendChild(znacznik);
+        etykieta.appendChild(el("span", null, "tak"));
+        return etykieta;
+      }
+      if (pole.typ === "notatka") {
+        var obszar = el("textarea");
+        obszar.id = nazwa; obszar.name = nazwa; obszar.rows = 2;
+        obszar.maxLength = 2000;
+        return obszar;
+      }
+      var input = el("input");
+      input.id = nazwa; input.name = nazwa;
+      if (pole.typ === "liczba") {
+        input.type = "number"; input.step = "any";
+        if (pole.min !== undefined && pole.min !== null) { input.min = pole.min; }
+        if (pole.max !== undefined && pole.max !== null) { input.max = pole.max; }
+      } else if (pole.typ === "data") {
+        input.type = "date";
+      } else {
+        input.type = "text";
+        input.maxLength = 500;
+        if (pole.format) { input.dataset.format = pole.format; }
+        if (pole.podpowiedz) { input.placeholder = pole.podpowiedz; }
+      }
+      return input;
+    }
+
+    function rysuj() {
+      var pola = wszystkie[wybor.value] || [];
+      lista.textContent = "";
+      blok.hidden = !pola.length;
+      if (legenda) {
+        var wybrana = wybor.options[wybor.selectedIndex];
+        legenda.textContent = "Właściwe dla rodzaju: " + (wybrana ? wybrana.text : "");
+      }
+      pola.forEach(function (pole) {
+        var kolumna = el("div", "pole");
+        var opis = el("label", null, pole.etykieta);
+        opis.htmlFor = "pole_" + pole.klucz;
+        if (pole.wymagane) {
+          var gwiazdka = el("span", "wymagane", "*");
+          gwiazdka.title = "pole wymagane";
+          opis.appendChild(gwiazdka);
+        }
+        kolumna.appendChild(opis);
+        kolumna.appendChild(kontrolka(pole));
+        lista.appendChild(kolumna);
+      });
+    }
+
+    wybor.addEventListener("change", rysuj);
+    rysuj();
+  })();
+
 })();
