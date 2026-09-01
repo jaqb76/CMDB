@@ -457,14 +457,35 @@ def dashboard(
             Asset.tenant_id == ctx.tenant_id, Asset.owner_id.is_(None)
         )
     ).scalar_one()
+    # Systemy operacyjne opisuja wylacznie sprzet z agentem. Monitor albo
+    # przelacznik nie ma systemu i nie powinien powiekszac slupka "nieznany".
     by_os = db.execute(
         select(Asset.os_family, func.count(Asset.id))
-        .where(Asset.tenant_id == ctx.tenant_id)
+        .where(Asset.tenant_id == ctx.tenant_id, Asset.zrodlo == ZRODLO_AGENT)
         .group_by(Asset.os_family)
     ).all()
+    # Podzial na rodzaje odpowiada na pytanie "co my w ogole mamy" - przy
+    # monitorach i sprzecie sieciowym sama liczba wpisow niczego nie mowi.
+    by_typ = db.execute(
+        select(Asset.typ, func.count(Asset.id))
+        .where(Asset.tenant_id == ctx.tenant_id)
+        .group_by(Asset.typ)
+        .order_by(func.count(Asset.id).desc())
+    ).all()
 
+    # "Ostatni kontakt" to zgloszenia agenta. Wpis reczny nigdy sie nie
+    # zglasza, wiec jego obecnosc tutaj sugerowala kontakt, ktorego nie bylo -
+    # data przy nim to tylko chwila zalozenia wpisu.
     recent = db.execute(
-        scoping.assets_query(ctx).order_by(Asset.last_seen.desc()).limit(10)
+        scoping.assets_query(ctx)
+        .where(Asset.zrodlo == ZRODLO_AGENT)
+        .order_by(Asset.last_seen.desc()).limit(10)
+    ).scalars().all()
+    # Wpisy reczne maja wlasna liste: ostatnio dodane albo poprawione.
+    reczne = db.execute(
+        scoping.assets_query(ctx)
+        .where(Asset.zrodlo == ZRODLO_RECZNE)
+        .order_by(Asset.last_seen.desc()).limit(10)
     ).scalars().all()
     changed = db.execute(
         scoping.assets_query(ctx)
@@ -483,8 +504,15 @@ def dashboard(
         stale=stale,
         unassigned=unassigned,
         by_os=by_os,
+        by_typ=by_typ,
+        typy=TYPY_SPRZETU,
         recent=recent,
+        reczne=reczne,
         changed=changed,
+        z_agentem=db.execute(
+            select(func.count(Asset.id)).where(
+                Asset.tenant_id == ctx.tenant_id, Asset.zrodlo == ZRODLO_AGENT)
+        ).scalar_one(),
     )
 
 
@@ -500,6 +528,7 @@ def asset_list(
     lifecycle: str = Query("", max_length=16),
     typ: str = Query("", max_length=32),
     lokalizacja: str = Query("", max_length=200),
+    zrodlo: str = Query("", max_length=16),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -523,6 +552,8 @@ def asset_list(
         stmt = stmt.where(Asset.os_family == os_family)
     if typ in TYPY_SPRZETU:
         stmt = stmt.where(Asset.typ == typ)
+    if zrodlo in (ZRODLO_AGENT, ZRODLO_RECZNE):
+        stmt = stmt.where(Asset.zrodlo == zrodlo)
     if lokalizacja:
         stmt = stmt.where(Asset.lokalizacja_id == lokalizacja)
     if owner == "none":
@@ -564,7 +595,7 @@ def asset_list(
         lokalizacje=slowniki.wpisy(db, ctx, "lokalizacja"),
         filters={"q": q, "os_family": os_family, "owner": owner,
                  "state": state, "lifecycle": lifecycle,
-                 "typ": typ, "lokalizacja": lokalizacja},
+                 "typ": typ, "lokalizacja": lokalizacja, "zrodlo": zrodlo},
         liczba_wycofanych=db.execute(
             select(func.count(Asset.id)).where(
                 Asset.tenant_id == ctx.tenant_id, Asset.lifecycle == LIFECYCLE_WYCOFANY

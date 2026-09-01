@@ -203,21 +203,36 @@
 {% endif %}
 
 <div class="tabs" data-tabs>
+  {#
+    Wpis reczny nie ma agenta i nigdy go nie bedzie mial: system, oprogramowanie,
+    aktualizacje, podatnosci, konta i raporty pozostana przy nim puste na zawsze.
+    Dziesiec zakladek, z ktorych siedem jest trwale pustych, nie informuje -
+    kaze zgadywac, czy czegos brakuje, czy tak ma byc.
+  #}
+  {% set z_agentem = asset.zrodlo != 'reczne' %}
   <div class="tab-buttons">
     <button type="button" class="tab-button is-active" data-tab="overview">Przeglad</button>
-    <button type="button" class="tab-button" data-tab="hardware">Sprzet</button>
+    {% if z_agentem %}<button type="button" class="tab-button" data-tab="hardware">Sprzet</button>{% endif %}
     <button type="button" class="tab-button" data-tab="zakup">Zakup i gwarancja</button>
+    {% if z_agentem %}
     <button type="button" class="tab-button" data-tab="software">Oprogramowanie</button>
     <button type="button" class="tab-button" data-tab="aktualizacje">Aktualizacje</button>
     <button type="button" class="tab-button" data-tab="podatnosci">Podatnosci</button>
     <button type="button" class="tab-button" data-tab="users">Uzytkownicy</button>
+    {% endif %}
     <button type="button" class="tab-button" data-tab="zmiany">Zmiany</button>
+    {% if z_agentem %}
     <button type="button" class="tab-button" data-tab="history">Historia</button>
     <button type="button" class="tab-button" data-tab="raw">JSON</button>
+    {% endif %}
   </div>
 
   <section class="tab-panel is-active" data-panel="overview">
     <div class="grid-2">
+      {# Bez agenta caly ten panel to same kreski - i to na zawsze, bo nie ma
+         czego czekac. Zamiast niego pokazujemy to, co o wpisie recznym
+         faktycznie wiadomo. #}
+      {% if z_agentem %}
       <div class="panel">
         <h2>System operacyjny</h2>
         <dl class="kv">
@@ -230,19 +245,41 @@
           <dt>Jezyk / strefa</dt><dd>{{ os_info.locale or '-' }} {{ os_info.timezone or '' }}</dd>
         </dl>
       </div>
+      {% else %}
+      <div class="panel">
+        <h2>Wpis reczny</h2>
+        <dl class="kv">
+          <dt>Rodzaj</dt><dd>{{ typy.get(asset.typ, asset.typ or '—') }}</dd>
+          <dt>Lokalizacja</dt>
+          <dd>{% if asset.lokalizacja %}<a href="/slowniki/wpis/{{ asset.lokalizacja.id }}">{{ asset.lokalizacja.wartosc }}</a>{% else %}—{% endif %}</dd>
+          <dt>Dostawca</dt>
+          <dd>{% if asset.dostawca %}<a href="/slowniki/wpis/{{ asset.dostawca.id }}">{{ asset.dostawca.wartosc }}</a>{% else %}—{% endif %}</dd>
+          <dt>Rola</dt><dd>{{ asset.role_label or '—' }}</dd>
+          <dt>Uwagi</dt><dd>{{ asset.notes or '—' }}</dd>
+        </dl>
+        <p class="muted small">
+          Ten sprzet nie ma agenta, wiec system, oprogramowanie i podatnosci
+          pozostana przy nim puste. Zakladki, ktore ich dotycza, sa ukryte —
+          nie ma czego w nich pokazac.
+        </p>
+      </div>
+      {% endif %}
       <div class="panel">
         <h2>Identyfikacja</h2>
         <dl class="kv">
           <dt>Producent</dt><dd>{{ asset.manufacturer or '-' }}</dd>
           <dt>Model</dt><dd>{{ asset.model or '-' }}</dd>
           <dt>Numer seryjny</dt><dd>{{ asset.serial_number or '-' }}</dd>
-          <dt>ID maszyny</dt><dd><code class="small">{{ asset.machine_id }}</code></dd>
-          <dt>Pierwszy raport</dt><dd>{{ asset.first_seen | dt }}</dd>
+          <dt>ID {% if z_agentem %}maszyny{% else %}wpisu{% endif %}</dt>
+          <dd><code class="small">{{ asset.machine_id }}</code></dd>
+          <dt>{% if z_agentem %}Pierwszy raport{% else %}Dodany{% endif %}</dt>
+          <dd>{{ asset.first_seen | dt }}</dd>
           <dt>Ostatnia zmiana</dt><dd>{{ (asset.last_change_at | ago) if asset.last_change_at else '—' }}</dd>
         </dl>
       </div>
     </div>
 
+    {% if z_agentem %}
     <div class="panel">
       <h2>Siec</h2>
       {% set interfaces = network.interfaces or [] %}
@@ -264,6 +301,7 @@
       </table>
       {% else %}<p class="muted">Brak danych o interfejsach.</p>{% endif %}
     </div>
+    {% endif %}
   </section>
 
   <section class="tab-panel" data-panel="zakup">

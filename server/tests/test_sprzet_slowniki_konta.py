@@ -655,3 +655,41 @@ def test_akcje_kont_sa_przyciskami_a_wylaczanie_rozroznia_firme_od_konta(
     assert 'action="/admin/users/' in strona and "/usun" in strona
     # Wlasne konto bez akcji, ktore odcielyby dostep.
     assert "to Twoje konto" in strona
+
+
+# --- wpis reczny nie udaje maszyny z agentem --------------------------------
+
+def test_wpis_reczny_nie_pokazuje_zakladek_agenta(client, tenant_a, make_user):
+    """Siedem zakladek trwale pustych nie informuje - kaze zgadywac, czy
+    czegos brakuje, czy tak ma byc."""
+    _admin_firmy(client, tenant_a, make_user)
+    _dodaj_sprzet(client, nazwa="MONITOR-1", typ="monitor")
+    with SessionLocal() as db:
+        asset_id = db.execute(select(Asset).where(Asset.hostname == "MONITOR-1")).scalar_one().id
+
+    strona = client.get(f"/assets/{asset_id}").text
+    for zakladka in ('data-tab="software"', 'data-tab="podatnosci"',
+                     'data-tab="aktualizacje"', 'data-tab="users"', 'data-tab="raw"'):
+        assert zakladka not in strona, f"{zakladka} nie ma czego pokazac przy wpisie recznym"
+    # To, co przy wpisie recznym ma sens, zostaje.
+    for zakladka in ('data-tab="overview"', 'data-tab="zakup"', 'data-tab="zmiany"'):
+        assert zakladka in strona
+    assert "System operacyjny" not in strona, "panel samych kresek zniknal"
+    assert "Wpis reczny" in strona
+
+
+def test_pulpit_rozdziela_zgloszenia_od_wpisow_recznych(client, tenant_a, make_user):
+    """Wpis reczny nigdy sie nie zglasza, wiec jego obecnosc w "Ostatnim
+    kontakcie" sugerowala kontakt, ktorego nie bylo."""
+    _admin_firmy(client, tenant_a, make_user)
+    _dodaj_sprzet(client, nazwa="SW-PULPIT", typ="siec")
+
+    strona = client.get("/").text
+    assert "wpisow w ewidencji" in strona, "monitor nie jest maszyna"
+    assert "Rodzaje sprzetu" in strona
+    assert "Sprzet sieciowy" in strona, "widac, co to za urzadzenia"
+    assert "Wpisy reczne" in strona
+    # W tabeli zgloszen agentow wpisu recznego nie ma.
+    zgloszenia = strona.split("Ostatni kontakt")[1].split("Wpisy reczne")[0] \
+        if "Ostatni kontakt" in strona and "Wpisy reczne" in strona.split("Ostatni kontakt")[1] else ""
+    assert "SW-PULPIT" not in zgloszenia
