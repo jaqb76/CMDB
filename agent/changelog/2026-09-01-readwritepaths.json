@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Samoaktualizacja agenta na Linuksie dziala: jednostka systemd montowala katalog programu tylko do odczytu (ProtectSystem=strict), wiec kazda aktualizacja konczyla sie odmowa."
+}

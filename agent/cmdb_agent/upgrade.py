@@ -386,9 +386,15 @@ def diagnoza_instalacji() -> tuple[Path | None, str | None]:
             return None, f"nie moge zalozyc znacznika instalacji w {korzen}: {exc}"
 
     if not os.access(korzen, os.W_OK):
+        # Najczestsza przyczyna nie ma nic wspolnego z prawami pliku:
+        # ProtectSystem=strict w jednostce systemd montuje caly system tylko
+        # do odczytu poza tym, co wymieniono w ReadWritePaths. Spod powloki
+        # katalog wyglada wtedy normalnie i diagnoza schodzi na manowce.
         return None, (
-            f"katalog {korzen} nie jest zapisywalny dla uzytkownika, "
-            f"na ktorym dziala usluga (uid {getattr(os, 'geteuid', lambda: '?')()})"
+            f"katalog {korzen} jest tylko do odczytu dla uslugi (uid "
+            f"{getattr(os, 'geteuid', lambda: '?')()}) - dopisz go do "
+            f"ReadWritePaths w jednostce cmdb-agent.service albo uruchom "
+            f"ponownie install-agent.sh"
         )
     return korzen, None
 

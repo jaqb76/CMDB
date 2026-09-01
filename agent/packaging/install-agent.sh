@@ -148,12 +148,18 @@ ExecStart=/usr/local/bin/cmdb-agent --config $KONFIGURACJA run
 # timer, dzieki czemu nic nie zajmuje pamieci miedzy przebiegami.
 TimeoutStartSec=1800
 
-# Agent czyta dane systemowe, ale niczego nie modyfikuje poza wlasnym katalogiem.
+# Agent czyta dane systemowe, ale niczego nie modyfikuje poza wlasnymi
+# katalogami. ProtectSystem=strict montuje cala reszte systemu tylko do
+# odczytu, wiec kazdy katalog, do ktorego agent pisze, musi byc wymieniony
+# nizej. KATALOG_PROGRAMU jest wsrod nich, bo agent aktualizuje sam siebie:
+# podmienia wlasny pakiet na nowa wersje. Bez tego wpisu katalog programu
+# byl w usludze tylko do odczytu i KAZDA aktualizacja konczyla sie odmowa -
+# przy czym z zewnatrz, spod powloki, wszystko wygladalo poprawnie.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=$KATALOG_DANYCH
+ReadWritePaths=$KATALOG_DANYCH $KATALOG_PROGRAMU
 
 [Install]
 WantedBy=multi-user.target

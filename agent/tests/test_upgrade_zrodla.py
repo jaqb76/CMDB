@@ -352,3 +352,29 @@ def test_powod_trafia_do_zgloszenia_dla_serwera(tmp_path, monkeypatch):
     assert upgrade.zastosuj(object(), _Stan(), object()) is None
     assert zgloszone["stan"] == "odrzucona"
     assert str(korzen) in zgloszone["detal"]
+
+
+def test_katalog_tylko_do_odczytu_jest_nazwany_po_imieniu(tmp_path, monkeypatch):
+    """Prawdziwa przyczyna odmowy na Linuksie: ProtectSystem=strict montuje
+    katalog programu tylko do odczytu, wiec agent nie moze sie podmienic.
+    Spod powloki katalog wyglada normalnie - komunikat musi wiec wskazac
+    jednostke systemd, a nie prawa pliku."""
+    korzen = tmp_path / "opt-cmdb-agent"
+    (korzen / "cmdb_agent").mkdir(parents=True)
+    (korzen / upgrade.ZNACZNIK_INSTALACJI).write_text("2026-08-31", encoding="utf-8")
+    monkeypatch.setattr(upgrade, "__file__", str(korzen / "cmdb_agent" / "upgrade.py"))
+    monkeypatch.setattr(upgrade.os, "access", lambda *a, **k: False)
+
+    sciezka, powod = upgrade.diagnoza_instalacji()
+    assert sciezka is None
+    assert "ReadWritePaths" in powod
+    assert str(korzen) in powod
+
+
+def test_instalator_daje_usludze_zapis_do_katalogu_programu():
+    """Bez tego wpisu samoaktualizacja nie ma prawa dzialac - i nie dzialala."""
+    skrypt = (Path(__file__).resolve().parents[1]
+              / "packaging" / "install-agent.sh").read_text(encoding="utf-8")
+    wiersz = [w for w in skrypt.splitlines() if w.startswith("ReadWritePaths=")]
+    assert wiersz, "jednostka musi wymieniac katalogi zapisywalne"
+    assert "$KATALOG_PROGRAMU" in wiersz[0]
