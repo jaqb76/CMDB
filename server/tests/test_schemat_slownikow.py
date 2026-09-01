@@ -367,7 +367,25 @@ def test_slowniki_maja_zakladki_i_pokazuja_jeden_naraz(client, tenant_a, make_us
         assert f"/slowniki?kategoria={kategoria}" in strona
 
 
-def test_lista_pokazuje_kolumny_ze_schematu(client, tenant_a, make_user):
+def test_kolumny_to_szesc_pierwszych_pol_schematu(client, tenant_a, make_user):
+    """Kolejnosc w schemacie jest jedynym kryterium.
+
+    Wczesniej odsiewalismy pola etykiety i notatki "madrzej" - skutek byl taki,
+    ze przestawienie kolejnosci nie zmienialo tabeli i nie dalo sie dojsc,
+    dlaczego. Teraz o kolumnach decyduje administrator edytorem schematu.
+    """
+    from cmdb_server.api.ui import KOLUMNY_SLOWNIKA
+    from cmdb_server.services import wzorzec
+
+    _admin(client, tenant_a, make_user)
+    _wpis(client)                       # naglowki widac dopiero z wierszem
+    oczekiwane = [p.etykieta for p in wzorzec.wzorcowy("dostawca").pola[:KOLUMNY_SLOWNIKA]]
+    strona = client.get("/slowniki?kategoria=dostawca").text
+    for etykieta in oczekiwane:
+        assert etykieta in strona, f"brakuje kolumny {etykieta}"
+
+
+def test_lista_pokazuje_wartosci_w_kolumnach(client, tenant_a, make_user):
     """Kolumny biora sie ze schematu, wiec widac to, co firma u siebie prowadzi."""
     _admin(client, tenant_a, make_user)
     wpis_id = _wpis(client)

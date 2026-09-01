@@ -34,6 +34,10 @@
     <p class="muted small">
       {{ schemat.pola | length }} pól w schemacie ·
       etykietę budują: {{ schemat.pola_etykiety() | map(attribute='etykieta') | join(', ') or '—' }}
+      {% if schemat.pola | length > kolumny | length %}
+        · w tabeli widać pierwsze {{ kolumny | length }} —
+        <a href="/slowniki/{{ kategoria }}/schemat">zmień kolejność pól</a>, żeby pokazać inne
+      {% endif %}
     </p>
   </div>
   <div class="row-form">
@@ -55,8 +59,9 @@
       <thead>
         <tr>
           <th>Wpis</th>
-          {# Kolumny biora sie ze schematu, wiec lista pokazuje to, co firma
-             faktycznie u siebie prowadzi - a nie staly zestaw. #}
+          {# Sześć PIERWSZYCH pól schematu, w jego kolejności. O tym, co widać
+             w tabeli, decyduje więc administrator — przestawiając pola
+             w edytorze schematu albo usuwając zbędne. #}
           {% for p in kolumny %}<th class="{% if p.typ == 'liczba' %}lp{% endif %}">{{ p.etykieta }}</th>{% endfor %}
           <th>Stan</th>
           <th class="lp">Używa</th>

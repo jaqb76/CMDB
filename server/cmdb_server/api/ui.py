@@ -1091,6 +1091,11 @@ def owner_list(user: PortalUser = Depends(require_user)) -> Response:
 
 # --- slowniki firmowe -------------------------------------------------------
 
+# Ile pol schematu trafia do tabeli slownika. Szerzej tabela przestaje sie
+# miescic, a kazdy rekord ma i tak wlasna karte z kompletem danych.
+KOLUMNY_SLOWNIKA = 6
+
+
 @router.get("/slowniki", response_class=HTMLResponse)
 def widok_slownikow(
     request: Request,
@@ -1117,12 +1122,13 @@ def widok_slownikow(
     pozycje = slowniki.wpisy(db, ctx)
     biezace = [w for w in pozycje if w.kategoria == kategoria]
 
-    # Pola budujace etykiete pomijamy: siedza juz w kolumnie "Wpis", wiec
-    # powtorzenie ich obok niczego nie dodaje. Notatki tez nie - w tabeli
-    # rozpychaja wiersz, a czyta sie je na karcie.
-    w_etykiecie = {p.klucz for p in opis.pola_etykiety()}
-    kolumny = [p for p in opis.pola
-               if p.klucz not in w_etykiecie and p.typ != "notatka"][:6]
+    # SZESC PIERWSZYCH pol schematu, bez zadnego wlasnego doboru. Kolejnosc
+    # w schemacie jest jedynym kryterium, wiec o tym, co widac w tabeli,
+    # decyduje administrator - przestawiajac pola w edytorze albo usuwajac te,
+    # ktorych nie potrzebuje. Wczesniej odsiewalismy pola etykiety i notatki
+    # "madrzej"; skutek byl taki, ze przestawienie kolejnosci nie zmienialo
+    # tabeli i nie dalo sie dojsc, dlaczego.
+    kolumny = opis.pola[:KOLUMNY_SLOWNIKA]
 
     komorki = {}
     for w in biezace:
