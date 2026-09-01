@@ -20,10 +20,24 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 def prepare(directory, version, repo, ref, commit, run_id, key):
     changelog = json.loads((directory / "agent-release-changelog.json").read_text(encoding="utf-8"))
-    catalog = json.loads((directory / "verified-worker.json").read_text())
-    files = [("worker", "windows", "x86_64", "cmdb-agent.exe"),
-             ("setup", "windows", "x86_64", f"CMDB-Agent-Setup-{version}.exe"),
-             ("source", "linux", "zrodla", "cmdb-agent-zrodla.tar.gz")]
+    # Wydanie obejmuje tylko te systemy, ktorych pliki faktycznie zbudowano.
+    # Zmiana w skryptach jednego systemu nie ma prawa wypchnac drugiego: plik
+    # bylby bajt w bajt taki sam jak poprzedni, a opis zmian mowilby nie o nim.
+    wszystkie = [("worker", "windows", "x86_64", "cmdb-agent.exe"),
+                 ("setup", "windows", "x86_64", f"CMDB-Agent-Setup-{version}.exe"),
+                 ("source", "linux", "zrodla", "cmdb-agent-zrodla.tar.gz")]
+    files = [pozycja for pozycja in wszystkie if (directory / pozycja[3]).is_file()]
+    if not files:
+        raise ValueError("Release without artifacts")
+    systemy = {pozycja[1] for pozycja in files}
+    if ("worker" in {p[0] for p in files}) != ("setup" in {p[0] for p in files}):
+        raise ValueError("Windows release needs both the worker and its installer")
+    changelog = [{k: v for k, v in wpis.items() if k != "systemy" or len(systemy) > 1}
+                 for wpis in changelog
+                 if systemy & set(wpis.get("systemy", ("windows", "linux")))]
+    if not changelog:
+        raise ValueError("Release without a changelog entry for its systems")
+    catalog = json.loads((directory / "verified-worker.json").read_text())         if (directory / "verified-worker.json").is_file() else None
     artifacts = []
     for kind, system, arch, name in files:
         content = (directory / name).read_bytes()
@@ -62,9 +76,22 @@ def publish(payload, files, token):
         with urlopen(request, timeout=120) as response:
             return json.load(response)
     labels = {"added": "Dodano", "fixed": "Poprawiono", "security": "Bezpieczeństwo"}
-    notes = ["Automatycznie przetestowane wydanie. Import do CMDB nie zmienia przypisań maszyn.", ""]
+    nazwy = {"windows": "Windows", "linux": "Linux"}
+    systemy = sorted({a["os"] for a in payload["artifacts"]})
+    notes = ["Automatycznie przetestowane wydanie. Import do CMDB nie zmienia przypisań maszyn.",
+             "Dotyczy: " + ", ".join(nazwy[s] for s in systemy) + ".", ""]
     for category in ("added", "fixed", "security"):
-        rows = [item["text"] for item in payload["changelog"] if item["category"] == category]
+        rows = []
+        for item in payload["changelog"]:
+            if item["category"] != category:
+                continue
+            # Gdy wydanie obejmuje oba systemy, a wpis dotyczy jednego,
+            # mowimy o tym wprost - inaczej czytelnik przypisze zmiane
+            # takze temu plikowi, w ktorym jej nie ma.
+            wlasne = item.get("systemy")
+            dopisek = (" (tylko " + ", ".join(nazwy[s] for s in wlasne) + ")"
+                       if wlasne and len(systemy) > 1 else "")
+            rows.append(item["text"] + dopisek)
         if rows:
             notes.extend(["## " + labels[category], *["- " + row for row in rows], ""])
     notes.extend([f"Commit: {payload['commit']}",
@@ -72,7 +99,8 @@ def publish(payload, files, token):
     # Never replace assets of an existing published version.
     release = api(f"https://api.github.com/repos/{repo}/releases", {
         "tag_name": payload["tag"], "target_commitish": payload["commit"],
-        "name": "CMDB Agent " + payload["version"], "draft": True,
+        "name": ("CMDB Agent " + payload["version"] + " - "
+                 + ", ".join(nazwy[s] for s in systemy)), "draft": True,
         "body": "\n".join(notes)})
     for path in files:
         api(f"https://uploads.github.com/repos/{repo}/releases/{release['id']}/assets?name={quote(path.name)}",

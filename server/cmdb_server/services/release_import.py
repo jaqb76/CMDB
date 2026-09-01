@@ -154,7 +154,7 @@ def repair_existing(db, existing, envelope, manifest, by_name, github, settings)
                 row.size_bytes != artifact["size"]):
             raise ImportFailure("Wpis katalogu nie odpowiada podpisanemu manifestowi")
         requested.append((artifact, row.storage_name, evidence))
-        if evidence.kind == "worker":
+        if evidence.kind == "worker" and "setup" in artifacts:
             setup = artifacts["setup"]
             if not evidence.setup_storage_name:
                 evidence.setup_storage_name = str(uuid4()) + ".exe"
@@ -226,7 +226,11 @@ def import_release(db, release, github, settings):
                 path = Path(temporary) / artifact["name"]  # names strictly validated by signed protocol
                 download_artifact(github, by_name[artifact["name"]], artifact, path, manifest)
                 paths[artifact["kind"]] = (path, artifact)
-            for kind in ("worker", "source"):
+            # Wydanie moze dotyczyc jednego systemu - zmiana w skryptach
+            # Linuksa nie tworzy nowego pliku dla Windows. Bierzemy wiec to,
+            # co manifest faktycznie wymienia, zamiast zakladac oba.
+            katalogowane = [k for k in ("worker", "source") if k in paths]
+            for kind in katalogowane:
                 _, artifact = paths[kind]
                 collision = db.scalar(select(AgentRelease).where(AgentRelease.version == manifest["version"],
                     AgentRelease.os_family == artifact["os"], AgentRelease.arch == artifact["arch"]))
@@ -239,7 +243,7 @@ def import_release(db, release, github, settings):
                 path.rename(target)
                 moved.append(target)
                 stored[kind] = target.name
-            for kind in ("worker", "source"):
+            for kind in katalogowane:
                 _, artifact = paths[kind]
                 row = AgentRelease(version=manifest["version"], os_family=artifact["os"], arch=artifact["arch"],
                     filename=artifact["name"], storage_name=stored[kind], sha256=artifact["sha256"],

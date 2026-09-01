@@ -52,15 +52,24 @@ def validate(payload, repository, ref):
         changelog = payload["changelog"]
         require(isinstance(changelog, list) and 0 < len(changelog) <= 30)
         for item in changelog:
-            require(set(item) == {"category", "text"})
+            require(set(item) - {"systemy"} == {"category", "text"})
             require(item["category"] in {"added", "fixed", "security"})
             require(isinstance(item["text"], str) and 10 <= len(item["text"]) <= 300)
+            if "systemy" in item:
+                require(isinstance(item["systemy"], list) and item["systemy"])
+                require(not set(item["systemy"]) - {"windows", "linux"})
         artifacts = payload["artifacts"]
-        require(isinstance(artifacts, list) and len(artifacts) == 3)
+        # Wydanie moze dotyczyc jednego systemu: zmiana w skryptach Linuksa nie
+        # tworzy nowego pliku dla Windows. Windows wystepuje wylacznie w parze -
+        # instalator bez workera nie ma czego zainstalowac, a worker bez
+        # instalatora nie ma jak trafic na maszyne.
+        require(isinstance(artifacts, list) and 0 < len(artifacts) <= 3)
         expected = {"worker": ("windows", "x86_64", "cmdb-agent.exe"),
                     "setup": ("windows", "x86_64", f"CMDB-Agent-Setup-{payload['version']}.exe"),
                     "source": ("linux", "zrodla", "cmdb-agent-zrodla.tar.gz")}
-        require({a["kind"] for a in artifacts} == set(expected))
+        rodzaje = {a["kind"] for a in artifacts}
+        require(len(rodzaje) == len(artifacts) and not rodzaje - set(expected))
+        require(("worker" in rodzaje) == ("setup" in rodzaje))
         for artifact in artifacts:
             require(set(artifact) == {"kind", "os", "arch", "name", "sha256", "size", "protocol"})
             require((artifact["os"], artifact["arch"], artifact["name"]) == expected[artifact["kind"]])

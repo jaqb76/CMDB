@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Wydanie agenta powstaje tylko dla systemu, ktorego zmiana dotyczy - poprawka w skryptach jednego systemu nie tworzy juz identycznego pliku dla drugiego z cudzym opisem zmian."
+}

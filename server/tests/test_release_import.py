@@ -21,7 +21,7 @@ from .test_pobieranie import _plik_gui
 
 
 @pytest.fixture
-def signed_release(tmp_path, monkeypatch):
+def signed_release(tmp_path, monkeypatch, request):
     settings = get_settings()
     monkeypatch.setattr(settings, "release_dir", str(tmp_path / "releases"))
     key = Ed25519PrivateKey.generate()
@@ -35,7 +35,11 @@ def signed_release(tmp_path, monkeypatch):
             entry = tarfile.TarInfo(name)
             entry.size = len(content)
             archive.addfile(entry, io.BytesIO(content))
+    # Wydanie moze obejmowac jeden system - test wskazuje wtedy, ktore pliki
+    # w nim sa. Domyslnie sa wszystkie, tak jak przy zmianie wspolnego kodu.
+    rodzaje = getattr(request, "param", ("worker", "setup", "source"))
     contents = {"worker": _plik_gui(), "setup": _plik_gui() + b"setup", "source": stream.getvalue()}
+    contents = {kind: tresc for kind, tresc in contents.items() if kind in rodzaje}
     names = {"worker": "cmdb-agent.exe", "setup": f"CMDB-Agent-Setup-{version}.exe", "source": "cmdb-agent-zrodla.tar.gz"}
     payload = {"schema": 2, "repository": settings.release_repository, "ref": settings.release_ref,
         "workflow": ".github/workflows/cmdb-tests.yml", "commit": "a" * 40, "run_id": 123,
@@ -46,10 +50,12 @@ def signed_release(tmp_path, monkeypatch):
             "size": len(content), "sha256": hashlib.sha256(content).hexdigest(), "protocol": "cmdb-policy-v1"}
             for kind, content in contents.items()]}
     envelope = sign(payload, base64.b64encode(key.private_bytes_raw()).decode())
-    blobs = {1: json.dumps(envelope).encode(), 2: contents["worker"], 3: contents["setup"], 4: contents["source"]}
+    obecne = [kind for kind in ("worker", "setup", "source") if kind in contents]
+    blobs = {1: json.dumps(envelope).encode()}
+    blobs.update({index: contents[kind] for index, kind in enumerate(obecne, 2)})
     row = {"tag_name": payload["tag"], "draft": False, "prerelease": False,
            "assets": [{"id": index, "name": name} for index, name in enumerate(
-               ["cmdb-release.json", names["worker"], names["setup"], names["source"]], 1)]}
+               ["cmdb-release.json"] + [names[kind] for kind in obecne], 1)]}
     class FakeGithub:
         deadline = float("inf")
         def releases(self, page):
@@ -205,3 +211,45 @@ def test_redirect_never_forwards_repository_token():
     for target in ("http://api.github.com/file", "https://evil.example/file", "https://user@api.github.com/file"):
         with pytest.raises(release_import.ImportFailure):
             handler.redirect_request(request, None, 302, "found", {}, target)
+
+
+# --- wydanie dotyczace jednego systemu --------------------------------------
+
+@pytest.mark.parametrize("signed_release", [("source",)], indirect=True)
+def test_wydanie_tylko_dla_linuksa_wchodzi_do_katalogu(signed_release):
+    """Zmiana w skryptach Linuksa nie tworzy nowego pliku dla Windows. Wydanie
+    zawiera wtedy sama paczke zrodel - i ma sie zaimportowac, zamiast czekac
+    na plik, ktory nie mial powodu powstac."""
+    settings, row, github, _, payload, _ = signed_release
+    with SessionLocal() as db:
+        assert release_import.import_release(db, row, github, settings) == 2
+        wydania = db.scalars(select(AgentRelease)).all()
+        assert [w.os_family for w in wydania] == ["linux"]
+        assert release_trust.distributable(wydania[0])
+        # Zaden cel dystrybucji nie zmienia sie przy imporcie - takze tutaj.
+        assert db.scalar(select(func.count(GlobalAgentTarget.id))) == 0
+
+
+@pytest.mark.parametrize("signed_release", [("worker", "setup")], indirect=True)
+def test_wydanie_tylko_dla_windows_wchodzi_do_katalogu(signed_release):
+    settings, row, github, _, _, _ = signed_release
+    with SessionLocal() as db:
+        assert release_import.import_release(db, row, github, settings) == 2
+        wydania = db.scalars(select(AgentRelease)).all()
+        assert [w.os_family for w in wydania] == ["windows"]
+        assert wydania[0].provenance.setup_storage_name, "instalator jedzie z workerem"
+
+
+@pytest.mark.parametrize("brakujacy", ["setup", "worker"])
+def test_windows_wystepuje_tylko_w_parze(signed_release, brakujacy):
+    """Worker bez instalatora nie ma jak trafic na maszyne, a instalator bez
+    workera nie ma czego zainstalowac. Takiego manifestu nie da sie nawet
+    podpisac - odmowa zapada przed publikacja, nie dopiero przy imporcie."""
+    from cmdb_server.release_manifest import ManifestError, validate
+
+    _, _, _, _, payload, _ = signed_release
+    okrojony = dict(payload)
+    okrojony["artifacts"] = [a for a in payload["artifacts"] if a["kind"] != brakujacy]
+
+    with pytest.raises(ManifestError):
+        validate(okrojony, payload["repository"], payload["ref"])
