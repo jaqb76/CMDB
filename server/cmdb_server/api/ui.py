@@ -617,7 +617,6 @@ def _dane_recznego_sprzetu(dane: dict) -> dict:
         "model": (dane.get("model") or "").strip()[:200] or None,
         "serial_number": (dane.get("numer_seryjny") or "").strip()[:128] or None,
         "primary_ip": (dane.get("ip") or "").strip()[:64] or None,
-        "role_label": (dane.get("rola") or "").strip()[:200] or None,
         "purchase_notes": (dane.get("uwagi") or "").strip() or None,
     }
 
@@ -671,7 +670,6 @@ async def utworz_sprzet(
     numer_seryjny: str = Form(""),
     ip: str = Form(""),
     lokalizacja_id: str = Form(""),
-    rola: str = Form(""),
     owner_id: str = Form(""),
     uzytkownik_id: str = Form(""),
     dostawca_id: str = Form(""),
@@ -688,7 +686,7 @@ async def utworz_sprzet(
         raise HTTPException(status_code=400, detail="nieznany rodzaj sprzetu")
     pola = _dane_recznego_sprzetu(
         {"nazwa": nazwa, "producent": producent, "model": model,
-         "numer_seryjny": numer_seryjny, "ip": ip, "rola": rola, "uwagi": uwagi}
+         "numer_seryjny": numer_seryjny, "ip": ip, "uwagi": uwagi}
     )
     if not pola["hostname"]:
         raise HTTPException(status_code=400, detail="nazwa jest wymagana")
@@ -745,7 +743,6 @@ async def zapisz_dane_sprzetu(
     model: str = Form(""),
     numer_seryjny: str = Form(""),
     ip: str = Form(""),
-    rola: str = Form(""),
     uwagi: str = Form(""),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
@@ -774,7 +771,7 @@ async def zapisz_dane_sprzetu(
 
     pola = _dane_recznego_sprzetu(
         {"nazwa": nazwa, "producent": producent, "model": model,
-         "numer_seryjny": numer_seryjny, "ip": ip, "rola": rola, "uwagi": uwagi}
+         "numer_seryjny": numer_seryjny, "ip": ip, "uwagi": uwagi}
     )
     if not pola["hostname"]:
         raise HTTPException(status_code=400, detail="nazwa jest wymagana")

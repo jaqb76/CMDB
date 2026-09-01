@@ -192,11 +192,6 @@
              {% if not ctx.can_write %}disabled{% endif %}>
     </div>
     <div>
-      <label for="rola">Rola</label>
-      <input id="rola" name="rola" maxlength="200" value="{{ asset.role_label or '' }}"
-             {% if not ctx.can_write %}disabled{% endif %}>
-    </div>
-    <div>
       <label for="uwagi">Uwagi</label>
       <input id="uwagi" name="uwagi" value="{{ asset.purchase_notes or '' }}"
              {% if not ctx.can_write %}disabled{% endif %}>

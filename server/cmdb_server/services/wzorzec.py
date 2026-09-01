@@ -147,8 +147,6 @@ POLA_RODZAJU: dict[str, list[dict]] = {
          "opcje": ["100 Mb/s", "1 Gb/s", "2,5 Gb/s", "10 Gb/s"], "grupa": "Parametry"},
         {"klucz": "wersja_firmware", "etykieta": "Wersja firmware", "typ": "tekst",
          "grupa": "Utrzymanie"},
-        {"klucz": "adres_zarzadzania", "etykieta": "Adres zarzadzania", "typ": "tekst",
-         "format": "url", "grupa": "Utrzymanie"},
     ],
     "drukarka": [
         {"klucz": "licznik_wydrukow", "etykieta": "Licznik wydrukow", "typ": "liczba",

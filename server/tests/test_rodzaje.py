@@ -275,3 +275,39 @@ def test_adres_ip_i_numer_seryjny_maja_wyjasnienie(client, tenant_a, make_user):
     strona = client.get("/assets/nowy").text
     assert "połączy się z agentem" in strona
     assert "wykrywanie sieci rozpozna" in strona
+
+
+def test_rola_jest_tylko_w_jednym_formularzu(client, tenant_a, make_user):
+    """Rola byla i w przypisaniach, i w danych sprzetu - dwa pola opisujace
+    te sama wartosc rozjezdzaja sie przy pierwszym zapisie jednego z nich."""
+    _admin_firmy(client, tenant_a, make_user)
+    asset_id = _sprzet(client, tenant_a)
+    strona = client.get(f"/assets/{asset_id}").text
+    assert strona.count('name="role_label"') == 1
+    assert 'name="rola"' not in strona
+
+
+def test_zapis_danych_nie_kasuje_roli(client, tenant_a, make_user):
+    """Panel danych sprzetu nie wysyla juz roli, wiec nie moze jej tez zerowac."""
+    _admin_firmy(client, tenant_a, make_user)
+    asset_id = _sprzet(client, tenant_a)
+
+    csrf = _extract_csrf(client.get(f"/assets/{asset_id}").text)
+    client.post(f"/assets/{asset_id}/owner", data={
+        "owner_id": "", "uzytkownik_id": "", "lokalizacja_id": "",
+        "role_label": "glowny monitor", "csrf_token": csrf}, follow_redirects=False)
+
+    _zapisz_dane(client, asset_id, producent="AOC")
+    with SessionLocal() as db:
+        sprzet = db.get(Asset, asset_id)
+        assert sprzet.role_label == "glowny monitor", "rola przetrwala zapis danych"
+        assert sprzet.manufacturer == "AOC"
+
+
+def test_sprzet_sieciowy_nie_ma_drugiego_adresu(client, tenant_a, make_user):
+    """Pole "adres zarzadzania" powtarzalo Adres IP, ktory ma juz kolumne
+    i po ktorym dopasowuje sie wykrywanie sieci."""
+    _admin_firmy(client, tenant_a, make_user)
+    strona = client.get("/rodzaje/siec/pola").text
+    assert "adres_zarzadzania" not in strona
+    assert "liczba_portow" in strona
