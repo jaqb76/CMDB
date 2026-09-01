@@ -71,11 +71,15 @@ WZORCE: dict[str, list[dict]] = {
         {"klucz": "pietro", "etykieta": "Piętro", "typ": "tekst", "grupa": "Umiejscowienie"},
         {"klucz": "dzial", "etykieta": "Dział", "typ": "odwolanie", "cel": "dzial",
          "grupa": "Umiejscowienie", "w_etykiecie": True},
-        {"klucz": "osoba_na_miejscu", "etykieta": "Osoba na miejscu", "typ": "odwolanie",
-         "cel": "osoba", "grupa": "Kontakt"},
         {"klucz": "telefon", "etykieta": "Telefon", "typ": "tekst", "format": "telefon",
          "grupa": "Kontakt", "podpowiedz": "+48 22 579 00 00"},
     ],
+    # Lokalizacja nie ma "osoby na miejscu" swiadomie. Pole wygladalo jak
+    # przypisanie ludzi do miejsca, a znaczylo co innego - kontakt do jednej
+    # osoby z kluczem do szafy. Skutek byl taki, ze na karcie czlowieka
+    # pojawialo sie powiazanie z lokalizacja, ktorego nikt swiadomie nie
+    # tworzyl. Kto pracuje w danym miejscu, mowi pole "Lokalizacja" przy
+    # osobie; kontakt do lokalizacji jest w polu "Telefon".
     "dostawca": [
         {"klucz": "nazwa_firmy", "etykieta": "Dostawca", "typ": "tekst",
          "wymagane": True, "w_etykiecie": True, "grupa": "Tożsamość"},

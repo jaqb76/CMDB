@@ -54,8 +54,8 @@
 
 {% if filtr %}
 <p class="uwaga-raportu">
-  Pokazane tylko wpisy powiązane z: <b>{{ filtr.wartosc }}</b>
-  ({{ kategorie[filtr.kategoria] }}).
+  Pokazane tylko wpisy, które wskazują <b>{{ filtr.wartosc }}</b>
+  ({{ kategorie[filtr.kategoria] }}){% if filtr_pole %} polem „{{ filtr_pole }}”{% endif %}.
   <a href="/slowniki?kategoria={{ kategoria }}">Pokaż wszystkie</a>
 </p>
 {% endif %}

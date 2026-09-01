@@ -361,20 +361,30 @@ def _uzycie_w_slownikach(db: Session, ctx: TenantContext, pozycja: WpisSlownika)
     return razem
 
 
+def pola_wskazujace(db: Session, ctx: TenantContext, kategoria: str, cel: str):
+    """Pola danej kategorii, ktore prowadza do wpisow kategorii ``cel``.
+
+    Szukamy po SCHEMACIE, a nie po nazwie pola: firma moze nazwac je "Biuro"
+    i przeniesc do innej grupy.
+    """
+    return [pole for pole in schemat(db, ctx, kategoria).pola
+            if pole.typ == "odwolanie" and pole.cel == cel]
+
+
 def wskazujace(db: Session, ctx: TenantContext, kategoria: str,
-               pozycja: WpisSlownika) -> list[WpisSlownika]:
+               pozycja: WpisSlownika, klucz: str | None = None) -> list[WpisSlownika]:
     """Wpisy danej kategorii, ktore wskazuja ten rekord polem odwolania.
 
     Pytanie "kto siedzi w tej lokalizacji" zadaje sie od strony miejsca,
-    a odpowiedz lezy przy ludziach. Szukamy po SCHEMACIE, a nie po nazwie
-    pola: firma moze nazwac je "Biuro" i przeniesc do innej grupy.
+    a odpowiedz lezy przy ludziach. ``klucz`` zaweza wynik do jednego pola -
+    bo dwa pola tej samej kategorii moga znaczyc zupelnie co innego.
     """
-    opis = schemat(db, ctx, kategoria)
-    klucze = [pole.klucz for pole in opis.pola
-              if pole.typ == "odwolanie" and pole.cel == pozycja.kategoria]
-    if not klucze:
+    pola = pola_wskazujace(db, ctx, kategoria, pozycja.kategoria)
+    if klucz is not None:
+        pola = [pole for pole in pola if pole.klucz == klucz]
+    if not pola:
         return []
-    warunki = [WpisSlownika.atrybuty[klucz].astext == pozycja.id for klucz in klucze]
+    warunki = [WpisSlownika.atrybuty[pole.klucz].astext == pozycja.id for pole in pola]
     return list(db.execute(
         select(WpisSlownika).where(
             WpisSlownika.tenant_id == ctx.tenant_id,
@@ -386,17 +396,26 @@ def wskazujace(db: Session, ctx: TenantContext, kategoria: str,
 
 def powiazania(db: Session, ctx: TenantContext,
                pozycja: WpisSlownika) -> list[dict]:
-    """Ile wpisow kazdej kategorii wskazuje ten rekord - do karty wpisu."""
+    """Kto wskazuje ten rekord - osobno dla KAZDEGO pola.
+
+    Nie wystarczy podac kategorii. Lokalizacja prowadzi do osoby polem
+    "Osoba na miejscu", a osoba do lokalizacji polem "Lokalizacja" - zlanie
+    tego w jedna pozycje "Lokalizacje (1)" kazalo czytelnikowi zgadywac,
+    czym wlasciwie jest to powiazanie, i wygladalo na blad.
+    """
     wynik = []
     for kategoria in KATEGORIE_SLOWNIKA:
-        znalezione = wskazujace(db, ctx, kategoria, pozycja)
-        if znalezione:
-            wynik.append({
-                "kategoria": kategoria,
-                "nazwa": KATEGORIE_SLOWNIKA[kategoria],
-                "ile": len(znalezione),
-                "przyklady": znalezione[:5],
-            })
+        for pole in pola_wskazujace(db, ctx, kategoria, pozycja.kategoria):
+            znalezione = wskazujace(db, ctx, kategoria, pozycja, pole.klucz)
+            if znalezione:
+                wynik.append({
+                    "kategoria": kategoria,
+                    "nazwa": KATEGORIE_SLOWNIKA[kategoria],
+                    "pole": pole.etykieta,
+                    "klucz": pole.klucz,
+                    "ile": len(znalezione),
+                    "przyklady": znalezione[:5],
+                })
     return wynik
 
 

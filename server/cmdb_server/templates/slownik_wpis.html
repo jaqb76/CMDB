@@ -68,7 +68,7 @@
           <select id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}">
             <option value="">—</option>
             {% for o in osoby %}
-              <option value="{{ o.id }}" {% if wartosc == o.id %}selected{% endif %}>{{ o.full_name }}</option>
+              <option value="{{ o.id }}" {% if wartosc == o.id %}selected{% endif %}>{{ o.wartosc }}</option>
             {% endfor %}
           </select>
 
@@ -139,17 +139,22 @@
 {% if ctx.can_write %}
 {% if powiazania %}
 <section class="panel">
-  <h2>Kto i co tu należy</h2>
+  <h2>Kto wskazuje ten wpis</h2>
   <p class="muted small">
-    Wpisy innych słowników, które wskazują ten rekord. Przy lokalizacji jest to
-    wprost odpowiedź na pytanie, kto w niej pracuje.
+    Wpisy innych słowników, które prowadzą <b>do tego rekordu</b> — z nazwą
+    pola, którym prowadzą. Na karcie lokalizacji wiersz „Osoby · pole
+    Lokalizacja” to wprost odpowiedź na pytanie, kto w niej pracuje.
+    Powiązania w drugą stronę — to, co wskazuje ten wpis — są w formularzu
+    powyżej.
   </p>
   <ul class="lista-powiazan">
     {% for p in powiazania %}
     <li>
-      <b>{{ p.nazwa }}</b> ({{ p.ile }}):
+      <b>{{ p.nazwa }}</b> <span class="muted">· pole „{{ p.pole }}”</span>
+      ({{ p.ile }}):
       {% for w in p.przyklady %}<a href="/slowniki/wpis/{{ w.id }}">{{ w.wartosc }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if p.ile > p.przyklady | length %}…{% endif %}
-      <a class="btn btn-small" href="/slowniki?kategoria={{ p.kategoria }}&amp;wskazuje={{ wpis.id }}">Pokaż wszystkie</a>
+      <a class="btn btn-small"
+         href="/slowniki?kategoria={{ p.kategoria }}&amp;wskazuje={{ wpis.id }}&amp;pole={{ p.klucz }}">Pokaż wszystkie</a>
     </li>
     {% endfor %}
   </ul>

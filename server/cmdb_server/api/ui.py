@@ -1278,6 +1278,7 @@ def widok_slownikow(
     request: Request,
     kategoria: str = Query("", max_length=32),
     wskazuje: str = Query("", max_length=64),
+    pole: str = Query("", max_length=64),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -1306,9 +1307,17 @@ def widok_slownikow(
     # klinieciem - lista bez widocznego powodu, dla ktorego czegos brakuje,
     # wyglada jak utracone dane.
     filtr = slowniki.wpis(db, ctx, wskazuje) if wskazuje else None
+    filtr_pole = None
     if filtr is not None:
-        dozwolone = {w.id for w in slowniki.wskazujace(db, ctx, kategoria, filtr)}
+        dozwolone = {w.id for w in
+                     slowniki.wskazujace(db, ctx, kategoria, filtr, pole or None)}
         biezace = [w for w in biezace if w.id in dozwolone]
+        # Etykieta pola, ktorym prowadzi to powiazanie - "Osoba na miejscu"
+        # i "Lokalizacja" znacza co innego, a bez nazwy pola lista wyglada
+        # na przypadkowa.
+        filtr_pole = next((p.etykieta for p in
+                           slowniki.pola_wskazujace(db, ctx, kategoria, filtr.kategoria)
+                           if p.klucz == pole), None)
 
     # SZESC PIERWSZYCH pol schematu, bez zadnego wlasnego doboru. Kolejnosc
     # w schemacie jest jedynym kryterium, wiec o tym, co widac w tabeli,
@@ -1332,7 +1341,7 @@ def widok_slownikow(
                for k in KATEGORIE_SLOWNIKA},
         braki={w.id: definicje.braki(schematy[w.kategoria], w.atrybuty) for w in pozycje},
         uzycia={w.id: slowniki.uzycie_wpisu(db, ctx, w) for w in biezace},
-        filtr=filtr,
+        filtr=filtr, filtr_pole=filtr_pole,
     )
     db.commit()          # schemat zalozony z wzorca przy pierwszym wejsciu
     return wynik

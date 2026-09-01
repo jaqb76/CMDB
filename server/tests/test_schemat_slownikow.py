@@ -453,11 +453,66 @@ def test_lokalizacja_pokazuje_kto_w_niej_pracuje(client, tenant_a, make_user):
     karta = client.get(f"/slowniki/wpis/{biuro}").text
     assert "Anna Zielinska" in karta
     assert f"wskazuje={biuro}" in karta, "ma byc odnosnik do pelnej listy"
+    assert "pole „Lokalizacja”" in karta, "z nazwa pola, ktorym prowadzi wskazanie"
 
     lista = client.get(f"/slowniki?kategoria=osoba&wskazuje={biuro}").text
     assert "Anna Zielinska" in lista
     assert "Piotr Dalej" not in lista, "filtr ma odsiewac osoby z innych miejsc"
     assert "Pokaż wszystkie" in lista, "zdjecie filtru ma byc jednym klikaniem"
+
+
+def test_powiazanie_mowi_ktorym_polem_prowadzi(client, tenant_a, make_user):
+    """Sama nazwa kategorii nie wystarczy. Karta czlowieka pokazywala
+    "Lokalizacje (1)" i wygladalo to na blad, bo kolega z tego samego dzialu
+    takiego wiersza nie mial - a chodzilo o pole, ktorym prowadzi wskazanie."""
+    from .test_sprzet_slowniki_konta import _dodaj_wpis
+
+    _admin(client, tenant_a, make_user)
+    szef = _dodaj_wpis(client, "osoba", "Jan Szef", {"pole_email": "jan@firma.pl"})
+    _dodaj_wpis(client, "dzial", "Logistyka", {"pole_kierownik": szef})
+
+    karta = client.get(f"/slowniki/wpis/{szef}").text
+    assert "pole „Kierownik”" in karta
+    assert "Logistyka" in karta
+
+    lista = client.get(
+        f"/slowniki?kategoria=dzial&wskazuje={szef}&pole=kierownik").text
+    assert "Logistyka" in lista
+    assert "polem „Kierownik”" in lista
+
+
+def test_lokalizacja_nie_przypisuje_juz_osoby(client, tenant_a, make_user):
+    """Pole "Osoba na miejscu" wygladalo jak przypisanie ludzi do miejsca,
+    a znaczylo kontakt do jednej osoby - i tworzylo na karcie czlowieka
+    powiazanie, ktorego nikt swiadomie nie zakladal."""
+    _admin(client, tenant_a, make_user)
+    client.get("/slowniki?kategoria=lokalizacja")
+
+    from cmdb_server.services import slowniki
+    from cmdb_server.services.scoping import TenantContext
+
+    ctx = TenantContext(tenant_id=tenant_a["id"], tenant_slug="firma-a", actor="test")
+    with SessionLocal() as db:
+        klucze = [p.klucz for p in slowniki.schemat(db, ctx, "lokalizacja").pola]
+    assert "osoba_na_miejscu" not in klucze
+    # Kto gdzie pracuje, mowi pole przy OSOBIE - jeden kierunek, jedno zrodlo.
+    with SessionLocal() as db:
+        assert slowniki.schemat(db, ctx, "osoba").wg_roli("lokalizacja_osoby")
+
+
+def test_lista_osob_w_polu_odwolania_ma_podpisy(client, tenant_a, make_user):
+    """Opcje listy renderowaly sie przez pole konta portalu, ktorego wpis
+    slownika nie ma - rozwijana lista miala poprawne identyfikatory i ZADNYCH
+    podpisow. Wybor w takim polu byl z definicji nieswiadomy."""
+    from .test_sprzet_slowniki_konta import _dodaj_wpis
+
+    _admin(client, tenant_a, make_user)
+    _dodaj_wpis(client, "osoba", "Marta Nowak", {"pole_email": "marta@firma.pl"})
+    dzial = _dodaj_wpis(client, "dzial", "Ksiegowosc")
+
+    karta = client.get(f"/slowniki/wpis/{dzial}").text
+    wybor = karta.split('name="pole_kierownik"')[1].split("</select>")[0]
+    assert "Marta Nowak" in wybor, "opcja musi byc podpisana nazwiskiem"
 
 
 def test_filtr_wskazania_nie_wychodzi_poza_firme(client, tenant_a, tenant_b, make_user):
