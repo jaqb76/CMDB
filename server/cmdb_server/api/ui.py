@@ -254,6 +254,12 @@ def render(
     return templates.TemplateResponse(request, template, payload)
 
 
+@router.get("/pomoc", response_class=HTMLResponse)
+def pomoc(user: PortalUser = Depends(require_user)) -> HTMLResponse:
+    """Samodzielny podręcznik dostępny dopiero po zalogowaniu do portalu."""
+    return HTMLResponse((TEMPLATES_DIR / "pomoc.html").read_text(encoding="utf-8"))
+
+
 # Minimalna dlugosc hasla panelu. Ta sama wartosc obowiazuje przy zakladaniu
 # konta w administracji (api/admin.py importuje ja stad), zeby nie dalo sie
 # ustawic hasla slabszego niz przy zalozeniu konta.
@@ -622,11 +628,11 @@ def utworz_sprzet(
     model: str = Form(""),
     numer_seryjny: str = Form(""),
     ip: str = Form(""),
-    lokalizacja: str = Form(""),
+    lokalizacja_id: str = Form(""),
     rola: str = Form(""),
     owner_id: str = Form(""),
     uzytkownik_id: str = Form(""),
-    dostawca: str = Form(""),
+    dostawca_id: str = Form(""),
     uwagi: str = Form(""),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
@@ -656,6 +662,11 @@ def utworz_sprzet(
     # Wpis reczny tez potrzebuje machine_id - kolumna jest wymagana i unikalna
     # w obrebie firmy. Przedrostek od razu mowi, ze to nie jest identyfikator
     # odczytany z plyty glownej, tylko klucz nadany przez system.
+    try:
+        lokalizacja = slowniki.wybierz(db, ctx, "lokalizacja", lokalizacja_id)
+        dostawca = slowniki.wybierz(db, ctx, "dostawca", dostawca_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     sprzet = Asset(
         tenant_id=ctx.tenant_id,
         machine_id=f"reczne:{uuid4()}",
@@ -663,8 +674,8 @@ def utworz_sprzet(
         zrodlo=ZRODLO_RECZNE,
         owner_id=osoba(owner_id),
         uzytkownik_id=osoba(uzytkownik_id),
-        lokalizacja_id=_wpis_id(slowniki.zapewnij(db, ctx, "lokalizacja", lokalizacja)),
-        dostawca_id=_wpis_id(slowniki.zapewnij(db, ctx, "dostawca", dostawca)),
+        lokalizacja_id=_wpis_id(lokalizacja),
+        dostawca_id=_wpis_id(dostawca),
         **pola,
     )
     db.add(sprzet)
@@ -819,6 +830,8 @@ def asset_detail(
         owners=owners,
         typy=TYPY_SPRZETU,
         podpowiedzi=slowniki.podpowiedzi(db, ctx),
+        szczegoly_lokalizacji=slowniki.szczegoly(db, ctx, asset.lokalizacja),
+        szczegoly_dostawcy=slowniki.szczegoly(db, ctx, asset.dostawca),
         credentials=credentials,
         zmiany=zmiany,
         payload=payload,
@@ -838,7 +851,7 @@ def assign_owner(
     owner_id: str = Form(""),
     uzytkownik_id: str = Form(""),
     role_label: str = Form(""),
-    lokalizacja: str = Form(""),
+    lokalizacja_id: str = Form(""),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
@@ -875,7 +888,10 @@ def assign_owner(
     asset.role_label = role_label.strip() or None
     # Nowa lokalizacja od razu trafia do slownika firmy - inaczej kazdy
     # wpisywalby ja po swojemu i podpowiedzi nigdy by nie powstaly.
-    wpis_lokalizacji = slowniki.zapewnij(db, ctx, "lokalizacja", lokalizacja)
+    try:
+        wpis_lokalizacji = slowniki.wybierz(db, ctx, "lokalizacja", lokalizacja_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     asset.lokalizacja_id = _wpis_id(wpis_lokalizacji)
 
     audit(
@@ -1083,7 +1099,7 @@ def owner_create(
     full_name: str = Form(...),
     email: str = Form(...),
     phone: str = Form(""),
-    department: str = Form(""),
+    department_id: str = Form(""),
     notes: str = Form(""),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
@@ -1100,14 +1116,16 @@ def owner_create(
     if existing is not None:
         return RedirectResponse("/owners?error=duplikat", status_code=status.HTTP_303_SEE_OTHER)
 
+    try:
+        dzial = slowniki.wybierz(db, ctx, "dzial", department_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     owner = Owner(
         tenant_id=ctx.tenant_id,
         full_name=full_name.strip(),
         email=email_normalized,
         phone=phone.strip() or None,
-        # Nowy dzial od razu zasila slownik firmy - dzieki temu przy nastepnej
-        # osobie podpowie sie ta sama nazwa, zamiast powstac jej drugi wariant.
-        dzial_id=_wpis_id(slowniki.zapewnij(db, ctx, "dzial", department)),
+        dzial_id=_wpis_id(dzial),
         notes=notes.strip() or None,
     )
     db.add(owner)
@@ -1172,7 +1190,6 @@ def widok_slownikow(
 def dodaj_do_slownika(
     request: Request,
     kategoria: str = Form(...),
-    wartosc: str = Form(...),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
@@ -1182,10 +1199,7 @@ def dodaj_do_slownika(
     _require_write(ctx)
     if kategoria not in KATEGORIE_SLOWNIKA:
         raise HTTPException(status_code=400, detail="nieznana kategoria slownika")
-    dodana = slowniki.zapewnij(db, ctx, kategoria, wartosc)
-    if dodana is None:
-        raise HTTPException(status_code=400, detail="wartosc nie moze byc pusta")
-    db.flush()
+    dodana = slowniki.nowy_szkic(db, ctx, kategoria)
     cel = dodana.id
     audit(db, ctx, action="slownik.dodany", target=kategoria + ":" + dodana.wartosc,
           ip=client_ip(request))
@@ -1219,7 +1233,7 @@ def karta_wpisu(
         braki=definicje.braki(opis, wpis.atrybuty),
         uzycie=slowniki.uzycie_wpisu(db, ctx, wpis),
         osoby=db.execute(scoping.owners_query(ctx)).scalars().all(),
-        powiazane=slowniki.wpisy(db, ctx, wpis.kategoria),
+        powiazane={k: slowniki.wpisy(db, ctx, k) for k in KATEGORIE_SLOWNIKA},
         kategorie=KATEGORIE_SLOWNIKA,
         bledy=bledy if isinstance(bledy, dict) else {},
     )
@@ -1247,7 +1261,7 @@ async def zapisz_wpis_slownika(
     dane = {klucz[5:]: wartosc for klucz, wartosc in formularz.items()
             if klucz.startswith("pole_")}
     try:
-        slowniki.zapisz_wpis(db, ctx, wpis, str(formularz.get("nazwa", "")), dane)
+        slowniki.zapisz_wpis(db, ctx, wpis, dane)
     except definicje.BladPola as exc:
         db.rollback()
         # Bledy wracaja przy polach, ktorych dotycza: komunikat "cos jest nie

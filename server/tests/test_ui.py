@@ -68,7 +68,7 @@ def test_owner_lifecycle(client, tenant_a, make_user):
             "full_name": "Anna Nowak",
             "email": "anna.nowak@firma-a.pl",
             "phone": "+48 600 100 200",
-            "department": "IT",
+            "department_id": "",
             "notes": "",
             "csrf_token": csrf,
         },

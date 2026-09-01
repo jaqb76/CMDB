@@ -91,14 +91,13 @@
       </select>
     </div>
     <div>
-      <label for="lokalizacja">Lokalizacja</label>
-      <input id="lokalizacja" name="lokalizacja" maxlength="200" list="slownik-lokalizacje"
-             autocomplete="off" value="{{ asset.lokalizacja.wartosc if asset.lokalizacja else '' }}"
-             placeholder="np. Serwerownia A, pokoj 214"
-             {% if not ctx.can_write %}disabled{% endif %}>
-      <datalist id="slownik-lokalizacje">
-        {% for l in podpowiedzi.lokalizacja %}<option value="{{ l.wartosc }}"></option>{% endfor %}
-      </datalist>
+      <label for="lokalizacja_id">Lokalizacja</label>
+      <select id="lokalizacja_id" name="lokalizacja_id" {% if not ctx.can_write %}disabled{% endif %}>
+        <option value="">— nieprzypisana —</option>
+        {% for l in podpowiedzi.lokalizacja %}
+          <option value="{{ l.id }}" {% if asset.lokalizacja_id == l.id %}selected{% endif %}>{{ l.wartosc }}</option>
+        {% endfor %}
+      </select>
     </div>
     <div>
       <label for="role_label">Rola</label>
@@ -108,16 +107,36 @@
     {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
   </form>
   <p class="small muted">
-    Osoby wybiera sie z <a href="/owners">listy firmy</a>; nowa lokalizacja dopisze sie
-    do <a href="/slowniki">slownika</a> automatycznie.
+    Osoby wybiera się z <a href="/owners">listy firmy</a>, a lokalizacje z
+    ustrukturyzowanego <a href="/slowniki">słownika</a>.
   </p>
-  {% if asset.owner %}
-    <p class="small muted">Opiekun: {{ asset.owner.email }}{% if asset.owner.phone %} &middot; {{ asset.owner.phone }}{% endif %}{% if asset.owner.dzial %} &middot; {{ asset.owner.dzial.wartosc }}{% endif %}</p>
-  {% endif %}
-  {% if asset.uzytkownik %}
-    <p class="small muted">Uzytkownik: {{ asset.uzytkownik.email }}{% if asset.uzytkownik.phone %} &middot; {{ asset.uzytkownik.phone }}{% endif %}{% if asset.uzytkownik.dzial %} &middot; {{ asset.uzytkownik.dzial.wartosc }}{% endif %}</p>
-  {% endif %}
+  <div class="row-form">
+    {% if asset.owner %}<button type="button" class="btn btn-small" data-dialog-open="podglad-opiekuna">Podgląd opiekuna</button>{% endif %}
+    {% if asset.uzytkownik %}<button type="button" class="btn btn-small" data-dialog-open="podglad-uzytkownika">Podgląd użytkownika</button>{% endif %}
+    {% if asset.lokalizacja %}<button type="button" class="btn btn-small" data-dialog-open="podglad-lokalizacji">Podgląd lokalizacji</button>{% endif %}
+    {% if asset.dostawca %}<button type="button" class="btn btn-small" data-dialog-open="podglad-dostawcy">Podgląd dostawcy</button>{% endif %}
+  </div>
 </section>
+
+{% for identyfikator, tytul, osoba in [('podglad-opiekuna', 'Opiekun', asset.owner), ('podglad-uzytkownika', 'Użytkownik komputera', asset.uzytkownik)] %}
+{% if osoba %}<dialog id="{{ identyfikator }}" class="modal-card">
+  <div class="modal-head"><h2>{{ tytul }}</h2><button type="button" class="btn btn-small" data-dialog-close>Zamknij</button></div>
+  <dl class="modal-grid"><dt>Osoba</dt><dd>{{ osoba.full_name }}</dd><dt>E-mail</dt><dd>{{ osoba.email }}</dd>
+    <dt>Telefon</dt><dd>{{ osoba.phone or '—' }}</dd><dt>Dział</dt><dd>{{ osoba.dzial.wartosc if osoba.dzial else '—' }}</dd>
+    <dt>Notatki</dt><dd>{{ osoba.notes or '—' }}</dd></dl>
+  {% if ctx.can_write %}<p><a class="btn btn-small" href="/owners">Otwórz listę osób</a></p>{% endif %}
+</dialog>{% endif %}
+{% endfor %}
+
+{% for identyfikator, tytul, rekord, szczegoly in [('podglad-lokalizacji', 'Lokalizacja', asset.lokalizacja, szczegoly_lokalizacji), ('podglad-dostawcy', 'Dostawca', asset.dostawca, szczegoly_dostawcy)] %}
+{% if rekord %}<dialog id="{{ identyfikator }}" class="modal-card">
+  <div class="modal-head"><h2>{{ tytul }}</h2><button type="button" class="btn btn-small" data-dialog-close>Zamknij</button></div>
+  <p class="strong">{{ rekord.wartosc }}</p><dl class="modal-grid">
+    {% for pole in szczegoly %}<dt>{{ pole.etykieta }}</dt><dd>{{ pole.wartosc }}</dd>{% endfor %}
+  </dl>
+  {% if ctx.can_write %}<p><a class="btn btn-small" href="/slowniki/wpis/{{ rekord.id }}">Edytuj rekord</a></p>{% endif %}
+</dialog>{% endif %}
+{% endfor %}
 
 {% if asset.zrodlo == 'reczne' %}
 <section class="panel">
@@ -286,12 +305,11 @@
                    value="{{ asset.warranty_until or '' }}">
           </div>
           <div>
-            <label for="vendor">Dostawca</label>
-            <input id="vendor" name="vendor" maxlength="200" value="{{ asset.dostawca.wartosc if asset.dostawca else '' }}"
-                   list="slownik-dostawcy" autocomplete="off">
-            <datalist id="slownik-dostawcy">
-              {% for d in podpowiedzi.dostawca %}<option value="{{ d.wartosc }}"></option>{% endfor %}
-            </datalist>
+            <label for="dostawca_id">Dostawca</label>
+            <select id="dostawca_id" name="dostawca_id">
+              <option value="">— nieprzypisany —</option>
+              {% for d in podpowiedzi.dostawca %}<option value="{{ d.id }}" {% if asset.dostawca_id == d.id %}selected{% endif %}>{{ d.wartosc }}</option>{% endfor %}
+            </select>
           </div>
         </div>
         <div class="row-form">

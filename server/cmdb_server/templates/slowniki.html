@@ -6,10 +6,9 @@
   <div>
     <h1>Słowniki firmy</h1>
     <p class="muted">
-      Działy, lokalizacje i dostawcy używani w tej firmie. Słownik nadal zapełnia się
-      sam: nazwa wpisana w dowolnym formularzu trafia tu od razu jako szkic i od
-      następnego razu podpowiada się na liście. Tutaj uzupełnia się resztę —
-      adres, telefon, kanał zgłoszeń — i sprząta literówki.
+      Działy, lokalizacje i dostawcy są rekordami z własnymi polami. Etykieta
+      widoczna na listach powstaje automatycznie, np. z miasta, ulicy i działu;
+      nie prowadzi się osobnego, podatnego na rozbieżności pola „Nazwa”.
     </p>
   </div>
 </div>
@@ -30,7 +29,7 @@
   <div class="tabela-przewijana">
     <table class="table">
       <thead>
-        <tr><th>Nazwa</th><th>Stan</th><th class="lp">Używa</th><th>Dodano</th><th></th></tr>
+        <tr><th>Wpis</th><th>Stan</th><th class="lp">Używa</th><th>Dodano</th><th></th></tr>
       </thead>
       <tbody>
       {% for w in wpisy[kategoria] %}
@@ -53,19 +52,14 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">Pusto — pierwsza wpisana wartość pojawi się tutaj sama.</p>
+  <p class="muted">Pusto — dodaj pierwszy rekord zgodny ze schematem.</p>
   {% endif %}
 
   {% if ctx.can_write %}
-  <form method="post" action="/slowniki" class="row-form" style="margin-top:14px">
+  <form method="post" action="/slowniki" class="inline-form" style="margin-top:14px">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="kategoria" value="{{ kategoria }}">
-    <div>
-      <label for="wartosc_{{ kategoria }}">Dodaj z wyprzedzeniem</label>
-      <input id="wartosc_{{ kategoria }}" name="wartosc" required maxlength="200"
-             placeholder="nazwa">
-    </div>
-    <div><button type="submit" class="btn">Dodaj i uzupełnij</button></div>
+    <button type="submit" class="btn">+ Dodaj {{ etykieta | lower }}</button>
   </form>
   {% endif %}
 </section>

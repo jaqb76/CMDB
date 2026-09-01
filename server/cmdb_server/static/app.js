@@ -207,6 +207,25 @@
     });
   });
 
+  // Wspolne natywne okna: changelog wydania i podglad relacji zasobu.
+  document.querySelectorAll("[data-dialog-open]").forEach(function (przycisk) {
+    przycisk.addEventListener("click", function () {
+      var okno = document.getElementById(przycisk.dataset.dialogOpen);
+      if (okno && typeof okno.showModal === "function") { okno.showModal(); }
+    });
+  });
+  document.querySelectorAll("dialog [data-dialog-close]").forEach(function (przycisk) {
+    przycisk.addEventListener("click", function () {
+      var okno = przycisk.closest("dialog");
+      if (okno) { okno.close(); }
+    });
+  });
+  document.querySelectorAll("dialog.modal-card").forEach(function (okno) {
+    okno.addEventListener("click", function (event) {
+      if (event.target === okno) { okno.close(); }
+    });
+  });
+
 
   // Czas w strefie czytajacego.
   //

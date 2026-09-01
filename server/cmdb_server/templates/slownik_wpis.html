@@ -36,18 +36,12 @@
 {% if bledy %}
 <div class="alert alert-error">
   Nie zapisano — popraw zaznaczone pola.
+  {% if bledy.get('_etykieta') %}<div>{{ bledy['_etykieta'] }}</div>{% endif %}
 </div>
 {% endif %}
 
 <form method="post" action="/slowniki/wpis/{{ wpis.id }}" class="panel stack">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-
-  <div>
-    <label for="nazwa">Nazwa</label>
-    <input id="nazwa" name="nazwa" value="{{ wpis.wartosc }}" required maxlength="200"
-           {% if bledy.get('nazwa') %}aria-invalid="true"{% endif %}>
-    {% if bledy.get('nazwa') %}<div class="blad-pola">{{ bledy['nazwa'] }}</div>{% endif %}
-  </div>
 
   {% for grupa, pola in grupy.items() %}
   <fieldset class="kolumny-grupa">
@@ -81,7 +75,7 @@
         {% elif p.typ == 'odwolanie' %}
           <select id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}">
             <option value="">—</option>
-            {% for inny in powiazane if inny.id != wpis.id %}
+            {% for inny in powiazane.get(p.cel, []) if inny.id != wpis.id %}
               <option value="{{ inny.id }}" {% if wartosc == inny.id %}selected{% endif %}>{{ inny.wartosc }}</option>
             {% endfor %}
           </select>
@@ -134,8 +128,8 @@
     <div><a class="btn btn-ghost" href="/slowniki">Wróć do listy</a></div>
   </div>
   <p class="muted small">
-    Pola oznaczone gwiazdką są wymagane przy zapisie tej karty. Wpis, który powstał
-    sam przy dodawaniu maszyny, mógł je pominąć — dlatego widnieje jako szkic.
+    Pola oznaczone gwiazdką są wymagane. Nazwa widoczna na listach powstaje
+    automatycznie z pól oznaczonych w schemacie jako „etykieta wpisu”.
   </p>
   {% else %}
   <p class="muted">Edycja wymaga uprawnień do zapisu.</p>

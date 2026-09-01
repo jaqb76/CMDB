@@ -20,5 +20,6 @@ payload, files = prepare(args.directory, args.version, "jaqb76/CMDB",
 assert architektura.wykryj_z_pliku(args.directory / "cmdb-agent.exe") == "x86_64"
 assert architektura.podsystem_pe(args.directory / "cmdb-agent.exe") == architektura.PE_GUI
 assert pakiet.sprawdz_paczke(args.directory / "cmdb-agent-zrodla.tar.gz") == args.version
+assert payload["changelog"] and payload["schema"] == 2
 (args.directory / "cmdb-release.json").unlink()  # throwaway signature must not enter publication
 print("RELEASE_CHECK_OK: real worker/setup/Linux package, one version, signed manifest verified; no publication")

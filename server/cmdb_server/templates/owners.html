@@ -48,13 +48,12 @@
       <input id="email" name="email" type="email" required maxlength="255">
       <label for="phone">Telefon</label>
       <input id="phone" name="phone" maxlength="64">
-      <label for="department">Dzial</label>
-      <input id="department" name="department" maxlength="200" list="slownik-dzialy"
-             autocomplete="off" placeholder="wybierz lub wpisz nowy">
-      <datalist id="slownik-dzialy">
-        {% for d in dzialy %}<option value="{{ d.wartosc }}"></option>{% endfor %}
-      </datalist>
-      <p class="small muted">Nowy dzial dopisze sie do <a href="/slowniki">slownika</a> firmy.</p>
+      <label for="department_id">Dzial</label>
+      <select id="department_id" name="department_id">
+        <option value="">— nieprzypisany —</option>
+        {% for d in dzialy %}<option value="{{ d.id }}">{{ d.wartosc }}</option>{% endfor %}
+      </select>
+      <p class="small muted">Brakujący dział dodaj wcześniej w <a href="/slowniki">słownikach firmy</a>.</p>
       <label for="notes">Notatki</label>
       <textarea id="notes" name="notes" rows="3"></textarea>
       <button type="submit" class="btn btn-primary">Dodaj</button>

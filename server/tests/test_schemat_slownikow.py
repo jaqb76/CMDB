@@ -25,9 +25,9 @@ def _admin(client, tenant, make_user, email="admin@firma-a.pl"):
     _login(client, email, HASLO)
 
 
-def _wpis(client, kategoria="dostawca", nazwa="Dell"):
+def _wpis(client, kategoria="dostawca"):
     csrf = _extract_csrf(client.get("/slowniki").text)
-    odpowiedz = client.post("/slowniki", data={"kategoria": kategoria, "wartosc": nazwa,
+    odpowiedz = client.post("/slowniki", data={"kategoria": kategoria,
                                                "csrf_token": csrf}, follow_redirects=False)
     assert odpowiedz.status_code == 303, odpowiedz.text
     return odpowiedz.headers["location"].rsplit("/", 1)[1]
@@ -106,19 +106,17 @@ def test_wzorzec_jest_poprawny_dla_kazdej_kategorii():
 
 # --- wymagane zalezy od miejsca powstania wartosci --------------------------
 
-def test_wpis_z_formularza_maszyny_pomija_wymagane(client, tenant_a, make_user):
-    """Gdyby wymagane blokowaly tutaj, dodanie maszyny od nieznanego dostawcy
-    zaczynaloby sie od wypelniania jego metryczki - i nikt nie wpisalby nic."""
-    from .test_sprzet_slowniki_konta import _dodaj_sprzet
-
+def test_formularz_maszyny_wybiera_gotowy_rekord(client, tenant_a, make_user):
+    from .test_sprzet_slowniki_konta import _dodaj_sprzet, _dodaj_wpis
     _admin(client, tenant_a, make_user)
-    _dodaj_sprzet(client, nazwa="DRUKARKA-1", dostawca="Nowy Dostawca", lokalizacja="")
+    dostawca_id = _dodaj_wpis(client, "dostawca", "Nowy Dostawca")
+    _dodaj_sprzet(client, nazwa="DRUKARKA-1", dostawca_id=dostawca_id, lokalizacja="")
 
     with SessionLocal() as db:
         wpis = db.execute(select(WpisSlownika).where(
             WpisSlownika.kategoria == "dostawca")).scalar_one()
         assert wpis.wartosc == "Nowy Dostawca"
-        assert wpis.atrybuty == {}, "szkic: nazwa jest, reszty jeszcze nie ma"
+        assert wpis.atrybuty["nazwa_firmy"] == "Nowy Dostawca"
         assert db.execute(select(Asset)).scalar_one().dostawca_id == wpis.id
 
 
@@ -129,7 +127,7 @@ def test_karta_slownika_nie_zapisze_sie_bez_wymaganych(client, tenant_a, make_us
     csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
 
     odpowiedz = client.post(f"/slowniki/wpis/{wpis_id}",
-                            data={"nazwa": "Dell", "pole_nip": "", "csrf_token": csrf},
+                            data={"pole_nip": "", "csrf_token": csrf},
                             follow_redirects=False)
     assert odpowiedz.status_code == 303
     assert "blad=" in odpowiedz.headers["location"], "brak wymaganego pola ma zatrzymac zapis"
@@ -144,7 +142,7 @@ def test_karta_zapisuje_i_normalizuje(client, tenant_a, make_user):
     csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
 
     assert client.post(f"/slowniki/wpis/{wpis_id}", data={
-        "nazwa": "Dell", "pole_kanal_zgloszen": "portal",
+        "pole_nazwa_firmy": "Dell", "pole_kanal_zgloszen": "portal",
         "pole_email_zgloszen": "Serwis@DELL.pl",
         "pole_telefon_wsparcia": "225790000",
         "csrf_token": csrf}, follow_redirects=False).status_code == 303
@@ -178,7 +176,7 @@ def test_pole_z_wartosciami_nie_daje_sie_usunac(client, tenant_a, make_user):
     wpis_id = _wpis(client)
     csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
     client.post(f"/slowniki/wpis/{wpis_id}", data={
-        "nazwa": "Dell", "pole_kanal_zgloszen": "portal", "pole_nip": "1234563218",
+        "pole_nazwa_firmy": "Dell", "pole_kanal_zgloszen": "portal", "pole_nip": "1234563218",
         "csrf_token": csrf}, follow_redirects=False)
 
     strona = client.get("/slowniki/dostawca/schemat").text
@@ -203,7 +201,7 @@ def test_po_wyczyszczeniu_wartosci_pole_znika(client, tenant_a, make_user):
     wpis_id = _wpis(client)
     csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
     client.post(f"/slowniki/wpis/{wpis_id}", data={
-        "nazwa": "Dell", "pole_kanal_zgloszen": "portal", "pole_nip": "1234563218",
+        "pole_nazwa_firmy": "Dell", "pole_kanal_zgloszen": "portal", "pole_nip": "1234563218",
         "csrf_token": csrf}, follow_redirects=False)
 
     csrf = _extract_csrf(client.get("/slowniki/dostawca/schemat").text)
@@ -260,7 +258,7 @@ def test_raport_siega_po_role_a_nie_po_nazwe_pola(client, tenant_a, make_user):
     wpis_id = _wpis(client)
     csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
     client.post(f"/slowniki/wpis/{wpis_id}", data={
-        "nazwa": "Dell", "pole_kanal_zgloszen": "e-mail",
+        "pole_nazwa_firmy": "Dell", "pole_kanal_zgloszen": "e-mail",
         "pole_email_zgloszen": "serwis@dell.pl", "csrf_token": csrf},
         follow_redirects=False)
 
@@ -280,7 +278,7 @@ def test_brak_roli_nie_wywraca_raportu(client, tenant_a, make_user):
     wpis_id = _wpis(client)
     csrf = _extract_csrf(client.get("/slowniki/dostawca/schemat").text)
     bez_roli = {"kategoria": "dostawca", "wersja": 1, "pola": [
-        {"klucz": "nazwa_wlasna", "etykieta": "Cokolwiek", "typ": "tekst"}]}
+        {"klucz": "nazwa_wlasna", "etykieta": "Cokolwiek", "typ": "tekst", "w_etykiecie": True}]}
     client.post("/slowniki/dostawca/schemat",
                 data={"definicja": json.dumps(bez_roli), "csrf_token": csrf},
                 follow_redirects=False)
@@ -321,7 +319,7 @@ def test_edytor_wie_ktore_pola_maja_wartosci(client, tenant_a, make_user):
     wpis_id = _wpis(client)
     csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
     client.post(f"/slowniki/wpis/{wpis_id}", data={
-        "nazwa": "Dell", "pole_kanal_zgloszen": "portal", "pole_nip": "1234563218",
+        "pole_nazwa_firmy": "Dell", "pole_kanal_zgloszen": "portal", "pole_nip": "1234563218",
         "csrf_token": csrf}, follow_redirects=False)
 
     strona = client.get("/slowniki/dostawca/schemat").text

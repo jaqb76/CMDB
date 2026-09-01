@@ -41,14 +41,20 @@ def require(condition):
 
 def validate(payload, repository, ref):
     try:
-        require(set(payload) == {"schema", "repository", "ref", "workflow", "commit", "run_id", "version", "tag", "artifacts"})
-        require(type(payload["schema"]) is int and payload["schema"] == 1)
+        require(set(payload) == {"schema", "repository", "ref", "workflow", "commit", "run_id", "version", "tag", "changelog", "artifacts"})
+        require(type(payload["schema"]) is int and payload["schema"] == 2)
         require(payload["repository"] == repository and payload["ref"] == ref)
         require(payload["workflow"] == ".github/workflows/cmdb-tests.yml")
         require(re.fullmatch(r"[0-9a-f]{40}", payload["commit"]))
         require(type(payload["run_id"]) is int and payload["run_id"] > 0)
         require(re.fullmatch(VERSION, payload["version"]) and len(payload["version"]) <= 32)
         require(payload["tag"] == "agent-v" + payload["version"])
+        changelog = payload["changelog"]
+        require(isinstance(changelog, list) and 0 < len(changelog) <= 30)
+        for item in changelog:
+            require(set(item) == {"category", "text"})
+            require(item["category"] in {"added", "fixed", "security"})
+            require(isinstance(item["text"], str) and 10 <= len(item["text"]) <= 300)
         artifacts = payload["artifacts"]
         require(isinstance(artifacts, list) and len(artifacts) == 3)
         expected = {"worker": ("windows", "x86_64", "cmdb-agent.exe"),

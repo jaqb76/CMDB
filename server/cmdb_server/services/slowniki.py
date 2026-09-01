@@ -65,6 +65,26 @@ def schemat(db: Session, ctx: TenantContext, kategoria: str) -> definicje.Schema
         )
     ).scalar_one_or_none()
     if wiersz is not None:
+        surowy = dict(wiersz.definicja or {})
+        pola = list(surowy.get("pola") or [])
+        if pola and not any(p.get("w_etykiecie") for p in pola):
+            ile = int(db.execute(select(func.count()).select_from(WpisSlownika).where(
+                WpisSlownika.tenant_id == ctx.tenant_id,
+                WpisSlownika.kategoria == kategoria,
+            )).scalar_one())
+            if ile == 0:
+                nowy = wzorzec.wzorcowy(kategoria)
+            else:
+                # Awaryjna zgodnosc dla firmy, ktora jednak ma stare dane:
+                # zachowujemy pola i wybieramy pierwsze wymagane jako etykiete.
+                kandydat = next((p for p in pola if p.get("wymagane")), pola[0])
+                kandydat["w_etykiecie"] = True
+                surowy["pola"] = pola
+                nowy = definicje.Schemat.model_validate(surowy)
+            wiersz.definicja = nowy.model_dump()
+            wiersz.zmieniony = utcnow()
+            wiersz.zmienil = "migracja etykiet słownika"
+            return nowy
         return definicje.Schemat.model_validate(wiersz.definicja)
 
     swiezy = wzorzec.wzorcowy(kategoria)
@@ -161,6 +181,20 @@ def zapewnij(db: Session, ctx: TenantContext, kategoria: str,
     return wpis
 
 
+def nowy_szkic(db: Session, ctx: TenantContext, kategoria: str) -> WpisSlownika:
+    """Pusty rekord do wypelnienia formularzem schematu, bez osobnego pola nazwy."""
+    from uuid import uuid4
+
+    sprawdz_kategorie(kategoria)
+    znacznik = str(uuid4())
+    wpis = WpisSlownika(tenant_id=ctx.tenant_id, kategoria=kategoria,
+                        wartosc="Nowy wpis", klucz="szkic:" + znacznik,
+                        atrybuty={}, utworzyl=ctx.actor)
+    db.add(wpis)
+    db.flush()
+    return wpis
+
+
 def _wg_klucza(db: Session, ctx: TenantContext, kategoria: str, klucz: str):
     return db.execute(
         select(WpisSlownika).where(
@@ -179,19 +213,93 @@ def wpis(db: Session, ctx: TenantContext, wpis_id: str) -> WpisSlownika | None:
     ).scalar_one_or_none()
 
 
-def zapisz_wpis(db: Session, ctx: TenantContext, cel: WpisSlownika, nazwa: str,
+def wybierz(db: Session, ctx: TenantContext, kategoria: str,
+            wpis_id: str | None) -> WpisSlownika | None:
+    """Zamienia wartosc selecta na rekord tej firmy i tej kategorii."""
+    if not wpis_id:
+        return None
+    sprawdz_kategorie(kategoria)
+    pozycja = db.execute(select(WpisSlownika).where(
+        WpisSlownika.id == wpis_id,
+        WpisSlownika.tenant_id == ctx.tenant_id,
+        WpisSlownika.kategoria == kategoria,
+    )).scalar_one_or_none()
+    if pozycja is None:
+        raise ValueError("wpis spoza firmy lub niewlasciwego slownika")
+    return pozycja
+
+
+def _wartosc_odwolania(db: Session, ctx: TenantContext, pole, identyfikator: str) -> str:
+    if pole.cel == "osoba":
+        osoba = db.execute(select(Owner).where(
+            Owner.id == identyfikator, Owner.tenant_id == ctx.tenant_id
+        )).scalar_one_or_none()
+        if osoba is None:
+            raise definicje.BladPola({pole.klucz: "wybierz osobę z tej firmy"})
+        return osoba.full_name
+    powiazany = db.execute(select(WpisSlownika).where(
+        WpisSlownika.id == identyfikator,
+        WpisSlownika.tenant_id == ctx.tenant_id,
+        WpisSlownika.kategoria == pole.cel,
+    )).scalar_one_or_none()
+    if powiazany is None:
+        raise definicje.BladPola({pole.klucz: "wybierz wpis właściwego słownika"})
+    return powiazany.wartosc
+
+
+def zbuduj_etykiete(db: Session, ctx: TenantContext, opis: definicje.Schemat,
+                    dane: dict) -> str:
+    czesci: list[str] = []
+    for pole in opis.pola_etykiety():
+        wartosc = dane.get(pole.klucz)
+        if wartosc in (None, "", False):
+            continue
+        tekst = (_wartosc_odwolania(db, ctx, pole, str(wartosc))
+                 if pole.typ == "odwolanie" else str(wartosc))
+        if tekst and tekst not in czesci:
+            czesci.append(tekst)
+    return " · ".join(czesci)[:MAKS_DLUGOSC]
+
+
+def szczegoly(db: Session, ctx: TenantContext,
+              pozycja: WpisSlownika | None) -> list[dict[str, str]]:
+    """Czytelne pola rekordu do podgladu, lacznie z nazwami odwołań."""
+    if pozycja is None:
+        return []
+    opis = schemat(db, ctx, pozycja.kategoria)
+    wynik: list[dict[str, str]] = []
+    for pole in opis.pola:
+        wartosc = (pozycja.atrybuty or {}).get(pole.klucz)
+        if wartosc in (None, "", False):
+            continue
+        if pole.typ == "odwolanie":
+            try:
+                wartosc = _wartosc_odwolania(db, ctx, pole, str(wartosc))
+            except definicje.BladPola:
+                wartosc = "— brak powiązanego rekordu —"
+        elif pole.typ == "logiczna":
+            wartosc = "tak" if wartosc else "nie"
+        wynik.append({"etykieta": pole.etykieta, "wartosc": str(wartosc)})
+    return wynik
+
+
+def zapisz_wpis(db: Session, ctx: TenantContext, cel: WpisSlownika,
                 dane: dict) -> WpisSlownika:
     """Swiadoma edycja w karcie slownika - tu pola wymagane obowiazuja."""
-    czysta = znormalizuj(nazwa)[:MAKS_DLUGOSC]
+    opis = schemat(db, ctx, cel.kategoria)
+    sprawdzone = definicje.sprawdz(opis, dane, egzekwuj_wymagane=True)
+    # Oprocz formatu sprawdzamy istnienie i przynaleznosc kazdego odwolania.
+    for pole in opis.pola:
+        if pole.typ == "odwolanie" and sprawdzone.get(pole.klucz):
+            _wartosc_odwolania(db, ctx, pole, str(sprawdzone[pole.klucz]))
+    czysta = znormalizuj(zbuduj_etykiete(db, ctx, opis, sprawdzone))
     if not czysta:
-        raise definicje.BladPola({"nazwa": "nazwa nie moze byc pusta"})
+        raise definicje.BladPola({"_etykieta": "uzupełnij co najmniej jedno pole używane w etykiecie"})
     klucz = _klucz(czysta)
     kolizja = _wg_klucza(db, ctx, cel.kategoria, klucz)
     if kolizja is not None and kolizja.id != cel.id:
-        raise definicje.BladPola({"nazwa": "taka nazwa juz istnieje w slowniku"})
-
-    opis = schemat(db, ctx, cel.kategoria)
-    cel.atrybuty = definicje.sprawdz(opis, dane, egzekwuj_wymagane=True)
+        raise definicje.BladPola({"_etykieta": "taki wpis już istnieje w słowniku"})
+    cel.atrybuty = sprawdzone
     cel.wartosc = czysta
     cel.klucz = klucz
     return cel

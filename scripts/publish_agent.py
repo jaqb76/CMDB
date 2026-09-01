@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
 def prepare(directory, version, repo, ref, commit, run_id, key):
+    changelog = json.loads((directory / "agent-release-changelog.json").read_text(encoding="utf-8"))
     catalog = json.loads((directory / "verified-worker.json").read_text())
     files = [("worker", "windows", "x86_64", "cmdb-agent.exe"),
              ("setup", "windows", "x86_64", f"CMDB-Agent-Setup-{version}.exe"),
@@ -35,9 +36,10 @@ def prepare(directory, version, repo, ref, commit, run_id, key):
                 raise ValueError("Source package differs from its tested metadata")
         artifacts.append({"kind": kind, "os": system, "arch": arch, "name": name,
                           "sha256": digest, "size": len(content), "protocol": "cmdb-policy-v1"})
-    payload = {"schema": 1, "repository": repo, "ref": ref,
+    payload = {"schema": 2, "repository": repo, "ref": ref,
         "workflow": ".github/workflows/cmdb-tests.yml", "commit": commit, "run_id": run_id,
-        "version": version, "tag": "agent-v" + version, "artifacts": artifacts}
+        "version": version, "tag": "agent-v" + version, "changelog": changelog,
+        "artifacts": artifacts}
     envelope = sign(payload, key)
     public = Ed25519PrivateKey.from_private_bytes(decode(key, 32)).public_key().public_bytes_raw()
     import base64
@@ -59,12 +61,19 @@ def publish(payload, files, token):
             "X-GitHub-Api-Version": "2022-11-28"})
         with urlopen(request, timeout=120) as response:
             return json.load(response)
-    # A retry gets a new version. Never replace assets of an existing version.
+    labels = {"added": "Dodano", "fixed": "Poprawiono", "security": "Bezpieczeństwo"}
+    notes = ["Automatycznie przetestowane wydanie. Import do CMDB nie zmienia przypisań maszyn.", ""]
+    for category in ("added", "fixed", "security"):
+        rows = [item["text"] for item in payload["changelog"] if item["category"] == category]
+        if rows:
+            notes.extend(["## " + labels[category], *["- " + row for row in rows], ""])
+    notes.extend([f"Commit: {payload['commit']}",
+                  f"CI: https://github.com/{repo}/actions/runs/{payload['run_id']}"])
+    # Never replace assets of an existing published version.
     release = api(f"https://api.github.com/repos/{repo}/releases", {
         "tag_name": payload["tag"], "target_commitish": payload["commit"],
         "name": "CMDB Agent " + payload["version"], "draft": True,
-        "body": "Automatycznie przetestowane wydanie. Import do CMDB nie zmienia przypisan maszyn.\n"
-                f"Commit: {payload['commit']}\nCI: https://github.com/{repo}/actions/runs/{payload['run_id']}"})
+        "body": "\n".join(notes)})
     for path in files:
         api(f"https://uploads.github.com/repos/{repo}/releases/{release['id']}/assets?name={quote(path.name)}",
             path.read_bytes(), binary=True)

@@ -92,6 +92,7 @@
           <td><code>{{ p.klucz }}</code></td>
           <td class="strong">{{ p.etykieta }}
             {% if p.wymagane %}<span class="wymagane" title="wymagane przy zapisie karty">*</span>{% endif %}
+            {% if p.w_etykiecie %}<span class="badge" title="buduje etykietę wpisu">etykieta</span>{% endif %}
           </td>
           <td class="small">{{ p.typ }}{% if p.format %} · {{ p.format }}{% endif %}</td>
           <td class="small">{% if p.rola %}<span class="badge">{{ p.rola }}</span>{% else %}—{% endif %}</td>

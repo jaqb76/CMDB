@@ -9,7 +9,32 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  release-plan:
+    name: Decide whether the agent changed
+    runs-on: ubuntu-latest
+    outputs:
+      agent_changed: ${{ steps.plan.outputs.agent_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare agent inputs and collect changelog
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: >-
+          python scripts/release_plan.py --base "$BASE_SHA" --head "$HEAD_SHA"
+          --output agent-release-changelog.json --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.plan.outputs.agent_changed == 'true'
+        with:
+          name: CMDB-Agent-Release-Plan-${{ github.run_id }}
+          path: agent-release-changelog.json
+          if-no-files-found: error
+
   server:
+    needs: release-plan
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -31,6 +56,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Allocate one version for this CI run and attempt
+        if: needs.release-plan.outputs.agent_changed == 'true'
         id: version
         shell: bash
         run: |
@@ -42,11 +68,13 @@ jobs:
         env:
           PGOPTIONS: "-c lock_timeout=10000 -c statement_timeout=30000"
       - name: Build and smoke-test the Linux source package
+        if: needs.release-plan.outputs.agent_changed == 'true'
         run: |
           python -m cmdb_server.pakiet ../agent --do ../agent/dist/source
           python ../scripts/smoke_source.py ../agent/dist/source/cmdb-agent-zrodla.tar.gz
         working-directory: server
       - uses: actions/upload-artifact@v4
+        if: needs.release-plan.outputs.agent_changed == 'true'
         with:
           name: CMDB-Agent-Linux-${{ steps.version.outputs.version }}
           path: agent/dist/source/*
@@ -59,17 +87,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Allocate one version for this CI run and attempt
-        id: version
-        shell: bash
-        run: |
-          version=$(python agent/packaging/release_version.py --write)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
       - run: pip install pytest
       - run: python -m pytest -q
         working-directory: agent
 
   windows-agent:
+    needs: release-plan
+    if: needs.release-plan.outputs.agent_changed == 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -129,7 +153,11 @@ jobs:
 
   verify-release:
     name: Verify complete release with disposable test signature
-    needs: [server, agent, windows-agent]
+    needs: [release-plan, server, agent, windows-agent]
+    if: >-
+      always() && needs.release-plan.outputs.agent_changed == 'true' &&
+      needs.server.result == 'success' && needs.agent.result == 'success' &&
+      needs.windows-agent.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -138,6 +166,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install 'cryptography>=42'
+      - uses: actions/download-artifact@v4
+        with:
+          name: CMDB-Agent-Release-Plan-${{ github.run_id }}
+          path: release
       - uses: actions/download-artifact@v4
         with:
           name: CMDB-Agent-Windows-${{ needs.server.outputs.version }}
@@ -153,8 +185,12 @@ jobs:
 
   publish:
     name: Publish signed agent release
-    needs: [server, agent, windows-agent, verify-release]
-    if: github.event_name == 'push' && github.repository == 'jaqb76/CMDB' && github.ref == 'refs/heads/claude/os-data-collection-agent-gfz2o8'
+    needs: [release-plan, server, agent, windows-agent, verify-release]
+    if: >-
+      always() && needs.release-plan.outputs.agent_changed == 'true' &&
+      needs.verify-release.result == 'success' && github.event_name == 'push' &&
+      github.repository == 'jaqb76/CMDB' &&
+      github.ref == 'refs/heads/claude/os-data-collection-agent-gfz2o8'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: agent-release
@@ -166,6 +202,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install 'cryptography>=42'
+      - uses: actions/download-artifact@v4
+        with:
+          name: CMDB-Agent-Release-Plan-${{ github.run_id }}
+          path: release
       - uses: actions/download-artifact@v4
         with:
           name: CMDB-Agent-Windows-${{ needs.server.outputs.version }}

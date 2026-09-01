@@ -37,9 +37,10 @@ def signed_release(tmp_path, monkeypatch):
             archive.addfile(entry, io.BytesIO(content))
     contents = {"worker": _plik_gui(), "setup": _plik_gui() + b"setup", "source": stream.getvalue()}
     names = {"worker": "cmdb-agent.exe", "setup": f"CMDB-Agent-Setup-{version}.exe", "source": "cmdb-agent-zrodla.tar.gz"}
-    payload = {"schema": 1, "repository": settings.release_repository, "ref": settings.release_ref,
+    payload = {"schema": 2, "repository": settings.release_repository, "ref": settings.release_ref,
         "workflow": ".github/workflows/cmdb-tests.yml", "commit": "a" * 40, "run_id": 123,
         "version": version, "tag": "agent-v" + version,
+        "changelog": [{"category": "fixed", "text": "Poprawiono uruchamianie agenta w zasobniku systemowym."}],
         "artifacts": [{"kind": kind, "os": "linux" if kind == "source" else "windows",
             "arch": "zrodla" if kind == "source" else "x86_64", "name": names[kind],
             "size": len(content), "sha256": hashlib.sha256(content).hexdigest(), "protocol": "cmdb-policy-v1"}
@@ -74,6 +75,7 @@ def test_import_is_atomic_idempotent_and_does_not_select_any_target(signed_relea
         assert db.scalar(select(func.count(TenantAgentTarget.id))) == 0
         worker = next(r for r in releases if r.os_family == "windows")
         assert worker.provenance.setup_storage_name
+        assert worker.changelog == payload["changelog"]
 
 
 @pytest.mark.parametrize("fault", ["bytes", "signature", "tag", "missing", "unknown_key", "oversize"])

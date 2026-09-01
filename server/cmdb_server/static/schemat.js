@@ -85,6 +85,9 @@
     if (rolePowtorzone.length) {
       powody.push("rola „" + rolePowtorzone[0] + "” przypisana dwa razy — jedna rola, jedno pole");
     }
+    if (schemat.pola.length && !schemat.pola.some(function (p) { return !!p.w_etykiecie; })) {
+      powody.push("zaznacz co najmniej jedno pole budujące etykietę wpisu");
+    }
 
     schemat.pola.forEach(function (p) {
       if (p.typ === "wybor" && (!p.opcje || !p.opcje.length)) {
@@ -307,7 +310,20 @@
     wymagane.appendChild(znacznik);
     wymagane.appendChild(el("span", null, "wymagane w karcie słownika"));
     siatka.appendChild(wiersz("Obowiązkowe", wymagane,
-      "Nie blokuje wpisu tworzonego przy dodawaniu maszyny.", "szer-4"));
+      "Wymagane przy zapisie karty wpisu.", "szer-4"));
+
+    var etykieta = el("label", "kolumna-wybor");
+    var znacznikEtykiety = el("input");
+    znacznikEtykiety.type = "checkbox";
+    znacznikEtykiety.checked = !!p.w_etykiecie;
+    znacznikEtykiety.addEventListener("change", function () {
+      p.w_etykiecie = znacznikEtykiety.checked;
+      rysuj();
+    });
+    etykieta.appendChild(znacznikEtykiety);
+    etykieta.appendChild(el("span", null, "pokazuj w etykiecie wpisu"));
+    siatka.appendChild(wiersz("Etykieta wpisu", etykieta,
+      "Łączy wybrane pola, np. Miasto · Ulica · Dział.", "szer-4"));
 
     siatka.appendChild(wiersz("Podpowiedź w polu", tekstowe(p.podpowiedz, function (w) {
       if (w) { p.podpowiedz = w; } else { delete p.podpowiedz; }
@@ -324,7 +340,7 @@
   function rysuj() {
     lista.textContent = "";
     if (!schemat.pola.length) {
-      lista.appendChild(el("p", "muted", "Słownik nie ma jeszcze żadnego pola poza nazwą."));
+      lista.appendChild(el("p", "muted", "Słownik nie ma jeszcze żadnych pól."));
     }
     schemat.pola.forEach(function (p, numer) { lista.appendChild(karta(p, numer)); });
     zapisz();
@@ -334,7 +350,7 @@
   dodajPole.addEventListener("click", function () {
     if (schemat.pola.length >= (limity.pola || 40)) { return; }
     schemat.pola.push({klucz: "", etykieta: "Nowe pole", typ: "tekst",
-                       opcje: [], wymagane: false, grupa: "Pozostale"});
+                       opcje: [], wymagane: false, w_etykiecie: false, grupa: "Pozostale"});
     rysuj();
     lista.lastChild.querySelector("input").focus();
   });

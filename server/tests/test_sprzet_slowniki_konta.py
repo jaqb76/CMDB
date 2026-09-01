@@ -7,6 +7,8 @@ komus haslo.
 """
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import select
 
 from cmdb_server.db import SessionLocal
@@ -31,16 +33,38 @@ def _admin_firmy(client, tenant, make_user, email="admin@firma-a.pl"):
 
 
 def _dodaj_osobe(client, imie: str, email: str, dzial: str = "") -> str:
+    dzial_id = _dodaj_wpis(client, "dzial", dzial) if dzial else ""
     csrf = _extract_csrf(client.get("/owners").text)
     odpowiedz = client.post(
         "/owners",
-        data={"full_name": imie, "email": email, "phone": "", "department": dzial,
+        data={"full_name": imie, "email": email, "phone": "", "department_id": dzial_id,
               "notes": "", "csrf_token": csrf},
         follow_redirects=False,
     )
     assert odpowiedz.status_code == 303, odpowiedz.text
     with SessionLocal() as db:
         return db.execute(select(Owner).where(Owner.email == email)).scalar_one().id
+
+
+def _dodaj_wpis(client, kategoria: str, etykieta: str) -> str:
+    strona = client.get("/slowniki").text
+    istniejacy = re.search(r'/slowniki/wpis/([^"/]+)">' + re.escape(etykieta) + r'</a>', strona)
+    if istniejacy:
+        return istniejacy.group(1)
+    csrf = _extract_csrf(strona)
+    odpowiedz = client.post("/slowniki", data={"kategoria": kategoria, "csrf_token": csrf},
+                             follow_redirects=False)
+    wpis_id = odpowiedz.headers["location"].rsplit("/", 1)[1]
+    csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
+    pola = {
+        "dzial": {"pole_nazwa_dzialu": etykieta},
+        "lokalizacja": {"pole_typ_miejsca": "inne", "pole_miasto": etykieta},
+        "dostawca": {"pole_nazwa_firmy": etykieta, "pole_kanal_zgloszen": "portal"},
+    }[kategoria]
+    zapis = client.post(f"/slowniki/wpis/{wpis_id}", data={**pola, "csrf_token": csrf},
+                        follow_redirects=False)
+    assert zapis.status_code == 303 and "blad=" not in zapis.headers["location"]
+    return wpis_id
 
 
 def _dodaj_sprzet(client, **nadpisania):
@@ -52,14 +76,20 @@ def _dodaj_sprzet(client, **nadpisania):
         "model": "CBS350",
         "numer_seryjny": "SN-SW-1",
         "ip": "10.10.5.30",
-        "lokalizacja": "Serwerownia A",
+        "lokalizacja_id": _dodaj_wpis(client, "lokalizacja", "Serwerownia A"),
         "rola": "switch dostepowy",
         "owner_id": "",
         "uzytkownik_id": "",
-        "dostawca": "Komputronik",
+        "dostawca_id": _dodaj_wpis(client, "dostawca", "Komputronik"),
         "uwagi": "24 porty",
         "csrf_token": csrf,
     }
+    if "lokalizacja" in nadpisania:
+        nazwa = nadpisania.pop("lokalizacja")
+        nadpisania["lokalizacja_id"] = _dodaj_wpis(client, "lokalizacja", nazwa) if nazwa else ""
+    if "dostawca" in nadpisania:
+        nazwa = nadpisania.pop("dostawca")
+        nadpisania["dostawca_id"] = _dodaj_wpis(client, "dostawca", nazwa) if nazwa else ""
     dane.update(nadpisania)
     return client.post("/assets/nowy", data=dane, follow_redirects=False)
 
@@ -140,6 +170,7 @@ def test_danych_maszyny_z_agentem_nie_edytuje_sie_recznie(client, tenant_a, make
         asset_id = db.execute(select(Asset)).scalar_one().id
 
     csrf = _extract_csrf(client.get(f"/assets/{asset_id}").text)
+    lokalizacja_id = _dodaj_wpis(client, "lokalizacja", "Pokoj 214")
     odpowiedz = client.post(
         f"/assets/{asset_id}/dane",
         data={"nazwa": "PODMIENIONA", "typ": TYP_KOMPUTER, "producent": "", "model": "",
@@ -180,7 +211,7 @@ def test_opiekun_i_uzytkownik_to_dwie_rozne_osoby(client, tenant_a, make_user):
     odpowiedz = client.post(
         f"/assets/{asset_id}/owner",
         data={"owner_id": opiekun, "uzytkownik_id": uzytkownik,
-              "role_label": "laptop ksiegowosci", "lokalizacja": "Pokoj 214",
+              "role_label": "laptop ksiegowosci", "lokalizacja_id": lokalizacja_id,
               "csrf_token": csrf},
         follow_redirects=False,
     )
@@ -213,7 +244,7 @@ def test_uzytkownik_spoza_firmy_odrzucony(client, tenant_a, tenant_b, make_user)
     odpowiedz = client.post(
         f"/assets/{asset_id}/owner",
         data={"owner_id": "", "uzytkownik_id": obcy, "role_label": "",
-              "lokalizacja": "", "csrf_token": csrf},
+              "lokalizacja_id": "", "csrf_token": csrf},
         follow_redirects=False,
     )
     assert odpowiedz.status_code == 400
@@ -221,8 +252,7 @@ def test_uzytkownik_spoza_firmy_odrzucony(client, tenant_a, tenant_b, make_user)
 
 # --- slowniki ---------------------------------------------------------------
 
-def test_nowa_wartosc_z_formularza_trafia_do_slownika(client, tenant_a, make_user):
-    """Slownik zapelnia sie sam - to caly sens tego rozwiazania."""
+def test_formularze_korzystaja_z_rekordow_slownika(client, tenant_a, make_user):
     _admin_firmy(client, tenant_a, make_user)
     _dodaj_osobe(client, "Anna Nowak", "anna@firma-a.pl", "Ksiegowosc")
     _dodaj_sprzet(client)
@@ -241,18 +271,18 @@ def test_nowa_wartosc_z_formularza_trafia_do_slownika(client, tenant_a, make_use
     assert "Serwerownia A" in strona.text
 
 
-def test_ta_sama_wartosc_inaczej_zapisana_nie_tworzy_drugiego_wpisu(client, tenant_a, make_user):
+def test_dwa_sprzety_moga_wskazac_ten_sam_rekord_slownika(client, tenant_a, make_user):
     _admin_firmy(client, tenant_a, make_user)
-    _dodaj_sprzet(client, nazwa="SW-1", lokalizacja="Serwerownia A")
-    _dodaj_sprzet(client, nazwa="SW-2", lokalizacja="  serwerownia   a ")
+    lokalizacja_id = _dodaj_wpis(client, "lokalizacja", "Serwerownia A")
+    _dodaj_sprzet(client, nazwa="SW-1", lokalizacja_id=lokalizacja_id)
+    _dodaj_sprzet(client, nazwa="SW-2", lokalizacja_id=lokalizacja_id)
 
     with SessionLocal() as db:
         lokalizacje = db.execute(
             select(WpisSlownika).where(WpisSlownika.kategoria == "lokalizacja")
         ).scalars().all()
-        assert [w.wartosc for w in lokalizacje] == ["Serwerownia A"]
-        # Drugi sprzet dostaje pisownie ze slownika, nie swoja.
-        assert {a.lokalizacja.wartosc for a in db.execute(select(Asset)).scalars()} == {"Serwerownia A"}
+        assert len([w for w in lokalizacje if w.id == lokalizacja_id]) == 1
+        assert {a.lokalizacja_id for a in db.execute(select(Asset)).scalars()} == {lokalizacja_id}
 
 
 def test_usuniecie_ze_slownika_odpina_sprzet_ale_go_nie_kasuje(client, tenant_a, make_user):
@@ -337,7 +367,7 @@ def test_audytor_widzi_kazda_firme_ale_nic_nie_zapisze(client, tenant_a, tenant_
     proba = client.post(
         f"/assets/{asset_b}/owner",
         data={"owner_id": "", "uzytkownik_id": "", "role_label": "podmieniona",
-              "lokalizacja": "", "csrf_token": csrf},
+              "lokalizacja_id": "", "csrf_token": csrf},
         follow_redirects=False,
     )
     assert proba.status_code == 403

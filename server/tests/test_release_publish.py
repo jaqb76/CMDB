@@ -41,7 +41,8 @@ def test_release_visible_only_after_all_uploads(publisher, tmp_path, monkeypatch
 
     monkeypatch.setattr(publisher, "urlopen", fake_open)
     payload = {"repository": "jaqb76/CMDB", "tag": "agent-v0.6.42+1",
-               "version": "0.6.42+1", "commit": "a" * 40, "run_id": 42}
+               "version": "0.6.42+1", "commit": "a" * 40, "run_id": 42,
+               "changelog": [{"category": "fixed", "text": "Poprawka testowa wydania agenta."}]}
     if failed_upload is None:
         publisher.publish(payload, files, "TEST-NOT-A-TOKEN")
         assert uploaded == 4
@@ -66,7 +67,8 @@ def test_existing_tag_is_not_overwritten(publisher, monkeypatch):
 
     monkeypatch.setattr(publisher, "urlopen", conflict)
     payload = {"repository": "jaqb76/CMDB", "tag": "agent-v0.6.42+1",
-               "version": "0.6.42+1", "commit": "a" * 40, "run_id": 42}
+               "version": "0.6.42+1", "commit": "a" * 40, "run_id": 42,
+               "changelog": [{"category": "fixed", "text": "Poprawka testowa wydania agenta."}]}
     with pytest.raises(HTTPError):
         publisher.publish(payload, [], "TEST-NOT-A-TOKEN")
     assert len(calls) == 1 and calls[0].method == "POST"

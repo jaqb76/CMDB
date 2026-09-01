@@ -260,7 +260,7 @@ def zapisz_zakup(
     asset_id: str,
     purchase_date: str = Form(""),
     warranty_until: str = Form(""),
-    vendor: str = Form(""),
+    dostawca_id: str = Form(""),
     purchase_price: str = Form(""),
     purchase_currency: str = Form(""),
     invoice_number: str = Form(""),
@@ -310,9 +310,11 @@ def zapisz_zakup(
 
     maszyna.purchase_date = data(purchase_date)
     maszyna.warranty_until = data(warranty_until)
-    # Nowy dostawca dopisuje sie do slownika firmy - podpowie sie przy
-    # nastepnym sprzecie zamiast powstac po raz drugi w innej pisowni.
-    maszyna.vendor = slowniki.zapewnij(db, ctx, "dostawca", vendor)
+    try:
+        dostawca = slowniki.wybierz(db, ctx, "dostawca", dostawca_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    maszyna.dostawca_id = dostawca.id if dostawca else None
     maszyna.purchase_price = kwota(purchase_price)
     maszyna.purchase_currency = purchase_currency.strip()[:8].upper() or None
     maszyna.invoice_number = invoice_number.strip()[:120] or None

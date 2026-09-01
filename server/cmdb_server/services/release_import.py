@@ -173,7 +173,8 @@ def import_release(db, release, github, settings):
                 _, artifact = paths[kind]
                 row = AgentRelease(version=manifest["version"], os_family=artifact["os"], arch=artifact["arch"],
                     filename=artifact["name"], storage_name=stored[kind], sha256=artifact["sha256"],
-                    size_bytes=artifact["size"], created_by="GitHub CI", notes="CI: " + manifest["commit"])
+                    size_bytes=artifact["size"], created_by="GitHub CI",
+                    notes="CI: " + manifest["commit"], changelog=manifest["changelog"])
                 db.add(row)
                 db.flush()
                 db.add(ReleaseProvenance(release_id=row.id, repository=settings.release_repository,

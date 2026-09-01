@@ -537,3 +537,17 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 }
 .podzakladki button.is-active { color: var(--text); border-bottom-color: var(--accent); }
 .podzakladki button:hover { color: var(--text); }
+
+.modal-card {
+  width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
+  overflow: auto; border: 1px solid var(--border); border-radius: 14px;
+  padding: 22px; color: var(--text); background: var(--panel);
+  box-shadow: 0 24px 70px rgb(0 0 0 / .35);
+}
+.modal-card::backdrop { background: rgb(8 15 28 / .62); backdrop-filter: blur(2px); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.modal-head h2 { margin: 0; }
+.modal-grid { display: grid; grid-template-columns: 150px 1fr; gap: 8px 16px; margin-top: 18px; }
+.modal-grid dt { color: var(--muted); }
+.modal-grid dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .modal-grid { grid-template-columns: 1fr; gap: 2px; } }

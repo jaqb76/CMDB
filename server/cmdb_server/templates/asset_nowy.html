@@ -49,22 +49,19 @@
       </div>
     </div>
 
-    <label for="lokalizacja">Lokalizacja</label>
-    <input id="lokalizacja" name="lokalizacja" maxlength="200" list="slownik-lokalizacje"
-           autocomplete="off" placeholder="wybierz lub wpisz nowa">
-    <datalist id="slownik-lokalizacje">
-      {% for l in podpowiedzi.lokalizacja %}<option value="{{ l.wartosc }}"></option>{% endfor %}
-    </datalist>
+    <label for="lokalizacja_id">Lokalizacja</label>
+    <select id="lokalizacja_id" name="lokalizacja_id">
+      <option value="">— nieprzypisana —</option>
+      {% for l in podpowiedzi.lokalizacja %}<option value="{{ l.id }}">{{ l.wartosc }}</option>{% endfor %}
+    </select>
 
-    <label for="dostawca">Dostawca</label>
-    <input id="dostawca" name="dostawca" maxlength="200" list="slownik-dostawcy"
-           autocomplete="off" placeholder="wybierz lub wpisz nowego">
-    <datalist id="slownik-dostawcy">
-      {% for d in podpowiedzi.dostawca %}<option value="{{ d.wartosc }}"></option>{% endfor %}
-    </datalist>
+    <label for="dostawca_id">Dostawca</label>
+    <select id="dostawca_id" name="dostawca_id">
+      <option value="">— nieprzypisany —</option>
+      {% for d in podpowiedzi.dostawca %}<option value="{{ d.id }}">{{ d.wartosc }}</option>{% endfor %}
+    </select>
     <p class="small muted">
-      Nowa lokalizacja i nowy dostawca dopisza sie do <a href="/slowniki">slownika</a> firmy
-      od razu po zapisaniu.
+      Brakujący rekord dodaj i opisz wcześniej w <a href="/slowniki">słownikach firmy</a>.
     </p>
 
     <div class="grid-2">

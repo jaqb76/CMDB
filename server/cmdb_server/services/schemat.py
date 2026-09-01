@@ -162,6 +162,7 @@ class Pole(BaseModel):
     format: str | None = None
     opcje: list[str] = Field(default_factory=list, max_length=MAKS_OPCJI)
     wymagane: bool = False
+    w_etykiecie: bool = False
     rola: str | None = None
     grupa: str = Field(default="Pozostale", max_length=MAKS_ETYKIETY)
     podpowiedz: str | None = Field(default=None, max_length=120)
@@ -207,11 +208,24 @@ class Schemat(BaseModel):
             raise ValueError("jedna rola moze byc przypisana tylko do jednego pola")
         return pola
 
+    @model_validator(mode="after")
+    def ma_etykiete(self):
+        if self.pola and not any(p.w_etykiecie for p in self.pola):
+            raise ValueError("co najmniej jedno pole musi budowac etykiete wpisu")
+        return self
+
     def pole(self, klucz: str) -> Pole | None:
         return next((p for p in self.pola if p.klucz == klucz), None)
 
     def wg_roli(self, rola: str) -> Pole | None:
         return next((p for p in self.pola if p.rola == rola), None)
+
+    def pola_etykiety(self) -> list[Pole]:
+        """Pola budujace czytelny identyfikator wpisu na listach i selectach."""
+        wybrane = [p for p in self.pola if p.w_etykiecie]
+        # Zgodnosc z pustymi/starszymi schematami: pierwsze wymagane pole jest
+        # lepszym identyfikatorem niz techniczne "Nowy wpis".
+        return wybrane or [p for p in self.pola if p.wymagane][:1] or self.pola[:1]
 
     def grupy(self) -> dict[str, list[Pole]]:
         wynik: dict[str, list[Pole]] = {}

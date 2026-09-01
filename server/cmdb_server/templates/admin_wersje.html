@@ -128,7 +128,22 @@
         <td class="small">{{ w.size_bytes | bytes }}</td>
         <td class="small muted"><code>{{ w.sha256[:16] }}…</code></td>
         <td class="small">{{ w.created_by or '—' }}</td>
-        <td class="small muted">{{ w.notes or '' }}</td>
+        <td class="small muted">
+          {% if w.changelog %}
+            <button type="button" class="btn btn-small" data-dialog-open="changelog-{{ w.id }}">Co się zmieniło</button>
+            <dialog id="changelog-{{ w.id }}" class="modal-card">
+              <div class="modal-head"><h2>Agent {{ w.version }}</h2>
+                <button type="button" class="btn btn-small" data-dialog-close>Zamknij</button></div>
+              {% for rodzaj, etykieta in [('added', 'Dodano'), ('fixed', 'Poprawiono'), ('security', 'Bezpieczeństwo')] %}
+                {% set pozycje = w.changelog | selectattr('category', 'equalto', rodzaj) | list %}
+                {% if pozycje %}<h3>{{ etykieta }}</h3><ul>
+                  {% for pozycja in pozycje %}<li>{{ pozycja.text }}</li>{% endfor %}
+                </ul>{% endif %}
+              {% endfor %}
+              <p class="muted small">{{ w.notes or '' }}</p>
+            </dialog>
+          {% else %}Brak opisu zmian{% endif %}
+        </td>
         <td class="small">
           {% if w.provenance and w.provenance.setup_storage_name and release_admitted.get(w.id) %}
             <a class="btn btn-small" href="/admin/releases/{{ w.id }}/setup">Pobierz setup</a>

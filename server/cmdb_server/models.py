@@ -563,6 +563,9 @@ class AgentRelease(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Podpisany, uporzadkowany opis zmian z manifestu CI. Nie jest generowany
+    # z przypadkowej listy wszystkich commitow serwera.
+    changelog: Mapped[list | None] = mapped_column(JSONType)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_by: Mapped[str | None] = mapped_column(String(255))
 
