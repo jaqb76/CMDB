@@ -110,12 +110,14 @@ def test_portal_user_sees_only_own_company(client, tenant_a, tenant_b, make_user
 
 
 def test_owner_from_other_tenant_cannot_be_assigned(client, tenant_a, tenant_b, make_user):
-    from cmdb_server.models import Owner
+    from cmdb_server.models import WpisSlownika
 
     enroll(client, tenant_a["token"], machine_id="maszyna-a-0001", hostname="A-01")
     with SessionLocal() as db:
-        foreign_owner = Owner(
-            tenant_id=tenant_b["id"], full_name="Obcy Opiekun", email="obcy@firma-b.pl"
+        foreign_owner = WpisSlownika(
+            tenant_id=tenant_b["id"], kategoria="osoba", wartosc="Obcy Opiekun",
+            klucz="obcy opiekun",
+            atrybuty={"imie_nazwisko": "Obcy Opiekun", "email": "obcy@firma-b.pl"},
         )
         db.add(foreign_owner)
         db.commit()

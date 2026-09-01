@@ -15,6 +15,19 @@ from __future__ import annotations
 from .schemat import Schemat
 
 WZORCE: dict[str, list[dict]] = {
+    "osoba": [
+        {"klucz": "imie_nazwisko", "etykieta": "Imie i nazwisko", "typ": "tekst",
+         "wymagane": True, "w_etykiecie": True, "grupa": "Tozsamosc"},
+        {"klucz": "email", "etykieta": "E-mail", "typ": "tekst", "format": "email",
+         "wymagane": True, "grupa": "Kontakt", "podpowiedz": "jan.kowalski@firma.pl"},
+        {"klucz": "telefon", "etykieta": "Telefon", "typ": "tekst", "format": "telefon",
+         "grupa": "Kontakt"},
+        {"klucz": "dzial", "etykieta": "Dzial", "typ": "odwolanie", "cel": "dzial",
+         "grupa": "Organizacja"},
+        {"klucz": "stanowisko", "etykieta": "Stanowisko", "typ": "tekst",
+         "grupa": "Organizacja"},
+        {"klucz": "notatki", "etykieta": "Notatki", "typ": "notatka", "grupa": "Pozostale"},
+    ],
     "dzial": [
         {"klucz": "nazwa_dzialu", "etykieta": "Dział", "typ": "tekst",
          "wymagane": True, "w_etykiecie": True, "grupa": "Tozsamosc",

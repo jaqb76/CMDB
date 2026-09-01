@@ -19,7 +19,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..models import KATEGORIE_SLOWNIKA, Asset, Owner, SchematSlownika, WpisSlownika, utcnow
+from ..models import KATEGORIE_SLOWNIKA, Asset, SchematSlownika, WpisSlownika, utcnow
 from . import schemat as definicje
 from . import wzorzec
 from .scoping import TenantContext
@@ -28,10 +28,14 @@ MAKS_DLUGOSC = 200
 
 # Co wskazuje wpis danej kategorii. Dzial nalezy do OSOBY, nie do maszyny:
 # jedna osoba pracuje w dziale, a sprzet ma opiekuna - dzial wynika stad.
-WLASCICIEL = {
-    "dzial": ("Owner", "dzial_id"),
-    "lokalizacja": ("Asset", "lokalizacja_id"),
-    "dostawca": ("Asset", "dostawca_id"),
+# Ktore kolumny maszyny wskazuja wpis danej kategorii. Dzial nie ma zadnej:
+# maszyna nie zna dzialu wprost, bo dzial nalezy do osoby, ktora sie nia
+# opiekuje. Nie znaczy to jednak, ze dzialu nikt nie uzywa - patrz nizej.
+KOLUMNY_ZASOBU: dict[str, tuple[str, ...]] = {
+    "osoba": ("owner_id", "uzytkownik_id"),
+    "lokalizacja": ("lokalizacja_id",),
+    "dostawca": ("dostawca_id",),
+    "dzial": (),
 }
 
 
@@ -230,13 +234,8 @@ def wybierz(db: Session, ctx: TenantContext, kategoria: str,
 
 
 def _wartosc_odwolania(db: Session, ctx: TenantContext, pole, identyfikator: str) -> str:
-    if pole.cel == "osoba":
-        osoba = db.execute(select(Owner).where(
-            Owner.id == identyfikator, Owner.tenant_id == ctx.tenant_id
-        )).scalar_one_or_none()
-        if osoba is None:
-            raise definicje.BladPola({pole.klucz: "wybierz osobę z tej firmy"})
-        return osoba.full_name
+    # Osoba nie jest juz przypadkiem szczegolnym: to wpis slownika jak kazdy
+    # inny, wiec sprawdzamy go ta sama droga.
     powiazany = db.execute(select(WpisSlownika).where(
         WpisSlownika.id == identyfikator,
         WpisSlownika.tenant_id == ctx.tenant_id,
@@ -261,8 +260,8 @@ def zbuduj_etykiete(db: Session, ctx: TenantContext, opis: definicje.Schemat,
     return " · ".join(czesci)[:MAKS_DLUGOSC]
 
 
-def szczegoly(db: Session, ctx: TenantContext,
-              pozycja: WpisSlownika | None) -> list[dict[str, str]]:
+def szczegoly(db: Session, ctx: TenantContext, pozycja: WpisSlownika | None,
+              z_kluczem: bool = False) -> list[dict[str, str]]:
     """Czytelne pola rekordu do podgladu, lacznie z nazwami odwołań."""
     if pozycja is None:
         return []
@@ -279,7 +278,10 @@ def szczegoly(db: Session, ctx: TenantContext,
                 wartosc = "— brak powiązanego rekordu —"
         elif pole.typ == "logiczna":
             wartosc = "tak" if wartosc else "nie"
-        wynik.append({"etykieta": pole.etykieta, "wartosc": str(wartosc)})
+        pozycja_opisu = {"etykieta": pole.etykieta, "wartosc": str(wartosc)}
+        if z_kluczem:
+            pozycja_opisu["klucz"] = pole.klucz
+        wynik.append(pozycja_opisu)
     return wynik
 
 
@@ -322,14 +324,41 @@ def podpowiedzi(db: Session, ctx: TenantContext) -> dict[str, list[WpisSlownika]
 
 
 def uzycie_wpisu(db: Session, ctx: TenantContext, pozycja: WpisSlownika) -> int:
-    """Ile rekordow wskazuje ten wpis - maszyn albo osob, zaleznie od kategorii."""
-    nazwa, pole = WLASCICIEL[pozycja.kategoria]
-    model = {"Owner": Owner, "Asset": Asset}[nazwa]
-    return int(db.execute(
-        select(func.count()).select_from(model).where(
-            model.tenant_id == ctx.tenant_id, getattr(model, pole) == pozycja.id
-        )
-    ).scalar_one())
+    """Ile rekordow wskazuje ten wpis - maszyn ORAZ innych wpisow slownika.
+
+    Liczenie samych maszyn pokazywalo przy dzialach zero, mimo ze wskazywaly
+    je osoby i lokalizacje. Dzial nie ma wlasnej kolumny w tabeli maszyn -
+    prowadza do niego wylacznie pola typu "odwolanie" z innych slownikow,
+    wiec pominiecie ich znaczylo, ze kazdy dzial wyglada na nieuzywany.
+    A od tej liczby zalezy, czy ktos usunie wpis.
+    """
+    razem = 0
+    for kolumna in KOLUMNY_ZASOBU.get(pozycja.kategoria, ()):
+        razem += int(db.execute(
+            select(func.count()).select_from(Asset).where(
+                Asset.tenant_id == ctx.tenant_id, getattr(Asset, kolumna) == pozycja.id
+            )
+        ).scalar_one())
+    razem += _uzycie_w_slownikach(db, ctx, pozycja)
+    return razem
+
+
+def _uzycie_w_slownikach(db: Session, ctx: TenantContext, pozycja: WpisSlownika) -> int:
+    """Wpisy innych kategorii, ktore wskazuja ten rekord polem odwolania."""
+    razem = 0
+    for kategoria in KATEGORIE_SLOWNIKA:
+        opis = schemat(db, ctx, kategoria)
+        klucze = [p.klucz for p in opis.pola
+                  if p.typ == "odwolanie" and p.cel == pozycja.kategoria]
+        for klucz in klucze:
+            razem += int(db.execute(
+                select(func.count()).select_from(WpisSlownika).where(
+                    WpisSlownika.tenant_id == ctx.tenant_id,
+                    WpisSlownika.kategoria == kategoria,
+                    WpisSlownika.atrybuty[klucz].astext == pozycja.id,
+                )
+            ).scalar_one())
+    return razem
 
 
 def usun(db: Session, ctx: TenantContext, wpis_id: str) -> WpisSlownika | None:

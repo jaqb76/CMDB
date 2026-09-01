@@ -141,8 +141,14 @@ def repair_existing(db, existing, envelope, manifest, by_name, github, settings)
         if evidence.envelope != envelope:
             raise ImportFailure("Podpisany manifest istniejacego wydania ulegl zmianie")
         row = db.get(AgentRelease, evidence.release_id)
+        if row is None:
+            # Wydanie skasowano, a slad po nim zostal. To jest wlasnie sytuacja,
+            # ktorej ta funkcja ma NIE odwracac - nie blad niezgodnosci.
+            # Znacznik release_id=NULL ustawia baza przy kasowaniu, ale sesja,
+            # ktora skasowala wiersz, nadal widzi stara wartosc.
+            continue
         artifact = artifacts.get(evidence.kind)
-        if row is None or artifact is None or (
+        if artifact is None or (
                 row.version != manifest["version"] or row.os_family != artifact["os"] or
                 row.arch != artifact["arch"] or row.sha256 != artifact["sha256"] or
                 row.size_bytes != artifact["size"]):

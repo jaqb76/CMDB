@@ -72,30 +72,17 @@ def test_asset_without_report_renders(client, tenant_a, make_user):
 
 
 def test_owner_lifecycle(client, tenant_a, make_user):
+    """Osoba jest wpisem slownika, wiec powstaje ta sama droga co lokalizacja."""
+    from .test_sprzet_slowniki_konta import _dodaj_wpis
+
     asset_id = _seed(client, tenant_a)
     make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
     _login(client, "admin@firma-a.pl", "bardzo-dlugie-haslo")
 
-    csrf = _extract_csrf(client.get("/owners").text)
-    client.post(
-        "/owners",
-        data={
-            "full_name": "Anna Nowak",
-            "email": "anna.nowak@firma-a.pl",
-            "phone": "+48 600 100 200",
-            "department_id": "",
-            "notes": "",
-            "csrf_token": csrf,
-        },
-        follow_redirects=True,
-    )
-    owners_page = client.get("/owners")
-    assert "Anna Nowak" in owners_page.text
-
-    from cmdb_server.models import Owner
-
-    with SessionLocal() as db:
-        owner_id = db.execute(select(Owner)).scalar_one().id
+    owner_id = _dodaj_wpis(client, "osoba", "Anna Nowak",
+                           {"pole_email": "anna.nowak@firma-a.pl",
+                            "pole_telefon": "600100200"})
+    assert "Anna Nowak" in client.get("/slowniki?kategoria=osoba").text
 
     csrf = _extract_csrf(client.get(f"/assets/{asset_id}").text)
     client.post(
@@ -108,6 +95,8 @@ def test_owner_lifecycle(client, tenant_a, make_user):
     assert "Anna Nowak" in detail
     assert "serwer plikow" in detail
     assert "Anna Nowak" in client.get("/assets").text
+    # Stary adres nadal dziala - prowadzi do slownika osob.
+    assert client.get("/owners", follow_redirects=False).status_code == 303
 
 
 def test_token_issued_once_and_revocable(client, tenant_a, make_user):

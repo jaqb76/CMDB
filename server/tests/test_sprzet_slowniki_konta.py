@@ -16,7 +16,6 @@ from cmdb_server.models import (
     TYP_KOMPUTER,
     ZRODLO_RECZNE,
     Asset,
-    Owner,
     PortalUser,
     WpisSlownika,
 )
@@ -33,21 +32,14 @@ def _admin_firmy(client, tenant, make_user, email="admin@firma-a.pl"):
 
 
 def _dodaj_osobe(client, imie: str, email: str, dzial: str = "") -> str:
+    """Osoba jest teraz wpisem slownika - ta sama droga co lokalizacja."""
     dzial_id = _dodaj_wpis(client, "dzial", dzial) if dzial else ""
-    csrf = _extract_csrf(client.get("/owners").text)
-    odpowiedz = client.post(
-        "/owners",
-        data={"full_name": imie, "email": email, "phone": "", "department_id": dzial_id,
-              "notes": "", "csrf_token": csrf},
-        follow_redirects=False,
-    )
-    assert odpowiedz.status_code == 303, odpowiedz.text
-    with SessionLocal() as db:
-        return db.execute(select(Owner).where(Owner.email == email)).scalar_one().id
+    return _dodaj_wpis(client, "osoba", imie, {"pole_email": email,
+                                               "pole_dzial": dzial_id})
 
 
-def _dodaj_wpis(client, kategoria: str, etykieta: str) -> str:
-    strona = client.get("/slowniki").text
+def _dodaj_wpis(client, kategoria: str, etykieta: str, dodatkowe: dict | None = None) -> str:
+    strona = client.get("/slowniki?kategoria=" + kategoria).text
     istniejacy = re.search(r'/slowniki/wpis/([^"/]+)">' + re.escape(etykieta) + r'</a>', strona)
     if istniejacy:
         return istniejacy.group(1)
@@ -60,7 +52,9 @@ def _dodaj_wpis(client, kategoria: str, etykieta: str) -> str:
         "dzial": {"pole_nazwa_dzialu": etykieta},
         "lokalizacja": {"pole_typ_miejsca": "inne", "pole_miasto": etykieta},
         "dostawca": {"pole_nazwa_firmy": etykieta, "pole_kanal_zgloszen": "portal"},
+        "osoba": {"pole_imie_nazwisko": etykieta},
     }[kategoria]
+    pola = {k: v for k, v in {**pola, **(dodatkowe or {})}.items() if v}
     zapis = client.post(f"/slowniki/wpis/{wpis_id}", data={**pola, "csrf_token": csrf},
                         follow_redirects=False)
     assert zapis.status_code == 303 and "blad=" not in zapis.headers["location"]
@@ -225,7 +219,7 @@ def test_opiekun_i_uzytkownik_to_dwie_rozne_osoby(client, tenant_a, make_user):
 
     lista = client.get("/assets").text
     assert "Anna Nowak" in lista
-    assert "uzywa: Jan Kowalski" in lista
+    assert "używa: Jan Kowalski" in lista
 
 
 def test_uzytkownik_spoza_firmy_odrzucony(client, tenant_a, tenant_b, make_user):
@@ -266,7 +260,7 @@ def test_formularze_korzystaja_z_rekordow_slownika(client, tenant_a, make_user):
     assert ("lokalizacja", "Serwerownia A") in wpisy
     assert ("dostawca", "Komputronik") in wpisy
 
-    strona = client.get("/slowniki")
+    strona = client.get("/slowniki?kategoria=lokalizacja")
     assert strona.status_code == 200
     assert "Serwerownia A" in strona.text
 
@@ -301,7 +295,7 @@ def test_usuniecie_ze_slownika_odpina_sprzet_ale_go_nie_kasuje(client, tenant_a,
             select(WpisSlownika).where(WpisSlownika.kategoria == "lokalizacja")
         ).scalar_one().id
 
-    csrf = _extract_csrf(client.get("/slowniki").text)
+    csrf = _extract_csrf(client.get("/slowniki?kategoria=lokalizacja").text)
     assert client.post(f"/slowniki/{wpis_id}/usun", data={"csrf_token": csrf},
                        follow_redirects=False).status_code == 303
 
@@ -318,7 +312,7 @@ def test_slownik_nie_wychodzi_poza_firme(client, tenant_a, tenant_b, make_user):
     client.post("/logout")
 
     _admin_firmy(client, tenant_b, make_user, email="admin@firma-b.pl")
-    assert "Tajna serwerownia" not in client.get("/slowniki").text
+    assert "Tajna serwerownia" not in client.get("/slowniki?kategoria=lokalizacja").text
     assert "Tajna serwerownia" not in client.get("/assets/nowy").text
 
 

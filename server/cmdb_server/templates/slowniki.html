@@ -6,35 +6,73 @@
   <div>
     <h1>Słowniki firmy</h1>
     <p class="muted">
-      Działy, lokalizacje i dostawcy są rekordami z własnymi polami. Etykieta
-      widoczna na listach powstaje automatycznie, np. z miasta, ulicy i działu;
-      nie prowadzi się osobnego, podatnego na rozbieżności pola „Nazwa”.
+      Osoby, lokalizacje, działy i dostawcy są rekordami z własnymi polami.
+      Etykieta widoczna na listach powstaje z pól oznaczonych w schemacie, więc
+      nie prowadzi się osobnej, rozjeżdżającej się nazwy.
     </p>
   </div>
 </div>
 
-{% for kategoria, etykieta in kategorie.items() %}
-<section class="panel">
-  <div class="page-head" style="margin-bottom:12px">
-    <div>
-      <h2>{{ etykieta }} ({{ wpisy[kategoria] | length }})</h2>
-      <p class="muted small">{{ schematy[kategoria].pola | length }} pól w schemacie</p>
-    </div>
+{#
+  Zakładki zamiast czterech sekcji jedna pod drugą: każdy słownik czyta się
+  osobno, a złożone razem wymagały przewijania przez trzy nieinteresujące, żeby
+  dojść do czwartego. Wybór trafia do adresu, więc da się go zapisać w zakładce
+  przeglądarki i wraca po zapisie rekordu.
+#}
+<nav class="podzakladki">
+  {% for klucz, etykieta in kategorie.items() %}
+    <a href="/slowniki?kategoria={{ klucz }}"
+       class="{% if klucz == kategoria %}is-active{% endif %}">
+      {{ etykieta }} <span class="muted">{{ wpisy[klucz] | length }}</span>
+    </a>
+  {% endfor %}
+</nav>
+
+<div class="page-head" style="margin:18px 0 12px">
+  <div>
+    <h2>{{ kategorie[kategoria] }}</h2>
+    <p class="muted small">
+      {{ schemat.pola | length }} pól w schemacie ·
+      etykietę budują: {{ schemat.pola_etykiety() | map(attribute='etykieta') | join(', ') or '—' }}
+    </p>
+  </div>
+  <div class="row-form">
     {% if ctx.can_write %}
-    <div><a class="btn btn-small" href="/slowniki/{{ kategoria }}/schemat">Pola słownika</a></div>
+    <form method="post" action="/slowniki" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="kategoria" value="{{ kategoria }}">
+      <button type="submit" class="btn btn-primary">+ Dodaj</button>
+    </form>
+    <a class="btn" href="/slowniki/{{ kategoria }}/schemat">Pola słownika</a>
     {% endif %}
   </div>
+</div>
 
-  {% if wpisy[kategoria] %}
+{% if wpisy[kategoria] %}
+<section class="panel">
   <div class="tabela-przewijana">
     <table class="table">
       <thead>
-        <tr><th>Wpis</th><th>Stan</th><th class="lp">Używa</th><th>Dodano</th><th></th></tr>
+        <tr>
+          <th>Wpis</th>
+          {# Kolumny biora sie ze schematu, wiec lista pokazuje to, co firma
+             faktycznie u siebie prowadzi - a nie staly zestaw. #}
+          {% for p in kolumny %}<th class="{% if p.typ == 'liczba' %}lp{% endif %}">{{ p.etykieta }}</th>{% endfor %}
+          <th>Stan</th>
+          <th class="lp">Używa</th>
+          <th></th>
+        </tr>
       </thead>
       <tbody>
       {% for w in wpisy[kategoria] %}
         <tr>
           <td class="strong"><a href="/slowniki/wpis/{{ w.id }}">{{ w.wartosc }}</a></td>
+          {% for p in kolumny %}
+            <td class="small {% if p.typ == 'liczba' %}lp{% endif %}">
+              {% set wartosc = komorki[w.id].get(p.klucz) %}
+              {% if wartosc %}{{ wartosc }}{% else %}<span class="muted">—</span>{% endif %}
+            </td>
+          {% endfor %}
           <td class="small">
             {% if braki[w.id] %}
               <span class="badge badge-warn">szkic</span>
@@ -43,30 +81,31 @@
               <span class="badge badge-ok">komplet</span>
             {% endif %}
           </td>
-          <td class="lp">{{ uzycia[w.id] }}</td>
-          <td class="small muted">{{ w.utworzony | dt }}</td>
-          <td class="small"><a class="btn btn-small" href="/slowniki/wpis/{{ w.id }}">Otwórz</a></td>
+          <td class="lp" title="maszyny i wpisy innych słowników, które go wskazują">{{ uzycia[w.id] }}</td>
+          <td class="small">
+            <a class="btn btn-oko" href="/slowniki/wpis/{{ w.id }}"
+               title="Otwórz kartę" aria-label="Otwórz kartę">
+              <svg viewBox="0 0 20 14" width="17" height="13" aria-hidden="true" focusable="false">
+                <path d="M1 7s3.2-5.5 9-5.5S19 7 19 7s-3.2 5.5-9 5.5S1 7 1 7z"
+                      fill="none" stroke="currentColor" stroke-width="1.6"></path>
+                <circle cx="10" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
+              </svg>
+            </a>
+          </td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
-  {% else %}
-  <p class="muted">Pusto — dodaj pierwszy rekord zgodny ze schematem.</p>
-  {% endif %}
-
-  {% if ctx.can_write %}
-  <form method="post" action="/slowniki" class="inline-form" style="margin-top:14px">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="kategoria" value="{{ kategoria }}">
-    <button type="submit" class="btn">+ Dodaj {{ etykieta | lower }}</button>
-  </form>
-  {% endif %}
 </section>
-{% endfor %}
+{% else %}
+<p class="muted">Pusto — dodaj pierwszy rekord zgodny ze schematem.</p>
+{% endif %}
 
 <p class="muted small">
-  Usunięcie wpisu odpina go od maszyn i osób, które go wskazywały — same rekordy
-  zostają nietknięte. Liczba w kolumnie „Używa” pokazuje, ilu to dotyczy.
+  Kolumna „Używa” liczy maszyny <b>oraz</b> wpisy innych słowników, które
+  wskazują ten rekord — dział używany przez osoby i lokalizacje nie jest więc
+  pokazywany jako nieużywany. Usunięcie wpisu odpina go od wszystkich; same
+  rekordy zostają nietknięte.
 </p>
 {% endblock %}

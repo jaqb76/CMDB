@@ -17,7 +17,7 @@ from datetime import timedelta
 from sqlalchemy import delete, select
 
 from .db import init_db, session_scope
-from .models import Asset, EnrollmentToken, Owner, PortalUser, Tenant, utcnow
+from .models import Asset, EnrollmentToken, PortalUser, Tenant, utcnow
 from .security import generate_token, hash_password
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
@@ -155,11 +155,6 @@ def cmd_owner_add(args: argparse.Namespace) -> None:
     with session_scope() as db:
         tenant = _tenant_by_slug(db, args.tenant)
         email = args.email.strip().lower()
-        existing = db.execute(
-            select(Owner).where(Owner.tenant_id == tenant.id, Owner.email == email)
-        ).scalar_one_or_none()
-        if existing:
-            sys.exit(f"blad: opiekun {email} juz istnieje w firmie {tenant.slug}")
         from .services import slowniki
         from .services.scoping import TenantContext
 
@@ -167,15 +162,16 @@ def cmd_owner_add(args: argparse.Namespace) -> None:
                             actor="cli", can_write=True)
         dzial = slowniki.zapewnij(db, ctx, "dzial", args.department)
         db.flush()
-        db.add(
-            Owner(
-                tenant_id=tenant.id,
-                full_name=args.name,
-                email=email,
-                phone=args.phone,
-                dzial_id=dzial.id if dzial else None,
-            )
-        )
+        dane = {"imie_nazwisko": args.name, "email": email}
+        if args.phone:
+            dane["telefon"] = args.phone
+        if dzial is not None:
+            dane["dzial"] = dzial.id
+        wpis = slowniki.nowy_szkic(db, ctx, "osoba")
+        try:
+            slowniki.zapisz_wpis(db, ctx, wpis, dane)
+        except Exception as blad:                      # noqa: BLE001
+            sys.exit(f"blad: {blad}")
         print(f"dodano opiekuna {args.name} <{email}> do firmy {tenant.slug}")
 
 

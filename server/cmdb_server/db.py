@@ -1,6 +1,7 @@
 """Silnik bazy danych i sesje SQLAlchemy."""
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -144,6 +145,7 @@ def _dodaj_brakujace_kolumny() -> None:
 
     _popraw_unikalnosc_wydan()
     _usun_stare_pola_slownikow()
+    _przenies_osoby_do_slownika()
 
 
 def _popraw_unikalnosc_wydan() -> None:
@@ -298,3 +300,80 @@ def _usun_stare_pola_slownikow() -> None:
             "usunieto kolumne %s.%s wraz z zawartoscia - przypisania slownikowe "
             "wpisuje sie od nowa jako relacje", tabela, kolumna,
         )
+
+
+def _przenies_osoby_do_slownika() -> None:
+    """Przenosi tabele owners do slownika jako kategorie "osoba".
+
+    Danych NIE tracimy: kazda osoba staje sie wpisem slownika, a wpis dostaje
+    TEN SAM identyfikator co poprzednio. Dzieki temu assets.owner_id
+    i assets.uzytkownik_id nadal wskazuja wlasciwa osobe i nie trzeba ich
+    przepisywac - zmienia sie wylacznie tabela, do ktorej prowadza.
+
+    Kolejnosc ma znaczenie: najpierw wpisy, potem przepiecie kluczy obcych,
+    na koncu usuniecie tabeli. Odwrotna zostawilaby maszyny ze wskazaniem
+    na nieistniejacy wiersz.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "owners" not in set(inspector.get_table_names()):
+        return
+
+    with engine.begin() as conn:
+        osoby = conn.execute(text(
+            "SELECT id, tenant_id, full_name, email, phone, dzial_id, notes FROM owners"
+        )).mappings().all()
+
+        uzyte: set[tuple[str, str]] = set()
+        for osoba in osoby:
+            nazwa = " ".join((osoba["full_name"] or "").split()) or osoba["email"]
+            klucz = nazwa.lower()
+            # Slownik ma unikalny klucz w obrebie firmy, a dwie osoby moga sie
+            # nazywac tak samo. Rozroznia je wtedy adres - jedyne, co na pewno
+            # bylo unikalne w starej tabeli.
+            if (osoba["tenant_id"], klucz) in uzyte:
+                nazwa = f"{nazwa} ({osoba['email']})"
+                klucz = nazwa.lower()
+            uzyte.add((osoba["tenant_id"], klucz))
+
+            atrybuty = {"imie_nazwisko": nazwa, "email": osoba["email"]}
+            if osoba["phone"]:
+                atrybuty["telefon"] = osoba["phone"]
+            if osoba["dzial_id"]:
+                atrybuty["dzial"] = osoba["dzial_id"]
+            if osoba["notes"]:
+                atrybuty["notatki"] = osoba["notes"]
+
+            conn.execute(
+                text(
+                    "INSERT INTO slowniki (id, tenant_id, kategoria, wartosc, klucz,"
+                    " atrybuty, utworzony, utworzyl)"
+                    " VALUES (:id, :tenant_id, 'osoba', :wartosc, :klucz,"
+                    " CAST(:atrybuty AS jsonb), now(), 'migracja osob')"
+                    " ON CONFLICT DO NOTHING"
+                ),
+                {"id": osoba["id"], "tenant_id": osoba["tenant_id"], "wartosc": nazwa,
+                 "klucz": klucz, "atrybuty": json.dumps(atrybuty, ensure_ascii=False)},
+            )
+
+        # Klucze obce trzeba przepiac jawnie: create_all ich nie rusza, a bez
+        # tego usuniecie tabeli owners by sie nie powiodlo.
+        for kolumna in ("owner_id", "uzytkownik_id"):
+            nazwy = conn.execute(text(
+                "SELECT tc.constraint_name FROM information_schema.table_constraints tc"
+                " JOIN information_schema.key_column_usage kcu"
+                "   ON tc.constraint_name = kcu.constraint_name"
+                " WHERE tc.table_name = 'assets' AND tc.constraint_type = 'FOREIGN KEY'"
+                "   AND kcu.column_name = :kolumna"
+            ), {"kolumna": kolumna}).scalars().all()
+            for nazwa in nazwy:
+                conn.execute(text(f'ALTER TABLE assets DROP CONSTRAINT "{nazwa}"'))
+            conn.execute(text(
+                f"ALTER TABLE assets ADD CONSTRAINT assets_{kolumna}_slownik_fkey"
+                f" FOREIGN KEY ({kolumna}) REFERENCES slowniki (id) ON DELETE SET NULL"
+            ))
+
+        conn.execute(text("DROP TABLE owners CASCADE"))
+
+    log.warning("przeniesiono %d osob do slownika i usunieto tabele owners", len(osoby))

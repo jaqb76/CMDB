@@ -43,7 +43,7 @@ from ..models import (
     CveFeed,
     EnrollmentToken,
     GlobalAgentTarget,
-    Owner,
+    WpisSlownika,
     PortalUser,
     Tenant,
     TenantAgentTarget,
@@ -282,7 +282,9 @@ def widok_firm(
     db: Session = Depends(get_db),
 ) -> Response:
     opiekunowie = dict(
-        db.execute(select(Owner.tenant_id, func.count(Owner.id)).group_by(Owner.tenant_id)).all()
+        db.execute(select(WpisSlownika.tenant_id, func.count(WpisSlownika.id))
+                  .where(WpisSlownika.kategoria == "osoba")
+                  .group_by(WpisSlownika.tenant_id)).all()
     )
     tokeny = dict(
         db.execute(

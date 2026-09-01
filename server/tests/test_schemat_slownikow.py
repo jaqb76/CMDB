@@ -26,7 +26,7 @@ def _admin(client, tenant, make_user, email="admin@firma-a.pl"):
 
 
 def _wpis(client, kategoria="dostawca"):
-    csrf = _extract_csrf(client.get("/slowniki").text)
+    csrf = _extract_csrf(client.get("/slowniki?kategoria=dostawca").text)
     odpowiedz = client.post("/slowniki", data={"kategoria": kategoria,
                                                "csrf_token": csrf}, follow_redirects=False)
     assert odpowiedz.status_code == 303, odpowiedz.text
@@ -155,7 +155,7 @@ def test_karta_zapisuje_i_normalizuje(client, tenant_a, make_user):
 def test_lista_pokazuje_czego_brakuje(client, tenant_a, make_user):
     _admin(client, tenant_a, make_user)
     _wpis(client)
-    strona = client.get("/slowniki").text
+    strona = client.get("/slowniki?kategoria=dostawca").text
     assert "szkic" in strona
     assert "Sposob kontaktu" in strona, "ma byc widac, ktorego pola brakuje"
 
@@ -335,3 +335,85 @@ def test_skrypt_edytora_nie_uzywa_procedur_w_znacznikach():
     szablon = (katalog / "templates" / "slownik_schemat.html").read_text(encoding="utf-8")
     assert "onclick" not in szablon and "oninput" not in szablon
     assert (katalog / "static" / "schemat.js").is_file()
+
+
+# --- osoby jako slownik i liczenie uzycia -----------------------------------
+
+def test_osoba_jest_kategoria_slownika(client, tenant_a, make_user):
+    """Osoby mialy wlasna tabele i wlasny formularz, wiec te same pojecia
+    dzialaly w dwoch miejscach inaczej."""
+    from cmdb_server.models import KATEGORIE_SLOWNIKA
+
+    assert "osoba" in KATEGORIE_SLOWNIKA
+    _admin(client, tenant_a, make_user)
+    strona = client.get("/slowniki?kategoria=osoba")
+    assert strona.status_code == 200
+    assert "Imie i nazwisko" in strona.text or "Osoby" in strona.text
+
+
+def test_stary_adres_osob_prowadzi_do_slownika(client, tenant_a, make_user):
+    _admin(client, tenant_a, make_user)
+    odpowiedz = client.get("/owners", follow_redirects=False)
+    assert odpowiedz.status_code == 303
+    assert "kategoria=osoba" in odpowiedz.headers["location"]
+
+
+def test_slowniki_maja_zakladki_i_pokazuja_jeden_naraz(client, tenant_a, make_user):
+    """Cztery kategorie zlozone jedna pod druga zmuszaly do przewijania przez
+    trzy nieinteresujace, zeby dojsc do czwartej."""
+    _admin(client, tenant_a, make_user)
+    strona = client.get("/slowniki?kategoria=dostawca").text
+    for kategoria in ("osoba", "lokalizacja", "dzial", "dostawca"):
+        assert f"/slowniki?kategoria={kategoria}" in strona
+
+
+def test_lista_pokazuje_kolumny_ze_schematu(client, tenant_a, make_user):
+    """Kolumny biora sie ze schematu, wiec widac to, co firma u siebie prowadzi."""
+    _admin(client, tenant_a, make_user)
+    wpis_id = _wpis(client)
+    csrf = _extract_csrf(client.get(f"/slowniki/wpis/{wpis_id}").text)
+    client.post(f"/slowniki/wpis/{wpis_id}", data={
+        "pole_nazwa_firmy": "Dell", "pole_kanal_zgloszen": "portal",
+        "pole_telefon_wsparcia": "225790000", "csrf_token": csrf},
+        follow_redirects=False)
+
+    strona = client.get("/slowniki?kategoria=dostawca").text
+    assert "Telefon wsparcia" in strona, "kolumna ze schematu"
+    assert "+48 22 579 00 00" in strona, "wartosc w kolumnie"
+
+
+def test_uzycie_dzialu_liczy_odwolania_z_innych_slownikow(client, tenant_a, make_user):
+    """Dzial nie ma wlasnej kolumny w tabeli maszyn - prowadza do niego tylko
+    pola odwolania z innych slownikow. Liczenie samych maszyn pokazywalo zero
+    przy dziale, ktory faktycznie byl uzywany - a od tej liczby zalezy,
+    czy ktos go usunie."""
+    from .test_sprzet_slowniki_konta import _dodaj_wpis
+
+    _admin(client, tenant_a, make_user)
+    dzial_id = _dodaj_wpis(client, "dzial", "Ksiegowosc")
+    _dodaj_wpis(client, "osoba", "Marta Nowak",
+                {"pole_email": "marta@firma.pl", "pole_dzial": dzial_id})
+
+    strona = client.get("/slowniki?kategoria=dzial").text
+    wiersz = [linia for linia in strona.splitlines() if "Ksiegowosc" in linia]
+    assert wiersz, "dzial ma byc na liscie"
+    from cmdb_server.services import slowniki
+    from cmdb_server.services.scoping import TenantContext
+
+    ctx = TenantContext(tenant_id=tenant_a["id"], tenant_slug="firma-a", actor="test")
+    with SessionLocal() as db:
+        dzial = db.get(WpisSlownika, dzial_id)
+        assert slowniki.uzycie_wpisu(db, ctx, dzial) == 1, "osoba wskazuje ten dzial"
+
+
+def test_okno_podgladu_ma_nieprzezroczyste_tlo():
+    """Nieistniejaca zmienna CSS daje tlo przezroczyste - przez okno widac bylo
+    strone pod spodem."""
+    from pathlib import Path
+
+    styl = (Path(__file__).resolve().parent.parent
+            / "cmdb_server" / "static" / "app.css").read_text(encoding="utf-8")
+    fragment = styl.split(".modal-card {")[1].split("}")[0]
+    assert "var(--surface)" in fragment
+    for zmienna in ("--panel", "--line", "--soft"):
+        assert f"var({zmienna})" not in styl, f"{zmienna} nie jest zdefiniowana w app.css"

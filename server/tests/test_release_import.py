@@ -65,7 +65,9 @@ def signed_release(tmp_path, monkeypatch):
 
 
 def test_import_is_atomic_idempotent_and_does_not_select_any_target(signed_release):
-    settings, row, github, _, _, _ = signed_release
+    # Piata pozycja to podpisany manifest - bez niej ostatnie sprawdzenie
+    # odwolywalo sie do nazwy, ktorej w tym zasiegu nie ma.
+    settings, row, github, _, payload, _ = signed_release
     with SessionLocal() as db:
         assert release_import.import_release(db, row, github, settings) == 2
         assert release_import.import_release(db, row, github, settings) == 0

@@ -169,7 +169,7 @@ def tabela(db: Session, maszyny: list, kolumny: list[dict],
     Tresc raportu agenta odczytujemy tylko wtedy, gdy ktoras kolumna jej
     potrzebuje, a podatnosci liczymy wylacznie dla kolumn, ktore o nie prosza.
     """
-    from ..models import Owner
+    from ..models import WpisSlownika
     from . import cve
 
     zrodla = {kolumna["zrodlo"] for kolumna in kolumny}
@@ -181,8 +181,10 @@ def tabela(db: Session, maszyny: list, kolumny: list[dict],
     opiekunowie: dict[str, str] = {}
     if any(kolumna["klucz"] in ("owner", "uzytkownik") for kolumna in kolumny):
         opiekunowie = {
-            o.id: o.full_name
-            for o in db.execute(select(Owner).where(Owner.tenant_id == tenant_id)).scalars()
+            o.id: o.wartosc
+            for o in db.execute(select(WpisSlownika).where(
+                WpisSlownika.tenant_id == tenant_id,
+                WpisSlownika.kategoria == "osoba")).scalars()
         }
 
     wiersze = []

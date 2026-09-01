@@ -40,7 +40,6 @@ from ..models import (
     AuditLog,
     EnrollmentToken,
     InventorySnapshot,
-    Owner,
     PortalUser,
     Tenant,
     WpisSlownika,
@@ -830,6 +829,10 @@ def asset_detail(
         owners=owners,
         typy=TYPY_SPRZETU,
         podpowiedzi=slowniki.podpowiedzi(db, ctx),
+        # Cztery podglady budowane tym samym sposobem - osoba przestala byc
+        # przypadkiem szczegolnym, wiec nie ma powodu na osobna sciezke.
+        szczegoly_opiekuna=slowniki.szczegoly(db, ctx, asset.owner),
+        szczegoly_uzytkownika=slowniki.szczegoly(db, ctx, asset.uzytkownik),
         szczegoly_lokalizacji=slowniki.szczegoly(db, ctx, asset.lokalizacja),
         szczegoly_dostawcy=slowniki.szczegoly(db, ctx, asset.dostawca),
         credentials=credentials,
@@ -870,7 +873,7 @@ def assign_owner(
     if asset is None:
         raise HTTPException(status_code=404, detail="nie znaleziono maszyny")
 
-    def osoba(identyfikator: str) -> Owner | None:
+    def osoba(identyfikator: str) -> WpisSlownika | None:
         if not identyfikator:
             return None
         znaleziona = scoping.get_owner(db, ctx, identyfikator)
@@ -881,8 +884,8 @@ def assign_owner(
     new_owner = osoba(owner_id)
     new_user = osoba(uzytkownik_id)
 
-    previous = asset.owner.full_name if asset.owner else None
-    poprzedni_uzytkownik = asset.uzytkownik.full_name if asset.uzytkownik else None
+    previous = asset.owner.wartosc if asset.owner else None
+    poprzedni_uzytkownik = asset.uzytkownik.wartosc if asset.uzytkownik else None
     asset.owner_id = new_owner.id if new_owner else None
     asset.uzytkownik_id = new_user.id if new_user else None
     asset.role_label = role_label.strip() or None
@@ -901,9 +904,9 @@ def assign_owner(
         target=asset.hostname,
         detail={
             "from": previous,
-            "to": new_owner.full_name if new_owner else None,
+            "to": new_owner.wartosc if new_owner else None,
             "uzytkownik_z": poprzedni_uzytkownik,
-            "uzytkownik_na": new_user.full_name if new_user else None,
+            "uzytkownik_na": new_user.wartosc if new_user else None,
             "lokalizacja": wpis_lokalizacji.wartosc if wpis_lokalizacji else None,
         },
         ip=client_ip(request),
@@ -1070,89 +1073,20 @@ def widok_duplikatow(
 
 
 # --- opiekunowie ------------------------------------------------------------
+#
+# Osoby sa kategoria slownika, wiec maja te sama karte i te same pola opisane
+# schematem co lokalizacje i dostawcy. Wlasna lista i wlasny formularz znikly:
+# byly drugim miejscem, w ktorym te same pojecia dzialaly inaczej.
 
-@router.get("/owners", response_class=HTMLResponse)
-def owner_list(
-    request: Request,
-    user: PortalUser = Depends(require_user),
-    ctx: TenantContext = Depends(resolve_tenant),
-    db: Session = Depends(get_db),
-) -> Response:
-    owners = db.execute(scoping.owners_query(ctx)).scalars().all()
-    counts = dict(
-        db.execute(
-            select(Asset.owner_id, func.count(Asset.id))
-            .where(Asset.tenant_id == ctx.tenant_id)
-            .group_by(Asset.owner_id)
-        ).all()
-    )
-    return render(
-        request, "owners.html", user, ctx, db,
-        owners=owners, counts=counts,
-        dzialy=slowniki.wpisy(db, ctx, "dzial"),
-    )
+@router.get("/owners")
+def owner_list(user: PortalUser = Depends(require_user)) -> Response:
+    """Stare odnosniki prowadza do slownika osob.
 
-
-@router.post("/owners")
-def owner_create(
-    request: Request,
-    full_name: str = Form(...),
-    email: str = Form(...),
-    phone: str = Form(""),
-    department_id: str = Form(""),
-    notes: str = Form(""),
-    csrf_token: str = Form(""),
-    user: PortalUser = Depends(require_user),
-    ctx: TenantContext = Depends(resolve_tenant),
-    db: Session = Depends(get_db),
-) -> Response:
-    verify_csrf(request, user, csrf_token)
-    _require_write(ctx)
-
-    email_normalized = email.strip().lower()
-    existing = db.execute(
-        scoping.owners_query(ctx).where(Owner.email == email_normalized)
-    ).scalar_one_or_none()
-    if existing is not None:
-        return RedirectResponse("/owners?error=duplikat", status_code=status.HTTP_303_SEE_OTHER)
-
-    try:
-        dzial = slowniki.wybierz(db, ctx, "dzial", department_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    owner = Owner(
-        tenant_id=ctx.tenant_id,
-        full_name=full_name.strip(),
-        email=email_normalized,
-        phone=phone.strip() or None,
-        dzial_id=_wpis_id(dzial),
-        notes=notes.strip() or None,
-    )
-    db.add(owner)
-    audit(db, ctx, action="owner.created", target=owner.email, ip=client_ip(request))
-    db.commit()
-    return RedirectResponse("/owners", status_code=status.HTTP_303_SEE_OTHER)
-
-
-@router.post("/owners/{owner_id}/delete")
-def owner_delete(
-    owner_id: str,
-    request: Request,
-    csrf_token: str = Form(""),
-    user: PortalUser = Depends(require_user),
-    ctx: TenantContext = Depends(resolve_tenant),
-    db: Session = Depends(get_db),
-) -> Response:
-    verify_csrf(request, user, csrf_token)
-    _require_write(ctx)
-
-    owner = scoping.get_owner(db, ctx, owner_id)
-    if owner is None:
-        raise HTTPException(status_code=404, detail="nie znaleziono opiekuna")
-    db.delete(owner)  # maszyny zostaja, owner_id -> NULL
-    audit(db, ctx, action="owner.deleted", target=owner.email, ip=client_ip(request))
-    db.commit()
-    return RedirectResponse("/owners", status_code=status.HTTP_303_SEE_OTHER)
+    Zaleznosc require_user zostaje: bez niej niezalogowany dostawalby
+    przekierowanie do slownika zamiast na strone logowania.
+    """
+    return RedirectResponse("/slowniki?kategoria=osoba",
+                            status_code=status.HTTP_303_SEE_OTHER)
 
 
 # --- slowniki firmowe -------------------------------------------------------
@@ -1160,27 +1094,48 @@ def owner_delete(
 @router.get("/slowniki", response_class=HTMLResponse)
 def widok_slownikow(
     request: Request,
+    kategoria: str = Query("", max_length=32),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Dzialy, lokalizacje i dostawcy uzywane w tej firmie.
+    """Jeden slownik naraz, wybierany zakladka.
 
-    Slownik nadal zapelnia sie sam - kazda nowa nazwa wpisana w formularzu
-    trafia tu od razu jako szkic. Ta strona sluzy do jego uzupelnienia
-    i posprzatania: widac, czego brakuje i ile rekordow uzywa kazdego wpisu.
+    Cztery kategorie zlozone jedna pod druga zmuszaly do przewijania przez
+    trzy nieinteresujace, zeby dojsc do czwartej. Wybor trafia do adresu, wiec
+    da sie go zapisac i wraca po zapisie rekordu.
+
+    Kolumny tabeli biora sie ze SCHEMATU, a nie ze stalej listy: pokazujemy to,
+    co ta firma u siebie prowadzi.
     """
     from ..services import schemat as definicje
 
+    if kategoria not in KATEGORIE_SLOWNIKA:
+        kategoria = next(iter(KATEGORIE_SLOWNIKA))
     schematy = {k: slowniki.schemat(db, ctx, k) for k in KATEGORIE_SLOWNIKA}
+    opis = schematy[kategoria]
     pozycje = slowniki.wpisy(db, ctx)
+    biezace = [w for w in pozycje if w.kategoria == kategoria]
+
+    # Pola budujace etykiete pomijamy: siedza juz w kolumnie "Wpis", wiec
+    # powtorzenie ich obok niczego nie dodaje. Notatki tez nie - w tabeli
+    # rozpychaja wiersz, a czyta sie je na karcie.
+    w_etykiecie = {p.klucz for p in opis.pola_etykiety()}
+    kolumny = [p for p in opis.pola
+               if p.klucz not in w_etykiecie and p.typ != "notatka"][:6]
+
+    komorki = {}
+    for w in biezace:
+        czytelne = {p["klucz"]: p["wartosc"] for p in slowniki.szczegoly(db, ctx, w, z_kluczem=True)}
+        komorki[w.id] = czytelne
+
     wynik = render(
         request, "slowniki.html", user, ctx, db,
-        kategorie=KATEGORIE_SLOWNIKA,
-        schematy=schematy,
+        kategorie=KATEGORIE_SLOWNIKA, kategoria=kategoria, schemat=opis,
+        kolumny=kolumny, komorki=komorki,
         wpisy={k: [w for w in pozycje if w.kategoria == k] for k in KATEGORIE_SLOWNIKA},
         braki={w.id: definicje.braki(schematy[w.kategoria], w.atrybuty) for w in pozycje},
-        uzycia={w.id: slowniki.uzycie_wpisu(db, ctx, w) for w in pozycje},
+        uzycia={w.id: slowniki.uzycie_wpisu(db, ctx, w) for w in biezace},
     )
     db.commit()          # schemat zalozony z wzorca przy pierwszym wejsciu
     return wynik

@@ -541,7 +541,10 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 .modal-card {
   width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
   overflow: auto; border: 1px solid var(--border); border-radius: 14px;
-  padding: 22px; color: var(--text); background: var(--panel);
+  padding: 22px; color: var(--text);
+  /* Zmienna --panel nie istnieje w tym arkuszu; nieistniejaca zmienna daje
+     tlo przezroczyste, wiec przez okno widac bylo strone pod spodem. */
+  background: var(--surface);
   box-shadow: 0 24px 70px rgb(0 0 0 / .35);
 }
 .modal-card::backdrop { background: rgb(8 15 28 / .62); backdrop-filter: blur(2px); }
@@ -551,3 +554,19 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 .modal-grid dt { color: var(--muted); }
 .modal-grid dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 520px) { .modal-grid { grid-template-columns: 1fr; gap: 2px; } }
+
+
+/* --- podglad wpisu przy polu --- */
+/* Przycisk stoi TUZ PRZY polu, ktorego dotyczy, i pojawia sie dopiero, gdy
+   pole jest wypelnione. Rzad osobnych przyciskow pod formularzem zmuszal do
+   czytania etykiet, zeby skojarzyc je z polem wyzej. */
+.pole-z-podgladem { display: flex; gap: 6px; align-items: center; }
+.pole-z-podgladem select { flex: 1; min-width: 0; }
+.btn-oko {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+  background: var(--surface); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+}
+.btn-oko:hover { color: var(--accent); border-color: var(--accent); }
+.btn-oko:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

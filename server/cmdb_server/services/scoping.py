@@ -12,7 +12,8 @@ from types import SimpleNamespace
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from ..models import AssetCurrentReport, Asset, AuditLog, EnrollmentToken, InventorySnapshot, Owner
+from ..models import (AssetCurrentReport, Asset, AuditLog, EnrollmentToken,
+                      InventorySnapshot, WpisSlownika)
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,10 @@ def assets_query(ctx: TenantContext) -> Select:
 
 
 def owners_query(ctx: TenantContext) -> Select:
-    return scoped(select(Owner), Owner, ctx).order_by(Owner.full_name)
+    # Osoby sa kategoria slownika, wiec pytamy o nia tak jak o kazda inna.
+    return (scoped(select(WpisSlownika), WpisSlownika, ctx)
+            .where(WpisSlownika.kategoria == "osoba")
+            .order_by(WpisSlownika.wartosc))
 
 
 def tokens_query(ctx: TenantContext) -> Select:
@@ -50,8 +54,10 @@ def get_asset(db: Session, ctx: TenantContext, asset_id: str) -> Asset | None:
     return db.execute(assets_query(ctx).where(Asset.id == asset_id)).scalar_one_or_none()
 
 
-def get_owner(db: Session, ctx: TenantContext, owner_id: str) -> Owner | None:
-    return db.execute(owners_query(ctx).where(Owner.id == owner_id)).scalar_one_or_none()
+def get_owner(db: Session, ctx: TenantContext, owner_id: str) -> WpisSlownika | None:
+    return db.execute(
+        owners_query(ctx).where(WpisSlownika.id == owner_id)
+    ).scalar_one_or_none()
 
 
 def get_snapshot(db: Session, ctx: TenantContext, snapshot_id: str) -> InventorySnapshot | None:

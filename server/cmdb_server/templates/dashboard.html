@@ -44,7 +44,7 @@
         <tr>
           <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
           <td>{{ a.os_name or a.os_family or '-' }}</td>
-          <td>{{ a.owner.full_name if a.owner else '—' }}</td>
+          <td>{{ a.owner.wartosc if a.owner else '—' }}</td>
           <td class="muted">{{ a.last_seen | ago }}</td>
         </tr>
       {% endfor %}

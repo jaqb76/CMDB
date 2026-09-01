@@ -482,12 +482,14 @@ def test_widok_nie_pokazuje_raportu_innej_firmy(client, tenant_a, tenant_b, make
 def test_kolumna_opiekuna_pokazuje_imie_i_nazwisko(client, tenant_a):
     """Wczesniejsze testy tego nie objely, bo nie mialy ani jednego opiekuna -
     petla budujaca mape nigdy sie nie wykonywala i bledne pole nie wychodzilo."""
-    from cmdb_server.models import Owner
+    from cmdb_server.models import WpisSlownika
 
     _maszyna(client, tenant_a, "SRV-OPIEKUN", "maszyna-opiekun-01")
     with SessionLocal() as db:
-        opiekun = Owner(tenant_id=tenant_a["id"], full_name="Jan Kowalski",
-                        email="jan@firma.pl")
+        opiekun = WpisSlownika(
+            tenant_id=tenant_a["id"], kategoria="osoba", wartosc="Jan Kowalski",
+            klucz="jan kowalski",
+            atrybuty={"imie_nazwisko": "Jan Kowalski", "email": "jan@firma.pl"})
         db.add(opiekun)
         db.flush()
         maszyna = db.execute(

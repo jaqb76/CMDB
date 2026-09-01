@@ -65,74 +65,74 @@
 {% endif %}
 
 <section class="panel">
-  <h2>Opiekun, uzytkownik i lokalizacja</h2>
+  <h2>Opiekun, użytkownik i lokalizacja</h2>
+
+  {#
+    Podgląd wpisu siedzi TUŻ PRZY polu, którego dotyczy, i tylko wtedy, gdy
+    pole jest wypełnione. Rząd osobnych przycisków pod formularzem zmuszał do
+    czytania ich etykiet, żeby skojarzyć je z polem wyżej.
+  #}
+  {% macro wybor_wpisu(nazwa, etykieta, lista, biezacy, podglad, opis) %}
+  <div>
+    <label for="{{ nazwa }}">{{ etykieta }}</label>
+    <div class="pole-z-podgladem">
+      <select id="{{ nazwa }}" name="{{ nazwa }}" {% if not ctx.can_write %}disabled{% endif %}>
+        <option value="">— nieprzypisany —</option>
+        {% for w in lista %}
+          <option value="{{ w.id }}" {% if biezacy == w.id %}selected{% endif %}>{{ w.wartosc }}</option>
+        {% endfor %}
+      </select>
+      {% if biezacy %}
+      <button type="button" class="btn btn-oko" data-dialog-open="{{ podglad }}"
+              title="Podgląd: {{ opis }}" aria-label="Podgląd: {{ opis }}">
+        <svg viewBox="0 0 20 14" width="17" height="13" aria-hidden="true" focusable="false">
+          <path d="M1 7s3.2-5.5 9-5.5S19 7 19 7s-3.2 5.5-9 5.5S1 7 1 7z"
+                fill="none" stroke="currentColor" stroke-width="1.6"></path>
+          <circle cx="10" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
+        </svg>
+      </button>
+      {% endif %}
+    </div>
+  </div>
+  {% endmacro %}
+
   <form method="post" action="/assets/{{ asset.id }}/owner" class="row-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <div>
-      <label for="owner_id">Opiekun (odpowiada za sprzet)</label>
-      <select id="owner_id" name="owner_id" {% if not ctx.can_write %}disabled{% endif %}>
-        <option value="">— nieprzypisany —</option>
-        {% for o in owners %}
-          <option value="{{ o.id }}" {% if asset.owner_id == o.id %}selected{% endif %}>
-            {{ o.full_name }} ({{ o.email }})
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label for="uzytkownik_id">Uzytkownik komputera</label>
-      <select id="uzytkownik_id" name="uzytkownik_id" {% if not ctx.can_write %}disabled{% endif %}>
-        <option value="">— nieprzypisany —</option>
-        {% for o in owners %}
-          <option value="{{ o.id }}" {% if asset.uzytkownik_id == o.id %}selected{% endif %}>
-            {{ o.full_name }} ({{ o.email }})
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label for="lokalizacja_id">Lokalizacja</label>
-      <select id="lokalizacja_id" name="lokalizacja_id" {% if not ctx.can_write %}disabled{% endif %}>
-        <option value="">— nieprzypisana —</option>
-        {% for l in podpowiedzi.lokalizacja %}
-          <option value="{{ l.id }}" {% if asset.lokalizacja_id == l.id %}selected{% endif %}>{{ l.wartosc }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    {{ wybor_wpisu('owner_id', 'Opiekun (odpowiada za sprzęt)', owners,
+                   asset.owner_id, 'podglad-opiekuna', 'opiekun') }}
+    {{ wybor_wpisu('uzytkownik_id', 'Użytkownik komputera', owners,
+                   asset.uzytkownik_id, 'podglad-uzytkownika', 'użytkownik') }}
+    {{ wybor_wpisu('lokalizacja_id', 'Lokalizacja', podpowiedzi.lokalizacja,
+                   asset.lokalizacja_id, 'podglad-lokalizacji', 'lokalizacja') }}
     <div>
       <label for="role_label">Rola</label>
       <input id="role_label" name="role_label" maxlength="200" value="{{ asset.role_label or '' }}"
-             placeholder="np. serwer plikow, drukarka dzialu kadr" {% if not ctx.can_write %}disabled{% endif %}>
+             placeholder="np. serwer plików, drukarka działu kadr" {% if not ctx.can_write %}disabled{% endif %}>
     </div>
     {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
   </form>
   <p class="small muted">
-    Osoby wybiera się z <a href="/owners">listy firmy</a>, a lokalizacje z
-    ustrukturyzowanego <a href="/slowniki">słownika</a>.
+    Wszystkie cztery listy pochodzą ze <a href="/slowniki">słownika firmy</a> —
+    osoby, lokalizacje, działy i dostawcy mają tam własne karty z pełnymi danymi.
   </p>
-  <div class="row-form">
-    {% if asset.owner %}<button type="button" class="btn btn-small" data-dialog-open="podglad-opiekuna">Podgląd opiekuna</button>{% endif %}
-    {% if asset.uzytkownik %}<button type="button" class="btn btn-small" data-dialog-open="podglad-uzytkownika">Podgląd użytkownika</button>{% endif %}
-    {% if asset.lokalizacja %}<button type="button" class="btn btn-small" data-dialog-open="podglad-lokalizacji">Podgląd lokalizacji</button>{% endif %}
-    {% if asset.dostawca %}<button type="button" class="btn btn-small" data-dialog-open="podglad-dostawcy">Podgląd dostawcy</button>{% endif %}
-  </div>
 </section>
 
-{% for identyfikator, tytul, osoba in [('podglad-opiekuna', 'Opiekun', asset.owner), ('podglad-uzytkownika', 'Użytkownik komputera', asset.uzytkownik)] %}
-{% if osoba %}<dialog id="{{ identyfikator }}" class="modal-card">
-  <div class="modal-head"><h2>{{ tytul }}</h2><button type="button" class="btn btn-small" data-dialog-close>Zamknij</button></div>
-  <dl class="modal-grid"><dt>Osoba</dt><dd>{{ osoba.full_name }}</dd><dt>E-mail</dt><dd>{{ osoba.email }}</dd>
-    <dt>Telefon</dt><dd>{{ osoba.phone or '—' }}</dd><dt>Dział</dt><dd>{{ osoba.dzial.wartosc if osoba.dzial else '—' }}</dd>
-    <dt>Notatki</dt><dd>{{ osoba.notes or '—' }}</dd></dl>
-  {% if ctx.can_write %}<p><a class="btn btn-small" href="/owners">Otwórz listę osób</a></p>{% endif %}
-</dialog>{% endif %}
-{% endfor %}
-
-{% for identyfikator, tytul, rekord, szczegoly in [('podglad-lokalizacji', 'Lokalizacja', asset.lokalizacja, szczegoly_lokalizacji), ('podglad-dostawcy', 'Dostawca', asset.dostawca, szczegoly_dostawcy)] %}
+{#
+  Podglądy wszystkich czterech kategorii budujemy jednym przebiegiem: osoba
+  przestała być przypadkiem szczególnym, więc nie ma powodu, żeby jej okno
+  powstawało inaczej niż okno lokalizacji.
+#}
+{% for identyfikator, tytul, rekord, szczegoly in [
+      ('podglad-opiekuna', 'Opiekun', asset.owner, szczegoly_opiekuna),
+      ('podglad-uzytkownika', 'Użytkownik komputera', asset.uzytkownik, szczegoly_uzytkownika),
+      ('podglad-lokalizacji', 'Lokalizacja', asset.lokalizacja, szczegoly_lokalizacji),
+      ('podglad-dostawcy', 'Dostawca', asset.dostawca, szczegoly_dostawcy)] %}
 {% if rekord %}<dialog id="{{ identyfikator }}" class="modal-card">
   <div class="modal-head"><h2>{{ tytul }}</h2><button type="button" class="btn btn-small" data-dialog-close>Zamknij</button></div>
-  <p class="strong">{{ rekord.wartosc }}</p><dl class="modal-grid">
-    {% for pole in szczegoly %}<dt>{{ pole.etykieta }}</dt><dd>{{ pole.wartosc }}</dd>{% endfor %}
+  <p class="strong">{{ rekord.wartosc }}</p>
+  <dl class="modal-grid">
+    {% for pole in szczegoly %}<dt>{{ pole.etykieta }}</dt><dd>{{ pole.wartosc }}</dd>
+    {% else %}<dt>—</dt><dd class="muted">Rekord jest jeszcze szkicem — same pola do uzupełnienia.</dd>{% endfor %}
   </dl>
   {% if ctx.can_write %}<p><a class="btn btn-small" href="/slowniki/wpis/{{ rekord.id }}">Edytuj rekord</a></p>{% endif %}
 </dialog>{% endif %}

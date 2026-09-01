@@ -35,7 +35,7 @@
     <option value="">kazdy opiekun</option>
     <option value="none" {% if filters.owner == 'none' %}selected{% endif %}>bez opiekuna</option>
     {% for o in owners %}
-      <option value="{{ o.id }}" {% if filters.owner == o.id %}selected{% endif %}>{{ o.full_name }}</option>
+      <option value="{{ o.id }}" {% if filters.owner == o.id %}selected{% endif %}>{{ o.wartosc }}</option>
     {% endfor %}
   </select>
   <select name="state">
@@ -85,9 +85,9 @@
       <td class="small">{{ a.primary_ip or '-' }}</td>
       <td class="small">{% if a.lokalizacja %}{{ a.lokalizacja.wartosc }}{% else %}—{% endif %}</td>
       <td class="small">
-        {% if a.owner %}{{ a.owner.full_name }}
+        {% if a.owner %}{{ a.owner.wartosc }}
         {% else %}<span class="badge badge-warn">brak opiekuna</span>{% endif %}
-        {% if a.uzytkownik %}<div class="muted">uzywa: {{ a.uzytkownik.full_name }}</div>{% endif %}
+        {% if a.uzytkownik %}<div class="muted">używa: {{ a.uzytkownik.wartosc }}</div>{% endif %}
       </td>
       <td class="small">{{ a.role_label or '—' }}</td>
       <td class="small">

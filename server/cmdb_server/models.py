@@ -221,38 +221,18 @@ class TenantAgentTarget(Base):
     updated_by: Mapped[str | None] = mapped_column(String(255))
 
 
-class Owner(Base):
-    """Opiekun / wlasciciel zasobu po stronie firmy."""
-
-    __tablename__ = "owners"
-    __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_owner_tenant_email"),)
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    tenant_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
-    phone: Mapped[str | None] = mapped_column(String(64))
-    # Odwolanie do wpisu slownika, nie kopia napisu: dopiero wtedy cokolwiek
-    # dopisanego do wpisu jest w zasiegu maszyny.
-    dzial_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("slowniki.id", ondelete="SET NULL"), index=True
-    )
-    dzial: Mapped["WpisSlownika | None"] = relationship(foreign_keys=[dzial_id])
-    notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    tenant: Mapped[Tenant] = relationship()
-
-
 # Slowniki firmowe. Kategoria jest zamknieta, wartosci otwarte - dzialow
 # i lokalizacji nie da sie przewidziec, ale ich lista musi byc skonczona,
 # zeby "Ksiegowosc", "ksiegowosc" i "Księgowość" nie byly trzema dzialami.
 KATEGORIE_SLOWNIKA: dict[str, str] = {
-    "dzial": "Dzial",
-    "lokalizacja": "Lokalizacja",
-    "dostawca": "Dostawca",
+    # Osoby sa slownikiem jak kazdy inny: ta sama karta, te same pola opisane
+    # schematem, ta sama zasada uzupelniania. Wczesniej mialy wlasna tabele
+    # i wlasny formularz, wiec te same pojecia dzialaly w dwoch miejscach
+    # inaczej - a dodanie osobie pola wymagalo migracji.
+    "osoba": "Osoby",
+    "lokalizacja": "Lokalizacje",
+    "dzial": "Dzialy",
+    "dostawca": "Dostawcy",
 }
 
 
@@ -351,13 +331,13 @@ class Asset(Base):
     zrodlo: Mapped[str] = mapped_column(String(16), nullable=False, default=ZRODLO_AGENT, index=True)
 
     owner_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
+        String(36), ForeignKey("slowniki.id", ondelete="SET NULL"), nullable=True, index=True
     )
     # Opiekun odpowiada za sprzet, uzytkownik przy nim siedzi - to czesto dwie
     # rozne osoby (laptop prezesa ma opiekuna w IT). Obie wskazuja na te sama
     # liste osob, bo to ten sam katalog ludzi w firmie.
     uzytkownik_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
+        String(36), ForeignKey("slowniki.id", ondelete="SET NULL"), nullable=True, index=True
     )
     # Gdzie sprzet fizycznie stoi. Agent tego nie wie - wpisuje czlowiek,
     # a podpowiedzi biora sie ze slownika lokalizacji firmy.
@@ -420,8 +400,8 @@ class Asset(Base):
     tenant: Mapped[Tenant] = relationship(back_populates="assets")
     # Dwa klucze obce do tej samej tabeli - SQLAlchemy nie zgadnie, ktory
     # nalezy do ktorej relacji, wiec wskazujemy je jawnie.
-    owner: Mapped[Owner | None] = relationship(foreign_keys=[owner_id])
-    uzytkownik: Mapped[Owner | None] = relationship(foreign_keys=[uzytkownik_id])
+    owner: Mapped["WpisSlownika | None"] = relationship(foreign_keys=[owner_id])
+    uzytkownik: Mapped["WpisSlownika | None"] = relationship(foreign_keys=[uzytkownik_id])
     # Wpisy slownika jako obiekty, nie napisy: dopiero przez nie widac telefon
     # dostawcy czy adres lokalizacji.
     lokalizacja: Mapped["WpisSlownika | None"] = relationship(foreign_keys=[lokalizacja_id])

@@ -70,7 +70,7 @@
         <select id="owner_id" name="owner_id">
           <option value="">— nieprzypisany —</option>
           {% for o in owners %}
-            <option value="{{ o.id }}">{{ o.full_name }} ({{ o.email }})</option>
+            <option value="{{ o.id }}">{{ o.wartosc }}</option>
           {% endfor %}
         </select>
       </div>
@@ -79,13 +79,13 @@
         <select id="uzytkownik_id" name="uzytkownik_id">
           <option value="">— nieprzypisany —</option>
           {% for o in owners %}
-            <option value="{{ o.id }}">{{ o.full_name }} ({{ o.email }})</option>
+            <option value="{{ o.id }}">{{ o.wartosc }}</option>
           {% endfor %}
         </select>
       </div>
     </div>
     {% if not owners %}
-      <p class="small muted">Lista osob jest pusta - dodaj je na stronie <a href="/owners">Osoby</a>.</p>
+      <p class="small muted">Lista osób jest pusta — dodaj je w <a href="/slowniki?kategoria=osoba">słowniku osób</a>.</p>
     {% endif %}
 
     <label for="rola">Rola</label>
