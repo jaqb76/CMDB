@@ -22,10 +22,12 @@ COPY server/ /app/
 # Wspolny katalog oznaczalby, ze pusty wolumen przyslania paczke z obrazu.
 ENV CMDB_AGENT_BUNDLE_DIR=/app/agent-pakiet
 COPY agent/ /tmp/agent/
-# Skrypty instalacyjne dla Windows serwer wydaje po HTTPS, wiec musza zostac
-# w obrazie - reszta zrodel agenta jest potrzebna wylacznie do zbudowania
-# paczki i po tym kroku znika.
-RUN python -m cmdb_server.pakiet /tmp/agent --do "$CMDB_AGENT_BUNDLE_DIR"     && cp /tmp/agent/packaging/install.ps1 /tmp/agent/packaging/install-agent.ps1           /app/cmdb_server/bootstrap/     && rm -rf /tmp/agent
+# Skrypty, ktore serwer wydaje po HTTPS (instalacja dla Windows oraz
+# odinstalowanie dla obu systemow), musza zostac w obrazie - reszta zrodel
+# agenta jest potrzebna wylacznie do zbudowania paczki i po tym kroku znika.
+# Deinstalator bywa potrzebny wtedy, gdy maszyna nie ma juz nic poza
+# adresem serwera.
+RUN python -m cmdb_server.pakiet /tmp/agent --do "$CMDB_AGENT_BUNDLE_DIR"     && cp /tmp/agent/packaging/install.ps1 /tmp/agent/packaging/install-agent.ps1           /tmp/agent/packaging/uninstall-agent.ps1 /tmp/agent/packaging/uninstall-agent.sh           /app/cmdb_server/bootstrap/     && rm -rf /tmp/agent
 
 # Ktora wersja portalu siedzi w tym obrazie. Katalog .git do obrazu nie
 # trafia, wiec serwer nie ma jak tego odczytac sam - numer musi zostac

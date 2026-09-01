@@ -8,9 +8,12 @@ Zrodla, w kolejnosci wiarygodnosci:
 
 1. ``CMDB_WERSJA`` ze srodowiska - wpisywana przy budowaniu obrazu, wiec
    opisuje dokladnie ten obraz, ktory dziala,
-2. odczyt z repozytorium (``git describe``) - tylko w developmencie; obraz
-   produkcyjny nie zawiera katalogu ``.git``,
-3. wersja pakietu - ostatnia deska ratunku.
+2. odczyt z repozytorium - tylko w developmencie; obraz produkcyjny nie
+   zawiera katalogu ``.git``.
+
+Wersji pakietu tu nie ma swiadomie: ``0.1.0`` nie zmienilo sie od poczatku
+projektu, wiec wygladaloby jak numer wydania, nie mowiac o niczym. Napis
+"nieznana" od razu widac i wiadomo, co zrobic - zbudowac obraz z ``CMDB_WERSJA``.
 
 Nigdy nie zgadujemy. Gdy nie wiadomo, mowimy "nieznana" - falszywy numer
 w stopce jest gorszy od jego braku, bo na jego podstawie ktos stwierdzi,
@@ -22,8 +25,6 @@ import os
 import subprocess
 from functools import lru_cache
 from pathlib import Path
-
-from . import __version__
 
 NIEZNANA = "nieznana"
 
@@ -62,4 +63,4 @@ def _z_repozytorium() -> str | None:
 @lru_cache(maxsize=1)
 def opis() -> str:
     """Napis do stopki. Liczony raz - w czasie zycia procesu sie nie zmienia."""
-    return _ze_srodowiska() or _z_repozytorium() or __version__ or NIEZNANA
+    return _ze_srodowiska() or _z_repozytorium() or NIEZNANA

@@ -47,12 +47,21 @@ def test_pusta_zmienna_nie_daje_pustej_stopki(monkeypatch):
 
 
 def test_nieznana_zamiast_zgadywania(monkeypatch):
-    """Gdy nie ma ani zmiennej, ani repozytorium, mowimy o tym wprost."""
+    """Gdy nie ma ani zmiennej, ani repozytorium, mowimy o tym wprost.
+
+    Wersja pakietu nie jest tu ratunkiem: "0.1.0" nie zmienilo sie od poczatku
+    projektu, wiec wygladaloby jak numer wydania, nie mowiac o niczym."""
     wersja.opis.cache_clear()
     monkeypatch.delenv("CMDB_WERSJA", raising=False)
     monkeypatch.setattr(wersja, "_z_repozytorium", lambda: None)
-    monkeypatch.setattr(wersja, "__version__", "", raising=False)
     try:
         assert wersja.opis() == wersja.NIEZNANA
     finally:
         wersja.opis.cache_clear()
+
+
+def test_health_podaje_wersje(client):
+    """Czy wdrozenie doszlo, musi dac sie sprawdzic bez logowania do panelu
+    i bez dostepu do serwera - inaczej jedynym dowodem jest 'chyba widac'."""
+    dane = client.get("/api/v1/health").json()
+    assert dane["wersja"] == wersja.opis()

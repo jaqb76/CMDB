@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from .. import wersja
 from ..config import get_settings
 from ..db import get_db
 from ..models import AgentCredential, Asset, DiscoveryPolicy, EnrollmentToken, Tenant, utcnow
@@ -37,7 +38,11 @@ router = APIRouter(prefix="/api/v1", tags=["agent"])
 
 @router.get("/health")
 def health() -> dict:
-    return {"status": "ok", "schema_version": 1, "server_time": utcnow().isoformat()}
+    # Wersja jest tu celowo: pytanie "czy wdrozenie doszlo" trzeba dac sie
+    # rozstrzygnac bez logowania do panelu i bez dostepu do serwera. Nie ma
+    # w niej nic wrazliwego - to ten sam napis, ktory widac w stopce.
+    return {"status": "ok", "schema_version": 1, "server_time": utcnow().isoformat(),
+            "wersja": wersja.opis()}
 
 
 @router.post("/agents/enroll", response_model=EnrollResponse, status_code=status.HTTP_201_CREATED)
