@@ -42,7 +42,9 @@
             <option value="{{ t.slug }}" {% if ctx and t.id == ctx.tenant_id %}selected{% endif %}>{{ t.name }}</option>
           {% endfor %}
         </select>
-        <button type="submit" class="btn btn-small">Zmien</button>
+        {# Zapasowy przycisk: lista sama wysyla formularz, wiec przy dzialajacym
+           skrypcie jest zbedny i tylko rozpycha pasek. Bez skryptu zostaje. #}
+        <button type="submit" class="btn btn-small" data-zapasowy>Zmien</button>
       </form>
     {% elif ctx %}
       <span class="tenant-name">{{ ctx.tenant_slug }}</span>

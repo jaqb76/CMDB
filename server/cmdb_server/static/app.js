@@ -79,6 +79,10 @@
   // Przelacznik firmy dla superadmina.
   document.querySelectorAll("select[data-autosubmit]").forEach(function (select) {
     select.addEventListener("change", function () { select.form.submit(); });
+    // Skoro lista wysyla formularz sama, przycisk obok niczego nie wnosi.
+    // Chowamy go dopiero tutaj: bez skryptu jest jedynym sposobem zmiany firmy.
+    var zapasowy = select.form && select.form.querySelector("[data-zapasowy]");
+    if (zapasowy) { zapasowy.hidden = true; }
   });
 
   // Przelacznik motywu: system -> jasny -> ciemny -> system.

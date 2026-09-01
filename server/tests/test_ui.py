@@ -293,3 +293,32 @@ def test_skrypt_przelicza_strefe():
     # Zapis UTC ma zostac w podpowiedzi - to wspolny punkt odniesienia
     # przy porownywaniu z logami serwera.
     assert "el.title" in skrypt
+
+
+# --- gorny pasek --------------------------------------------------------------
+
+def test_przycisk_zmiany_firmy_jest_zapasowy(client, tenant_a, make_user):
+    """Lista firm wysyla formularz sama, wiec przycisk obok tylko rozpycha
+    pasek. Zostaje w kodzie, bo bez skryptu jest jedynym sposobem zmiany."""
+    from pathlib import Path
+
+    katalog = Path(__file__).resolve().parent.parent / "cmdb_server"
+    szablon = (katalog / "templates" / "base.html").read_text(encoding="utf-8")
+    skrypt = (katalog / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert "data-zapasowy" in szablon, "przycisk musi zostac dla przegladarki bez skryptu"
+    assert "data-zapasowy" in skrypt, "skrypt chowa go, gdy juz dziala"
+    assert "data-autosubmit" in szablon
+
+
+def test_prawa_strona_paska_nie_zawija(client, tenant_a, make_user):
+    """Jeden zestaw akcji przeniesiony w polowie do drugiej linii wyglada
+    jak usterka, a nie jak uklad."""
+    from pathlib import Path
+
+    styl = (Path(__file__).resolve().parent.parent
+            / "cmdb_server" / "static" / "app.css").read_text(encoding="utf-8")
+    fragment = styl.split(".userbox {")[1].split("}")[0]
+    assert "flex-wrap: nowrap" in fragment
+    # Adres skraca sie zamiast rozpychac pasek.
+    assert "text-overflow: ellipsis" in styl.split(".user-email {")[1].split("}")[0]

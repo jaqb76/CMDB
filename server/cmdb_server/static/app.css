@@ -60,17 +60,30 @@ code { font-family: var(--mono); font-size: 0.9em; }
 
 /* --- naglowek --- */
 .topbar {
-  display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
-  padding: 10px 22px; background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .brand a { font-weight: 700; font-size: 18px; color: var(--text); letter-spacing: 0.5px; }
-.mainnav { display: flex; gap: 18px; flex: 1; flex-wrap: wrap; }
+.mainnav { display: flex; gap: 14px; flex: 1 1 auto; flex-wrap: wrap; min-width: 0; }
 .mainnav a { color: var(--muted); font-weight: 500; }
 .mainnav a:hover { color: var(--text); text-decoration: none; }
 .mainnav .nav-admin { color: var(--accent); }
-.userbox { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+/* Prawa strona paska nie lamie sie nigdy: to jeden zestaw akcji, wiec
+   przeniesienie polowy do drugiej linii wyglada jak usterka. Zamiast zawijac,
+   pozwalamy skrocic adres i zwezic liste firm - a na waskim ekranie adres
+   znika calkiem, bo to samo konto otwiera sie z zakladki Konto. */
+.userbox {
+  display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: nowrap;
+  font-size: 13px; color: var(--muted); min-width: 0;
+}
+.userbox > * { flex: none; }
+.user-email {
+  min-width: 0; max-width: 190px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 1200px) { .user-email { display: none; } }
 .tenant-name { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; }
-.tenant-select { max-width: 190px; }
+.tenant-select { max-width: 150px; min-width: 0; padding: 5px 7px; }
 
 .content { max-width: 1400px; margin: 0 auto; padding: 22px; }
 .footer { max-width: 1400px; margin: 0 auto; padding: 12px 22px 32px; color: var(--muted); font-size: 12px; }
@@ -260,6 +273,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
   padding: 6px 10px;
 }
 .motyw:hover { color: var(--text); border-color: var(--accent); }
+.motyw { min-width: 62px; text-align: center; }
 /* Widoczna jest tylko ikona odpowiadajaca aktualnemu ustawieniu. */
 .motyw .motyw-ikona { display: none; }
 :root:not([data-theme]) .motyw .motyw-auto,
