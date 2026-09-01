@@ -233,6 +233,10 @@ KATEGORIE_SLOWNIKA: dict[str, str] = {
     "lokalizacja": "Lokalizacje",
     "dzial": "Dzialy",
     "dostawca": "Dostawcy",
+    # Rodzaje sprzetu tez sa slownikiem: firma dokłada "Projektor" albo "UPS"
+    # bez czekania na wydanie serwera. Kazdy rodzaj niesie przy tym wlasny
+    # zestaw pol - inne dla monitora, inne dla przelacznika.
+    "rodzaj": "Rodzaje sprzetu",
 }
 
 
@@ -278,7 +282,7 @@ class SchematSlownika(Base):
 
     __tablename__ = "schematy_slownikow"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "kategoria", name="uq_schemat_kategoria"),
+        UniqueConstraint("tenant_id", "kategoria", "rodzaj", name="uq_schemat_kategoria_rodzaj"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -286,6 +290,10 @@ class SchematSlownika(Base):
         String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
     kategoria: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Dla kategorii "sprzet" wskazuje rodzaj, ktorego dotyczy zestaw pol.
+    # Pusty ciag dla schematow slownikowych - kolumna wchodzi w klucz
+    # unikalnosci, a NULL nie porownuje sie sam ze soba.
+    rodzaj: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     definicja: Mapped[dict] = mapped_column(JSONType, nullable=False)
     zmieniony: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     zmienil: Mapped[str | None] = mapped_column(String(255))
@@ -353,6 +361,10 @@ class Asset(Base):
 
     # Skrocone podsumowanie do listy (cpu/ram/dyski) - zeby nie czytac calego payloadu.
     facts: Mapped[dict | None] = mapped_column(JSONType, default=dict)
+    # Pola wlasciwe dla RODZAJU sprzetu: przekatna monitora, liczba portow
+    # przelacznika, licznik wydrukow. Opisuje je schemat przypiety do rodzaju,
+    # wiec dolozenie pola jest zapisem, a nie migracja.
+    atrybuty: Mapped[dict | None] = mapped_column(JSONType, default=dict)
 
     # Aktualizacja agenta: ustawienie na maszynie ma pierwszenstwo przed firmowym.
     target_release_id: Mapped[str | None] = mapped_column(

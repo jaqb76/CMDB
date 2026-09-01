@@ -53,6 +53,8 @@ def _dodaj_wpis(client, kategoria: str, etykieta: str, dodatkowe: dict | None = 
         "lokalizacja": {"pole_typ_miejsca": "inne", "pole_miasto": etykieta},
         "dostawca": {"pole_nazwa_firmy": etykieta, "pole_kanal_zgloszen": "portal"},
         "osoba": {"pole_imie_nazwisko": etykieta},
+        "rodzaj": {"pole_nazwa": etykieta,
+                   "pole_klucz_rodzaju": etykieta.casefold().replace(" ", "_")},
     }[kategoria]
     pola = {k: v for k, v in {**pola, **(dodatkowe or {})}.items() if v}
     zapis = client.post(f"/slowniki/wpis/{wpis_id}", data={**pola, "csrf_token": csrf},

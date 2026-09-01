@@ -53,9 +53,10 @@ from ..security import (
     verify_password,
 )
 from ..services import (
-    changes, cve, duplicates, logowanie, pakiet, scoping, slowniki, upgrades,
+    changes, cve, duplicates, logowanie, pakiet, rodzaje, scoping, slowniki, upgrades,
     ustawienia,
 )
+from ..services import schemat as definicje_pol
 from ..services.auth import (
     LoginRequired,
     authenticate_user,
@@ -505,7 +506,7 @@ def dashboard(
         unassigned=unassigned,
         by_os=by_os,
         by_typ=by_typ,
-        typy=TYPY_SPRZETU,
+        typy=rodzaje.etykiety(db, ctx),
         recent=recent,
         reczne=reczne,
         changed=changed,
@@ -550,7 +551,7 @@ def asset_list(
         )
     if os_family:
         stmt = stmt.where(Asset.os_family == os_family)
-    if typ in TYPY_SPRZETU:
+    if typ:
         stmt = stmt.where(Asset.typ == typ)
     if zrodlo in (ZRODLO_AGENT, ZRODLO_RECZNE):
         stmt = stmt.where(Asset.zrodlo == zrodlo)
@@ -591,7 +592,7 @@ def asset_list(
         assets=assets,
         owners=owners,
         families=families,
-        typy=TYPY_SPRZETU,
+        typy=rodzaje.etykiety(db, ctx),
         lokalizacje=slowniki.wpisy(db, ctx, "lokalizacja"),
         filters={"q": q, "os_family": os_family, "owner": owner,
                  "state": state, "lifecycle": lifecycle,
@@ -643,7 +644,7 @@ def formularz_nowego_sprzetu(
         ctx,
         db,
         owners=db.execute(scoping.owners_query(ctx)).scalars().all(),
-        typy=TYPY_SPRZETU,
+        typy=rodzaje.etykiety(db, ctx),
         podpowiedzi=slowniki.podpowiedzi(db, ctx),
         domyslny_typ="siec",
     )
@@ -672,7 +673,7 @@ def utworz_sprzet(
     verify_csrf(request, user, csrf_token)
     _require_write(ctx)
 
-    if typ not in TYPY_SPRZETU:
+    if not rodzaje.wpis_rodzaju(db, ctx, typ):
         raise HTTPException(status_code=400, detail="nieznany rodzaj sprzetu")
     pola = _dane_recznego_sprzetu(
         {"nazwa": nazwa, "producent": producent, "model": model,
@@ -717,7 +718,7 @@ def utworz_sprzet(
 
 
 @router.post("/assets/{asset_id}/dane")
-def zapisz_dane_sprzetu(
+async def zapisz_dane_sprzetu(
     asset_id: str,
     request: Request,
     nazwa: str = Form(...),
@@ -750,7 +751,7 @@ def zapisz_dane_sprzetu(
             status_code=400,
             detail="dane maszyny z agentem pochodza z jej raportow i nie edytuje sie ich recznie",
         )
-    if typ not in TYPY_SPRZETU:
+    if not rodzaje.wpis_rodzaju(db, ctx, typ):
         raise HTTPException(status_code=400, detail="nieznany rodzaj sprzetu")
 
     pola = _dane_recznego_sprzetu(
@@ -759,14 +760,42 @@ def zapisz_dane_sprzetu(
     )
     if not pola["hostname"]:
         raise HTTPException(status_code=400, detail="nazwa jest wymagana")
+
+    # Zmiana rodzaju UKRYWA pola poprzedniego, nie kasuje ich. Ostrzezenie
+    # musi powstac przed zapisem, bo potem nie da sie juz powiedziec, ile ich
+    # bylo - a bez tego zmiana rodzaju wyglada jak utrata danych.
+    ukryte = rodzaje.ukryte_przy_zmianie(db, ctx, sprzet, typ)
+
     for klucz, wartosc in pola.items():
         setattr(sprzet, klucz, wartosc)
-    sprzet.typ = typ
+
+    # Zmiana rodzaju NIE rusza wartosci: ani nie zapisuje nowych, ani nie kasuje
+    # starych. Formularz zostal narysowany dla dotychczasowego rodzaju, wiec
+    # jego pola nie opisuja juz tego, czym sprzet ma byc - a pola nowego rodzaju
+    # jeszcze nie istnialy, gdy strona powstawala. Zapisujemy je dopiero przy
+    # nastepnej edycji, kiedy czlowiek widzi wlasciwy formularz.
+    if typ != sprzet.typ:
+        sprzet.typ = typ
+    else:
+        formularz = {klucz[5:]: wartosc
+                     for klucz, wartosc in (await request.form()).items()
+                     if klucz.startswith("pole_")}
+        try:
+            rodzaje.zapisz_atrybuty(db, ctx, sprzet, formularz)
+        except definicje_pol.BladPola as exc:
+            db.rollback()
+            adres = (f"/assets/{asset_id}?blad="
+                     + urllib.parse.quote(json.dumps(exc.bledy, ensure_ascii=False)))
+            return RedirectResponse(adres, status_code=status.HTTP_303_SEE_OTHER)
 
     audit(db, ctx, action="asset.dane_zmienione", target=sprzet.hostname,
+          detail={"rodzaj": typ, "ukryte_pola": ukryte} if ukryte else None,
           ip=client_ip(request))
     db.commit()
-    return RedirectResponse(f"/assets/{sprzet.id}", status_code=status.HTTP_303_SEE_OTHER)
+    adres = f"/assets/{sprzet.id}"
+    if ukryte:
+        adres += "?ukryte=" + urllib.parse.quote(", ".join(ukryte))
+    return RedirectResponse(adres, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/assets/{asset_id}/usun")
@@ -807,6 +836,8 @@ def asset_detail(
     asset_id: str,
     request: Request,
     snapshot: str = Query("", max_length=36),
+    ukryte: str = Query("", max_length=500),
+    blad: str = Query("", max_length=2000),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -814,6 +845,12 @@ def asset_detail(
     asset = scoping.get_asset(db, ctx, asset_id)
     if asset is None:
         raise HTTPException(status_code=404, detail="nie znaleziono maszyny")
+    try:
+        bledy_pol = json.loads(blad) if blad else {}
+    except json.JSONDecodeError:
+        bledy_pol = {}
+    if not isinstance(bledy_pol, dict):
+        bledy_pol = {}
 
     if snapshot:
         current = scoping.get_snapshot(db, ctx, snapshot)
@@ -858,10 +895,20 @@ def asset_detail(
         dzisiaj=date.today(),
         history=history,
         owners=owners,
-        typy=TYPY_SPRZETU,
+        typy=rodzaje.etykiety(db, ctx),
         podpowiedzi=slowniki.podpowiedzi(db, ctx),
         # Cztery podglady budowane tym samym sposobem - osoba przestala byc
         # przypadkiem szczegolnym, wiec nie ma powodu na osobna sciezke.
+        # Pola wlasciwe dla rodzaju - tylko przy wpisie recznym. Maszyna
+        # z agentem opisuje sie raportem i pola rodzaju jej nie dotycza.
+        pola_rodzaju=(rodzaje.schemat_pol(db, ctx, asset.typ or "").pola
+                      if asset.zrodlo == ZRODLO_RECZNE else []),
+        wartosci_rodzaju=(rodzaje.widoczne(db, ctx, asset)
+                          if asset.zrodlo == ZRODLO_RECZNE else []),
+        rodzaje_listy=rodzaje.etykiety(db, ctx),
+        formaty=definicje_pol.FORMATY,
+        ukryte=ukryte,
+        bledy_pol=bledy_pol,
         szczegoly_opiekuna=slowniki.szczegoly(db, ctx, asset.owner),
         szczegoly_uzytkownika=slowniki.szczegoly(db, ctx, asset.uzytkownik),
         szczegoly_lokalizacji=slowniki.szczegoly(db, ctx, asset.lokalizacja),
@@ -1183,6 +1230,7 @@ def widok_slownikow(
     if kategoria not in KATEGORIE_SLOWNIKA:
         kategoria = next(iter(KATEGORIE_SLOWNIKA))
     schematy = {k: slowniki.schemat(db, ctx, k) for k in KATEGORIE_SLOWNIKA}
+    rodzaje.zapewnij_startowe(db, ctx)
     opis = schematy[kategoria]
     pozycje = slowniki.wpisy(db, ctx)
     biezace = [w for w in pozycje if w.kategoria == kategoria]
@@ -1439,6 +1487,116 @@ def wyczysc_pole_schematu(
           detail={"wpisow": ile}, ip=client_ip(request))
     db.commit()
     return RedirectResponse("/slowniki/" + kategoria + "/schemat",
+                            status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- pola wlasciwe dla rodzaju sprzetu --------------------------------------
+
+@router.get("/rodzaje/{klucz}/pola", response_class=HTMLResponse)
+def widok_pol_rodzaju(
+    klucz: str,
+    request: Request,
+    blad: str = Query("", max_length=500),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zestaw pol jednego rodzaju sprzetu - ten sam edytor co przy slownikach."""
+    _require_write(ctx)
+    wpis = rodzaje.wpis_rodzaju(db, ctx, klucz)
+    if wpis is None:
+        raise HTTPException(status_code=404, detail="nieznany rodzaj sprzetu")
+    opis = rodzaje.schemat_pol(db, ctx, klucz)
+    limity = {"pola": definicje_pol.MAKS_POL, "opcje": definicje_pol.MAKS_OPCJI}
+    uzycia = {p.klucz: rodzaje.uzycie_pola(db, ctx, klucz, p.klucz) for p in opis.pola}
+    wynik = render(
+        request, "rodzaj_pola.html", user, ctx, db,
+        rodzaj=wpis, klucz=klucz, schemat=opis, limity=limity, uzycia=uzycia,
+        sprzetu=rodzaje.uzycie(db, ctx, klucz), blad=blad,
+        definicja=json.dumps(opis.model_dump(exclude_none=True), ensure_ascii=False, indent=2),
+        slownik_edytora=json.dumps({
+            "typy": list(definicje_pol.TYPY),
+            "formaty": {n: o["przyklad"] for n, o in definicje_pol.FORMATY.items()},
+            "role": {},
+            "cele": ["osoba"] + list(KATEGORIE_SLOWNIKA),
+        }, ensure_ascii=False),
+        uzycia_json=json.dumps(uzycia),
+        limity_json=json.dumps(limity),
+    )
+    db.commit()
+    return wynik
+
+
+@router.post("/rodzaje/{klucz}/pola")
+def zapisz_pola_rodzaju(
+    klucz: str,
+    request: Request,
+    definicja: str = Form(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Ta sama zasada co przy slownikach: pola z wartosciami sie nie usuwa."""
+    from pydantic import ValidationError
+
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+    if rodzaje.wpis_rodzaju(db, ctx, klucz) is None:
+        raise HTTPException(status_code=404, detail="nieznany rodzaj sprzetu")
+
+    poprzedni = rodzaje.schemat_pol(db, ctx, klucz)
+    try:
+        tresc = json.loads(definicja)
+        tresc["kategoria"] = definicje_pol.KATEGORIA_SPRZETU
+        nowy = definicje_pol.Schemat.model_validate(tresc)
+    except (json.JSONDecodeError, ValidationError, TypeError, AttributeError) as exc:
+        db.rollback()
+        return _blad_pol_rodzaju(klucz, str(exc)[:400])
+
+    znikaja = {p.klucz for p in poprzedni.pola} - {p.klucz for p in nowy.pola}
+    for pole in sorted(znikaja):
+        ile = rodzaje.uzycie_pola(db, ctx, klucz, pole)
+        if ile:
+            db.rollback()
+            return _blad_pol_rodzaju(
+                klucz, "pole '" + pole + "' ma wartosci przy " + str(ile)
+                + " sprzetach - najpierw je wyczysc")
+
+    rodzaje.zapisz_schemat_pol(db, ctx, klucz, nowy)
+    audit(db, ctx, action="rodzaj.pola", target=klucz,
+          detail={"pola": len(nowy.pola), "usuniete": sorted(znikaja)},
+          ip=client_ip(request))
+    db.commit()
+    return RedirectResponse("/rodzaje/" + klucz + "/pola",
+                            status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _blad_pol_rodzaju(klucz: str, tresc: str) -> RedirectResponse:
+    return RedirectResponse(
+        "/rodzaje/" + klucz + "/pola?blad=" + urllib.parse.quote(tresc),
+        status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/rodzaje/{klucz}/pola/wyczysc")
+def wyczysc_pole_rodzaju(
+    klucz: str,
+    request: Request,
+    pole: str = Form(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+    if rodzaje.wpis_rodzaju(db, ctx, klucz) is None:
+        raise HTTPException(status_code=404, detail="nieznany rodzaj sprzetu")
+    ile = rodzaje.wyczysc_pole(db, ctx, klucz, pole)
+    audit(db, ctx, action="rodzaj.pole_wyczyszczone", target=klucz + ":" + pole,
+          detail={"sprzetu": ile}, ip=client_ip(request))
+    db.commit()
+    return RedirectResponse("/rodzaje/" + klucz + "/pola",
                             status_code=status.HTTP_303_SEE_OTHER)
 
 

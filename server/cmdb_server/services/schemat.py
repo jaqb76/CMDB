@@ -39,6 +39,10 @@ MAKS_NOTATKI = 2000
 
 TYPY = ("tekst", "notatka", "liczba", "data", "logiczna", "wybor", "odwolanie")
 
+# Schemat pol wlasciwych dla rodzaju sprzetu - odrozniamy go od schematow
+# slownikowych, bo rzadza nim inne reguly.
+KATEGORIA_SPRZETU = "sprzet"
+
 # Role wiaza funkcje systemu ze schematem. Funkcja pyta o role, nie o nazwe
 # pola - dzieki temu zmiana etykiety na "E-mail serwisu" niczego nie psuje.
 # Jedno pole na role: dwa adresy zgloszen to pytanie, na ktore system nie
@@ -210,6 +214,11 @@ class Schemat(BaseModel):
 
     @model_validator(mode="after")
     def ma_etykiete(self):
+        # Zestaw pol sprzetu etykiety nie buduje: nazwa maszyny jest jej wlasna
+        # kolumna, a nie skladanka z atrybutow. Wymog dotyczy wiec wylacznie
+        # wpisow slownikowych, ktore poza polami nie maja czym sie przedstawic.
+        if self.kategoria == KATEGORIA_SPRZETU:
+            return self
         if self.pola and not any(p.w_etykiecie for p in self.pola):
             raise ValueError("co najmniej jedno pole musi budowac etykiete wpisu")
         return self

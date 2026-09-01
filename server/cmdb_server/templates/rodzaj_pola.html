@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Pola rodzaju {{ rodzaj.wartosc }} - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <p class="muted small">
+      <a href="/slowniki?kategoria=rodzaj">Rodzaje sprzętu</a> ·
+      <a href="/slowniki/wpis/{{ rodzaj.id }}">{{ rodzaj.wartosc }}</a>
+    </p>
+    <h1>Pola rodzaju: {{ rodzaj.wartosc }}</h1>
+    <p class="muted">
+      Pola widoczne przy sprzęcie tego rodzaju — obok wspólnych, które ma każdy
+      wpis. Monitor pyta o przekątną, przełącznik o liczbę portów; jeden zestaw
+      dla wszystkiego oznaczałby rubryki puste na zawsze.
+    </p>
+  </div>
+  <div><span class="muted small">{{ sprzetu }} sprzętów tego rodzaju</span></div>
+</div>
+
+{% if blad %}
+<div class="alert alert-error"><b>Nie zapisano.</b> {{ blad }}</div>
+{% endif %}
+
+<form method="post" action="/rodzaje/{{ klucz }}/pola">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div data-edytor-schematu
+       data-slownik='{{ slownik_edytora }}'
+       data-uzycia='{{ uzycia_json }}'
+       data-limity='{{ limity_json }}'>
+    <div class="page-head" style="margin-bottom:10px">
+      <nav class="podzakladki">
+        <button type="button" class="is-active" data-widok="formularz">Formularz</button>
+        <button type="button" data-widok="json">Edycja zaawansowana</button>
+      </nav>
+      <div><button type="button" class="btn" data-dodaj-pole>+ Dodaj pole</button></div>
+    </div>
+
+    <p class="alert alert-error" data-komunikat hidden></p>
+    <div data-panel-widok="formularz"><div data-pola></div></div>
+    <div data-panel-widok="json" hidden>
+      <p class="muted small">
+        Ta sama treść, którą przechowuje baza. Sprawdzana przy zapisie, więc
+        błędny wpis nie popsuje rodzaju.
+      </p>
+    </div>
+  </div>
+
+  <textarea id="definicja" name="definicja" rows="20" spellcheck="false"
+            class="kod-edytor" data-panel-widok="json" hidden>{{ definicja }}</textarea>
+
+  <div class="row-form" style="margin-top:16px">
+    <div><button type="submit" class="btn btn-primary">Zapisz pola</button></div>
+    <div><a class="btn btn-ghost" href="/rodzaje/{{ klucz }}/pola">Odrzuć zmiany</a></div>
+  </div>
+</form>
+
+{% if schemat.pola %}
+<section class="panel">
+  <h2>Obecne pola ({{ schemat.pola | length }} z {{ limity.pola }})</h2>
+  <div class="tabela-przewijana">
+    <table class="table">
+      <thead>
+        <tr><th>Klucz</th><th>Etykieta</th><th>Typ / format</th>
+            <th class="lp">Wartości</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for p in schemat.pola %}
+        <tr>
+          <td><code>{{ p.klucz }}</code></td>
+          <td class="strong">{{ p.etykieta }}
+            {% if p.wymagane %}<span class="wymagane" title="wymagane">*</span>{% endif %}</td>
+          <td class="small">{{ p.typ }}{% if p.format %} · {{ p.format }}{% endif %}</td>
+          <td class="lp">{{ uzycia.get(p.klucz, 0) }}</td>
+          <td class="small">
+            {% if uzycia.get(p.klucz, 0) %}
+            <form method="post" action="/rodzaje/{{ klucz }}/pola/wyczysc" class="inline-form"
+                  data-confirm="Wyczyścić wartości pola {{ p.etykieta }} przy {{ uzycia[p.klucz] }} sprzętach? Tego nie da się cofnąć.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="pole" value="{{ p.klucz }}">
+              <button type="submit" class="btn btn-small btn-danger">Wyczyść wartości</button>
+            </form>
+            {% else %}<span class="muted">puste — można usunąć</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small">
+    <b>Pole z wartościami nie daje się usunąć</b> — najpierw jawnie wyczyść jego
+    wartości. Zmiana rodzaju przy konkretnym sprzęcie działa inaczej: wartości
+    zostają w bazie i wracają po powrocie do poprzedniego rodzaju.
+  </p>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block skrypty %}
+<script src="{{ zasob('schemat.js') }}"></script>
+{% endblock %}

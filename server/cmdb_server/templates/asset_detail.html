@@ -140,11 +140,22 @@
 
 {% if asset.zrodlo == 'reczne' %}
 <section class="panel">
-  <h2>Dane sprzetu</h2>
+  <h2>Dane sprzętu</h2>
   <p class="small muted">
-    Wpis reczny opisuje wylacznie to, co wpisal czlowiek - nie ma raportu,
-    ktory by go poprawil, wiec te pola sa jedynym zrodlem prawdy o tym sprzecie.
+    Wpis ręczny opisuje wyłącznie to, co wpisał człowiek — nie ma raportu,
+    który by go poprawił, więc te pola są jedynym źródłem prawdy o tym sprzęcie.
   </p>
+
+  {% if ukryte %}
+  <div class="alert alert-warn">
+    <b>Zmiana rodzaju ukryła {{ ukryte.split(', ') | length }}
+    {{ 'pole' if ukryte.split(', ') | length == 1 else 'pola' }}:</b> {{ ukryte }}.
+    Wartości zostały w bazie — po powrocie do poprzedniego rodzaju wrócą na kartę.
+  </div>
+  {% endif %}
+  {% if bledy_pol %}
+  <div class="alert alert-error">Nie zapisano — popraw zaznaczone pola.</div>
+  {% endif %}
   <form method="post" action="/assets/{{ asset.id }}/dane" class="row-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div>
@@ -191,6 +202,72 @@
              {% if not ctx.can_write %}disabled{% endif %}>
     </div>
     {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
+
+    {#
+      Pola właściwe dla rodzaju. Rodzaj przestaje być rubryką obok innych,
+      a staje się pytaniem, które buduje resztę formularza: monitor pyta
+      o przekątną, przełącznik o liczbę portów.
+    #}
+    {% if pola_rodzaju %}
+    <fieldset class="kolumny-grupa" style="flex-basis:100%">
+      <legend>Właściwe dla rodzaju: {{ typy.get(asset.typ, asset.typ) }}</legend>
+      <div class="pola-siatka">
+        {% for p in pola_rodzaju %}
+        {% set wartosc = (asset.atrybuty or {}).get(p.klucz, '') %}
+        <div class="pole">
+          <label for="pole_{{ p.klucz }}">
+            {{ p.etykieta }}
+            {% if p.wymagane %}<span class="wymagane" title="pole wymagane">*</span>{% endif %}
+          </label>
+          {% if p.typ == 'wybor' %}
+            <select id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}"
+                    {% if not ctx.can_write %}disabled{% endif %}>
+              <option value="">—</option>
+              {% for opcja in p.opcje %}
+                <option value="{{ opcja }}" {% if wartosc == opcja %}selected{% endif %}>{{ opcja }}</option>
+              {% endfor %}
+            </select>
+          {% elif p.typ == 'logiczna' %}
+            <label class="kolumna-wybor">
+              <input type="checkbox" id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}"
+                     value="tak" {% if wartosc %}checked{% endif %}
+                     {% if not ctx.can_write %}disabled{% endif %}>
+              <span>tak</span>
+            </label>
+          {% elif p.typ == 'notatka' %}
+            <textarea id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}" rows="2"
+                      maxlength="2000" {% if not ctx.can_write %}disabled{% endif %}>{{ wartosc }}</textarea>
+          {% elif p.typ == 'liczba' %}
+            <input id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}" type="number" step="any"
+                   {% if p.min is not none %}min="{{ p.min }}"{% endif %}
+                   {% if p.max is not none %}max="{{ p.max }}"{% endif %}
+                   value="{{ wartosc }}" {% if not ctx.can_write %}disabled{% endif %}>
+          {% elif p.typ == 'data' %}
+            <input id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}" type="date"
+                   value="{{ wartosc }}" {% if not ctx.can_write %}disabled{% endif %}>
+          {% else %}
+            {% set opis = formaty.get(p.format) %}
+            <input id="pole_{{ p.klucz }}" name="pole_{{ p.klucz }}"
+                   type="{{ opis.kontrolka if opis else 'text' }}" value="{{ wartosc }}"
+                   maxlength="500"
+                   {% if opis %}data-format="{{ p.format }}" placeholder="{{ p.podpowiedz or opis.przyklad }}"
+                   {% elif p.podpowiedz %}placeholder="{{ p.podpowiedz }}"{% endif %}
+                   {% if bledy_pol.get(p.klucz) %}aria-invalid="true"{% endif %}
+                   {% if not ctx.can_write %}disabled{% endif %}>
+          {% endif %}
+          {% if bledy_pol.get(p.klucz) %}<div class="blad-pola">{{ bledy_pol[p.klucz] }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% if ctx.can_write %}
+      <p class="muted small">
+        Zestaw pól ustawia administrator w
+        <a href="/slowniki?kategoria=rodzaj">słowniku rodzajów</a>.
+        Zmiana rodzaju ukryje pola poprzedniego — wartości zostaną w bazie.
+      </p>
+      {% endif %}
+    </fieldset>
+    {% endif %}
   </form>
   {% if ctx.can_write %}
     <form method="post" action="/assets/{{ asset.id }}/usun" class="inline-form"
@@ -256,6 +333,9 @@
           <dd>{% if asset.dostawca %}<a href="/slowniki/wpis/{{ asset.dostawca.id }}">{{ asset.dostawca.wartosc }}</a>{% else %}—{% endif %}</dd>
           <dt>Rola</dt><dd>{{ asset.role_label or '—' }}</dd>
           <dt>Uwagi</dt><dd>{{ asset.notes or '—' }}</dd>
+          {% for pole in wartosci_rodzaju %}
+          <dt>{{ pole.etykieta }}</dt><dd>{{ pole.wartosc }}</dd>
+          {% endfor %}
         </dl>
         <p class="muted small">
           Ten sprzet nie ma agenta, wiec system, oprogramowanie i podatnosci

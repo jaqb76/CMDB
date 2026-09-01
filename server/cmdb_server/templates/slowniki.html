@@ -88,6 +88,10 @@
           </td>
           <td class="lp" title="maszyny i wpisy innych słowników, które go wskazują">{{ uzycia[w.id] }}</td>
           <td class="small">
+            {% if kategoria == 'rodzaj' and (w.atrybuty or {}).get('klucz_rodzaju') %}
+            <a class="btn btn-small" href="/rodzaje/{{ w.atrybuty['klucz_rodzaju'] }}/pola"
+               title="Pola sprzętu tego rodzaju">Pola</a>
+            {% endif %}
             <a class="btn btn-oko" href="/slowniki/wpis/{{ w.id }}"
                title="Otwórz kartę" aria-label="Otwórz kartę">
               <svg viewBox="0 0 20 14" width="17" height="13" aria-hidden="true" focusable="false">

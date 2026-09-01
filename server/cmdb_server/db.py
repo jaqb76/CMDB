@@ -146,6 +146,7 @@ def _dodaj_brakujace_kolumny() -> None:
     _popraw_unikalnosc_wydan()
     _usun_stare_pola_slownikow()
     _przenies_osoby_do_slownika()
+    _popraw_unikalnosc_schematow()
 
 
 def _popraw_unikalnosc_wydan() -> None:
@@ -377,3 +378,27 @@ def _przenies_osoby_do_slownika() -> None:
         conn.execute(text("DROP TABLE owners CASCADE"))
 
     log.warning("przeniesiono %d osob do slownika i usunieto tabele owners", len(osoby))
+
+
+def _popraw_unikalnosc_schematow() -> None:
+    """Schemat rozroznia sie teraz takze rodzajem sprzetu.
+
+    Wczesniej para (firma, kategoria) byla unikalna, bo schemat opisywal tylko
+    slownik. Odkad kazdy rodzaj sprzetu ma wlasny zestaw pol, ta sama firma ma
+    kilka schematow kategorii "sprzet" - po jednym na rodzaj.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "schematy_slownikow" not in set(inspector.get_table_names()):
+        return
+    nazwy = {o["name"] for o in inspector.get_unique_constraints("schematy_slownikow")}
+    if "uq_schemat_kategoria" not in nazwy:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE schematy_slownikow "
+                          "DROP CONSTRAINT uq_schemat_kategoria"))
+        conn.execute(text("ALTER TABLE schematy_slownikow "
+                          "ADD CONSTRAINT uq_schemat_kategoria_rodzaj "
+                          "UNIQUE (tenant_id, kategoria, rodzaj)"))
+    log.info("schematy rozrozniane takze rodzajem sprzetu")

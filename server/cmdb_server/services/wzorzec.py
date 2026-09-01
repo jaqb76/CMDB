@@ -15,6 +15,17 @@ from __future__ import annotations
 from .schemat import Schemat
 
 WZORCE: dict[str, list[dict]] = {
+    "rodzaj": [
+        {"klucz": "nazwa", "etykieta": "Nazwa rodzaju", "typ": "tekst",
+         "wymagane": True, "w_etykiecie": True, "grupa": "Tozsamosc"},
+        # Klucz jest tozsamoscia rodzaju: po nim leza wpisy sprzetu i po nim
+        # rozpoznaja go relacje. Etykiete zmienia sie dowolnie, klucza nigdy.
+        {"klucz": "klucz_rodzaju", "etykieta": "Klucz", "typ": "tekst",
+         "wymagane": True, "grupa": "Tozsamosc",
+         "podpowiedz": "male litery bez spacji, np. projektor"},
+        {"klucz": "opis", "etykieta": "Do czego sluzy", "typ": "notatka",
+         "grupa": "Tozsamosc"},
+    ],
     "osoba": [
         {"klucz": "imie_nazwisko", "etykieta": "Imie i nazwisko", "typ": "tekst",
          "wymagane": True, "w_etykiecie": True, "grupa": "Tozsamosc"},
@@ -93,3 +104,73 @@ WZORCE: dict[str, list[dict]] = {
 def wzorcowy(kategoria: str) -> Schemat:
     """Swieza kopia wzorca. Nigdy nie wspoldzielona - firma dostaje swoja."""
     return Schemat(kategoria=kategoria, wersja=1, pola=WZORCE.get(kategoria, []))
+
+
+# Rodzaje sprzetu, ktore firma dostaje na start. Klucze musza zgadzac sie
+# z TYPY_SPRZETU, bo to one leza przy istniejacym sprzecie.
+RODZAJE_STARTOWE: list[tuple[str, str]] = [
+    ("komputer", "Komputer / serwer"),
+    ("siec", "Sprzet sieciowy"),
+    ("drukarka", "Drukarka / skaner"),
+    ("monitor", "Monitor"),
+    ("telefon", "Telefon / tablet"),
+    ("vm", "Maszyna wirtualna"),
+    ("host", "Host wirtualizacji"),
+    ("klaster", "Klaster"),
+    ("aplikacja", "Aplikacja"),
+    ("inne", "Inne"),
+]
+
+# Klucze, na ktorych stoi kod: relacje sprawdzaja po nich, czy zwiazek ma sens,
+# a wykrywanie sieci klasyfikuje znaleziska. Zmiana albo usuniecie takiego
+# rodzaju wylaczyloby funkcje bez zadnego komunikatu.
+KLUCZE_CHRONIONE = frozenset({"komputer", "vm", "host", "klaster", "aplikacja"})
+
+# Zestawy pol wlasciwych dla rodzaju. Sa punktem wyjscia, nie ograniczeniem -
+# administrator dokłada i usuwa je tak samo jak w kazdym innym schemacie.
+POLA_RODZAJU: dict[str, list[dict]] = {
+    "monitor": [
+        {"klucz": "przekatna_cale", "etykieta": "Przekatna (cale)", "typ": "liczba",
+         "min": 5, "max": 120, "grupa": "Parametry"},
+        {"klucz": "rozdzielczosc", "etykieta": "Rozdzielczosc", "typ": "tekst",
+         "grupa": "Parametry", "podpowiedz": "2560x1440"},
+        {"klucz": "zlacza", "etykieta": "Zlacza", "typ": "tekst",
+         "grupa": "Parametry", "podpowiedz": "HDMI, DisplayPort"},
+        {"klucz": "matryca", "etykieta": "Matryca", "typ": "wybor",
+         "opcje": ["IPS", "VA", "TN", "OLED", "nieznana"], "grupa": "Parametry"},
+    ],
+    "siec": [
+        {"klucz": "liczba_portow", "etykieta": "Liczba portow", "typ": "liczba",
+         "min": 1, "max": 1024, "grupa": "Parametry"},
+        {"klucz": "poe", "etykieta": "Zasilanie PoE", "typ": "logiczna", "grupa": "Parametry"},
+        {"klucz": "predkosc_portow", "etykieta": "Predkosc portow", "typ": "wybor",
+         "opcje": ["100 Mb/s", "1 Gb/s", "2,5 Gb/s", "10 Gb/s"], "grupa": "Parametry"},
+        {"klucz": "wersja_firmware", "etykieta": "Wersja firmware", "typ": "tekst",
+         "grupa": "Utrzymanie"},
+        {"klucz": "adres_zarzadzania", "etykieta": "Adres zarzadzania", "typ": "tekst",
+         "format": "url", "grupa": "Utrzymanie"},
+    ],
+    "drukarka": [
+        {"klucz": "licznik_wydrukow", "etykieta": "Licznik wydrukow", "typ": "liczba",
+         "min": 0, "grupa": "Eksploatacja"},
+        {"klucz": "rodzaj_tonera", "etykieta": "Rodzaj tonera", "typ": "tekst",
+         "grupa": "Eksploatacja"},
+        {"klucz": "kolor", "etykieta": "Druk w kolorze", "typ": "logiczna",
+         "grupa": "Parametry"},
+        {"klucz": "dupleks", "etykieta": "Druk dwustronny", "typ": "logiczna",
+         "grupa": "Parametry"},
+    ],
+    "telefon": [
+        {"klucz": "imei", "etykieta": "IMEI", "typ": "tekst", "grupa": "Tozsamosc"},
+        {"klucz": "numer", "etykieta": "Numer telefonu", "typ": "tekst",
+         "format": "telefon", "grupa": "Abonament"},
+        {"klucz": "operator", "etykieta": "Operator", "typ": "tekst", "grupa": "Abonament"},
+        {"klucz": "koniec_umowy", "etykieta": "Koniec umowy", "typ": "data",
+         "grupa": "Abonament"},
+    ],
+}
+
+
+def wzorcowe_pola_rodzaju(klucz: str) -> Schemat:
+    """Zestaw pol dla rodzaju sprzetu; pusty, gdy nie mamy dla niego wzorca."""
+    return Schemat(kategoria="sprzet", wersja=1, pola=POLA_RODZAJU.get(klucz, []))
