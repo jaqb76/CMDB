@@ -1,16 +1,16 @@
 {% extends "base_admin.html" %}
-{% block title %}Podatnosci - administracja CMDB{% endblock %}
+{% block title %}Podatności - administracja CMDB{% endblock %}
 {% block content %}
 
 <div class="page-head">
   <div>
     <h1>Dane o podatnosciach</h1>
-    <p class="muted">Kanaly, z ktorych zestawiamy inwentarz z lukami bezpieczenstwa.</p>
+    <p class="muted">Kanały, z których zestawiamy inwentarz z lukami bezpieczeństwa.</p>
   </div>
   <div class="row-form">
     <form method="post" action="/admin/podatnosci/odswiez" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" class="btn btn-primary">Odswiez kanaly</button>
+      <button type="submit" class="btn btn-primary">Odśwież kanały</button>
     </form>
     <form method="post" action="/admin/podatnosci/oceny" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -20,20 +20,20 @@
 </div>
 
 <div class="alert alert-warn">
-  <b>Zrodlem sa dane samych dystrybucji, nie baza NVD.</b>
-  Debian i Ubuntu lataja wstecznie, nie zmieniajac numeru wersji: pakiet
-  <code>22.08.8-6+deb12u1</code> zawiera poprawke, o ktorej numer upstream
-  <code>22.08.8</code> nic nie mowi. Porownywanie wersji z NVD dawaloby lawine
-  falszywych alarmow — wiarygodna odpowiedz ma tylko ta dystrybucja, ktora
+  <b>Źródłem sa dane samych dystrybucji, nie baza NVD.</b>
+  Debian i Ubuntu latają wstecznie, nie zmieniajac numeru wersji: pakiet
+  <code>22.08.8-6+deb12u1</code> zawiera poprawke, o której numer upstream
+  <code>22.08.8</code> nic nie mówi. Porównywanie wersji z NVD dawałoby lawinę
+  fałszywych alarmów — wiarygodna odpowiedz ma tylko ta dystrybucja, która
   poprawke wydala.
 </div>
 
 <section class="panel">
-  <h2>Stan kanalow</h2>
+  <h2>Stan kanałów</h2>
   {% if kanaly %}
   <table class="table">
     <thead>
-      <tr><th>Zrodlo</th><th>Wydanie</th><th>Stan</th><th>Wpisow</th>
+      <tr><th>Źródło</th><th>Wydanie</th><th>Stan</th><th>Wpisów</th>
           <th>Pobrano</th><th>Uwagi</th></tr>
     </thead>
     <tbody>
@@ -42,7 +42,7 @@
         <td><code>{{ k.source }}</code></td>
         <td class="strong">{{ k.release }}</td>
         <td>
-          {% if k.status != 'ok' %}<span class="badge badge-danger">blad</span>
+          {% if k.status != 'ok' %}<span class="badge badge-danger">błąd</span>
           {% else %}<span class="badge badge-ok">ok</span>{% endif %}
         </td>
         <td>{{ k.entries }}</td>
@@ -57,17 +57,17 @@
   </table>
   {% else %}
   <p class="muted">
-    Nie pobrano jeszcze zadnych danych. Do czasu pobrania maszyny pokazuja stan
-    <b>nieznany</b> — a nie „brak podatnosci”, bo tego nie wiemy.
+    Nie pobrano jeszcze żadnych danych. Do czasu pobrania maszyny pokazuja stan
+    <b>nieznany</b> — a nie „brak podatności”, bo tego nie wiemy.
   </p>
   {% endif %}
 </section>
 
 <section class="panel">
-  <h2>Wydania w uzyciu we flocie</h2>
+  <h2>Wydania w użyciu we flocie</h2>
   <p class="muted small">
-    Pobieramy dane wylacznie dla tych wydan. Kanal Debiana ma 86 MB, wiec wpisy
-    dla wydania, ktorego nikt nie uzywa, byly by czystym obciazeniem.
+    Pobieramy dane wyłącznie dla tych wydan. Kanał Debiana ma 86 MB, więc wpisy
+    dla wydania, którego nikt nie używa, były by czystym obciążeniem.
   </p>
   {% if wydania %}
   <ul class="chips">
@@ -79,9 +79,9 @@
   </ul>
   {% else %}
   <p class="muted">
-    Zadna maszyna nie zglosila jeszcze rozpoznawalnej dystrybucji. Identyfikator
-    i nazwe kodowa wydania podaje agent od wersji 0.5.4 — starsze przysylaja
-    tylko nazwe wyswietlana, z ktorej dalo by sie je jedynie zgadywac.
+    Żadna maszyna nie zgłosiła jeszcze rozpoznawalnej dystrybucji. Identyfikator
+    i nazwe kodowa wydania podaje agent od wersji 0.5.4 — starsze przysyłają
+    tylko nazwe wyswietlana, z której dało by się je jedynie zgadywac.
   </p>
   {% endif %}
 </section>
@@ -89,19 +89,19 @@
 <section class="panel">
   <h2>Oceny CVSS</h2>
   <p class="muted small">
-    Dane dystrybucji mowia, czy pakiet jest podatny, ale nie podaja wagi
-    w skali CVSS — Debian ma wlasna skale, Ubuntu nie podaje zadnej. Oceny
-    pochodza z NVD i sa buforowane na stale: dla wydanego CVE zmieniaja sie
+    Dane dystrybucji mówią, czy pakiet jest podatny, ale nie podaja wagi
+    w skali CVSS — Debian ma własna skale, Ubuntu nie podaje żadnej. Oceny
+    pochodza z NVD i sa buforowane na stale: dla wydanego CVE zmieniaja się
     rzadko.
   </p>
   <p class="muted small">
-    Pobieramy je wylacznie dla podatnosci <b>faktycznie znalezionych</b> na
-    maszynach. Kanal Debiana ma kilkadziesiat tysiecy wpisow, a maszyn dotyczy
-    kilkaset — sciaganie reszty to zapytania o luki, ktorych u nikogo nie ma.
+    Pobieramy je wyłącznie dla podatności <b>faktycznie znalezionych</b> na
+    maszynach. Kanał Debiana ma kilkadziesiąt tysięcy wpisów, a maszyn dotyczy
+    kilkaset — ściąganie reszty to zapytania o luki, których u nikogo nie ma.
   </p>
   <p class="muted small">
-    NVD dopuszcza 5 zapytan na 30 sekund, wiec pierwszy przebieg obejmuje do
-    200 podatnosci; kolejne klikniecie dobiera nastepna porcje. Ustawienie
+    NVD dopuszcza 5 zapytań na 30 sekund, więc pierwszy przebieg obejmuje do
+    200 podatności; kolejne kliknięcie dobiera nastepna porcje. Ustawienie
     <code>CMDB_NVD_API_KEY</code> podnosi limit do 50 na 30 sekund —
     klucz jest bezplatny.
   </p>
@@ -110,15 +110,15 @@
 <section class="panel">
   <h2>Czego to nie zastapi</h2>
   <p class="muted small">
-    Raport mowi „zainstalowana wersja jest starsza niz ta z poprawka na CVE-X”.
-    Nie sprawdza konfiguracji, nie bada uslug sieciowych i nie wie, czy podatny
-    pakiet jest w ogole uruchamiany. Do pelnej oceny sluzy skaner podatnosci —
-    to zestawienie odpowiada na wezsze, ale konkretne pytanie: czego brakuje.
+    Raport mówi „zainstalowana wersja jest starsza niż ta z poprawka na CVE-X”.
+    Nie sprawdza konfiguracji, nie bada usług sieciowych i nie wie, czy podatny
+    pakiet jest w ogóle uruchamiany. Do pełnej oceny służy skaner podatności —
+    to zestawienie odpowiada na węższe, ale konkretne pytanie: czego brakuje.
   </p>
   <p class="muted small">
     Wydania Ubuntu z przyrostkiem <code>+esm</code> pochodza z rozszerzonego
-    wsparcia (Ubuntu Pro). Poprawka istnieje, ale bez subskrypcji moze nie byc
-    dostepna do zainstalowania.
+    wsparcia (Ubuntu Pro). Poprawka istnieje, ale bez subskrypcji może nie być
+    dostępna do zainstalowania.
   </p>
 </section>
 {% endblock %}

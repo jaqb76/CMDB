@@ -19,10 +19,10 @@
 <header class="topbar topbar-admin">
   <div class="brand"><a href="/admin">CMDB <span class="brand-tag">administracja</span></a></div>
   <nav class="mainnav">
-    <a href="/admin" {% if strona == 'przeglad' %}class="is-active"{% endif %}>Przeglad</a>
+    <a href="/admin" {% if strona == 'przeglad' %}class="is-active"{% endif %}>Przegląd</a>
     <a href="/admin/firmy" {% if strona == 'firmy' %}class="is-active"{% endif %}>Firmy i konta</a>
-    <a href="/admin/wersje" {% if strona == 'wersje' %}class="is-active"{% endif %}>Wersje agentow</a>
-    <a href="/admin/podatnosci" {% if strona == 'podatnosci' %}class="is-active"{% endif %}>Podatnosci</a>
+    <a href="/admin/wersje" {% if strona == 'wersje' %}class="is-active"{% endif %}>Wersje agentów</a>
+    <a href="/admin/podatnosci" {% if strona == 'podatnosci' %}class="is-active"{% endif %}>Podatności</a>
     <a href="/admin/audyt" {% if strona == 'audyt' %}class="is-active"{% endif %}>Audyt</a>
     <a href="/pomoc">Pomoc</a>
   </nav>
@@ -33,7 +33,7 @@
       <span class="motyw-ikona motyw-jasny">jasny</span>
       <span class="motyw-ikona motyw-ciemny">ciemny</span>
     </button>
-    <a class="user-email" href="/konto" title="Moje konto i zmiana hasla">{{ user.email }}</a>
+    <a class="user-email" href="/konto" title="Moje konto i zmiana hasła">{{ user.email }}</a>
     <form method="post" action="/logout" class="inline-form">
       <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
     </form>
@@ -45,7 +45,7 @@
 </main>
 
 <footer class="footer">
-  CMDB &middot; panel glownego administratora &middot; widok obejmuje wszystkie firmy
+  CMDB &middot; panel głównego administratora &middot; widok obejmuje wszystkie firmy
 </footer>
 <script src="/static/app.js"></script>
 </body>

@@ -231,12 +231,12 @@ KATEGORIE_SLOWNIKA: dict[str, str] = {
     # inaczej - a dodanie osobie pola wymagalo migracji.
     "osoba": "Osoby",
     "lokalizacja": "Lokalizacje",
-    "dzial": "Dzialy",
+    "dzial": "Działy",
     "dostawca": "Dostawcy",
     # Rodzaje sprzetu tez sa slownikiem: firma dokłada "Projektor" albo "UPS"
     # bez czekania na wydanie serwera. Kazdy rodzaj niesie przy tym wlasny
     # zestaw pol - inne dla monitora, inne dla przelacznika.
-    "rodzaj": "Rodzaje sprzetu",
+    "rodzaj": "Rodzaje sprzętu",
 }
 
 

@@ -149,8 +149,8 @@ def test_widok_globalny_pokazuje_wszystkie_firmy(client, tenant_a, tenant_b, mak
     _superadmin(client, make_user)
     strona = client.get("/admin").text
     assert "Firma A" in strona and "Firma B" in strona
-    assert "agentow aktywnych" in strona
-    assert "agentow nieaktywnych" in strona
+    assert "agentów aktywnych" in strona
+    assert "agentów nieaktywnych" in strona
 
 
 # --- zakladanie firm, kont i tokenow ---------------------------------------
@@ -508,7 +508,7 @@ def test_widok_globalny_pokazuje_wersje_agentow(client, tenant_a, make_user):
     _przygotuj_maszyne(client, tenant_a)
     _superadmin(client, make_user)
     strona = client.get("/admin").text
-    assert "Wersje agentow" in strona
+    assert "Wersje agentów" in strona
     assert "0.1.0" in strona          # wersja z raportu testowego
     assert "windows" in strona
 
@@ -975,4 +975,4 @@ def test_brak_paczki_jest_zglaszany_wprost(client, make_user, tmp_path, monkeypa
 
     monkeypatch.setattr(pakiet, "katalog_paczki", lambda: tmp_path / "pusto")
     _superadmin(client, make_user)
-    assert "nie zbudowal paczki zrodel" in client.get("/admin/wersje").text
+    assert "nie zbudował paczki źródeł" in client.get("/admin/wersje").text

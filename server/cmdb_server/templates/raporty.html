@@ -5,7 +5,7 @@
 <div class="page-head">
   <div>
     <h1>Raporty</h1>
-    <p class="muted">Cykliczne zestawienia wysylane poczta na wskazane adresy.</p>
+    <p class="muted">Cykliczne zestawienia wysyłane poczta na wskazane adresy.</p>
   </div>
 </div>
 
@@ -17,22 +17,22 @@
 
 {% if not ctx.can_write %}
 <div class="alert">
-  Konto ma uprawnienia tylko do odczytu - raporty mozna przegladac
-  i otwierac, ale nie zmieniac ani wysylac.
+  Konto ma uprawnienia tylko do odczytu - raporty można przeglądać
+  i otwierac, ale nie zmieniac ani wysyłać.
 </div>
 {% endif %}
 
 <section class="panel">
-  <h2>Poczta wychodzaca</h2>
+  <h2>Poczta wychodząca</h2>
   <p class="muted small">
-    Raporty ida <b>przez serwer tej firmy</b>, nie przez wspolna skrzynke.
-    Dzieki temu wiadomosci o Twoich maszynach nie przechodza przez
-    infrastrukture, do ktorej ma dostep ktokolwiek inny.
+    Raporty ida <b>przez serwer tej firmy</b>, nie przez wspolna skrzynkę.
+    Dzięki temu wiadomości o Twoich maszynach nie przechodza przez
+    infrastrukture, do której ma dostęp ktokolwiek inny.
   </p>
 
   {% if poczta and poczta.ostatni_blad %}
   <div class="alert alert-error">
-    <b>Ostatnia proba wysylki sie nie udala:</b> {{ poczta.ostatni_blad }}
+    <b>Ostatnia proba wysyłki się nie udała:</b> {{ poczta.ostatni_blad }}
   </div>
   {% endif %}
 
@@ -65,15 +65,15 @@
 
     <div class="row-form">
       <div>
-        <label for="uzytkownik">Uzytkownik</label>
+        <label for="uzytkownik">Użytkownik</label>
         <input id="uzytkownik" name="uzytkownik" maxlength="255"
                value="{{ poczta.uzytkownik if poczta else '' }}">
       </div>
       <div>
-        <label for="haslo">Haslo</label>
+        <label for="haslo">Hasło</label>
         <input id="haslo" name="haslo" type="password" autocomplete="new-password"
-               placeholder="{% if poczta and poczta.haslo_szyfr %}bez zmian{% else %}wpisz haslo{% endif %}">
-        <div class="muted small">Puste pole zostawia poprzednie haslo.</div>
+               placeholder="{% if poczta and poczta.haslo_szyfr %}bez zmian{% else %}wpisz hasło{% endif %}">
+        <div class="muted small">Puste pole zostawia poprzednie hasło.</div>
       </div>
     </div>
 
@@ -96,14 +96,14 @@
   <form method="post" action="/raporty/poczta/test" class="row-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div>
-      <label for="adres">Wyslij wiadomosc probna na</label>
+      <label for="adres">Wyslij wiadomość probna na</label>
       <input id="adres" name="adres" type="email" required value="{{ user.email }}">
     </div>
-    <div><button type="submit" class="btn">Sprawdz</button></div>
+    <div><button type="submit" class="btn">Sprawdź</button></div>
   </form>
   <p class="muted small">
-    Poprawnie wygladajaca konfiguracja i dzialajaca konfiguracja to dwie rozne
-    rzeczy — wiadomosc probna jest jedynym pewnym sprawdzeniem.
+    Poprawnie wyglądająca konfiguracja i działająca konfiguracja to dwie różne
+    rzeczy — wiadomość probna jest jedynym pewnym sprawdzeniem.
   </p>
   {% endif %}
   {% endif %}
@@ -114,8 +114,8 @@
   {% if definicje %}
   <table class="table">
     <thead>
-      <tr><th>Nazwa</th><th>Rodzaj</th><th>Czestotliwosc</th><th>Adresaci</th>
-          <th>Ostatnia wysylka</th><th></th></tr>
+      <tr><th>Nazwa</th><th>Rodzaj</th><th>Częstotliwość</th><th>Adresaci</th>
+          <th>Ostatnia wysyłka</th><th></th></tr>
     </thead>
     <tbody>
     {% for d in definicje %}
@@ -130,24 +130,24 @@
             {% if d.ostatni_status == 'ok' %}
               <span class="badge badge-ok">ok</span>
             {% else %}
-              <span class="badge badge-danger">blad</span>
+              <span class="badge badge-danger">błąd</span>
               <div class="muted">{{ (d.ostatni_blad or '')[:90] }}</div>
             {% endif %}
           {% else %}
-            <span class="muted">jeszcze nie wysylany</span>
+            <span class="muted">jeszcze nie wysyłany</span>
           {% endif %}
         </td>
         <td class="small">
-          <a class="btn btn-small" href="/raporty/widok/{{ d.rodzaj }}?raport_id={{ d.id }}">Otworz</a>
+          <a class="btn btn-small" href="/raporty/widok/{{ d.rodzaj }}?raport_id={{ d.id }}">Otwórz</a>
           {% if ctx.can_write %}
           <form method="post" action="/raporty/definicje/{{ d.id }}/wyslij" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn-small btn-primary">Wyslij teraz</button>
           </form>
           <form method="post" action="/raporty/definicje/{{ d.id }}/usun" class="inline-form"
-                data-confirm="Usunac raport {{ d.nazwa }}?">
+                data-confirm="Usunąć raport {{ d.nazwa }}?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="btn btn-small btn-danger">Usun</button>
+            <button type="submit" class="btn btn-small btn-danger">Usuń</button>
           </form>
           {% endif %}
         </td>
@@ -157,9 +157,9 @@
   </table>
   {% else %}
   <p class="muted">
-    Nie zdefiniowano jeszcze zadnego raportu. Kazdy raport idzie do wskazanych
-    adresow z wybrana czestotliwoscia; pierwszy przychodzi zaraz po dodaniu,
-    zeby dalo sie sprawdzic, czy wszystko dziala.
+    Nie zdefiniowano jeszcze żadnego raportu. Każdy raport idzie do wskazanych
+    adresów z wybrana częstotliwością; pierwszy przychodzi zaraz po dodaniu,
+    żeby dało się sprawdzić, czy wszystko działa.
   </p>
   {% endif %}
 </section>
@@ -173,7 +173,7 @@
       <div>
         <label for="nazwa">Nazwa</label>
         <input id="nazwa" name="nazwa" required maxlength="200"
-               placeholder="Podatnosci - tygodniowo">
+               placeholder="Podatności - tygodniowo">
       </div>
       <div>
         <label for="rodzaj">Rodzaj</label>
@@ -184,7 +184,7 @@
         </select>
       </div>
       <div>
-        <label for="czestotliwosc">Czestotliwosc</label>
+        <label for="czestotliwosc">Częstotliwość</label>
         <select id="czestotliwosc" name="czestotliwosc">
           {% for c in czestotliwosci %}
             <option value="{{ c }}" {% if c == 'tygodniowo' %}selected{% endif %}>{{ c }}</option>
@@ -195,33 +195,33 @@
     <label for="adresaci">Adresaci</label>
     <input id="adresaci" name="adresaci" required
            placeholder="admin@firma.pl, it@firma.pl">
-    <div class="muted small">Kilka adresow rozdziel przecinkiem albo srednikiem.</div>
+    <div class="muted small">Kilka adresów rozdziel przecinkiem albo średnikiem.</div>
     <button type="submit" class="btn btn-primary">Dodaj raport</button>
   </form>
   {% endif %}
 
-  <h3>Co zawiera ktory raport</h3>
+  <h3>Co zawiera który raport</h3>
   <table class="table">
     <tbody>
       <tr>
-        <th style="width:200px">Podatnosci</th>
-        <td class="small">Ile jest do zrobienia, ile powaznych, ktore maszyny
-          wymagaja uwagi. Osobno liczone podatnosci znane, ale bez dostepnej
+        <th style="width:200px">Podatności</th>
+        <td class="small">Ile jest do zrobienia, ile poważnych, które maszyny
+          wymagaja uwagi. Osobno liczone podatności znane, ale bez dostępnej
           jeszcze poprawki.
-          <a href="/raporty/widok/podatnosci">otworz</a></td>
+          <a href="/raporty/widok/podatnosci">otwórz</a></td>
       </tr>
       <tr>
-        <th>Inwentaryzacja sprzetu</th>
-        <td class="small">Liczba maszyn z podzialem na system operacyjny,
+        <th>Inwentaryzacja sprzętu</th>
+        <td class="small">Liczba maszyn z podziałem na system operacyjny,
           producenta i wersje agenta. Maszyny bez kontaktu i bez opiekuna.
-          <a href="/raporty/widok/sprzet">otworz</a></td>
+          <a href="/raporty/widok/sprzet">otwórz</a></td>
       </tr>
       <tr>
         <th>Gwarancje i wsparcie</th>
-        <td class="small">Co juz po terminie, co konczy sie w najblizszych
-          90 dniach, co pozostaje objete wsparciem. Daty gwarancji wpisuje sie
+        <td class="small">Co już po terminie, co kończy się w najbliższych
+          90 dniach, co pozostaje objęte wsparciem. Daty gwarancji wpisuje się
           na karcie maszyny.
-          <a href="/raporty/widok/gwarancje">otworz</a></td>
+          <a href="/raporty/widok/gwarancje">otwórz</a></td>
       </tr>
     </tbody>
   </table>

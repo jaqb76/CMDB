@@ -9,7 +9,7 @@
      rzadzi wieksza czescia panelu. #}
   <a class="card" href="/assets">
     <div class="card-value">{{ total }}</div>
-    <div class="card-label">wpisow w ewidencji</div>
+    <div class="card-label">wpisów w ewidencji</div>
   </a>
   <a class="card" href="/assets?zrodlo=agent">
     <div class="card-value">{{ z_agentem }}</div>
@@ -27,7 +27,7 @@
 
 {% if by_typ %}
 <section class="panel">
-  <h2>Rodzaje sprzetu</h2>
+  <h2>Rodzaje sprzętu</h2>
   <ul class="chips">
     {% for rodzaj, ile in by_typ %}
       <li><a class="chip" href="/assets?typ={{ rodzaj or '' }}">{{ typy.get(rodzaj, rodzaj or 'nieokreslony') }} <b>{{ ile }}</b></a></li>
@@ -39,7 +39,7 @@
 {% if by_os %}
 <section class="panel">
   <h2>Systemy operacyjne</h2>
-  <p class="muted small">Wylacznie sprzet z agentem — monitor ani przelacznik nie maja systemu.</p>
+  <p class="muted small">Wyłącznie sprzęt z agentem — monitor ani przełącznik nie maja systemu.</p>
   <ul class="chips">
     {% for family, count in by_os %}
       <li><a class="chip" href="/assets?os_family={{ family or '' }}">{{ family or 'nieznany' }} <b>{{ count }}</b></a></li>
@@ -50,10 +50,10 @@
 
 {% if reczne %}
 <section class="panel">
-  <h2>Wpisy reczne</h2>
+  <h2>Wpisy ręczne</h2>
   <p class="muted small">
-    Sprzet bez agenta: monitory, przelaczniki, drukarki. Opisuje go wylacznie
-    to, co wpisal czlowiek, wiec data mowi o ostatniej zmianie wpisu.
+    Sprzęt bez agenta: monitory, przełączniki, drukarki. Opisuje go wyłącznie
+    to, co wpisał człowiek, więc data mówi o ostatniej zmianie wpisu.
   </p>
   <table class="table">
     <thead><tr><th>Wpis</th><th>Rodzaj</th><th>Lokalizacja</th><th>Opiekun</th><th>Zmieniony</th></tr></thead>
@@ -91,12 +91,12 @@
       </tbody>
     </table>
     {% else %}
-      <p class="muted">Zaden agent jeszcze sie nie zglosil. Wygeneruj token w zakladce
-        <a href="/tokens">Tokeny agentow</a> i zainstaluj agenta na maszynie.</p>
+      <p class="muted">Żaden agent jeszcze się nie zgłosił. Wygeneruj token w zakładce
+        <a href="/tokens">Tokeny agentów</a> i zainstaluj agenta na maszynie.</p>
     {% endif %}
     <p class="muted small">
-      Zgloszenia agentow. Wpisy reczne sie nie zglaszaja, wiec sa nizej —
-      data przy nich mowilaby o kontakcie, ktorego nie bylo.
+      Zgłoszenia agentów. Wpisy ręczne się nie zgłaszają, więc sa niżej —
+      data przy nich mówiłaby o kontakcie, którego nie było.
     </p>
   </section>
 

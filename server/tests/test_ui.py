@@ -68,7 +68,7 @@ def test_asset_without_report_renders(client, tenant_a, make_user):
 
     response = client.get(f"/assets/{asset_id}")
     assert response.status_code == 200
-    assert "nie przyslala jeszcze zadnego raportu" in response.text
+    assert "nie przysłała jeszcze żadnego raportu" in response.text
 
 
 def test_owner_lifecycle(client, tenant_a, make_user):

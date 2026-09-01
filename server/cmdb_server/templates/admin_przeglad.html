@@ -1,11 +1,11 @@
 {% extends "base_admin.html" %}
-{% block title %}Przeglad - administracja CMDB{% endblock %}
+{% block title %}Przegląd - administracja CMDB{% endblock %}
 {% block content %}
 
 <div class="page-head">
   <div>
-    <h1>Przeglad</h1>
-    <p class="muted">Stan agentow we wszystkich obslugiwanych firmach.</p>
+    <h1>Przegląd</h1>
+    <p class="muted">Stan agentów we wszystkich obsługiwanych firmach.</p>
   </div>
 </div>
 
@@ -16,15 +16,15 @@
   </div>
   <div class="card card-ok">
     <div class="card-value">{{ podsumowanie.aktywne }}</div>
-    <div class="card-label">agentow aktywnych</div>
+    <div class="card-label">agentów aktywnych</div>
   </div>
   <div class="card {% if podsumowanie.nieaktywne %}card-warn{% endif %}">
     <div class="card-value">{{ podsumowanie.nieaktywne }}</div>
-    <div class="card-label">agentow nieaktywnych (&gt; {{ stale_after_hours }} h)</div>
+    <div class="card-label">agentów nieaktywnych (&gt; {{ stale_after_hours }} h)</div>
   </div>
   <div class="card">
     <div class="card-value">{{ podsumowanie.aktywne + podsumowanie.nieaktywne }}</div>
-    <div class="card-label">agentow lacznie</div>
+    <div class="card-label">agentów łącznie</div>
   </div>
 </section>
 
@@ -32,7 +32,7 @@
 <section class="panel">
   <h2>Wersje oficjalne</h2>
   <p class="muted small">
-    Z tych wersji korzystaja wszystkie firmy, ktore nie maja wlasnego ustawienia.
+    Z tych wersji korzystają wszystkie firmy, które nie maja własnego ustawienia.
   </p>
   <ul class="chips">
     {% for system, dane in systemy.items() %}
@@ -56,7 +56,7 @@
         <th>Firma</th>
         <th>Aktywni</th>
         <th>Nieaktywni</th>
-        <th>Wersje agentow</th>
+        <th>Wersje agentów</th>
         <th>Wersja docelowa</th>
         <th></th>
       </tr>
@@ -68,7 +68,7 @@
           <span class="strong">{{ w.firma.name }}</span>
           <div class="muted small">
             <code>{{ w.firma.slug }}</code>
-            {% if not w.firma.is_active %}<span class="badge badge-danger">wylaczona</span>{% endif %}
+            {% if not w.firma.is_active %}<span class="badge badge-danger">wyłączona</span>{% endif %}
           </div>
         </td>
         <td>
@@ -87,7 +87,7 @@
                 <span class="muted">— {{ a.ile }} szt.{% if a.nieaktywne %}, {{ a.nieaktywne }} bez kontaktu{% endif %}</span>
               </div>
             {% endfor %}
-          {% else %}<span class="muted">brak agentow</span>{% endif %}
+          {% else %}<span class="muted">brak agentów</span>{% endif %}
         </td>
         <td class="small">
           {% for a in w.agenci %}
@@ -96,7 +96,7 @@
               <div>
                 <code>{{ a.os_family }}</code>
                 {% if cel %}
-                  <b>{{ cel.version }}</b> <span class="badge">wlasna</span>
+                  <b>{{ cel.version }}</b> <span class="badge">własna</span>
                 {% elif oficjalne.get(a.os_family) %}
                   {{ oficjalne[a.os_family].version }} <span class="muted">(oficjalna)</span>
                 {% else %}
@@ -109,16 +109,16 @@
         </td>
         <td class="small">
           <a class="btn btn-small" href="/admin/tenants/{{ w.firma.id }}/upgrade">Maszyny</a>
-          <a class="btn btn-small btn-ghost" href="/switch-tenant?slug={{ w.firma.slug }}">Podglad firmy</a>
+          <a class="btn btn-small btn-ghost" href="/switch-tenant?slug={{ w.firma.slug }}">Podgląd firmy</a>
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="6" class="muted">Nie zdefiniowano jeszcze zadnej firmy.</td></tr>
+      <tr><td colspan="6" class="muted">Nie zdefiniowano jeszcze żadnej firmy.</td></tr>
     {% endfor %}
     </tbody>
   </table>
   <p class="muted small">
-    Nieaktywny agent to taki, ktory nie odezwal sie od ponad {{ stale_after_hours }} h.
+    Nieaktywny agent to taki, który nie odezwał się od ponad {{ stale_after_hours }} h.
     Maszyny wycofane nie sa tu liczone.
   </p>
 </section>

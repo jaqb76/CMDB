@@ -5,7 +5,7 @@
   <h1>Sprzęt <span class="muted">({{ assets | length }})</span></h1>
   <div class="head-actions">
     {% if ctx.can_write %}
-      <a class="btn btn-small btn-primary" href="/assets/nowy">Dodaj sprzet recznie</a>
+      <a class="btn btn-small btn-primary" href="/assets/nowy">Dodaj sprzęt ręcznie</a>
     {% endif %}
     <a class="btn btn-small" href="/export/assets.json">Eksport JSON</a>
   </div>
@@ -20,19 +20,19 @@
     {% endfor %}
   </select>
   <select name="typ">
-    <option value="">kazdy rodzaj</option>
+    <option value="">każdy rodzaj</option>
     {% for klucz, etykieta in typy.items() %}
       <option value="{{ klucz }}" {% if filters.typ == klucz %}selected{% endif %}>{{ etykieta }}</option>
     {% endfor %}
   </select>
   <select name="lokalizacja">
-    <option value="">kazda lokalizacja</option>
+    <option value="">każda lokalizacja</option>
     {% for l in lokalizacje %}
       <option value="{{ l.id }}" {% if filters.lokalizacja == l %}selected{% endif %}>{{ l }}</option>
     {% endfor %}
   </select>
   <select name="owner">
-    <option value="">kazdy opiekun</option>
+    <option value="">każdy opiekun</option>
     <option value="none" {% if filters.owner == 'none' %}selected{% endif %}>bez opiekuna</option>
     {% for o in owners %}
       <option value="{{ o.id }}" {% if filters.owner == o.id %}selected{% endif %}>{{ o.wartosc }}</option>
@@ -44,20 +44,20 @@
     <option value="stale" {% if filters.state == 'stale' %}selected{% endif %}>bez kontaktu</option>
   </select>
   <select name="lifecycle">
-    <option value="">w uzyciu</option>
+    <option value="">w użyciu</option>
     <option value="wycofany" {% if filters.lifecycle == 'wycofany' %}selected{% endif %}>wycofane{% if liczba_wycofanych %} ({{ liczba_wycofanych }}){% endif %}</option>
     <option value="wszystkie" {% if filters.lifecycle == 'wszystkie' %}selected{% endif %}>wszystkie</option>
   </select>
   <button type="submit" class="btn btn-primary btn-small">Filtruj</button>
-  <a class="btn btn-small btn-ghost" href="/assets">Wyczysc</a>
+  <a class="btn btn-small btn-ghost" href="/assets">Wyczyść</a>
 </form>
 
 {% if assets %}
 <table class="table table-assets">
   <thead>
     <tr>
-      <th>Nazwa</th><th>Rodzaj</th><th>System</th><th>Podzespoly</th><th>IP</th>
-      <th>Lokalizacja</th><th>Opiekun / uzytkownik</th><th>Rola</th><th>Ostatni kontakt</th>
+      <th>Nazwa</th><th>Rodzaj</th><th>System</th><th>Podzespoły</th><th>IP</th>
+      <th>Lokalizacja</th><th>Opiekun / użytkownik</th><th>Rola</th><th>Ostatni kontakt</th>
     </tr>
   </thead>
   <tbody>
@@ -71,7 +71,7 @@
       </td>
       <td class="small">
         {{ typy.get(a.typ, a.typ) }}
-        {% if a.zrodlo == 'reczne' %}<div class="muted">wpis reczny</div>{% endif %}
+        {% if a.zrodlo == 'reczne' %}<div class="muted">wpis ręczny</div>{% endif %}
       </td>
       <td>
         {{ a.os_name or a.os_family or '-' }}
@@ -96,7 +96,7 @@
           <div class="muted">dodano {{ a.first_seen | dt }}</div>
         {% else %}
           {{ a.last_seen | ago }}
-          {% if f.collector_errors %}<span class="badge badge-warn" title="bledy kolektorow">{{ f.collector_errors }}</span>{% endif %}
+          {% if f.collector_errors %}<span class="badge badge-warn" title="błędy kolektorow">{{ f.collector_errors }}</span>{% endif %}
           <div class="muted">agent {{ a.agent_version or '?' }}</div>
         {% endif %}
       </td>
@@ -105,6 +105,6 @@
   </tbody>
 </table>
 {% else %}
-  <p class="muted">Brak sprzetu spelniajacego kryteria.</p>
+  <p class="muted">Brak sprzętu spełniającego kryteria.</p>
 {% endif %}
 {% endblock %}

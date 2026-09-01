@@ -52,6 +52,14 @@
   </div>
 </div>
 
+{% if filtr %}
+<p class="uwaga-raportu">
+  Pokazane tylko wpisy powiązane z: <b>{{ filtr.wartosc }}</b>
+  ({{ kategorie[filtr.kategoria] }}).
+  <a href="/slowniki?kategoria={{ kategoria }}">Pokaż wszystkie</a>
+</p>
+{% endif %}
+
 {% if wpisy[kategoria] %}
 <section class="panel">
   <div class="tabela-przewijana">
@@ -108,7 +116,14 @@
   </div>
 </section>
 {% else %}
-<p class="muted">Pusto — dodaj pierwszy rekord zgodny ze schematem.</p>
+  {% if filtr %}
+  <p class="muted">
+    Żaden wpis nie wskazuje <b>{{ filtr.wartosc }}</b>.
+    <a href="/slowniki?kategoria={{ kategoria }}">Pokaż wszystkie</a>
+  </p>
+  {% else %}
+  <p class="muted">Pusto — dodaj pierwszy rekord zgodny ze schematem.</p>
+  {% endif %}
 {% endif %}
 
 <p class="muted small">

@@ -19,10 +19,17 @@
       b.addEventListener("click", function () { activate(b.dataset.tab); });
     });
 
-    var initial = window.location.hash.replace("#", "");
-    if (initial && root.querySelector('[data-panel="' + CSS.escape(initial) + '"]')) {
-      activate(initial);
+    function zHasza() {
+      var nazwa = window.location.hash.replace("#", "");
+      if (nazwa && root.querySelector('[data-panel="' + CSS.escape(nazwa) + '"]')) {
+        activate(nazwa);
+      }
     }
+    zHasza();
+    // Odnosnik do zakladki z tej samej strony (np. "Wycofaj z uzytku"
+    // w naglowku) nie przeladowuje jej - bez tego nasluchu klikniecie
+    // przewijaloby do ukrytego panelu i wygladalo na zepsute.
+    window.addEventListener("hashchange", zHasza);
   });
 
   // Paski zajetosci - szerokosc ustawiana z JS, bo CSP blokuje style inline.

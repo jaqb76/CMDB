@@ -79,7 +79,7 @@
     <h3>Maszyny wymagajace uwagi</h3>
     <table class="table">
       <thead>
-        <tr><th>Maszyna</th><th class="lp">Powazne</th>
+        <tr><th>Maszyna</th><th class="lp">Poważne</th>
             <th class="lp">Do zrobienia</th><th class="lp">Bez poprawki</th></tr>
       </thead>
       <tbody>
@@ -99,8 +99,8 @@
 
   {% if d.nieznane %}
   <p class="uwaga-raportu">
-    Dla {{ d.nieznane | length }} maszyn nie znamy stanu podatnosci - to nie
-    znaczy, ze sa bezpieczne, tylko ze nie udalo sie ich sprawdzic.
+    Dla {{ d.nieznane | length }} maszyn nie znamy stanu podatności - to nie
+    znaczy, że są bezpieczne, tylko że nie udało się ich sprawdzić.
   </p>
   {% endif %}
 
@@ -128,7 +128,7 @@
 
   {% if d.koncza_sie %}
   <section class="wykres-blok">
-    <h3>Konczy sie w najblizszych {{ d.horyzont }} dniach</h3>
+    <h3>Kończy się w najbliższych {{ d.horyzont }} dniach</h3>
     <table class="table">
       <thead><tr><th>Maszyna</th><th>Model</th><th>Dostawca</th><th>Gwarancja do</th></tr></thead>
       <tbody>
@@ -149,7 +149,7 @@
   <section class="wykres-blok">
     <h3>Po terminie</h3>
     <table class="table">
-      <thead><tr><th>Maszyna</th><th>Model</th><th>Wygasla</th></tr></thead>
+      <thead><tr><th>Maszyna</th><th>Model</th><th>Wygasła</th></tr></thead>
       <tbody>
       {% for m in d.po_terminie[:40] %}
         <tr>
@@ -166,7 +166,7 @@
   {% if d.bez_danych %}
   <p class="uwaga-raportu">
     {{ d.bez_danych | length }} maszyn nie ma wpisanej daty gwarancji. Brak daty
-    nie znaczy, ze gwarancji nie ma - znaczy, ze nikt jej nie uzupelnil.
+    nie znaczy, że gwarancji nie ma - znaczy, że nikt jej nie uzupełnił.
   </p>
   {% endif %}
 
@@ -203,8 +203,8 @@
   {% endmacro %}
 
   <p class="muted">
-    Zbadano {{ d.zbadanych }} maszyn. Kazde zestawienie pokazuje najwyzej
-    dziesiec pozycji - lista, ktora nie miesci sie na ekranie, przestaje byc
+    Zbadano {{ d.zbadanych }} maszyn. Każde zestawienie pokazuje najwyżej
+    dziesięć pozycji - lista, która nie mieści się na ekranie, przestaje być
     lista rzeczy do zrobienia.
   </p>
 
@@ -227,7 +227,7 @@
   <section class="wykres-blok">
     <h3>Bez kontaktu</h3>
     <p class="muted small">
-      Dla tych maszyn dane sa nieaktualne - zestawienia powyzej ich nie opisuja.
+      Dla tych maszyn dane są nieaktualne - zestawienia powyżej ich nie opisują.
     </p>
     <table class="table">
       <tbody>
@@ -237,6 +237,91 @@
           <td class="lp wartosc-zestawienia">
             <b class="wartosc-alarm">{{ p.wartosc }} {{ p.jednostka }}</b></td>
           <td class="muted small">{{ p.opis }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+{# --- brakujace aktualizacje --- #}
+{% elif raport.rodzaj == 'aktualizacje' %}
+  <div class="kafelki">
+    {{ kafelek(d.bezpieczenstwa, 'poprawek bezpieczeństwa czeka', true) }}
+    {{ kafelek(d.czekajace, 'wszystkich aktualizacji czeka') }}
+    {{ kafelek(d.aktualne, 'maszyn nic nie potrzebuje') }}
+    {{ kafelek(d.nieznane | length, 'maszyn o nieznanym stanie', true) }}
+  </div>
+
+  <p class="muted">
+    Aktualizacja to nie to samo co podatność. Podatność mówi, co grozi;
+    aktualizacja — co da się zainstalować dzisiaj. Maszyna bez ani jednego
+    znanego CVE może mieć kilkadziesiąt zaległych poprawek.
+  </p>
+
+  {{ pierscien(wykresy.z_paskow(d.wykres), 'Stan aktualizacji', 'maszyn') }}
+  {% if d.wykres_zrodla %}
+    {{ pierscien(wykresy.z_paskow(d.wykres_zrodla), 'Źródło danych', 'maszyn') }}
+  {% endif %}
+
+  {% if d.z_bezpieczenstwem %}
+  <section class="wykres-blok">
+    <h3>Czekają poprawki bezpieczeństwa</h3>
+    <p class="muted small">Od tych maszyn zaczyna się pracę.</p>
+    <table class="table">
+      <thead><tr><th>Maszyna</th><th class="lp">Bezpieczeństwa</th><th class="lp">Wszystkich</th><th>Źródło</th></tr></thead>
+      <tbody>
+      {% for w in d.z_bezpieczenstwem %}
+        <tr>
+          <td class="strong nazwa-maszyny">{{ w.maszyna.hostname }}</td>
+          <td class="lp"><b class="wartosc-alarm">{{ w.bezpieczenstwa }}</b></td>
+          <td class="lp">{{ w.czekajace }}</td>
+          <td class="muted small">{{ w.zrodlo or '-' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if d.ze_zwyklymi %}
+  <section class="wykres-blok">
+    <h3>Czekają zwykłe aktualizacje</h3>
+    <table class="table">
+      <thead><tr><th>Maszyna</th><th class="lp">Czeka</th><th>Źródło</th></tr></thead>
+      <tbody>
+      {% for w in d.ze_zwyklymi %}
+        <tr>
+          <td class="strong nazwa-maszyny">{{ w.maszyna.hostname }}</td>
+          <td class="lp"><b class="wartosc-uwaga">{{ w.czekajace }}</b></td>
+          <td class="muted small">{{ w.zrodlo or '-' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if d.nieswieze %}
+  <p class="uwaga-raportu">
+    Na {{ d.nieswieze | length }} maszynach indeks pakietów jest starszy niż
+    {{ d.prog_indeksu }} godzin — liczby powyżej mogą być zaniżone. Agent
+    celowo nie odświeża indeksu: ma maszynę opisywać, a nie zmieniać jej stan.
+  </p>
+  {% endif %}
+
+  {% if d.nieznane %}
+  <section class="wykres-blok">
+    <h3>Stan nieznany ({{ d.nieznane | length }})</h3>
+    <p class="muted small">
+      Brak odpowiedzi to nie to samo co brak aktualizacji.
+    </p>
+    <table class="table">
+      <tbody>
+      {% for w in d.nieznane[:40] %}
+        <tr>
+          <td class="strong nazwa-maszyny">{{ w.maszyna.hostname }}</td>
+          <td class="muted small">{{ w.powod }}</td>
         </tr>
       {% endfor %}
       </tbody>

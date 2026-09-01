@@ -18,14 +18,14 @@
 
 {% macro tabela_zmian(grupa) %}
   <table class="table">
-    <thead><tr><th>Rodzaj</th><th>Zmiana</th><th>Szczegoly</th></tr></thead>
+    <thead><tr><th>Rodzaj</th><th>Zmiana</th><th>Szczegóły</th></tr></thead>
     <tbody>
     {% for z in grupa.zmiany %}
       <tr>
         <td class="small"><code>{{ z.category }}</code></td>
         <td>
           {% if z.action == 'dodano' %}<span class="badge badge-ok">dodano</span>
-          {% elif z.action == 'usunieto' %}<span class="badge badge-danger">usunieto</span>
+          {% elif z.action == 'usunieto' %}<span class="badge badge-danger">usunięto</span>
           {% else %}<span class="badge badge-warn">zmieniono</span>{% endif %}
           <span class="small">{{ z.label }}</span>
         </td>

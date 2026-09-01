@@ -71,7 +71,7 @@ def test_agent_przejmuje_dane_wpisu_recznego(client, tenant_a):
         assert maszyna.support_contract == "NBD 36m"
         assert maszyna.dostawca_id == reczny.dostawca_id
         assert maszyna.role_label == "laptop ksiegowosci"
-        # Wpis reczny zostaje - wycofany, nie skasowany.
+        # Wpis ręczny zostaje - wycofany, nie skasowany.
         assert reczny.lifecycle == LIFECYCLE_WYCOFANY
         assert reczny.hostname == "Nowy laptop dla ksiegowosci"
 
@@ -150,7 +150,7 @@ def test_reczne_polaczenie_ze_strony_duplikatow(client, tenant_a, make_user):
 
     strona = client.get("/duplikaty")
     assert strona.status_code == 200
-    assert "Polacz w jeden zasob" in strona.text
+    assert "Połącz w jeden zasób" in strona.text
 
     csrf = _extract_csrf(strona.text)
     odpowiedz = client.post("/duplikaty/scal", data={

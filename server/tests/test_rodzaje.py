@@ -71,8 +71,8 @@ def test_kazdy_rodzaj_ma_wlasny_zestaw_pol(client, tenant_a, make_user):
     _admin_firmy(client, tenant_a, make_user)
     monitor = client.get("/rodzaje/monitor/pola").text
     siec = client.get("/rodzaje/siec/pola").text
-    assert "Przekatna" in monitor and "Liczba portow" not in monitor
-    assert "Liczba portow" in siec and "Przekatna" not in siec
+    assert "Przekątna" in monitor and "Liczba portów" not in monitor
+    assert "Liczba portów" in siec and "Przekątna" not in siec
 
 
 def test_karta_sprzetu_pokazuje_pola_swojego_rodzaju(client, tenant_a, make_user):
@@ -117,7 +117,10 @@ def test_zmiana_rodzaju_ukrywa_ale_nie_kasuje(client, tenant_a, make_user):
     odpowiedz = _zapisz_dane(client, asset_id, typ="drukarka")
     assert odpowiedz.status_code == 303
     assert "ukryte=" in odpowiedz.headers["location"], "ostrzezenie o ukrytych polach"
-    assert "Przekatna" in odpowiedz.headers["location"], "ostrzezenie wymienia pola"
+    import urllib.parse
+
+    adres = urllib.parse.unquote(odpowiedz.headers["location"])
+    assert "Przekątna" in adres, "ostrzezenie wymienia pola"
 
     with SessionLocal() as db:
         sprzet = db.get(Asset, asset_id)
@@ -323,6 +326,22 @@ def test_uwagi_maja_wlasna_zakladke_i_jedno_pole(client, tenant_a, make_user):
     assert 'data-tab="uwagi"' in strona
     assert strona.count('name="uwagi"') == 1
     assert 'name="purchase_notes"' not in strona
+
+
+def test_wycofanie_ma_wlasna_zakladke_i_skrot_w_naglowku(client, tenant_a, make_user):
+    """Wycofanie stalo w zakladce "Zmiany" - w miejscu, ktorego nikt nie szuka,
+    gdy chce zdjac sprzet ze stanu. Osoba testujaca nie znalazla tego wcale."""
+    _admin_firmy(client, tenant_a, make_user)
+    asset_id = _sprzet(client, tenant_a)
+    strona = client.get(f"/assets/{asset_id}").text
+
+    assert 'data-tab="cykl"' in strona
+    assert 'data-panel="cykl"' in strona
+    assert 'href="#cykl"' in strona, "skrot z naglowka karty"
+    assert strona.count("Cykl życia") >= 2, "przycisk zakladki i naglowek panelu"
+    # Panel zmian nie ma juz przy sobie decyzji o wycofaniu.
+    zmiany = strona.split('data-panel="zmiany"')[1].split('data-panel=')[0]
+    assert "Wycofaj z użytku" not in zmiany
 
 
 def test_uwagi_widac_w_podsumowaniu(client, tenant_a, make_user):

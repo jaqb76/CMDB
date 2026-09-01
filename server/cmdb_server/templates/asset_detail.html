@@ -13,7 +13,7 @@
       {{ typy.get(asset.typ, asset.typ) }}
       {% if asset.lokalizacja %} &middot; <a href="/slowniki/wpis/{{ asset.lokalizacja.id }}">{{ asset.lokalizacja.wartosc }}</a>{% endif %}
       {% if asset.zrodlo == 'reczne' %}
-        &middot; wpis reczny, dodany {{ asset.first_seen | dt }}
+        &middot; wpis ręczny, dodany {{ asset.first_seen | dt }}
       {% else %}
         &middot; {{ asset.fqdn or asset.hostname }}
         {% if asset.domain %} &middot; domena {{ asset.domain }}{% endif %}
@@ -24,19 +24,26 @@
   </div>
   <div class="head-actions">
     <a class="btn btn-small" href="/assets/{{ asset.id }}/raw.json{% if snapshot and snapshot.id %}?snapshot={{ snapshot.id }}{% endif %}">Surowy JSON</a>
-    <a class="btn btn-small btn-ghost" href="/assets">Wroc do listy</a>
+    {% if ctx.can_write %}
+      {% if asset.lifecycle == 'wycofany' %}
+        <a class="btn btn-small" href="#cykl">Przywróć do użytku</a>
+      {% else %}
+        <a class="btn btn-small btn-danger" href="#cykl">Wycofaj z użytku</a>
+      {% endif %}
+    {% endif %}
+    <a class="btn btn-small btn-ghost" href="/assets">Wróć do listy</a>
   </div>
 </div>
 
 {% if not snapshot %}
   {% if asset.zrodlo == 'reczne' %}
     <div class="alert">
-      Sprzet wpisany recznie - nie ma na nim agenta, wiec system operacyjny,
-      oprogramowanie i podatnosci pozostaja puste. Wszystko, co o nim wiadomo,
+      Sprzęt wpisany ręcznie - nie ma na nim agenta, więc system operacyjny,
+      oprogramowanie i podatności pozostają puste. Wszystko, co o nim wiadomo,
       jest ponizej.
     </div>
   {% else %}
-    <div class="alert alert-warn">Maszyna jest zarejestrowana, ale nie przyslala jeszcze zadnego raportu.</div>
+    <div class="alert alert-warn">Maszyna jest zarejestrowana, ale nie przysłała jeszcze żadnego raportu.</div>
   {% endif %}
 {% endif %}
 
@@ -50,14 +57,14 @@
 {% if ctx.can_write %}
 <form method="post" action="/assets/{{ asset.id }}/enrollment/unblock">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-<button class="btn" type="submit">Zezwol na ponowna rejestracje</button>
+<button class="btn" type="submit">Zezwól na ponowna rejestracje</button>
 </form>
 {% endif %}</div>
 {% endif %}
-<p><a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakosc danych</a>{% if asset.zrodlo != 'reczne' %} · <a href="/assets/{{ asset.id }}/discovery-policy">Polityka skanowania sieci</a>{% endif %}</p>
+<p><a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakość danych</a>{% if asset.zrodlo != 'reczne' %} · <a href="/assets/{{ asset.id }}/discovery-policy">Polityka skanowania sieci</a>{% endif %}</p>
 {% if collector_errors %}
   <div class="alert alert-warn">
-    <b>Kolektory zglosily bledy ({{ collector_errors | length }}):</b>
+    <b>Kolektory zgłosiły błędy ({{ collector_errors | length }}):</b>
     <ul class="tight">
       {% for e in collector_errors %}<li><code>{{ e.collector }}</code>: {{ e.message }}</li>{% endfor %}
     </ul>
@@ -98,10 +105,10 @@
 
   <form method="post" action="/assets/{{ asset.id }}/owner" class="row-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    {{ wybor_wpisu('owner_id', 'Opiekun (odpowiada za sprzęt)', owners,
+    {{ wybor_wpisu('owner_id', 'Opiekun (odpowiada za sprzet)', owners,
                    asset.owner_id, 'podglad-opiekuna', 'opiekun') }}
-    {{ wybor_wpisu('uzytkownik_id', 'Użytkownik komputera', owners,
-                   asset.uzytkownik_id, 'podglad-uzytkownika', 'użytkownik') }}
+    {{ wybor_wpisu('uzytkownik_id', 'Uzytkownik komputera', owners,
+                   asset.uzytkownik_id, 'podglad-uzytkownika', 'uzytkownik') }}
     {{ wybor_wpisu('lokalizacja_id', 'Lokalizacja', podpowiedzi.lokalizacja,
                    asset.lokalizacja_id, 'podglad-lokalizacji', 'lokalizacja') }}
     <div>
@@ -112,7 +119,7 @@
     {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
   </form>
   <p class="small muted">
-    Wszystkie cztery listy pochodzą ze <a href="/slowniki">słownika firmy</a> —
+    Wszystkie cztery listy pochodzą że <a href="/slowniki">słownika firmy</a> —
     osoby, lokalizacje, działy i dostawcy mają tam własne karty z pełnymi danymi.
   </p>
 </section>
@@ -124,7 +131,7 @@
 #}
 {% for identyfikator, tytul, rekord, szczegoly in [
       ('podglad-opiekuna', 'Opiekun', asset.owner, szczegoly_opiekuna),
-      ('podglad-uzytkownika', 'Użytkownik komputera', asset.uzytkownik, szczegoly_uzytkownika),
+      ('podglad-uzytkownika', 'Uzytkownik komputera', asset.uzytkownik, szczegoly_uzytkownika),
       ('podglad-lokalizacji', 'Lokalizacja', asset.lokalizacja, szczegoly_lokalizacji),
       ('podglad-dostawcy', 'Dostawca', asset.dostawca, szczegoly_dostawcy)] %}
 {% if rekord %}<dialog id="{{ identyfikator }}" class="modal-card">
@@ -282,15 +289,16 @@
   #}
   {% set z_agentem = asset.zrodlo != 'reczne' %}
   <div class="tab-buttons">
-    <button type="button" class="tab-button is-active" data-tab="overview">Przeglad</button>
-    {% if z_agentem %}<button type="button" class="tab-button" data-tab="hardware">Sprzet</button>{% endif %}
+    <button type="button" class="tab-button is-active" data-tab="overview">Przegląd</button>
+    {% if z_agentem %}<button type="button" class="tab-button" data-tab="hardware">Sprzęt</button>{% endif %}
     <button type="button" class="tab-button" data-tab="zakup">Zakup i gwarancja</button>
     <button type="button" class="tab-button" data-tab="uwagi">Uwagi</button>
+    <button type="button" class="tab-button" data-tab="cykl">Cykl życia</button>
     {% if z_agentem %}
     <button type="button" class="tab-button" data-tab="software">Oprogramowanie</button>
     <button type="button" class="tab-button" data-tab="aktualizacje">Aktualizacje</button>
-    <button type="button" class="tab-button" data-tab="podatnosci">Podatnosci</button>
-    <button type="button" class="tab-button" data-tab="users">Uzytkownicy</button>
+    <button type="button" class="tab-button" data-tab="podatnosci">Podatności</button>
+    <button type="button" class="tab-button" data-tab="users">Użytkownicy</button>
     {% endif %}
     <button type="button" class="tab-button" data-tab="zmiany">Zmiany</button>
     {% if z_agentem %}
@@ -314,12 +322,12 @@
           <dt>Architektura</dt><dd>{{ os_info.architecture or '-' }}{% if asset.arch %} <code class="small">{{ asset.arch }}</code>{% endif %}</dd>
           <dt>Zainstalowany</dt><dd>{{ os_info.install_date or '-' }}</dd>
           <dt>Ostatni start</dt><dd>{{ os_info.last_boot or '-' }}</dd>
-          <dt>Jezyk / strefa</dt><dd>{{ os_info.locale or '-' }} {{ os_info.timezone or '' }}</dd>
+          <dt>Język / strefa</dt><dd>{{ os_info.locale or '-' }} {{ os_info.timezone or '' }}</dd>
         </dl>
       </div>
       {% else %}
       <div class="panel">
-        <h2>Wpis reczny</h2>
+        <h2>Wpis ręczny</h2>
         <dl class="kv">
           <dt>Rodzaj</dt><dd>{{ typy.get(asset.typ, asset.typ or '—') }}</dd>
           <dt>Lokalizacja</dt>
@@ -333,9 +341,9 @@
           {% endfor %}
         </dl>
         <p class="muted small">
-          Ten sprzet nie ma agenta, wiec system, oprogramowanie i podatnosci
-          pozostana przy nim puste. Zakladki, ktore ich dotycza, sa ukryte —
-          nie ma czego w nich pokazac.
+          Ten sprzęt nie ma agenta, więc system, oprogramowanie i podatności
+          pozostaną przy nim puste. Zakładki, które ich dotyczą, sa ukryte —
+          nie ma czego w nich pokazać.
         </p>
       </div>
       {% endif %}
@@ -356,7 +364,7 @@
 
     {% if z_agentem %}
     <div class="panel">
-      <h2>Siec</h2>
+      <h2>Sieć</h2>
       {% set interfaces = network.interfaces or [] %}
       {% if interfaces %}
       <table class="table">
@@ -383,23 +391,23 @@
     <div class="panel">
       <h2>Zakup i gwarancja</h2>
       <p class="muted small">
-        Danych z tej sekcji agent nie ma skad znac — wpisuje je czlowiek.
-        Data konca gwarancji zasila raport o wygasajacym wsparciu.
+        Danych z tej sekcji agent nie ma skad znać — wpisuje je człowiek.
+        Data końca gwarancji zasila raport o wygasającym wsparciu.
       </p>
 
       {% if asset.warranty_until %}
         {% set dni = (asset.warranty_until - dzisiaj).days %}
         {% if dni < 0 %}
         <div class="alert alert-error">
-          Gwarancja wygasla {{ asset.warranty_until }} — {{ -dni }} dni temu.
+          Gwarancja wygasła {{ asset.warranty_until }} — {{ -dni }} dni temu.
         </div>
         {% elif dni <= 90 %}
         <div class="alert alert-warn">
-          Gwarancja konczy sie {{ asset.warranty_until }} — za {{ dni }} dni.
+          Gwarancja kończy się {{ asset.warranty_until }} — za {{ dni }} dni.
         </div>
         {% else %}
         <div class="alert alert-ok">
-          Objeta gwarancja do {{ asset.warranty_until }} (jeszcze {{ dni }} dni).
+          Objęta gwarancja do {{ asset.warranty_until }} (jeszcze {{ dni }} dni).
         </div>
         {% endif %}
       {% endif %}
@@ -472,6 +480,47 @@
     </div>
   </section>
 
+  <section class="tab-panel" data-panel="cykl" id="cykl">
+    <div class="panel">
+      <h2>Cykl życia</h2>
+      {% if asset.lifecycle == 'wycofany' %}
+        <p>
+          Zasób wycofany {{ asset.retired_at | dt }}
+          {% if asset.retired_by %}przez {{ asset.retired_by }}{% endif %}.
+          {% if asset.retired_reason %}<br><span class="muted">Powód: {{ asset.retired_reason }}</span>{% endif %}
+        </p>
+        <p class="muted small">
+          Maszyna nie znika z systemu — zostaje z cała historia, tylko poza domyślnymi
+          listami i zestawieniami.
+        </p>
+        {% if ctx.can_write %}
+        <form method="post" action="/assets/{{ asset.id }}/lifecycle" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="akcja" value="przywroc">
+          <button type="submit" class="btn">Przywróć do użytku</button>
+        </form>
+        {% endif %}
+      {% else %}
+        <p class="muted small">
+          Wycofanie oznacza, że maszyna nie jest już używana — znika z list i zestawień,
+          ale zostaje w bazie razem z historia. To nie to samo, co brak kontaktu.
+        </p>
+        {% if ctx.can_write %}
+        <form method="post" action="/assets/{{ asset.id }}/lifecycle" class="row-form"
+              data-confirm="Wycofać maszynę {{ asset.hostname }} z użytku?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="akcja" value="wycofaj">
+          <div>
+            <label for="powod">Powód</label>
+            <input id="powod" name="powod" maxlength="500" placeholder="np. sprzęt oddany do utylizacji">
+          </div>
+          <div><button type="submit" class="btn btn-danger">Wycofaj z użytku</button></div>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </section>
+
   <section class="tab-panel" data-panel="hardware">
     {% set cpu = hardware.cpu or {} %}
     {% set memory = hardware.memory or {} %}
@@ -489,9 +538,9 @@
         </dl>
       </div>
       <div class="panel">
-        <h2>Pamiec i plyta</h2>
+        <h2>Pamięć i plyta</h2>
         <dl class="kv">
-          <dt>RAM lacznie</dt><dd>{{ memory.total_bytes | bytes }}</dd>
+          <dt>RAM łącznie</dt><dd>{{ memory.total_bytes | bytes }}</dd>
           <dt>Moduly</dt><dd>{{ (memory.modules or []) | length }}</dd>
           <dt>Producent</dt><dd>{{ system.manufacturer or '-' }}</dd>
           <dt>Model</dt><dd>{{ system.model or '-' }}</dd>
@@ -504,9 +553,9 @@
 
     {% if memory.modules %}
     <div class="panel">
-      <h2>Moduly pamieci</h2>
+      <h2>Moduly pamięci</h2>
       <table class="table">
-        <thead><tr><th>Slot</th><th>Pojemnosc</th><th>Typ</th><th>Taktowanie</th><th>Producent</th><th>Numer seryjny</th></tr></thead>
+        <thead><tr><th>Slot</th><th>Pojemność</th><th>Typ</th><th>Taktowanie</th><th>Producent</th><th>Numer seryjny</th></tr></thead>
         <tbody>
         {% for m in memory.modules %}
           <tr>
@@ -524,7 +573,7 @@
       <h2>Dyski fizyczne</h2>
       {% if storage.physical_disks %}
       <table class="table">
-        <thead><tr><th>Model</th><th>Pojemnosc</th><th>Typ</th><th>Interfejs</th><th>Numer seryjny</th><th>Stan</th></tr></thead>
+        <thead><tr><th>Model</th><th>Pojemność</th><th>Typ</th><th>Interfejs</th><th>Numer seryjny</th><th>Stan</th></tr></thead>
         <tbody>
         {% for d in storage.physical_disks %}
           <tr>
@@ -542,7 +591,7 @@
       <h2>Wolumeny</h2>
       {% if storage.logical_disks %}
       <table class="table">
-        <thead><tr><th>Litera</th><th>Etykieta</th><th>System plikow</th><th>Zajetosc</th><th>Wolne</th><th>Rozmiar</th></tr></thead>
+        <thead><tr><th>Litera</th><th>Etykieta</th><th>System plikow</th><th>Zajętość</th><th>Wolne</th><th>Rozmiar</th></tr></thead>
         <tbody>
         {% for d in storage.logical_disks %}
           {% set used_pct = d.used_percent if d.used_percent is not none else 0 %}
@@ -586,7 +635,7 @@
       {% if packages %}
       <input type="search" class="table-filter" data-filter-for="packages-table" placeholder="Filtruj po nazwie...">
       <table class="table" id="packages-table">
-        <thead><tr><th>Nazwa</th><th>Wersja</th><th>Producent</th><th>Instalacja</th><th>Zrodlo</th></tr></thead>
+        <thead><tr><th>Nazwa</th><th>Wersja</th><th>Producent</th><th>Instalacja</th><th>Źródło</th></tr></thead>
         <tbody>
         {% for p in packages %}
           <tr>
@@ -601,9 +650,9 @@
     </div>
 
     <div class="panel">
-      <h2>Uslugi <span class="muted">({{ services | length }})</span></h2>
+      <h2>Usługi <span class="muted">({{ services | length }})</span></h2>
       {% if services %}
-      <input type="search" class="table-filter" data-filter-for="services-table" placeholder="Filtruj uslugi...">
+      <input type="search" class="table-filter" data-filter-for="services-table" placeholder="Filtruj usługi...">
       <table class="table" id="services-table">
         <thead><tr><th>Nazwa</th><th>Opis</th><th>Stan</th><th>Uruchamianie</th><th>Konto</th></tr></thead>
         <tbody>
@@ -629,7 +678,7 @@
     <div class="panel">
       <h2>Procesy w chwili raportu <span class="muted">({{ processes | length }})</span></h2>
       <table class="table">
-        <thead><tr><th>Proces</th><th>PID</th><th>Pamiec</th><th>Uzytkownik</th></tr></thead>
+        <thead><tr><th>Proces</th><th>PID</th><th>Pamięć</th><th>Użytkownik</th></tr></thead>
         <tbody>
         {% for p in processes %}
           <tr><td>{{ p.name }}</td><td class="small">{{ p.pid }}</td><td class="small">{{ p.memory_bytes | bytes }}</td><td class="small">{{ p.user or '-' }}</td></tr>
@@ -645,21 +694,21 @@
     {% set braki = software.updates_pending %}
 
     <div class="panel">
-      <h2>Brakujace aktualizacje</h2>
+      <h2>Brakujące aktualizacje</h2>
 
       {% if not braki %}
         <p class="muted">
-          Ten agent nie sprawdza brakujacych aktualizacji. Wykrywanie dodano w
-          wersji 0.5.2 — starsze agenty przysylaja wylacznie liste zainstalowanych
+          Ten agent nie sprawdza brakujących aktualizacji. Wykrywanie dodano w
+          wersji 0.5.2 — starsze agenty przysyłają wyłącznie listę zainstalowanych
           poprawek.
         </p>
 
       {% elif braki.status != 'ok' %}
         <div class="alert alert-warn">
-          <b>Nie udalo sie sprawdzic.</b>
+          <b>Nie udało się sprawdzić.</b>
           {{ braki.detail or 'Brak szczegolow.' }}
           <div class="small">
-            To nie znaczy, ze maszyna jest aktualna — znaczy, ze nie wiemy.
+            To nie znaczy, że maszyna jest aktualna — znaczy, że nie wiemy.
           </div>
         </div>
 
@@ -667,11 +716,11 @@
         <div class="cards">
           <div class="card {% if braki.security_count %}card-danger{% endif %}">
             <div class="card-value">{{ braki.security_count }}</div>
-            <div class="card-label">poprawek bezpieczenstwa</div>
+            <div class="card-label">poprawek bezpieczeństwa</div>
           </div>
           <div class="card {% if braki.count %}card-warn{% endif %}">
             <div class="card-value">{{ braki.count }}</div>
-            <div class="card-label">wszystkich brakow</div>
+            <div class="card-label">wszystkich braków</div>
           </div>
           <div class="card">
             <div class="card-value" style="font-size:18px">{{ braki.source }}</div>
@@ -682,8 +731,8 @@
         {% if braki.index_age_hours is not none and braki.index_age_hours > 168 %}
         <div class="alert alert-warn">
           <b>Indeks pakietow ma {{ (braki.index_age_hours / 24) | round(0, 'floor') | int }} dni.</b>
-          Agent swiadomie go nie odswieza, bo to zmienialoby stan maszyny. Przy tak
-          starym indeksie wynik moze nie obejmowac poprawek wydanych pozniej.
+          Agent świadomie go nie odświeża, bo to zmieniałoby stan maszyny. Przy tak
+          starym indeksie wynik może nie obejmować poprawek wydanych później.
         </div>
         {% endif %}
 
@@ -691,13 +740,13 @@
         <table class="table">
           <thead>
             <tr><th>Rodzaj</th><th>Identyfikator</th><th>Opis</th>
-                <th>Wersja obecna</th><th>Nowa</th><th>Zrodlo</th></tr>
+                <th>Wersja obecna</th><th>Nowa</th><th>Źródło</th></tr>
           </thead>
           <tbody>
           {% for b in braki.entries %}
             <tr>
               <td>
-                {% if b.security %}<span class="badge badge-danger">bezpieczenstwo</span>
+                {% if b.security %}<span class="badge badge-danger">bezpieczeństwo</span>
                 {% else %}<span class="badge">zwykla</span>{% endif %}
                 {% if b.severity %}<div class="muted small">{{ b.severity }}</div>{% endif %}
               </td>
@@ -738,9 +787,9 @@
       </table>
       {% else %}
       <p class="muted">
-        Brak danych. Systemy z rodziny Linux nie prowadza osobnej listy
-        zainstalowanych poprawek — sa one czescia wersji pakietow, widocznych
-        w zakladce Oprogramowanie.
+        Brak danych. Systemy z rodziny Linux nie prowadzą osobnej listy
+        zainstalowanych poprawek — sa one częścią wersji pakietow, widocznych
+        w zakładce Oprogramowanie.
       </p>
       {% endif %}
     </div>
@@ -748,14 +797,14 @@
 
   <section class="tab-panel" data-panel="podatnosci">
     <div class="panel">
-      <h2>Znane podatnosci</h2>
+      <h2>Znane podatności</h2>
 
       {% if not podatnosci or podatnosci.status != 'ok' %}
         <div class="alert alert-warn">
           <b>Nie wiemy.</b>
           {{ (podatnosci.detail if podatnosci else '') or 'Brak danych dla tej maszyny.' }}
           <div class="small">
-            To nie znaczy, ze maszyna jest bezpieczna — znaczy, ze nie sprawdzilismy.
+            To nie znaczy, że maszyna jest bezpieczna — znaczy, że nie sprawdziliśmy.
           </div>
         </div>
 
@@ -763,7 +812,7 @@
         <div class="cards">
           <div class="card {% if podatnosci.critical_count %}card-danger{% endif %}">
             <div class="card-value">{{ podatnosci.critical_count }}</div>
-            <div class="card-label">powazne (CVSS ≥ 7) z gotowa poprawka</div>
+            <div class="card-label">poważne (CVSS ≥ 7) z gotowa poprawka</div>
           </div>
           <div class="card {% if podatnosci.fixable_count %}card-warn{% endif %}">
             <div class="card-value">{{ podatnosci.fixable_count }}</div>
@@ -790,7 +839,7 @@
         <div class="alert alert-warn">
           <b>Dane o podatnosciach maja
           {{ (podatnosci.feed_age_hours / 24) | round(0, 'floor') | int }} dni.</b>
-          Luki opublikowane pozniej nie sa tu uwzglednione. Odswiez kanaly
+          Luki opublikowane później nie sa tu uwzględnione. Odśwież kanały
           w <a href="/admin/podatnosci">administracji</a>.
         </div>
         {% endif %}
@@ -828,7 +877,7 @@
                 {{ p.source_package }}
                 {% if p.package_count > 1 %}
                   <div class="muted">{{ p.package_count }} pakietow binarnych:
-                    {{ p.packages[:3] | join(', ') }}{% if p.package_count > 3 %} i {{ p.package_count - 3 }} wiecej{% endif %}</div>
+                    {{ p.packages[:3] | join(', ') }}{% if p.package_count > 3 %} i {{ p.package_count - 3 }} więcej{% endif %}</div>
                 {% elif p.packages and p.packages[0] != p.source_package %}
                   <div class="muted">{{ p.packages[0] }}</div>
                 {% endif %}
@@ -854,34 +903,34 @@
         </table>
         {% else %}
         <div class="alert alert-ok">
-          Sprawdzono wobec {{ podatnosci.feed_entries }} wpisow — nie znaleziono
-          znanych podatnosci.
+          Sprawdzono wobec {{ podatnosci.feed_entries }} wpisów — nie znaleziono
+          znanych podatności.
         </div>
         {% endif %}
 
         {% if podatnosci.bez_oceny %}
         <p class="muted small">
-          {{ podatnosci.bez_oceny }} podatnosci nie ma jeszcze oceny CVSS —
-          pobiera sie je w <a href="/admin/podatnosci">administracji</a>.
-          Dane dystrybucji ocen nie zawieraja, wiec pochodza z osobnego zrodla.
+          {{ podatnosci.bez_oceny }} podatności nie ma jeszcze oceny CVSS —
+          pobiera się je w <a href="/admin/podatnosci">administracji</a>.
+          Dane dystrybucji ocen nie zawierają, więc pochodza z osobnego źródła.
         </p>
         {% endif %}
 
         {% if podatnosci.stale_kernel_count %}
         <p class="muted small">
-          Pominieto <b>{{ podatnosci.stale_kernel_count }}</b> podatnosci
-          dotyczacych jadra, ktore juz nie dziala — maszyna jest uruchomiona
-          z nowszego. Zalegaja jeszcze pakiety
+          Pominięto <b>{{ podatnosci.stale_kernel_count }}</b> podatności
+          dotyczących jądra, które już nie działa — maszyna jest uruchomiona
+          z nowszego. Zalegają jeszcze pakiety
           <code>{{ podatnosci.stale_kernels | join(', ') }}</code>, bo Ubuntu
-          i Debian nie usuwaja starych jader po aktualizacji. Sprzatniecie:
+          i Debian nie usuwaja starych jąder po aktualizacji. Sprzątnięcie:
           <code>apt autoremove --purge</code>.
         </p>
         {% endif %}
 
         <p class="muted small">
-          Porownujemy wersje <b>zrodlowa</b> pakietu z wersja, w ktorej
-          dystrybucja wydala poprawke. To nie jest skanowanie podatnosci: nie
-          sprawdzamy konfiguracji ani tego, czy podatny pakiet jest w ogole
+          Porównujemy wersje <b>źródłowa</b> pakietu z wersja, w której
+          dystrybucja wydala poprawke. To nie jest skanowanie podatności: nie
+          sprawdzamy konfiguracji ani tego, czy podatny pakiet jest w ogóle
           uruchamiany.
         </p>
       {% endif %}
@@ -898,14 +947,14 @@
       <h2>Konta lokalne <span class="muted">({{ accounts | length }})</span></h2>
       {% if accounts %}
       <table class="table">
-        <thead><tr><th>Konto</th><th>Pelna nazwa</th><th>Status</th><th>Ostatnie logowanie</th><th>Haslo</th><th>SID</th></tr></thead>
+        <thead><tr><th>Konto</th><th>Pełna nazwa</th><th>Status</th><th>Ostatnie logowanie</th><th>Hasło</th><th>SID</th></tr></thead>
         <tbody>
         {% for u in accounts %}
           <tr>
             <td class="strong">{{ u.name }}</td>
             <td class="small">{{ u.full_name or u.description or '-' }}</td>
             <td>
-              {% if u.enabled %}<span class="badge badge-ok">aktywne</span>{% else %}<span class="badge">wylaczone</span>{% endif %}
+              {% if u.enabled %}<span class="badge badge-ok">aktywne</span>{% else %}<span class="badge">wyłączone</span>{% endif %}
               {% if u.locked %}<span class="badge badge-warn">zablokowane</span>{% endif %}
             </td>
             <td class="small">{{ u.last_logon or '-' }}</td>
@@ -939,7 +988,7 @@
         <ul class="tight">
           {% for s in sessions %}<li>{{ s.user }} <span class="muted small">{{ s.session_type or '' }} {{ s.logon_time or '' }}</span></li>{% endfor %}
         </ul>
-        {% else %}<p class="muted">Brak zalogowanych uzytkownikow.</p>{% endif %}
+        {% else %}<p class="muted">Brak zalogowanych użytkowników.</p>{% endif %}
       </div>
     </div>
 
@@ -947,7 +996,7 @@
     <div class="panel">
       <h2>Grupy lokalne</h2>
       <table class="table">
-        <thead><tr><th>Grupa</th><th>Czlonkowie</th></tr></thead>
+        <thead><tr><th>Grupa</th><th>Członkowie</th></tr></thead>
         <tbody>
         {% for g in groups %}
           <tr><td class="strong">{{ g.name }}</td><td class="small">{{ (g.members or []) | join(', ') or '—' }}</td></tr>
@@ -960,11 +1009,11 @@
 
   <section class="tab-panel" data-panel="zmiany">
     <div class="panel">
-      <h2>Co sie zmienilo na tej maszynie</h2>
+      <h2>Co się zmieniło na tej maszynie</h2>
       {% if zmiany %}
       <p class="muted small">
-        Jeden wpis to jeden raport agenta - rozwin go, zeby zobaczyc, co dokladnie
-        sie w nim zmienilo.
+        Jeden wpis to jeden raport agenta - rozwiń go, żeby zobaczyć, co dokładnie
+        się w nim zmieniło.
       </p>
       <ul class="raporty">
       {% for g in zmiany %}
@@ -985,58 +1034,20 @@
       </ul>
       {% else %}
         <p class="muted">
-          Nie odnotowano jeszcze zadnej zmiany. Pierwszy raport maszyny nie jest
-          rozpisywany na zmiany — historia zaczyna sie od drugiego.
+          Nie odnotowano jeszcze żadnej zmiany. Pierwszy raport maszyny nie jest
+          rozpisywany na zmiany — historia zaczyna się od drugiego.
         </p>
       {% endif %}
     </div>
 
-    <div class="panel">
-      <h2>Cykl zycia</h2>
-      {% if asset.lifecycle == 'wycofany' %}
-        <p>
-          Zasob wycofany {{ asset.retired_at | dt }}
-          {% if asset.retired_by %}przez {{ asset.retired_by }}{% endif %}.
-          {% if asset.retired_reason %}<br><span class="muted">Powod: {{ asset.retired_reason }}</span>{% endif %}
-        </p>
-        <p class="muted small">
-          Maszyna nie znika z systemu — zostaje z cala historia, tylko poza domyslnymi
-          listami i zestawieniami.
-        </p>
-        {% if ctx.can_write %}
-        <form method="post" action="/assets/{{ asset.id }}/lifecycle" class="inline-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="akcja" value="przywroc">
-          <button type="submit" class="btn">Przywroc do uzytku</button>
-        </form>
-        {% endif %}
-      {% else %}
-        <p class="muted small">
-          Wycofanie oznacza, ze maszyna nie jest juz uzywana — znika z list i zestawien,
-          ale zostaje w bazie razem z historia. To nie to samo, co brak kontaktu.
-        </p>
-        {% if ctx.can_write %}
-        <form method="post" action="/assets/{{ asset.id }}/lifecycle" class="row-form"
-              data-confirm="Wycofac maszyne {{ asset.hostname }} z uzytku?">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="akcja" value="wycofaj">
-          <div>
-            <label for="powod">Powod</label>
-            <input id="powod" name="powod" maxlength="500" placeholder="np. sprzet oddany do utylizacji">
-          </div>
-          <div><button type="submit" class="btn btn-danger">Wycofaj z uzytku</button></div>
-        </form>
-        {% endif %}
-      {% endif %}
-    </div>
   </section>
 
   <section class="tab-panel" data-panel="history">
     <div class="panel">
       <h2>Historia snapshotow</h2>
-      <p class="muted small">Nowy wpis powstaje tylko wtedy, gdy zmienil sie stan maszyny — cykliczne raporty bez zmian nie zasmiecaja historii.</p>
+      <p class="muted small">Nowy wpis powstaje tylko wtedy, gdy zmienił się stan maszyny — cykliczne raporty bez zmian nie zaśmiecają historii.</p>
       <table class="table">
-        <thead><tr><th>Zebrany</th><th>Otrzymany</th><th>Rozmiar</th><th>Skrot</th><th></th></tr></thead>
+        <thead><tr><th>Zebrany</th><th>Otrzymany</th><th>Rozmiar</th><th>Skrót</th><th></th></tr></thead>
         <tbody>
         {% for s in history %}
           <tr {% if snapshot and s.id == snapshot.id %}class="row-active"{% endif %}>
@@ -1054,9 +1065,9 @@
     </div>
 
     <div class="panel">
-      <h2>Poswiadczenia agenta</h2>
+      <h2>Poświadczenia agenta</h2>
       <table class="table">
-        <thead><tr><th>Prefiks</th><th>Wydane</th><th>Ostatnie uzycie</th><th>Adres</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Prefiks</th><th>Wydane</th><th>Ostatnie użycie</th><th>Adres</th><th>Status</th><th></th></tr></thead>
         <tbody>
         {% for c in credentials %}
           <tr>
@@ -1068,7 +1079,7 @@
             <td>
               {% if ctx.can_write and not c.revoked_at %}
               <form method="post" action="/assets/{{ asset.id }}/credentials/{{ c.id }}/revoke" class="inline-form"
-                    data-confirm="Wycofac poswiadczenie? Agent na tej maszynie przestanie raportowac do czasu ponownej rejestracji.">
+                    data-confirm="Wycofać poświadczenie? Agent na tej maszynie przestanie raportować do czasu ponownej rejestracji.">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-small btn-danger">Wycofaj</button>
               </form>
@@ -1076,7 +1087,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="6" class="muted">Brak poswiadczen.</td></tr>
+          <tr><td colspan="6" class="muted">Brak poświadczeń.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -1086,7 +1097,7 @@
   <section class="tab-panel" data-panel="raw">
     <div class="panel">
       <h2>Surowy raport JSON</h2>
-      <p class="muted small">Dokladnie to, co trafilo do bazy — zrodlo prawdy dla wszystkich powyzszych widokow.</p>
+      <p class="muted small">Dokładnie to, co trafilo do bazy — źródło prawdy dla wszystkich powyższych widokow.</p>
       <pre class="json-dump">{{ payload | pretty_json }}</pre>
     </div>
   </section>

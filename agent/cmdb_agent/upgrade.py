@@ -434,13 +434,15 @@ def _podmien_katalog(korzen: Path, nowy: Path) -> Path:
         zapasowy.rename(biezacy)
         raise
 
-    # Instalator z paczki tez sie przydaje - pozwala odtworzyc usluge
-    # bez ponownego pobierania czegokolwiek.
-    zrodlowy_skrypt = nowy / "packaging" / "install-agent.sh"
-    if zrodlowy_skrypt.is_file():
-        docelowy = korzen / "packaging"
-        docelowy.mkdir(exist_ok=True)
-        shutil.copy2(zrodlowy_skrypt, docelowy / "install-agent.sh")
+    # Instalator i deinstalator z paczki tez sie przydaja - pozwalaja odtworzyc
+    # albo usunac usluge bez ponownego pobierania czegokolwiek. Odinstalowanie
+    # musi dac sie zrobic takze wtedy, gdy serwer jest nieosiagalny.
+    docelowy = korzen / "packaging"
+    for nazwa in ("install-agent.sh", "uninstall-agent.sh"):
+        zrodlowy_skrypt = nowy / "packaging" / nazwa
+        if zrodlowy_skrypt.is_file():
+            docelowy.mkdir(exist_ok=True)
+            shutil.copy2(zrodlowy_skrypt, docelowy / nazwa)
     return zapasowy
 
 

@@ -118,9 +118,88 @@ def test_wykres_pustych_danych_nie_wybucha():
     assert raporty.wykres([]) == []
 
 
+def _z_aktualizacjami(client, tenant, hostname, machine_id, stan):
+    """Maszyna, ktora zaraportowala stan menedzera pakietow."""
+    token = enroll(client, tenant["token"], machine_id=machine_id,
+                   hostname=hostname).json()["agent_token"]
+    raport = build_report(machine_id=machine_id, hostname=hostname)
+    raport.setdefault("software", {})["updates_pending"] = stan
+    odpowiedz = client.post("/api/v1/inventory",
+                            headers={"Authorization": f"Bearer {token}"}, json=raport)
+    assert odpowiedz.status_code == 200, odpowiedz.text
+
+
+def test_raport_aktualizacji_dzieli_wedlug_pilnosci(client, tenant_a):
+    """Poprawka bezpieczenstwa i zwykla aktualizacja to nie ta sama pilnosc -
+    zsumowanie ich w jedna liczbe kazaloby czytac raport pozycja po pozycji."""
+    _z_aktualizacjami(client, tenant_a, "SRV-SEC", "maszyna-akt-001", {
+        "status": "ok", "source": "apt", "count": 12, "security_count": 4,
+        "index_age_hours": 2.0, "entries": [],
+    })
+    _z_aktualizacjami(client, tenant_a, "SRV-ZWYKLE", "maszyna-akt-002", {
+        "status": "ok", "source": "apt", "count": 3, "security_count": 0,
+        "index_age_hours": 1.0, "entries": [],
+    })
+    _z_aktualizacjami(client, tenant_a, "SRV-CZYSTA", "maszyna-akt-003", {
+        "status": "ok", "source": "apt", "count": 0, "security_count": 0,
+        "index_age_hours": 1.0, "entries": [],
+    })
+
+    with SessionLocal() as db:
+        dane = raporty.zbuduj(db, db.get(Tenant, tenant_a["id"]), "aktualizacje")["dane"]
+
+    assert [w["maszyna"].hostname for w in dane["z_bezpieczenstwem"]] == ["SRV-SEC"]
+    assert [w["maszyna"].hostname for w in dane["ze_zwyklymi"]] == ["SRV-ZWYKLE"]
+    assert dane["aktualne"] == 1
+    assert dane["czekajace"] == 15
+    assert dane["bezpieczenstwa"] == 4
+
+
+def test_brak_odpowiedzi_menedzera_nie_udaje_zera(client, tenant_a):
+    """Maszyna, ktorej nie udalo sie sprawdzic, nie jest maszyna aktualna."""
+    _z_aktualizacjami(client, tenant_a, "SRV-NIEZNANA", "maszyna-akt-004", {
+        "status": "nieznany", "source": "apt", "detail": "apt-get nie odpowiedzial",
+        "count": None, "security_count": None, "entries": [],
+    })
+
+    with SessionLocal() as db:
+        dane = raporty.zbuduj(db, db.get(Tenant, tenant_a["id"]), "aktualizacje")["dane"]
+
+    assert dane["aktualne"] == 0
+    assert [w["maszyna"].hostname for w in dane["nieznane"]] == ["SRV-NIEZNANA"]
+    assert "apt-get nie odpowiedzial" in dane["nieznane"][0]["powod"]
+
+
+def test_stary_indeks_pakietow_jest_zglaszany(client, tenant_a):
+    """Liczba brakow odczytana ze starego indeksu bywa zanizona - raport ma
+    o tym powiedziec, zamiast pokazywac spokojne zero."""
+    _z_aktualizacjami(client, tenant_a, "SRV-STARA", "maszyna-akt-005", {
+        "status": "ok", "source": "apt", "count": 0, "security_count": 0,
+        "index_age_hours": raporty.INDEKS_NIESWIEZY_GODZIN + 10, "entries": [],
+    })
+
+    with SessionLocal() as db:
+        dane = raporty.zbuduj(db, db.get(Tenant, tenant_a["id"]), "aktualizacje")["dane"]
+
+    assert [w["maszyna"].hostname for w in dane["nieswieze"]] == ["SRV-STARA"]
+
+
+def test_raport_aktualizacji_nie_wychodzi_poza_firme(client, tenant_a, tenant_b):
+    _z_aktualizacjami(client, tenant_b, "OBCA-01", "maszyna-akt-obca", {
+        "status": "ok", "source": "apt", "count": 9, "security_count": 9,
+        "index_age_hours": 1.0, "entries": [],
+    })
+
+    with SessionLocal() as db:
+        dane = raporty.zbuduj(db, db.get(Tenant, tenant_a["id"]), "aktualizacje")["dane"]
+
+    assert dane["z_bezpieczenstwem"] == []
+    assert dane["bezpieczenstwa"] == 0
+
+
 # --- tresc wiadomosci -------------------------------------------------------
 
-@pytest.mark.parametrize("rodzaj", ["podatnosci", "sprzet", "gwarancje"])
+@pytest.mark.parametrize("rodzaj", ["podatnosci", "sprzet", "gwarancje", "aktualizacje"])
 def test_kazdy_rodzaj_ma_obie_wersje_tresci(client, tenant_a, rodzaj):
     """Wersja tekstowa nie jest ozdoba - czesc filtrow ocenia wiadomosc bez
     alternatywy tekstowej jako podejrzana."""
@@ -302,7 +381,7 @@ def test_strona_raportow_dziala(client, tenant_a, make_user):
     _login(client, "raporty@firma.pl", HASLO)
 
     strona = client.get("/raporty").text
-    assert "Poczta wychodzaca" in strona
+    assert "Poczta wychodząca" in strona
     assert "Raporty cykliczne" in strona
 
 

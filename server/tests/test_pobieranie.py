@@ -57,6 +57,26 @@ def test_skrypt_startowy_jest_publiczny(client):
     assert odpowiedz.text.startswith("#!/usr/bin/env bash")
 
 
+def test_deinstalatory_sa_wydawane_tak_samo_jak_instalator(client):
+    """Kto zainstalowal agenta jednym poleceniem, musi umiec go usunac tak samo.
+    Skrypt lezacy tylko w repozytorium jest dla obslugi niedostepny."""
+    linux = client.get("/download/uninstall-agent.sh")
+    assert linux.status_code == 200
+    assert linux.text.startswith("#!/usr/bin/env bash")
+    assert "--wszystko" in linux.text, "musi dac sie skasowac takze poswiadczenie"
+
+    windows = client.get("/download/uninstall-agent.ps1")
+    assert windows.status_code == 200
+    assert "-RemoveData" in windows.text
+
+
+def test_deinstalator_nie_kasuje_maszyny_w_panelu(client):
+    """Zdjecie agenta i wycofanie zasobu to dwie rozne decyzje - skrypt ma
+    o tym powiedziec wprost, zeby nikt nie liczyl na sprzatniecie ewidencji."""
+    tresc = client.get("/download/uninstall-agent.sh").text.lower()
+    assert "panel" in tresc and "wycofaj" in tresc
+
+
 def test_skrypt_ma_wpisany_adres_serwera(client):
     """Bez tego uzytkownik musialby podac adres, ktory wlasnie wpisal w curl."""
     tresc = client.get("/download/install.sh").text
@@ -111,6 +131,9 @@ def test_paczka_zawiera_agenta_i_instalator(client, tenant_a, paczka):
     with tarfile.open(fileobj=io.BytesIO(odpowiedz.content)) as archiwum:
         nazwy = archiwum.getnames()
         assert "cmdb-agent/packaging/install-agent.sh" in nazwy
+        assert "cmdb-agent/packaging/uninstall-agent.sh" in nazwy, (
+            "deinstalator jedzie z agentem - bywa potrzebny, gdy maszyna nie ma"
+            " juz lacznosci z serwerem")
         assert "cmdb-agent/cmdb_agent/main.py" in nazwy
         assert not any("__pycache__" in nazwa for nazwa in nazwy)
         instalator = archiwum.getmember("cmdb-agent/packaging/install-agent.sh")

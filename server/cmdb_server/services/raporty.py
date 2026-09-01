@@ -31,6 +31,7 @@ RODZAJE = {
     "sprzet": "Inwentaryzacja sprzetu",
     "gwarancje": "Gwarancje i wsparcie",
     "wykorzystanie": "Wykorzystanie zasobow",
+    "aktualizacje": "Brakujace aktualizacje",
 }
 
 CZESTOTLIWOSCI = {
@@ -272,6 +273,95 @@ def dane_podatnosci(db: Session, tenant_id: str) -> dict:
     }
 
 
+# --- aktualizacje -----------------------------------------------------------
+
+# Po ilu godzinach indeks pakietow uznajemy za nieswiezy. Liczba brakow
+# odczytana ze starego indeksu moze byc zanizona - i wtedy cisza w raporcie
+# nie znaczy, ze nie ma czego instalowac.
+INDEKS_NIESWIEZY_GODZIN = 72
+
+
+def dane_aktualizacje(db: Session, tenant_id: str) -> dict:
+    """Co czeka na instalacje - osobno od podatnosci.
+
+    Podatnosc i brakujaca aktualizacja to dwa rozne pytania. Podatnosc mowi,
+    co grozi; aktualizacja mowi, co da sie zainstalowac dzisiaj. Maszyna moze
+    nie miec ani jednego znanego CVE i miec trzydziesci zaleglych poprawek -
+    raport o podatnosciach jej nie pokaze.
+    """
+    maszyny = _maszyny(db, tenant_id)
+
+    z_bezpieczenstwem, ze_zwyklymi, aktualne, nieznane = [], [], [], []
+    laczne = Counter()
+    zrodla = Counter()
+    nieswieze = []
+
+    for maszyna in maszyny:
+        payload = _ostatni_raport(db, maszyna.id)
+        stan = ((payload or {}).get("software") or {}).get("updates_pending")
+        if not isinstance(stan, dict):
+            # Sprzet wpisany recznie nie ma agenta i nie ma czego raportowac -
+            # trzymanie go w rubryce "nieznane" zamienialoby ja w spis wpisow
+            # recznych zamiast w liste maszyn do sprawdzenia.
+            if maszyna.zrodlo == ZRODLO_AGENT:
+                nieznane.append({"maszyna": maszyna, "powod": "agent nie przyslal danych"})
+            continue
+
+        if stan.get("status") != "ok" or stan.get("count") is None:
+            nieznane.append({
+                "maszyna": maszyna,
+                "powod": stan.get("detail") or "menedzer pakietow nie odpowiedzial",
+            })
+            continue
+
+        ile = int(stan.get("count") or 0)
+        bezpieczenstwa = int(stan.get("security_count") or 0)
+        zrodla[stan.get("source") or "nieznane"] += 1
+        laczne["czekajace"] += ile
+        laczne["bezpieczenstwa"] += bezpieczenstwa
+
+        wiek = stan.get("index_age_hours")
+        if wiek is not None and wiek > INDEKS_NIESWIEZY_GODZIN:
+            nieswieze.append({"maszyna": maszyna, "godziny": round(wiek)})
+
+        wpis = {
+            "maszyna": maszyna,
+            "czekajace": ile,
+            "bezpieczenstwa": bezpieczenstwa,
+            "zrodlo": stan.get("source"),
+            "sprawdzono": stan.get("checked_at"),
+        }
+        if bezpieczenstwa:
+            z_bezpieczenstwem.append(wpis)
+        elif ile:
+            ze_zwyklymi.append(wpis)
+        else:
+            aktualne.append(wpis)
+
+    # Kolejnosc pracy: najpierw poprawki bezpieczenstwa, dopiero potem objetosc.
+    z_bezpieczenstwem.sort(key=lambda w: (-w["bezpieczenstwa"], -w["czekajace"]))
+    ze_zwyklymi.sort(key=lambda w: -w["czekajace"])
+
+    return {
+        "zbadanych": len(z_bezpieczenstwem) + len(ze_zwyklymi) + len(aktualne),
+        "czekajace": laczne["czekajace"],
+        "bezpieczenstwa": laczne["bezpieczenstwa"],
+        "z_bezpieczenstwem": z_bezpieczenstwem,
+        "ze_zwyklymi": ze_zwyklymi[:40],
+        "aktualne": len(aktualne),
+        "nieznane": nieznane,
+        "nieswieze": sorted(nieswieze, key=lambda w: -w["godziny"]),
+        "prog_indeksu": INDEKS_NIESWIEZY_GODZIN,
+        "wykres": wykres([
+            ("czekaja poprawki bezpieczenstwa", len(z_bezpieczenstwem)),
+            ("czekaja zwykle aktualizacje", len(ze_zwyklymi)),
+            ("nic nie czeka", len(aktualne)),
+            ("stan nieznany", len(nieznane)),
+        ]),
+        "wykres_zrodla": wykres(zrodla.most_common(8)),
+    }
+
+
 def dane_wykorzystanie(db: Session, tenant_id: str) -> dict:
     """Zestawienia "pierwsza dziesiatka" - od czego zaczac."""
     from . import zestawienia
@@ -284,6 +374,7 @@ BUDOWNICZOWIE = {
     "sprzet": dane_sprzet,
     "gwarancje": dane_gwarancje,
     "wykorzystanie": dane_wykorzystanie,
+    "aktualizacje": dane_aktualizacje,
 }
 
 

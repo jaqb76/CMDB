@@ -11,26 +11,26 @@
 
 <div class="alert alert-warn">
   Wszystkie polecenia wymagaja <b>tokenu rejestracyjnego</b> tej firmy. Jest jeden
-  na cala organizacje — ten sam wpisuje sie na kazdej maszynie. Nie mozemy go tu
-  wypisac, bo w bazie trzymamy wylacznie jego skrot; wartosc jawna pokazywana
-  jest raz, przy wydaniu. Masz go pod reka? Wklej zamiast <code>TWOJ_TOKEN</code>.
-  Jesli nie — <a href="/tokens">wygeneruj nowy</a>.
+  na cała organizacje — ten sam wpisuje się na każdej maszynie. Nie możemy go tu
+  wypisać, bo w bazie trzymamy wyłącznie jego skrót; wartość jawna pokazywana
+  jest raz, przy wydaniu. Masz go pod ręka? Wklej zamiast <code>TWOJ_TOKEN</code>.
+  Jeśli nie — <a href="/tokens">wygeneruj nowy</a>.
 </div>
 
 <section class="panel">
   <h2>Linux (Ubuntu, Debian, Raspberry Pi)</h2>
   {% if paczka_linux %}
   <p class="muted small">
-    Jedno polecenie na maszynie docelowej — nie trzeba niczego klonowac ani budowac:
+    Jedno polecenie na maszynie docelowej — nie trzeba niczego klonować ani budować:
   </p>
   <pre class="code-block">curl -fsSL {{ adres_serwera }}/download/install.sh \
   | sudo bash -s -- --token TWOJ_TOKEN</pre>
 
   <p class="muted small">
-    Skrypt pobiera z tego serwera zrodla agenta, sprawdza ich skrot SHA-256,
-    zaklada usluge i timer systemd oraz wysyla pierwszy raport. Agent stoi na
-    samej bibliotece standardowej Pythona, wiec dziala na kazdej architekturze —
-    takze na ARM, gdzie gotowy plik zbudowany na x86 by sie nie uruchomil.
+    Skrypt pobiera z tego serwera źródła agenta, sprawdza ich skrót SHA-256,
+    zaklada usługę i timer systemd oraz wysyła pierwszy raport. Agent stoi na
+    samej bibliotece standardowej Pythona, więc działa na każdej architekturze —
+    takze na ARM, gdzie gotowy plik zbudowany na x86 by się nie uruchomil.
   </p>
 
   <table class="table">
@@ -42,14 +42,14 @@
     </tbody>
   </table>
 
-  <h3>Przydatne przelaczniki</h3>
-  <pre class="code-block">--interval 4                  # co ile godzin raportowac (domyslnie 4)
---ca-bundle /sciezka/ca.pem   # wlasne PKI lub certyfikat self-signed
+  <h3>Przydatne przełączniki</h3>
+  <pre class="code-block">--interval 4                  # co ile godzin raportować (domyślnie 4)
+--ca-bundle /ścieżka/ca.pem   # własne PKI lub certyfikat self-signed
 --no-processes                # nie zbieraj listy procesow</pre>
   {% else %}
   <div class="alert alert-error">
-    Na tym serwerze nie przygotowano paczki agenta dla Linuksa, wiec instalacja
-    jednym poleceniem zwroci blad. Buduje sie ja poleceniem
+    Na tym serwerze nie przygotowano paczki agenta dla Linuksa, więc instalacja
+    jednym poleceniem zwróci błąd. Buduje się ja poleceniem
     <code>python -m cmdb_server.pakiet ../agent</code> po stronie serwera.
   </div>
   {% endif %}
@@ -59,65 +59,96 @@
   <h2>Windows</h2>
   {% if wydanie_windows %}
   <p class="muted small">
-    Wersja obowiazujaca w tej firmie: <code class="strong">{{ wydanie_windows.version }}</code>
+    Wersja obowiązująca w tej firmie: <code class="strong">{{ wydanie_windows.version }}</code>
     ({{ wydanie_windows.arch }}). W PowerShellu <b>jako administrator</b>:
   </p>
   <pre class="code-block">iwr {{ adres_serwera }}/download/install.ps1 -OutFile install.ps1
 .\install.ps1 -Token TWOJ_TOKEN</pre>
 
   <p class="muted small">
-    Skrypt pobiera agenta, sprawdza jego skrot SHA-256, instaluje go w
+    Skrypt pobiera agenta, sprawdza jego skrót SHA-256, instaluje go w
     <code>Program Files</code>, zapisuje konfiguracje i zaklada zadanie
-    harmonogramu dzialajace jako SYSTEM.
+    harmonogramu działające jako SYSTEM.
   </p>
   <p class="muted small">
-    Skryptu nie da sie podac potokiem do <code>iex</code> — PowerShell nie
-    przyjmuje wtedy parametrow, a token trzeba jakos przekazac. Stad zapis
+    Skryptu nie da się podac potokiem do <code>iex</code> — PowerShell nie
+    przyjmuje wtedy parametrow, a token trzeba jakoś przekazać. Stąd zapis
     do pliku.
   </p>
 
-  <h3>Przydatne przelaczniki</h3>
-  <pre class="code-block">-IntervalHours 4        # co ile godzin raportowac (domyslnie 4)
--CaBundle C:\ca.pem     # wlasne PKI lub certyfikat self-signed
+  <h3>Przydatne przełączniki</h3>
+  <pre class="code-block">-IntervalHours 4        # co ile godzin raportować (domyślnie 4)
+-CaBundle C:\ca.pem     # własne PKI lub certyfikat self-signed
 -NoProcessList          # nie zbieraj listy procesow
 -NoTray                 # bez ikony w zasobniku
--Silent                 # bez komunikatow, do GPO/Intune</pre>
+-Silent                 # bez komunikatów, do GPO/Intune</pre>
 
   <div class="alert alert-warn">
     <b>Sam plik agenta</b> jest pod
     <code>{{ adres_serwera }}/download/agent-windows.exe</code>, ale to
-    <b>nie jest instalator</b> — tego pliku uzywa mechanizm samoaktualizacji.
-    Uruchomiony wprost wypisze tylko skladnie polecen.
+    <b>nie jest instalator</b> — tego pliku używa mechanizm samoaktualizacji.
+    Uruchomiony wprost wypisze tylko składnię poleceń.
   </div>
   {% else %}
   <div class="alert alert-warn">
-    Dla tej firmy nie ustawiono wersji agenta dla Windows, wiec instalacja
-    zwroci blad. Plik dla Windows buduje sie na maszynie z Windows
+    Dla tej firmy nie ustawiono wersji agenta dla Windows, więc instalacja
+    zwróci błąd. Plik dla Windows buduje się na maszynie z Windows
     (<code>build-agent.ps1</code>) i wgrywa w administracji, w sekcji
-    <b>Wersje agentow</b> — w przeciwienstwie do paczki dla Linuksa nie jest
+    <b>Wersje agentów</b> — w przeciwieństwie do paczki dla Linuksa nie jest
     wbudowany w serwer.
   </div>
   {% endif %}
 </section>
 
 <section class="panel">
+  <h2>Odinstalowanie agenta</h2>
+  <p class="muted small">
+    Kto zainstalował agenta jednym poleceniem, musi umieć go usunąć tak samo.
+    Skrypty wydaje ten sam serwer, co instalatory.
+  </p>
+
+  <h3>Windows</h3>
+  <p class="muted small">W konsoli PowerShell <b>jako administrator</b>:</p>
+  <pre class="code-block">irm {{ adres_serwera }}/download/uninstall-agent.ps1 -OutFile uninstall-agent.ps1
+.\uninstall-agent.ps1              # zostawia poświadczenie maszyny
+.\uninstall-agent.ps1 -RemoveData  # kasuje także poświadczenie</pre>
+
+  <h3>Linux</h3>
+  <pre class="code-block">curl -fsSL {{ adres_serwera }}/download/uninstall-agent.sh | sudo bash
+# aby skasować także konfigurację i poświadczenie:
+curl -fsSL {{ adres_serwera }}/download/uninstall-agent.sh | sudo bash -s -- --wszystko</pre>
+  <p class="muted small">
+    Domyślnie zostaje konfiguracja i poświadczenie maszyny — przy ponownej
+    instalacji wraca ona pod tym samym wpisem, bez tokenu i bez drugiego rekordu
+    w ewidencji. Skasowanie ich oznacza rejestrację od nowa.
+  </p>
+
+  <p class="uwaga-raportu">
+    <b>Odinstalowanie agenta nie usuwa maszyny z panelu</b> — to dwie różne
+    rzeczy. Maszyna zostaje razem z historią raportów; jeśli ma zniknąć z list,
+    wycofaj ją na jej karcie. Odwrotnie też: wycofanie w panelu nie zdejmuje
+    agenta ze sprzętu.
+  </p>
+</section>
+
+<section class="panel">
   <h2>Certyfikat serwera</h2>
   <p class="muted small">
-    Jesli serwer pracuje na certyfikacie wystawionym przez publiczne urzedy
-    (np. Let's Encrypt), powyzsze polecenia zadzialaja bez zmian.
+    Jeśli serwer pracuje na certyfikacie wystawionym przez publiczne urzedy
+    (np. Let's Encrypt), powyższe polecenia zadzialaja bez zmian.
   </p>
   <p class="muted small">
-    Przy certyfikacie <b>self-signed</b> maszyna docelowa nie ma powodu mu ufac
-    i pobieranie sie nie powiedzie. Certyfikat trzeba wtedy dostarczyc
-    <b>poza tym kanalem</b> — pobranie go z tego samego serwera, ktoremu jeszcze
+    Przy certyfikacie <b>self-signed</b> maszyna docelowa nie ma powodu mu ufać
+    i pobieranie się nie powiedzie. Certyfikat trzeba wtedy dostarczyć
+    <b>poza tym kanałem</b> — pobranie go z tego samego serwera, któremu jeszcze
     nie ufamy, niczego nie dowodzi. Skopiuj plik raz, np. przez <code>scp</code>,
     i wskaz go przy instalacji:
   </p>
-  <pre class="code-block">curl -fsSL --cacert /sciezka/ca.pem {{ adres_serwera }}/download/install.sh \
-  | sudo bash -s -- --token TWOJ_TOKEN --ca-bundle /sciezka/ca.pem</pre>
+  <pre class="code-block">curl -fsSL --cacert /ścieżka/ca.pem {{ adres_serwera }}/download/install.sh \
+  | sudo bash -s -- --token TWOJ_TOKEN --ca-bundle /ścieżka/ca.pem</pre>
   <p class="muted small">
-    Instalator kopiuje certyfikat do <code>/etc/cmdb-agent/ca.pem</code>, wiec
-    plik zrodlowy mozna potem usunac.
+    Instalator kopiuje certyfikat do <code>/etc/cmdb-agent/ca.pem</code>, więc
+    plik źródłowy można potem usunąć.
   </p>
 </section>
 {% endblock %}

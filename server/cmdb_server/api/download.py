@@ -96,6 +96,22 @@ def skrypt_instalacyjny_windows(request: Request) -> PlainTextResponse:
     )
 
 
+@router.get("/uninstall-agent.ps1", response_class=PlainTextResponse)
+def deinstalator_windows() -> PlainTextResponse:
+    """Skrypt odinstalowania dla Windows.
+
+    Wydawany tak samo jak instalator: kto zainstalowal agenta jednym
+    poleceniem, musi umiec go usunac tak samo - bez szukania po repozytorium.
+    """
+    return PlainTextResponse(_skrypt("uninstall-agent.ps1"))
+
+
+@router.get("/uninstall-agent.sh", response_class=PlainTextResponse)
+def deinstalator_linux() -> PlainTextResponse:
+    """Skrypt odinstalowania dla Linuksa."""
+    return PlainTextResponse(_skrypt("uninstall-agent.sh"))
+
+
 @router.get("/install-agent.ps1", response_class=PlainTextResponse)
 def wlasciwy_instalator_windows() -> PlainTextResponse:
     """Wlasciwy instalator dla Windows, pobierany przez skrypt startowy."""

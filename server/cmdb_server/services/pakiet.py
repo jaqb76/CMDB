@@ -36,13 +36,20 @@ KATALOG_W_ARCHIWUM = "cmdb-agent"
 # kazdym razem inny skrot. Data budowania jest w pliku opisu.
 STALY_CZAS = 0
 
-# Co trafia do paczki: pakiet agenta i skrypt instalacyjny. Reszta repozytorium
-# (testy, build dla Windows, dokumentacja) nie jest do niczego potrzebna na
-# maszynie docelowej.
+# Co trafia do paczki: pakiet agenta oraz skrypty instalacji i odinstalowania.
+# Deinstalator jedzie razem z agentem, bo najczesciej potrzebny jest wtedy, gdy
+# maszyna nie ma juz lacznosci z serwerem. Reszta repozytorium (testy, build dla
+# Windows, dokumentacja) nie jest do niczego potrzebna na maszynie docelowej.
 ZAWARTOSC = (
     ("cmdb_agent", "cmdb_agent"),
     ("packaging/install-agent.sh", "packaging/install-agent.sh"),
+    ("packaging/uninstall-agent.sh", "packaging/uninstall-agent.sh"),
 )
+
+# Czego brak nie dyskwalifikuje katalogu zrodel. Deinstalator dolozylismy
+# pozniej niz instalator; starsze wydanie bez niego jest nadal poprawnymi
+# zrodlami agenta, tylko bez tego jednego udogodnienia.
+NIEOBOWIAZKOWE = frozenset({"packaging/uninstall-agent.sh"})
 
 POMIJANE_KATALOGI = {"__pycache__", ".pytest_cache", ".mypy_cache"}
 POMIJANE_ROZSZERZENIA = {".pyc", ".pyo"}
@@ -102,6 +109,8 @@ def _pliki(katalog_zrodel: Path) -> list[tuple[Path, str]]:
             zebrane.append((sciezka, f"{KATALOG_W_ARCHIWUM}/{cel}"))
             continue
         if not sciezka.is_dir():
+            if zrodlo in NIEOBOWIAZKOWE:
+                continue
             raise BrakZrodel(f"brakuje {sciezka} - to nie jest katalog zrodel agenta")
         for plik in sciezka.rglob("*"):
             if not plik.is_file():

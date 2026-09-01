@@ -4,14 +4,14 @@
 <div class="page-head">
   <div>
     <h1>Audyt</h1>
-    <p class="muted">Ostatnie 300 zdarzen ze wszystkich firm.</p>
+    <p class="muted">Ostatnie 300 zdarzeń że wszystkich firm.</p>
   </div>
 </div>
 
 <section class="panel">
   <table class="table">
     <thead>
-      <tr><th>Kiedy</th><th>Firma</th><th>Kto</th><th>Akcja</th><th>Obiekt</th><th>Adres IP</th><th>Szczegoly</th></tr>
+      <tr><th>Kiedy</th><th>Firma</th><th>Kto</th><th>Akcja</th><th>Obiekt</th><th>Adres IP</th><th>Szczegóły</th></tr>
     </thead>
     <tbody>
     {% for e in wpisy %}
@@ -25,7 +25,7 @@
         <td class="small muted">{{ e.detail or '' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="muted">Brak zdarzen.</td></tr>
+      <tr><td colspan="7" class="muted">Brak zdarzeń.</td></tr>
     {% endfor %}
     </tbody>
   </table>

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Tokeny agentow - CMDB{% endblock %}
+{% block title %}Tokeny agentów - CMDB{% endblock %}
 {% block content %}
-<h1>Tokeny agentow</h1>
+<h1>Tokeny agentów</h1>
 <p class="muted">
-  Token rejestracyjny jest wspolny dla firmy <b>{{ ctx.tenant_slug }}</b> i sluzy wylacznie
-  do pierwszego uruchomienia agenta. Po rejestracji kazda maszyna otrzymuje wlasne,
-  indywidualne poswiadczenie, ktore mozna uniewaznic osobno.
+  Token rejestracyjny jest wspolny dla firmy <b>{{ ctx.tenant_slug }}</b> i służy wyłącznie
+  do pierwszego uruchomienia agenta. Po rejestracji każda maszyna otrzymuje własne,
+  indywidualne poświadczenie, które można unieważnić osobno.
 </p>
 
 {% if issued %}
@@ -21,7 +21,7 @@
     <h2>Wydane tokeny</h2>
     {% if tokens %}
     <table class="table">
-      <thead><tr><th>Nazwa</th><th>Prefiks</th><th>Uzyc</th><th>Waznosc</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Nazwa</th><th>Prefiks</th><th>Użyć</th><th>Ważność</th><th>Status</th><th></th></tr></thead>
       <tbody>
       {% for t in tokens %}
         <tr>
@@ -31,13 +31,13 @@
           <td class="small">{{ (t.expires_at | dt) if t.expires_at else 'bezterminowo' }}</td>
           <td>
             {% if t.revoked_at %}<span class="badge badge-danger">wycofany</span>
-            {% elif not t.is_usable %}<span class="badge badge-warn">wygasl</span>
+            {% elif not t.is_usable %}<span class="badge badge-warn">wygasł</span>
             {% else %}<span class="badge badge-ok">aktywny</span>{% endif %}
           </td>
           <td>
             {% if ctx.can_write and not t.revoked_at %}
             <form method="post" action="/tokens/{{ t.id }}/revoke" class="inline-form"
-                  data-confirm="Wycofac token {{ t.name }}? Nowi agenci nie beda mogli sie zarejestrowac.">
+                  data-confirm="Wycofać token {{ t.name }}? Nowi agenci nie będą mogli się zarejestrowac.">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button type="submit" class="btn btn-small btn-danger">Wycofaj</button>
             </form>
@@ -57,7 +57,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label for="name">Nazwa / przeznaczenie</label>
       <input id="name" name="name" required maxlength="200" placeholder="np. stacje robocze Warszawa">
-      <label for="expires_days">Waznosc (dni, 0 = bezterminowo)</label>
+      <label for="expires_days">Ważność (dni, 0 = bezterminowo)</label>
       <input id="expires_days" name="expires_days" type="number" min="0" max="3650" value="90">
       <button type="submit" class="btn btn-primary">Wygeneruj</button>
     </form>
@@ -83,6 +83,6 @@
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="muted">Zaden agent nie zostal jeszcze zarejestrowany.</p>{% endif %}
+  {% else %}<p class="muted">Żaden agent nie zostal jeszcze zarejestrowany.</p>{% endif %}
 </section>
 {% endblock %}

@@ -4,7 +4,7 @@
 <h1>Moje konto</h1>
 
 {% if zmienione %}
-  <div class="alert alert-ok">Haslo zostalo zmienione. Zaloguj sie ponownie.</div>
+  <div class="alert alert-ok">Hasło zostalo zmienione. Zaloguj się ponownie.</div>
 {% endif %}
 {% if blad %}
   <div class="alert alert-error">{{ blad }}</div>
@@ -18,45 +18,45 @@
       <dt>Imie i nazwisko</dt><dd>{{ user.full_name or '—' }}</dd>
       <dt>Zakres</dt>
       <dd>
-        {% if user.is_superadmin %}wszystkie firmy, pelne uprawnienia
+        {% if user.is_superadmin %}wszystkie firmy, pełne uprawnienia
         {% elif user.is_global_viewer %}wszystkie firmy, tylko odczyt
         {% elif user.tenant %}{{ user.tenant.name }}
         {% else %}—{% endif %}
       </dd>
       <dt>Rola w firmie</dt>
-      <dd>{% if user.role == 'admin' %}administrator{% else %}podglad{% endif %}</dd>
+      <dd>{% if user.role == 'admin' %}administrator{% else %}podgląd{% endif %}</dd>
       <dt>Ostatnie logowanie</dt><dd>{{ user.last_login_at | dt }}</dd>
     </dl>
     <form method="post" action="/konto/wyloguj-wszystkie">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" class="btn btn-danger">Wyloguj wszystkie urzadzenia</button>
+      <button type="submit" class="btn btn-danger">Wyloguj wszystkie urządzenia</button>
     </form>
   </section>
 
   <section class="panel">
-    <h2>Zmiana hasla</h2>
+    <h2>Zmiana hasła</h2>
     <p class="small muted">
-      Dotychczasowe haslo jest wymagane takze dla administratora: bez niego
-      pozostawiona bez opieki przegladarka wystarczylaby, zeby przejac konto
+      Dotychczasowe hasło jest wymagane takze dla administratora: bez niego
+      pozostawiona bez opieki przeglądarka wystarczylaby, żeby przejąć konto
       na stale.
     </p>
     <form method="post" action="/konto/haslo" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label for="obecne">Dotychczasowe haslo</label>
+      <label for="obecne">Dotychczasowe hasło</label>
       <input id="obecne" name="obecne" type="password" required autocomplete="current-password">
-      <label for="nowe">Nowe haslo</label>
+      <label for="nowe">Nowe hasło</label>
       <div class="pole-hasla">
         <input id="nowe" name="nowe" type="password" required autocomplete="new-password"
                minlength="{{ min_dlugosc_hasla }}">
         <button type="button" class="btn btn-small btn-ghost" data-pokaz-haslo>Pokaz</button>
       </div>
-      <label for="powtorzone">Powtorz nowe haslo</label>
+      <label for="powtorzone">Powtórz nowe hasło</label>
       <input id="powtorzone" name="powtorzone" type="password" required autocomplete="new-password"
              minlength="{{ min_dlugosc_hasla }}">
       {# Bez generatora: to haslo trzeba zapamietac, a wylosowane i tak
          zostaloby wpisane recznie w pole ponizej. #}
-      <p class="small muted">Co najmniej {{ min_dlugosc_hasla }} znakow. Zmiana hasla wyloguje wszystkie sesje.</p>
-      <button type="submit" class="btn btn-primary">Zmien haslo</button>
+      <p class="small muted">Co najmniej {{ min_dlugosc_hasla }} znaków. Zmiana hasła wyloguje wszystkie sesje.</p>
+      <button type="submit" class="btn btn-primary">Zmień hasło</button>
     </form>
   </section>
 </div>

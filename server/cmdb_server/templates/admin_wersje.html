@@ -1,11 +1,11 @@
 {% extends "base_admin.html" %}
-{% block title %}Wersje agentow - administracja CMDB{% endblock %}
+{% block title %}Wersje agentów - administracja CMDB{% endblock %}
 {% block content %}
 
 <div class="page-head">
   <div>
-    <h1>Wersje agentow</h1>
-    <p class="muted">Agent jest osobnym plikiem dla kazdego systemu operacyjnego.</p>
+    <h1>Wersje agentów</h1>
+    <p class="muted">Agent jest osobnym plikiem dla każdego systemu operacyjnego.</p>
     {% if not import_enabled %}<p class="muted">Windows: samo wgranie pliku ani stopka „unified” nie pozwala na dystrybucję.
     Pełny SHA-256, wersja i architektura muszą pasować do sprawdzonego buildu w konfiguracji serwera
     (CMDB_TRUSTED_WINDOWS_BUILDS). Tego zatwierdzenia nie można nadać w panelu.</p>{% endif %}
@@ -13,10 +13,10 @@
 </div>
 
 <div class="alert alert-warn">
-  <b>Trzy poziomy, od najwezszego:</b> ustawienie na maszynie &rarr; ustawienie firmy
-  &rarr; wersja oficjalna. Dzieki temu mozna trzymac wersje probna w jednej organizacji,
-  podczas gdy pozostale pracuja na wersji oficjalnej. Serwer niczego nie wysyla —
-  agent sam sprawdza oczekiwana wersje przed swoja synchronizacja i sam pobiera plik.
+  <b>Trzy poziomy, od najwęższego:</b> ustawienie na maszynie &rarr; ustawienie firmy
+  &rarr; wersja oficjalna. Dzięki temu można trzymac wersje probna w jednej organizacji,
+  podczas gdy pozostale pracuja na wersji oficjalnej. Serwer niczego nie wysyła —
+  agent sam sprawdza oczekiwana wersje przed swoją synchronizacja i sam pobiera plik.
 </div>
 
 {% if import_enabled %}
@@ -36,9 +36,9 @@
 
 <section class="panel">
   <h2>Wersja oficjalna</h2>
-  <p class="muted small">Uzywana przez wszystkie firmy bez wlasnego ustawienia.</p>
+  <p class="muted small">Używana przez wszystkie firmy bez własnego ustawienia.</p>
   <table class="table">
-    <thead><tr><th>System</th><th>Wersja oficjalna</th><th>Ustawil</th><th>Kiedy</th></tr></thead>
+    <thead><tr><th>System</th><th>Wersja oficjalna</th><th>Ustawił</th><th>Kiedy</th></tr></thead>
     <tbody>
     {% for system, dane in systemy.items() %}
       {% set of = oficjalne.get(system) %}
@@ -47,9 +47,9 @@
         <td>
           {% if of %}<code class="strong">{{ of.version }}</code>
           {% elif system == 'linux' %}
-            <span class="muted">nie ustawiono — wskaz ponizej paczke zrodel</span>
+            <span class="muted">nie ustawiono — wskaz ponizej paczke źródeł</span>
           {% else %}
-            <span class="muted">nie ustawiono — firmy bez wlasnego wyboru nie beda aktualizowane</span>
+            <span class="muted">nie ustawiono — firmy bez własnego wyboru nie będą aktualizowane</span>
           {% endif %}
         </td>
         <td class="small">{{ of.created_by if of else '—' }}</td>
@@ -63,18 +63,18 @@
 <section class="panel">
   <h2>Agent dla Linuksa</h2>
   <p class="muted small">
-    Na Linuksie agent jest wydawany jako <b>paczka zrodel</b>, nie plik
-    wykonywalny: PyInstaller nie kompiluje na inna architekture, wiec jeden
-    plik nie obsluzylby zarazem serwerow x86 i Raspberry Pi. Jedna paczka
-    dziala na kazdej architekturze, bo agent stoi na samej bibliotece
+    Na Linuksie agent jest wydawany jako <b>paczka źródeł</b>, nie plik
+    wykonywalny: PyInstaller nie kompiluje na inna architekturę, więc jeden
+    plik nie obsłużyłby zarazem serwerow x86 i Raspberry Pi. Jedna paczka
+    działa na każdej architekturze, bo agent stoi na samej bibliotece
     standardowej Pythona.
   </p>
   <p class="muted small">
-    Paczka jest <b>zwyklym wydaniem</b> — widac ja nizej z architektura
-    <code>zrodla</code>, ustawia sie ja jako aktywna i przypisuje firmom tak
+    Paczka jest <b>zwyklym wydaniem</b> — widać ja niżej z architektura
+    <code>źródła</code>, ustawia się ja jako aktywna i przypisuje firmom tak
     samo jak plik dla Windows. Aktualizacja polega na podmianie katalogu
-    <code>/opt/cmdb-agent</code>: agent pobiera paczke, sprawdza jej skrot,
-    uruchamia nowa wersje probnie i cofa zmiane, gdy ta nie wstaje.
+    <code>/opt/cmdb-agent</code>: agent pobiera paczke, sprawdza jej skrót,
+    uruchamia nowa wersje probnie i cofa zmianę, gdy ta nie wstaje.
   </p>
   {% if import_enabled %}
   <p class="muted small">
@@ -85,15 +85,15 @@
   </p>
   {% elif paczka_zrodel %}
   <p class="muted small">
-    Serwer zbudowal paczke w wersji <code class="strong">{{ paczka_zrodel.version }}</code>
-    i wpisal ja do magazynu wydan.
+    Serwer zbudował paczke w wersji <code class="strong">{{ paczka_zrodel.version }}</code>
+    i wpisał ja do magazynu wydan.
     Instalacja nowej maszyny:
     <code>curl -fsSL &lt;adres&gt;/download/install.sh | sudo bash -s -- --token ...</code>
   </p>
   {% else %}
   <div class="alert alert-error">
-    Serwer nie zbudowal paczki zrodel. Buduje sie ja poleceniem
-    <code>python -m cmdb_server.pakiet ../agent</code>, mozna tez wgrac
+    Serwer nie zbudował paczki źródeł. Buduje się ja poleceniem
+    <code>python -m cmdb_server.pakiet ../agent</code>, można też wgrać
     gotowa ponizej.
   </div>
   {% endif %}
@@ -103,14 +103,14 @@
   <h2>Dostępne wersje</h2>
   <p class="muted small">
     Rozsylane mechanizmem samoaktualizacji. Wpis z architektura
-    <code>zrodla</code> to paczka dla Linuksa — pasuje do kazdej maszyny.
-    Plik zbudowany PyInstallerem pasuje wylacznie do swojej architektury.
+    <code>źródła</code> to paczka dla Linuksa — pasuje do każdej maszyny.
+    Plik zbudowany PyInstallerem pasuje wyłącznie do swojej architektury.
   </p>
   {% if wydania %}
   <table class="table">
     <thead>
       <tr><th>System</th><th>Architektura</th><th>Wersja</th><th>Status</th><th>Rozmiar</th>
-          <th>SHA-256</th><th>Wgral</th><th>Uwagi</th><th></th></tr>
+          <th>SHA-256</th><th>Wgrał</th><th>Uwagi</th><th></th></tr>
     </thead>
     <tbody>
     {% for w in wydania %}
@@ -136,7 +136,7 @@
             <dialog id="changelog-{{ w.id }}" class="modal-card">
               <div class="modal-head"><h2>Agent {{ w.version }}</h2>
                 <button type="button" class="btn btn-small" data-dialog-close>Zamknij</button></div>
-              {% for rodzaj, etykieta in [('added', 'Dodano'), ('fixed', 'Poprawiono'), ('security', 'Bezpieczeństwo')] %}
+              {% for rodzaj, etykieta in [('added', 'Dodano'), ('fixed', 'Poprawiono'), ('security', 'Bezpieczenstwo')] %}
                 {% set pozycje = w.changelog | selectattr('category', 'equalto', rodzaj) | list %}
                 {% if pozycje %}<h3>{{ etykieta }}</h3><ul>
                   {% for pozycja in pozycje %}<li>{{ pozycja.text }}</li>{% endfor %}
@@ -152,15 +152,15 @@
           {% endif %}
           {% if not jest_oficjalna and release_admitted.get(w.id) %}
             <form method="post" action="/admin/releases/{{ w.id }}/oficjalna" class="inline-form"
-                  data-confirm="Uczynic {{ w.version }} wersja oficjalna dla {{ w.os_family }}? Obejmie to wszystkie firmy bez wlasnego ustawienia.">
+                  data-confirm="Uczynic {{ w.version }} wersja oficjalna dla {{ w.os_family }}? Obejmie to wszystkie firmy bez własnego ustawienia.">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button type="submit" class="btn btn-small btn-primary">Ustaw jako aktywna</button>
             </form>
           {% endif %}
           <form method="post" action="/admin/releases/{{ w.id }}/delete" class="inline-form"
-                data-confirm="Usunac wersje {{ w.version }} ({{ w.os_family }}) wraz z plikiem?">
+                data-confirm="Usunąć wersje {{ w.version }} ({{ w.os_family }}) wraz z plikiem?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="btn btn-small btn-danger">Usun</button>
+            <button type="submit" class="btn btn-small btn-danger">Usuń</button>
           </form>
         </td>
       </tr>
@@ -168,19 +168,19 @@
     </tbody>
   </table>
   {% else %}
-    <p class="muted">Nie wgrano jeszcze zadnej wersji.</p>
+    <p class="muted">Nie wgrano jeszcze żadnej wersji.</p>
   {% endif %}
 </section>
 
 <section class="panel">
   <h2>Ustawienia firm</h2>
   <p class="muted small">
-    Wersja wybrana tutaj ma pierwszenstwo przed oficjalna — tak przygotowuje sie
+    Wersja wybrana tutaj ma pierwszeństwo przed oficjalna — tak przygotowuje się
     wersje probna dla jednej organizacji. Puste pole oznacza korzystanie z oficjalnej.
   </p>
   {% if firmy %}
   <table class="table">
-    <thead><tr><th>Firma</th><th>System</th><th>Uzywana wersja</th><th></th></tr></thead>
+    <thead><tr><th>Firma</th><th>System</th><th>Używana wersja</th><th></th></tr></thead>
     <tbody>
     {% for f in firmy %}
       {% for system in systemy_firmy.get(f.id, []) %}
@@ -195,11 +195,11 @@
           <td><code>{{ system }}</code></td>
           <td class="small">
             {% if cel %}
-              <b>{{ cel.version }}</b> <span class="badge">wlasna</span>
+              <b>{{ cel.version }}</b> <span class="badge">własna</span>
             {% elif oficjalne.get(system) %}
               {{ oficjalne[system].version }} <span class="muted">(oficjalna)</span>
             {% else %}
-              <span class="muted">brak — nie bedzie aktualizacji</span>
+              <span class="muted">brak — nie będzie aktualizacji</span>
             {% endif %}
           </td>
           <td>
@@ -226,7 +226,7 @@
             <span class="strong">{{ f.name }}</span>
             <div class="muted small"><code>{{ f.slug }}</code></div>
           </td>
-          <td colspan="3" class="muted small">brak agentow — nie ma czego aktualizowac</td>
+          <td colspan="3" class="muted small">brak agentów — nie ma czego aktualizować</td>
         </tr>
       {% endfor %}
     {% endfor %}
@@ -257,15 +257,15 @@
     </div>
     <div>
       <label for="uwagi">Uwagi</label>
-      <input id="uwagi" name="notes" maxlength="500" placeholder="co sie zmienilo">
+      <input id="uwagi" name="notes" maxlength="500" placeholder="co się zmieniło">
     </div>
     <div><button type="submit" class="btn btn-primary">Wgraj</button></div>
   </form>
   <p class="muted small">
-    Numer wersji, system i architekture odczytujemy z samego pliku — skrypt budujacy dopisuje je
-    na jego koncu. Pole numeru wypelnij tylko dla plikow zbudowanych starszym
+    Numer wersji, system i architekturę odczytujemy z samego pliku — skrypt budujący dopisuje je
+    na jego końcu. Pole numeru wypełnij tylko dla plikow zbudowanych starszym
     skryptem; podanie numeru sprzecznego z tym w pliku zostanie odrzucone.
-    Sygnatura formatu jest sprawdzana niezaleznie, wiec plik dla niewlasciwego
+    Sygnatura formatu jest sprawdzana niezależnie, więc plik dla niewłaściwego
     systemu nie przejdzie.
   </p>
 </section>{% endif %}

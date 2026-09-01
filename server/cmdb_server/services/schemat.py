@@ -48,12 +48,13 @@ KATEGORIA_SPRZETU = "sprzet"
 # Jedno pole na role: dwa adresy zgloszen to pytanie, na ktore system nie
 # umialby odpowiedziec.
 ROLE: dict[str, str] = {
-    "email_zgloszen": "adres, na ktory ida zgloszenia serwisowe",
-    "kanal_zgloszen": "sposob kontaktu z dostawca",
+    "email_zgloszen": "adres, na który idą zgłoszenia serwisowe",
+    "kanal_zgloszen": "sposób kontaktu z dostawcą",
     "telefon_wsparcia": "numer wsparcia technicznego",
-    "miasto": "miasto lokalizacji - do zestawien",
-    "budynek": "budynek - do zestawien",
-    "kierownik": "osoba odpowiedzialna za dzial",
+    "miasto": "miasto lokalizacji - do zestawień",
+    "budynek": "budynek - do zestawień",
+    "kierownik": "osoba odpowiedzialna za dział",
+    "lokalizacja_osoby": "miejsce, w którym pracuje osoba",
 }
 
 
@@ -168,7 +169,7 @@ class Pole(BaseModel):
     wymagane: bool = False
     w_etykiecie: bool = False
     rola: str | None = None
-    grupa: str = Field(default="Pozostale", max_length=MAKS_ETYKIETY)
+    grupa: str = Field(default="Pozostałe", max_length=MAKS_ETYKIETY)
     podpowiedz: str | None = Field(default=None, max_length=120)
     cel: str | None = None          # dla typu "odwolanie": osoba albo kategoria
     min: float | None = None

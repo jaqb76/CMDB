@@ -1,20 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Mozliwe duplikaty - CMDB{% endblock %}
+{% block title %}Możliwe duplikaty - CMDB{% endblock %}
 {% block content %}
 
 <div class="page-head">
   <div>
-    <h1>Mozliwe duplikaty</h1>
-    <p class="muted">Zasoby, ktore wygladaja na te sama maszyne zgloszona wiecej niz raz.</p>
+    <h1>Możliwe duplikaty</h1>
+    <p class="muted">Zasoby, które wyglądają na te sama maszynę zgłoszona więcej niż raz.</p>
   </div>
 </div>
 
 {% if grupy %}
 <div class="alert alert-warn">
   Dwie typowe przyczyny. <b>Sklonowana maszyna wirtualna</b> — kopia dziedziczy
-  numer seryjny i adresy sprzetowe oryginalu; rozwiazaniem jest wycofanie tego
-  zasobu, ktory juz nie istnieje. <b>Wpis reczny, na ktorym stanal agent</b> —
-  ten sam sprzet opisany dwa razy; te pare da sie polaczyc w jeden zasob.
+  numer seryjny i adresy sprzętowe oryginału; rozwiązaniem jest wycofanie tego
+  zasobu, który już nie istnieje. <b>Wpis ręczny, na którym stanal agent</b> —
+  ten sam sprzęt opisany dwa razy; te parę da się połączyć w jeden zasób.
   Nic nie jest kasowane automatycznie.
 </div>
 
@@ -29,20 +29,20 @@
 <section class="panel">
   <h2>{{ g.rodzaj }}: <code>{{ g.wartosc }}</code></h2>
   <table class="table">
-    <thead><tr><th>Maszyna</th><th>Zrodlo</th><th>System</th><th>Pierwszy raport</th><th>Ostatni kontakt</th><th>Agent</th><th></th></tr></thead>
+    <thead><tr><th>Maszyna</th><th>Źródło</th><th>System</th><th>Pierwszy raport</th><th>Ostatni kontakt</th><th>Agent</th><th></th></tr></thead>
     <tbody>
     {% for m in g.maszyny %}
       <tr>
         <td class="strong">{{ m.hostname }}</td>
         <td class="small">
-          {% if m.zrodlo == zrodlo_reczne %}<span class="badge">wpis reczny</span>
+          {% if m.zrodlo == zrodlo_reczne %}<span class="badge">wpis ręczny</span>
           {% else %}<span class="badge badge-ok">agent</span>{% endif %}
         </td>
         <td class="small">{{ m.os_name or m.os_family or '-' }}</td>
         <td class="small">{{ m.first_seen | dt }}</td>
         <td class="small">{{ m.last_seen | ago }}</td>
         <td class="small"><code>{{ m.agent_version or '?' }}</code></td>
-        <td><a class="btn btn-small" href="/assets/{{ m.id }}">Otworz</a></td>
+        <td><a class="btn btn-small" href="/assets/{{ m.id }}">Otwórz</a></td>
       </tr>
     {% endfor %}
     </tbody>
@@ -50,21 +50,21 @@
 
   {% if ctx.can_write and reczne | length == 1 and z_agentem | length == 1 %}
   <form method="post" action="/duplikaty/scal" class="row-form" style="margin-top:12px"
-        data-confirm="Polaczyc wpis {{ reczne[0].hostname }} z maszyna {{ z_agentem[0].hostname }}? Wpis reczny zostanie wycofany.">
+        data-confirm="Połączyć wpis {{ reczne[0].hostname }} z maszyna {{ z_agentem[0].hostname }}? Wpis ręczny zostanie wycofany.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="zrodlowy_id" value="{{ reczne[0].id }}">
     <input type="hidden" name="docelowy_id" value="{{ z_agentem[0].id }}">
-    <div><button type="submit" class="btn btn-primary">Polacz w jeden zasob</button></div>
+    <div><button type="submit" class="btn btn-primary">Połącz w jeden zasób</button></div>
     <div class="muted small">
       Dane zakupowe, gwarancja, lokalizacja i opiekun z wpisu
-      <b>{{ reczne[0].hostname }}</b> przejda do maszyny <b>{{ z_agentem[0].hostname }}</b>.
-      Wpis reczny zostanie wycofany, nie skasowany.
+      <b>{{ reczne[0].hostname }}</b> przejdą do maszyny <b>{{ z_agentem[0].hostname }}</b>.
+      Wpis ręczny zostanie wycofany, nie skasowany.
     </div>
   </form>
   {% elif reczne and z_agentem %}
   <p class="muted small" style="margin-top:12px">
-    W tej grupie jest wiecej niz jeden wpis reczny albo wiecej niz jedna maszyna
-    z agentem — polaczenie wymaga wskazania konkretnej pary na kartach zasobow.
+    W tej grupie jest więcej niż jeden wpis ręczny albo więcej niż jedna maszyna
+    z agentem — połączenie wymaga wskazania konkretnej pary na kartach zasobów.
   </p>
   {% endif %}
 </section>
@@ -72,7 +72,7 @@
 {% else %}
 <section class="panel">
   <p class="muted">
-    Nie znaleziono zasobow o wspolnym numerze seryjnym ani adresie sprzetowym.
+    Nie znaleziono zasobów o wspolnym numerze seryjnym ani adresie sprzętowym.
   </p>
 </section>
 {% endif %}

@@ -16,20 +16,20 @@
   <div class="konto-akcje">
     <button type="button" class="btn btn-small"
             data-haslo-akcja="/admin/users/{{ konto.id }}/haslo"
-            data-haslo-konto="{{ konto.email }}">Ustaw haslo</button>
+            data-haslo-konto="{{ konto.email }}">Ustaw hasło</button>
     {% if konto.id == user.id %}
       <span class="muted">to Twoje konto</span>
     {% else %}
       <form method="post" action="/admin/users/{{ konto.id }}/active" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn-small btn-ghost">
-          {% if konto.is_active %}Wylacz konto{% else %}Wlacz konto{% endif %}
+          {% if konto.is_active %}Wyłącz konto{% else %}Włącz konto{% endif %}
         </button>
       </form>
       <form method="post" action="/admin/users/{{ konto.id }}/usun" class="inline-form"
-            data-confirm="Usunac konto {{ konto.email }}? Tego nie da sie cofnac - jesli chodzi o czasowe odebranie dostepu, uzyj 'Wylacz konto'.">
+            data-confirm="Usunąć konto {{ konto.email }}? Tego nie da się cofnąć - jeśli chodzi o czasowe odebranie dostępu, użyj 'Wyłącz konto'.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="btn btn-small btn-danger">Usun</button>
+        <button type="submit" class="btn btn-small btn-danger">Usuń</button>
       </form>
     {% endif %}
   </div>
@@ -38,7 +38,7 @@
 <div class="page-head">
   <div>
     <h1>Firmy i konta</h1>
-    <p class="muted">Zakladanie organizacji, kont logowania, hasel i tokenow rejestracyjnych.</p>
+    <p class="muted">Zakladanie organizacji, kont logowania, haseł i tokenow rejestracyjnych.</p>
   </div>
 </div>
 
@@ -46,7 +46,7 @@
 <div class="alert alert-ok">
   <div><b>Nowy token rejestracyjny — zapisz go teraz, nie pokazemy go ponownie:</b></div>
   <code class="token-value">{{ wydany_token }}</code>
-  <div class="small">Ten sam token wpisuje sie na wszystkich maszynach tej firmy.</div>
+  <div class="small">Ten sam token wpisuje się na wszystkich maszynach tej firmy.</div>
 </div>
 {% endif %}
 
@@ -70,7 +70,7 @@
               <div>
                 <span class="strong">{{ k.email }}</span>
                 <span class="muted">({{ k.role }})</span>
-                {% if not k.is_active %}<span class="badge badge-danger">wylaczone</span>{% endif %}
+                {% if not k.is_active %}<span class="badge badge-danger">wyłączone</span>{% endif %}
               </div>
               {{ akcje_konta(k) }}
             </div>
@@ -80,32 +80,32 @@
         <td>{{ tokeny.get(f.id, 0) }}</td>
         <td>
           {% if f.is_active %}<span class="badge badge-ok">aktywna</span>
-          {% else %}<span class="badge badge-danger">wylaczona</span>{% endif %}
+          {% else %}<span class="badge badge-danger">wyłączona</span>{% endif %}
         </td>
         <td class="small">
           <a class="btn btn-small" href="/admin/tenants/{{ f.id }}/ustawienia">Ustawienia</a>
           <form method="post" action="/admin/tenants/{{ f.id }}/active" class="inline-form"
-                data-confirm="{% if f.is_active %}Wylaczyc firme {{ f.name }}? Jej agenci przestana byc przyjmowani.{% else %}Wlaczyc firme {{ f.name }}?{% endif %}">
+                data-confirm="{% if f.is_active %}Wyłączyć firmę {{ f.name }}? Jej agenci przestaną być przyjmowani.{% else %}Włączyć firmę {{ f.name }}?{% endif %}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn-small btn-ghost">
-              {% if f.is_active %}Wylacz firme{% else %}Wlacz firme{% endif %}
+              {% if f.is_active %}Wyłącz firmę{% else %}Włącz firmę{% endif %}
             </button>
           </form>
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="muted">Nie zdefiniowano jeszcze zadnej firmy.</td></tr>
+      <tr><td colspan="7" class="muted">Nie zdefiniowano jeszcze żadnej firmy.</td></tr>
     {% endfor %}
     </tbody>
   </table>
 </section>
 
 <section class="panel">
-  <h2>Konta obejmujace wszystkie firmy</h2>
+  <h2>Konta obejmujące wszystkie firmy</h2>
   <p class="muted small">
-    Konta bez przypisanej organizacji. Superadmin zarzadza calym systemem;
-    audytor widzi inwentarz kazdej firmy, ale nie zmienia w nim niczego -
-    zadnego formularza zapisu nie dostanie nawet po wpisaniu adresu recznie.
+    Konta bez przypisanej organizacji. Superadmin zarządza całym systemem;
+    audytor widzi inwentarz każdej firmy, ale nie zmienia w nim niczego -
+    żadnego formularza zapisu nie dostanie nawet po wpisaniu adresu ręcznie.
   </p>
   <table class="table">
     <thead><tr><th>Konto</th><th>Uprawnienia</th><th>Ostatnie logowanie</th><th></th></tr></thead>
@@ -119,7 +119,7 @@
         <td class="small">
           {% if k.is_superadmin %}<span class="badge badge-ok">superadmin</span>
           {% else %}<span class="badge badge-warn">audytor — tylko odczyt</span>{% endif %}
-          {% if not k.is_active %}<span class="badge badge-danger">wylaczone</span>{% endif %}
+          {% if not k.is_active %}<span class="badge badge-danger">wyłączone</span>{% endif %}
         </td>
         <td class="small muted">{{ k.last_login_at | dt }}</td>
         <td class="small">{{ akcje_konta(k) }}</td>
@@ -138,7 +138,7 @@
       <input id="audytor_email" name="email" type="email" required maxlength="255">
     </div>
     <div>
-      <label for="audytor_haslo">Haslo</label>
+      <label for="audytor_haslo">Hasło</label>
       <div class="pole-hasla">
         <input id="audytor_haslo" name="password" type="password" required
                minlength="{{ min_dlugosc_hasla }}" maxlength="200" autocomplete="new-password">
@@ -150,12 +150,12 @@
       <label for="audytor_nazwa">Imie i nazwisko</label>
       <input id="audytor_nazwa" name="full_name" maxlength="200">
     </div>
-    <div><button type="submit" class="btn btn-primary">Utworz audytora</button></div>
+    <div><button type="submit" class="btn btn-primary">Utwórz audytora</button></div>
   </form>
   <p class="muted small">
-    Minimum {{ min_dlugosc_hasla }} znakow. Domyslnie zakryte - "Pokaz" odslania je na czas
-    przepisania. W bazie zostaje wylacznie skrot Argon2id, wiec pozniej nie da sie go
-    odczytac: przekaz je wlascicielowi konta teraz.
+    Minimum {{ min_dlugosc_hasla }} znaków. Domyślnie zakryte - "Pokaz" odslania je na czas
+    przepisania. W bazie zostaje wyłącznie skrót Argon2id, więc później nie da się go
+    odczytać: przekaz je właścicielowi konta teraz.
   </p>
 </section>
 
@@ -169,8 +169,8 @@
       <label for="slug">Identyfikator</label>
       <input id="slug" name="slug" required maxlength="63" placeholder="abc"
              pattern="[a-z0-9][a-z0-9-]{1,62}">
-      <div class="muted small">Male litery, cyfry i myslnik. Uzywany w adresach i logach.</div>
-      <button type="submit" class="btn btn-primary">Utworz firme</button>
+      <div class="muted small">Male litery, cyfry i myślnik. Używany w adresach i logach.</div>
+      <button type="submit" class="btn btn-primary">Utwórz firmę</button>
     </form>
   </section>
 
@@ -185,7 +185,7 @@
       </select>
       <label for="konto_email">E-mail (login)</label>
       <input id="konto_email" name="email" type="email" required maxlength="255">
-      <label for="konto_haslo">Haslo</label>
+      <label for="konto_haslo">Hasło</label>
       <div class="pole-hasla">
         <input id="konto_haslo" name="password" type="password" required
                minlength="{{ min_dlugosc_hasla }}" maxlength="200" autocomplete="new-password">
@@ -193,17 +193,17 @@
         <button type="button" class="btn btn-small btn-ghost" data-generuj-haslo>Generuj</button>
       </div>
       <div class="muted small">
-        Minimum {{ min_dlugosc_hasla }} znakow. "Pokaz" odslania haslo na czas przepisania -
-        pozniej nie da sie go odczytac, w bazie zostaje sam skrot.
+        Minimum {{ min_dlugosc_hasla }} znaków. "Pokaz" odslania hasło na czas przepisania -
+        później nie da się go odczytać, w bazie zostaje sam skrót.
       </div>
       <label for="konto_nazwa">Imie i nazwisko</label>
       <input id="konto_nazwa" name="full_name" maxlength="200">
       <label for="konto_rola">Rola</label>
       <select id="konto_rola" name="role">
-        <option value="admin">admin — zarzadza tokenami i opiekunami</option>
+        <option value="admin">admin — zarządza tokenami i opiekunami</option>
         <option value="viewer">viewer — tylko odczyt</option>
       </select>
-      <button type="submit" class="btn btn-primary">Utworz konto</button>
+      <button type="submit" class="btn btn-primary">Utwórz konto</button>
     </form>
   </section>
 </div>
@@ -211,8 +211,8 @@
 <section class="panel">
   <h2>Token rejestracyjny</h2>
   <p class="muted small">
-    Jeden token na firme — ten sam wpisuje sie na kazdej maszynie. Po rejestracji
-    maszyna dostaje wlasne poswiadczenie i tokenu juz nie uzywa.
+    Jeden token na firmę — ten sam wpisuje się na każdej maszynie. Po rejestracji
+    maszyna dostaje własne poświadczenie i tokenu już nie używa.
   </p>
   <form method="post" action="/admin/tenants/PODMIEN/tokens" class="row-form" data-tenant-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -228,7 +228,7 @@
       <input id="token_nazwa" name="name" required maxlength="200" placeholder="stacje robocze">
     </div>
     <div>
-      <label for="token_dni">Waznosc (dni, 0 = bezterminowo)</label>
+      <label for="token_dni">Ważność (dni, 0 = bezterminowo)</label>
       <input id="token_dni" name="expires_days" type="number" min="0" max="3650" value="365">
     </div>
     <div><button type="submit" class="btn btn-primary">Wygeneruj</button></div>
@@ -248,16 +248,16 @@
 <dialog class="okno" data-okno-hasla>
   <form method="post" action="" class="stack" data-okno-formularz>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <h2>Nowe haslo konta</h2>
+    <h2>Nowe hasło konta</h2>
     <p class="small">
       Konto: <b data-okno-konto></b>
     </p>
     <p class="small muted">
-      Dotychczasowe haslo przestanie dzialac natychmiast. Nowego nie da sie
-      pozniej odczytac - w bazie zostaje wylacznie skrot Argon2id.
+      Dotychczasowe hasło przestanie działać natychmiast. Nowego nie da się
+      później odczytać - w bazie zostaje wyłącznie skrót Argon2id.
     </p>
 
-    <label for="okno-haslo-pole">Nowe haslo</label>
+    <label for="okno-haslo-pole">Nowe hasło</label>
     <div class="pole-hasla">
       <input id="okno-haslo-pole" name="password" type="password" required
              minlength="{{ min_dlugosc_hasla }}" maxlength="200"
@@ -266,13 +266,13 @@
       <button type="button" class="btn btn-small btn-ghost" data-generuj-haslo>Generuj</button>
     </div>
     <p class="small muted">
-      Co najmniej {{ min_dlugosc_hasla }} znakow. "Generuj" tworzy losowe haslo
-      i od razu je odslania, zeby dalo sie je przepisac.
+      Co najmniej {{ min_dlugosc_hasla }} znaków. "Generuj" tworzy losowe hasło
+      i od razu je odslania, żeby dało się je przepisać.
     </p>
 
     <div class="okno-akcje">
       <button type="button" class="btn btn-ghost" data-okno-zamknij>Anuluj</button>
-      <button type="submit" class="btn btn-primary">Ustaw haslo</button>
+      <button type="submit" class="btn btn-primary">Ustaw hasło</button>
     </div>
   </form>
 </dialog>

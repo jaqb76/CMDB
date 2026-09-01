@@ -9,9 +9,9 @@
       {{ raport.firma }} &middot; stan na {{ raport.wygenerowano | dt }}
     </p>
     <p class="muted small">
-      Ta sama tresc idzie poczta — widok rozniacy sie od wysylki bylby gorszy
-      niz jego brak. W wiadomosci czas pozostaje w UTC, bo klient poczty nie
-      wykona skryptu przeliczajacego strefe.
+      Ta sama treść idzie poczta — widok różniący się od wysyłki byłby gorszy
+      niż jego brak. W wiadomości czas pozostaje w UTC, bo klient poczty nie
+      wykona skryptu przeliczającego strefę.
     </p>
   </div>
   <div class="row-form">
@@ -37,7 +37,7 @@
   <div>
     <label for="wybor_definicji">Ustawienia kolumn z raportu</label>
     <select id="wybor_definicji" data-autonawigacja>
-      <option value="/raporty/widok/{{ rodzaj }}">— domyslne kolumny —</option>
+      <option value="/raporty/widok/{{ rodzaj }}">— domyślne kolumny —</option>
       {% for d in definicje %}
         <option value="/raporty/widok/{{ d.rodzaj }}?raport_id={{ d.id }}"
                 {% if definicja and d.id == definicja.id %}selected{% endif %}>
@@ -74,7 +74,7 @@
           <span>{{ k.etykieta }}</span>
           {% if k.zrodlo == 'cve' %}
             <span class="badge badge-warn"
-                  title="Wymaga zestawienia pakietow z kanalem podatnosci">wolne</span>
+                  title="Wymaga zestawienia pakietow z kanałem podatności">wolne</span>
           {% endif %}
         </label>
         {% endfor %}
@@ -93,16 +93,16 @@
         </button>
       </div>
       {% endif %}
-      <div><a class="btn btn-ghost" href="/raporty/widok/{{ rodzaj }}">Domyslne</a></div>
+      <div><a class="btn btn-ghost" href="/raporty/widok/{{ rodzaj }}">Domyślne</a></div>
     </div>
 
     <p class="muted small">
-      Kolumny oznaczone jako <b>wolne</b> wymagaja zestawienia pakietow kazdej
-      maszyny z kanalem podatnosci — liczymy je wylacznie wtedy, gdy sa
+      Kolumny oznaczone jako <b>wolne</b> wymagaja zestawienia pakietow każdej
+      maszyny z kanałem podatności — liczymy je wyłącznie wtedy, gdy sa
       zaznaczone.
       {% if not definicja %}
-        Wybor dziala na tym widoku; zeby obowiazywal takze wysylke poczta,
-        otworz raport z listy w <a href="/raporty">ustawieniach</a>.
+        Wybór działa na tym widoku; żeby obowiązywał takze wysyłkę poczta,
+        otwórz raport z listy w <a href="/raporty">ustawieniach</a>.
       {% endif %}
     </p>
   </form>

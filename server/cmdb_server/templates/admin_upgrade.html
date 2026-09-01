@@ -1,33 +1,33 @@
 {% extends "base_admin.html" %}
-{% block title %}Aktualizacja agentow - {{ firma.name }}{% endblock %}
+{% block title %}Aktualizacja agentów - {{ firma.name }}{% endblock %}
 {% block content %}
 
 <div class="page-head">
   <div>
-    <h1>Aktualizacja agentow</h1>
+    <h1>Aktualizacja agentów</h1>
     <p class="muted">{{ firma.name }} (<code>{{ firma.slug }}</code>)</p>
   </div>
-  <a class="btn btn-small btn-ghost" href="/admin/wersje">Wroc do wersji</a>
+  <a class="btn btn-small btn-ghost" href="/admin/wersje">Wróć do wersji</a>
 </div>
 
 <div class="alert alert-warn">
-  <b>Jak to dziala:</b> serwer nie laczy sie z maszynami. Ustawiasz tu wersje
-  <i>oczekiwana</i>, a agent sprawdza ja sam — przed kazda zaplanowana synchronizacja —
-  i jesli rozni sie od jego wlasnej, pobiera plik po HTTPS. Zmiana nie jest wiec
-  natychmiastowa: pojawi sie na maszynie przy jej najblizszym przebiegu.
-  Agent jest osobnym plikiem dla kazdego systemu, wiec cel ustawia sie oddzielnie
+  <b>Jak to działa:</b> serwer nie łączy się z maszynami. Ustawiasz tu wersje
+  <i>oczekiwana</i>, a agent sprawdza ja sam — przed każda zaplanowana synchronizacja —
+  i jeśli różni się od jego własnej, pobiera plik po HTTPS. Zmiana nie jest więc
+  natychmiastowa: pojawi się na maszynie przy jej najbliższym przebiegu.
+  Agent jest osobnym plikiem dla każdego systemu, więc cel ustawia się oddzielnie
   dla Windows i dla Linuksa.
 </div>
 
 {% if not wydania %}
   <div class="alert alert-error">
-    Nie wgrano zadnej wersji agenta. Zrob to w <a href="/admin">administracji</a>,
+    Nie wgrano żadnej wersji agenta. Zrób to w <a href="/admin">administracji</a>,
     zanim zlecisz aktualizacje.
   </div>
 {% endif %}
 
 <section class="panel">
-  <h2>Cala firma — wedlug systemu</h2>
+  <h2>Cała firma — według systemu</h2>
   {% if obecne_systemy %}
     {% for system in obecne_systemy %}
       {% set dostepne = wydania_wg_systemu.get(system, []) %}
@@ -63,7 +63,7 @@
       </form>
     {% endfor %}
   {% else %}
-    <p class="muted">Ta firma nie ma jeszcze zadnej maszyny.</p>
+    <p class="muted">Ta firma nie ma jeszcze żadnej maszyny.</p>
   {% endif %}
 </section>
 
@@ -106,7 +106,7 @@
           <td><input type="checkbox" name="asset_id" value="{{ m.id }}"></td>
           <td>
             <a class="strong" href="/assets/{{ m.id }}">{{ m.hostname }}</a>
-            {% if m.target_release_id %}<div class="muted small">ustawienie wlasne</div>{% endif %}
+            {% if m.target_release_id %}<div class="muted small">ustawienie własne</div>{% endif %}
           </td>
           <td class="small">
             <code>{{ system }}</code> <code>{{ m.arch or '?' }}</code>
@@ -124,8 +124,8 @@
             {% else %}<span class="muted">—</span>{% endif %}
           </td>
           <td class="small">
-            {% if m.upgrade_status == 'ok' %}<span class="badge badge-ok">zakonczona</span>
-            {% elif m.upgrade_status == 'blad' %}<span class="badge badge-danger">blad</span>
+            {% if m.upgrade_status == 'ok' %}<span class="badge badge-ok">zakończona</span>
+            {% elif m.upgrade_status == 'blad' %}<span class="badge badge-danger">błąd</span>
             {% elif m.upgrade_status %}<span class="badge">{{ m.upgrade_status }}</span>
             {% else %}<span class="muted">—</span>{% endif %}
             {% if m.upgrade_detail %}<div class="muted small">{{ m.upgrade_detail[:120] }}</div>{% endif %}

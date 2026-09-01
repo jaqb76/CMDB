@@ -137,6 +137,25 @@
 </form>
 
 {% if ctx.can_write %}
+{% if powiazania %}
+<section class="panel">
+  <h2>Kto i co tu należy</h2>
+  <p class="muted small">
+    Wpisy innych słowników, które wskazują ten rekord. Przy lokalizacji jest to
+    wprost odpowiedź na pytanie, kto w niej pracuje.
+  </p>
+  <ul class="lista-powiazan">
+    {% for p in powiazania %}
+    <li>
+      <b>{{ p.nazwa }}</b> ({{ p.ile }}):
+      {% for w in p.przyklady %}<a href="/slowniki/wpis/{{ w.id }}">{{ w.wartosc }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if p.ile > p.przyklady | length %}…{% endif %}
+      <a class="btn btn-small" href="/slowniki?kategoria={{ p.kategoria }}&amp;wskazuje={{ wpis.id }}">Pokaż wszystkie</a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <section class="panel">
   <h2>Usuń wpis</h2>
   <p class="muted small">

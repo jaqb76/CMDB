@@ -15,19 +15,19 @@ Adresy IP są rozdzielone według skanera, aby nie łączyć automatycznie róż
 {% for scan, name in scanners %}<tr>
 <td><a href="/assets/{{ scan.asset_id }}">{{ name }}</a></td><td>{{ scan.scanned_at | dt }}</td>
 <td>{{ scan.details.ranges | join(', ') or '—' }}</td><td>{{ scan.details.attempted_hosts }} / {{ scan.details.total_hosts }} adresów sprawdzonych w całości</td>
-<td>{{ 'Ukończono' if scan.details.complete else 'Niepełny / błąd' }}{% for error in scan.details.errors %}<p>{{ error }}</p>{% endfor %}</td>
+<td>{{ 'Ukonczono' if scan.details.complete else 'Niepelny / blad' }}{% for error in scan.details.errors %}<p>{{ error }}</p>{% endfor %}</td>
 </tr>{% else %}<tr><td colspan="5">Brak skanów. Po zatwierdzeniu polityki poczekaj na kolejny przebieg agenta.</td></tr>{% endfor %}
 </tbody></table></div></section>
 <form method="get" class="row-form">
-<div><label for="view">Widok</label><select name="view" id="view">{% for value, label in [('pending','Oczekujące'),('linked','Powiązane z ewidencją'),('all','Wszystkie')] %}<option value="{{ value }}" {% if view == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+<div><label for="view">Widok</label><select name="view" id="view">{% for value, label in [('pending','Oczekujace'),('linked','Powiazane z ewidencja'),('all','Wszystkie')] %}<option value="{{ value }}" {% if view == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
 <div><label for="q">IP lub nazwa DNS</label><input id="q" name="q" value="{{ q }}" maxlength="255"></div><button class="btn" type="submit">Filtruj</button>
 </form>
 <section class="panel"><div class="tabela-przewijana"><table class="table">
 <thead><tr><th>Adres / DNS</th><th>MAC</th><th>Typ — podpowiedź</th><th>OS — podpowiedź</th><th>Usługi TCP</th><th>Skaner / ostatnio widziany</th><th>Ewidencja</th></tr></thead>
 <tbody>{% for device, scanner in rows %}<tr>
 <td><a href="/wykrywanie/{{ device.id }}">{{ device.ip }}</a><br>{{ device.hostname or '—' }}</td>
-<td>{{ device.observation.mac or 'Niedostępny' }}</td><td>{{ types.get(device.device_type, 'Inne') }}<br><small>Pewność typu: {{ {'unknown':'brak', 'low':'niska', 'medium':'średnia'}.get(device.observation.confidence, 'brak') }}</small></td>
-<td>{{ device.observation.os_hint or 'Nierozpoznany' }}</td><td>{{ device.observation.ports | join(', ') or 'Brak otwartych portów' }}</td>
+<td>{{ device.observation.mac or 'Niedostepny' }}</td><td>{{ types.get(device.device_type, 'Inne') }}<br><small>Pewność typu: {{ {'unknown':'brak', 'low':'niska', 'medium':'srednia'}.get(device.observation.confidence, 'brak') }}</small></td>
+<td>{{ device.observation.os_hint or 'Nierozpoznany' }}</td><td>{{ device.observation.ports | join(', ') or 'Brak otwartych portow' }}</td>
 <td>{{ scanner }}<br>{{ device.last_seen | dt }}</td>
 <td>{% if device.asset_id %}<a href="/assets/{{ device.asset_id }}">Zasób</a>{% if device.link_mode in ('mac', 'ip') %}<br><span class="badge badge-ok" title="{{ device.link_reason }}">automatycznie</span>{% endif %}{% else %}<a class="btn btn-small" href="/wykrywanie/{{ device.id }}">Zweryfikuj</a>{% endif %}</td>
 </tr>{% else %}<tr><td colspan="7">Brak urządzeń w wybranym widoku.</td></tr>{% endfor %}</tbody>

@@ -17,9 +17,9 @@
     <a href="/zmiany">Zmiany</a>
     <a href="/relacje">Relacje</a>
     <a href="/wykrywanie">Wykrywanie sieci</a>
-    <a href="/jakosc">Jakosc danych</a>
-        <a href="/slowniki">Slowniki</a>
-    <a href="/tokens">Tokeny agentow</a>
+    <a href="/jakosc">Jakość danych</a>
+        <a href="/slowniki">Słowniki</a>
+    <a href="/tokens">Tokeny agentów</a>
     <a href="/pobierz">Instalacja agenta</a>
     <a href="/raporty">Raporty</a>
     <a href="/audit">Audyt</a>
@@ -44,7 +44,7 @@
         </select>
         {# Zapasowy przycisk: lista sama wysyla formularz, wiec przy dzialajacym
            skrypcie jest zbedny i tylko rozpycha pasek. Bez skryptu zostaje. #}
-        <button type="submit" class="btn btn-small" data-zapasowy>Zmien</button>
+        <button type="submit" class="btn btn-small" data-zapasowy>Zmień</button>
       </form>
     {% elif ctx %}
       <span class="tenant-name">{{ ctx.tenant_slug }}</span>
@@ -52,7 +52,7 @@
     {% if user.is_global_viewer %}
       <span class="badge badge-warn" title="Konto widzi wszystkie firmy, ale niczego w nich nie zmienia">tylko odczyt</span>
     {% endif %}
-    <a class="user-email" href="/konto" title="Moje konto i zmiana hasla">{{ user.email }}</a>
+    <a class="user-email" href="/konto" title="Moje konto i zmiana hasła">{{ user.email }}</a>
     <form method="post" action="/logout" class="inline-form">
       <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
     </form>
@@ -64,7 +64,7 @@
 </main>
 
 <footer class="footer">
-  CMDB {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wylacznie dla Twojej firmy
+  CMDB {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wyłącznie dla Twojej firmy
 </footer>
 <script src="{{ zasob('app.js') }}"></script>
 {% block skrypty %}{% endblock %}

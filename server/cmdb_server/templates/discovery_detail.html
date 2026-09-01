@@ -3,7 +3,7 @@
 {% block content %}
 <a href="/wykrywanie">← Wykrywanie sieci</a><h1>{{ device.hostname or device.ip }}</h1>
 <section class="panel"><h2>Obserwacja sieciowa</h2>
-<p>IP: {{ device.ip }} · MAC: {{ device.observation.mac or 'niedostępny' }} · DNS: {{ device.hostname or 'niedostępny' }}</p>
+<p>IP: {{ device.ip }} · MAC: {{ device.observation.mac or 'niedostepny' }} · DNS: {{ device.hostname or 'niedostepny' }}</p>
 <p>Skaner: <a href="/assets/{{ scanner.id }}">{{ scanner.hostname }}</a> · Pierwszy odczyt: {{ device.first_seen | dt }} · Ostatni odczyt: {{ device.last_seen | dt }}</p>
 <p>Sugerowany typ: {{ types.get(device.device_type, 'Inne') }} · OS: {{ device.observation.os_hint or 'nierozpoznany' }} · Producent (podpowiedź): {{ device.observation.manufacturer or 'nierozpoznany' }}</p>
 <p class="muted">Podpowiedzi pochodzą z portów i banerów usług; nie potwierdzają dokładnego OS, modelu ani numeru seryjnego. DNS także może być nieaktualny. MAC jest dostępny zwykle tylko w lokalnej podsieci.</p>

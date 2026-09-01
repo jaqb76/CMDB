@@ -85,7 +85,7 @@ def test_braki_pokazane_z_wyroznieniem_bezpieczenstwa(client, tenant_a, make_use
     strona = client.get(f"/assets/{asset_id}").text
     assert "libssl3" in strona
     assert "vim-common" in strona
-    assert "bezpieczenstwo" in strona
+    assert "bezpieczeństwo" in strona
     assert "jammy-security" in strona
 
 
@@ -103,8 +103,8 @@ def test_nieznany_stan_nie_udaje_ze_wszystko_gra(client, tenant_a, make_user):
     _zaloguj(client, make_user, tenant_a)
 
     strona = client.get(f"/assets/{asset_id}").text
-    assert "Nie udalo sie sprawdzic" in strona
-    assert "nie znaczy, ze maszyna jest aktualna" in strona
+    assert "Nie udało się sprawdzić" in strona
+    assert "nie znaczy, że maszyna jest aktualna" in strona
     assert "nic nie brakuje" not in strona
 
 
@@ -130,7 +130,7 @@ def test_starszy_agent_nie_udaje_ze_sprawdzil(client, tenant_a, make_user):
     _zaloguj(client, make_user, tenant_a)
 
     strona = client.get(f"/assets/{asset_id}").text
-    assert "nie sprawdza brakujacych aktualizacji" in strona
+    assert "nie sprawdza brakujących aktualizacji" in strona
     assert "KB5001" in strona, "zainstalowane poprawki maja byc widoczne dalej"
 
 

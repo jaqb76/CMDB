@@ -6,7 +6,7 @@
 <div class="page-head">
   <div>
     <h1>Historia zmian</h1>
-    <p class="muted">Co i kiedy zmienilo sie na maszynach firmy.</p>
+    <p class="muted">Co i kiedy zmieniło się na maszynach firmy.</p>
   </div>
 </div>
 
@@ -23,7 +23,7 @@
     {% endfor %}
   </select>
   <button type="submit" class="btn btn-primary btn-small">Pokaz</button>
-  <a class="btn btn-small btn-ghost" href="/zmiany">Wyczysc</a>
+  <a class="btn btn-small btn-ghost" href="/zmiany">Wyczyść</a>
 </form>
 
 <section class="panel">
@@ -54,14 +54,14 @@
   {% endfor %}
   </ul>
   <p class="muted small">
-    Pokazane maksymalnie {{ limit_raportow }} najnowszych raportow ze zmianami; kazdy
-    w calosci. Zmiany powstaja tylko przy realnej roznicy miedzy raportami —
-    cykliczne raporty bez zmian nie tworza wpisow.
+    Pokazane maksymalnie {{ limit_raportow }} najnowszych raportów ze zmianami; każdy
+    w całości. Zmiany powstaja tylko przy realnej różnicy między raportami —
+    cykliczne raporty bez zmian nie tworza wpisów.
   </p>
   {% else %}
     <p class="muted">
       Brak zmian w wybranym okresie. Pierwszy raport maszyny nie jest rozpisywany
-      na zmiany — liczy sie od drugiego.
+      na zmiany — liczy się od drugiego.
     </p>
   {% endif %}
 </section>

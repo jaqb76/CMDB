@@ -609,3 +609,12 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 /* Pola wlasciwe dla rodzaju zajmuja wlasny wiersz w calosci - wczesniej stały
    obok przycisku i zostawialy pol formularza pustego. */
 .kolumny-grupa { width: 100%; min-width: 0; }
+
+/* Lista wpisow wskazujacych ten rekord - "kto siedzi w tej lokalizacji". */
+.lista-powiazan { list-style: none; margin: 10px 0 0; padding: 0; }
+.lista-powiazan li {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 6px 0; border-top: 1px solid var(--border);
+}
+.lista-powiazan li:first-child { border-top: 0; }
+.lista-powiazan .btn-small { margin-left: auto; }

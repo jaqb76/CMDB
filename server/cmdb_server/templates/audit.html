@@ -2,9 +2,9 @@
 {% block title %}Audyt - CMDB{% endblock %}
 {% block content %}
 <h1>Slad audytowy</h1>
-<p class="muted">Ostatnie 200 zdarzen dotyczacych tokenow, logowan i zmian przypisania.</p>
+<p class="muted">Ostatnie 200 zdarzeń dotyczących tokenow, logowan i zmian przypisania.</p>
 <table class="table">
-  <thead><tr><th>Kiedy</th><th>Kto</th><th>Akcja</th><th>Obiekt</th><th>Adres IP</th><th>Szczegoly</th></tr></thead>
+  <thead><tr><th>Kiedy</th><th>Kto</th><th>Akcja</th><th>Obiekt</th><th>Adres IP</th><th>Szczegóły</th></tr></thead>
   <tbody>
   {% for e in entries %}
     <tr>
@@ -16,7 +16,7 @@
       <td class="small muted">{{ e.detail or '' }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="muted">Brak zdarzen.</td></tr>
+    <tr><td colspan="6" class="muted">Brak zdarzeń.</td></tr>
   {% endfor %}
   </tbody>
 </table>

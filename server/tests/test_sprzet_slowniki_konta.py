@@ -109,7 +109,7 @@ def test_reczny_sprzet_trafia_na_liste_i_da_sie_go_edytowac(client, tenant_a, ma
 
     lista = client.get("/assets")
     assert "SW-MAGAZYN-01" in lista.text
-    assert "Sprzet sieciowy" in lista.text
+    assert "Sprzęt sieciowy" in lista.text
     # Bez agenta nie ma sensu pisac "nigdy" w kolumnie ostatniego kontaktu.
     assert "bez agenta" in lista.text
 
@@ -128,7 +128,7 @@ def test_reczny_sprzet_trafia_na_liste_i_da_sie_go_edytowac(client, tenant_a, ma
 
 
 def test_reczny_sprzet_da_sie_usunac_a_maszyny_z_agentem_nie(client, tenant_a, make_user):
-    """Wpis reczny to sam tekst; maszyna z agentem niesie historie raportow."""
+    """Wpis ręczny to sam tekst; maszyna z agentem niesie historie raportow."""
     _admin_firmy(client, tenant_a, make_user)
     _dodaj_sprzet(client)
 
@@ -561,7 +561,7 @@ def test_audytor_nie_dostaje_formularzy_raportow(client, tenant_a, make_user):
     assert "uprawnienia tylko do odczytu" in strona.text
     assert 'action="/raporty/definicje"' not in strona.text
     # Tresc informacyjna zostaje - audytor ma raporty ogladac.
-    assert "Co zawiera ktory raport" in strona.text
+    assert "Co zawiera który raport" in strona.text
 
 
 def test_haslo_ustawia_sie_w_oknie_a_nie_w_tabeli(client, tenant_a, make_user):
@@ -652,8 +652,8 @@ def test_akcje_kont_sa_przyciskami_a_wylaczanie_rozroznia_firme_od_konta(
     _login(client, "root@cmdb.pl", "bardzo-dlugie-haslo")
 
     strona = client.get("/admin/firmy").text
-    assert "Wylacz firme" in strona
-    assert "Wylacz konto" in strona
+    assert "Wyłącz firmę" in strona
+    assert "Wyłącz konto" in strona
     assert 'action="/admin/users/' in strona and "/usun" in strona
     # Wlasne konto bez akcji, ktore odcielyby dostep.
     assert "to Twoje konto" in strona
@@ -677,21 +677,21 @@ def test_wpis_reczny_nie_pokazuje_zakladek_agenta(client, tenant_a, make_user):
     for zakladka in ('data-tab="overview"', 'data-tab="zakup"', 'data-tab="zmiany"'):
         assert zakladka in strona
     assert "System operacyjny" not in strona, "panel samych kresek zniknal"
-    assert "Wpis reczny" in strona
+    assert "Wpis ręczny" in strona
 
 
 def test_pulpit_rozdziela_zgloszenia_od_wpisow_recznych(client, tenant_a, make_user):
-    """Wpis reczny nigdy sie nie zglasza, wiec jego obecnosc w "Ostatnim
+    """Wpis ręczny nigdy sie nie zglasza, wiec jego obecnosc w "Ostatnim
     kontakcie" sugerowala kontakt, ktorego nie bylo."""
     _admin_firmy(client, tenant_a, make_user)
     _dodaj_sprzet(client, nazwa="SW-PULPIT", typ="siec")
 
     strona = client.get("/").text
-    assert "wpisow w ewidencji" in strona, "monitor nie jest maszyna"
-    assert "Rodzaje sprzetu" in strona
-    assert "Sprzet sieciowy" in strona, "widac, co to za urzadzenia"
-    assert "Wpisy reczne" in strona
+    assert "wpisów w ewidencji" in strona, "monitor nie jest maszyna"
+    assert "Rodzaje sprzętu" in strona
+    assert "Sprzęt sieciowy" in strona, "widac, co to za urzadzenia"
+    assert "Wpisy ręczne" in strona
     # W tabeli zgloszen agentow wpisu recznego nie ma.
-    zgloszenia = strona.split("Ostatni kontakt")[1].split("Wpisy reczne")[0] \
-        if "Ostatni kontakt" in strona and "Wpisy reczne" in strona.split("Ostatni kontakt")[1] else ""
+    zgloszenia = strona.split("Ostatni kontakt")[1].split("Wpisy ręczne")[0] \
+        if "Ostatni kontakt" in strona and "Wpisy ręczne" in strona.split("Ostatni kontakt")[1] else ""
     assert "SW-PULPIT" not in zgloszenia

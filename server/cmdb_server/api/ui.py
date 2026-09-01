@@ -1272,6 +1272,7 @@ KOLUMNY_SLOWNIKA = 6
 def widok_slownikow(
     request: Request,
     kategoria: str = Query("", max_length=32),
+    wskazuje: str = Query("", max_length=64),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -1295,6 +1296,15 @@ def widok_slownikow(
     pozycje = slowniki.wpisy(db, ctx)
     biezace = [w for w in pozycje if w.kategoria == kategoria]
 
+    # Filtr "kto tu jest": lista zawezona do wpisow wskazujacych jeden rekord.
+    # Adres da sie zapisac i przeslac dalej, a zdjecie filtru jest jednym
+    # klinieciem - lista bez widocznego powodu, dla ktorego czegos brakuje,
+    # wyglada jak utracone dane.
+    filtr = slowniki.wpis(db, ctx, wskazuje) if wskazuje else None
+    if filtr is not None:
+        dozwolone = {w.id for w in slowniki.wskazujace(db, ctx, kategoria, filtr)}
+        biezace = [w for w in biezace if w.id in dozwolone]
+
     # SZESC PIERWSZYCH pol schematu, bez zadnego wlasnego doboru. Kolejnosc
     # w schemacie jest jedynym kryterium, wiec o tym, co widac w tabeli,
     # decyduje administrator - przestawiajac pola w edytorze albo usuwajac te,
@@ -1312,9 +1322,12 @@ def widok_slownikow(
         request, "slowniki.html", user, ctx, db,
         kategorie=KATEGORIE_SLOWNIKA, kategoria=kategoria, schemat=opis,
         kolumny=kolumny, komorki=komorki,
-        wpisy={k: [w for w in pozycje if w.kategoria == k] for k in KATEGORIE_SLOWNIKA},
+        # Biezaca kategoria idzie po filtrze; pozostale sluza tylko zakladkom.
+        wpisy={k: (biezace if k == kategoria else [w for w in pozycje if w.kategoria == k])
+               for k in KATEGORIE_SLOWNIKA},
         braki={w.id: definicje.braki(schematy[w.kategoria], w.atrybuty) for w in pozycje},
         uzycia={w.id: slowniki.uzycie_wpisu(db, ctx, w) for w in biezace},
+        filtr=filtr,
     )
     db.commit()          # schemat zalozony z wzorca przy pierwszym wejsciu
     return wynik
@@ -1366,6 +1379,7 @@ def karta_wpisu(
         wpis=wpis, schemat=opis, grupy=opis.grupy(), formaty=definicje.FORMATY,
         braki=definicje.braki(opis, wpis.atrybuty),
         uzycie=slowniki.uzycie_wpisu(db, ctx, wpis),
+        powiazania=slowniki.powiazania(db, ctx, wpis),
         osoby=db.execute(scoping.owners_query(ctx)).scalars().all(),
         powiazane={k: slowniki.wpisy(db, ctx, k) for k in KATEGORIE_SLOWNIKA},
         kategorie=KATEGORIE_SLOWNIKA,

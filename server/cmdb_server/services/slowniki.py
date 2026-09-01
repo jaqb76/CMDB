@@ -15,7 +15,7 @@ wpisu. Wyswietlamy pierwsza wersje, jaka wpisal czlowiek.
 """
 from __future__ import annotations
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -359,6 +359,45 @@ def _uzycie_w_slownikach(db: Session, ctx: TenantContext, pozycja: WpisSlownika)
                 )
             ).scalar_one())
     return razem
+
+
+def wskazujace(db: Session, ctx: TenantContext, kategoria: str,
+               pozycja: WpisSlownika) -> list[WpisSlownika]:
+    """Wpisy danej kategorii, ktore wskazuja ten rekord polem odwolania.
+
+    Pytanie "kto siedzi w tej lokalizacji" zadaje sie od strony miejsca,
+    a odpowiedz lezy przy ludziach. Szukamy po SCHEMACIE, a nie po nazwie
+    pola: firma moze nazwac je "Biuro" i przeniesc do innej grupy.
+    """
+    opis = schemat(db, ctx, kategoria)
+    klucze = [pole.klucz for pole in opis.pola
+              if pole.typ == "odwolanie" and pole.cel == pozycja.kategoria]
+    if not klucze:
+        return []
+    warunki = [WpisSlownika.atrybuty[klucz].astext == pozycja.id for klucz in klucze]
+    return list(db.execute(
+        select(WpisSlownika).where(
+            WpisSlownika.tenant_id == ctx.tenant_id,
+            WpisSlownika.kategoria == kategoria,
+            or_(*warunki),
+        ).order_by(WpisSlownika.wartosc)
+    ).scalars().all())
+
+
+def powiazania(db: Session, ctx: TenantContext,
+               pozycja: WpisSlownika) -> list[dict]:
+    """Ile wpisow kazdej kategorii wskazuje ten rekord - do karty wpisu."""
+    wynik = []
+    for kategoria in KATEGORIE_SLOWNIKA:
+        znalezione = wskazujace(db, ctx, kategoria, pozycja)
+        if znalezione:
+            wynik.append({
+                "kategoria": kategoria,
+                "nazwa": KATEGORIE_SLOWNIKA[kategoria],
+                "ile": len(znalezione),
+                "przyklady": znalezione[:5],
+            })
+    return wynik
 
 
 def usun(db: Session, ctx: TenantContext, wpis_id: str) -> WpisSlownika | None:

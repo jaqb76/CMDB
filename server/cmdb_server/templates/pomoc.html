@@ -135,7 +135,7 @@
 <div class="steps">
 <div class="step"><div><b>Najpierw utwórz rekord</b><br/>Wejdź w <b>Słowniki</b>, wybierz dział, lokalizację albo dostawcę i uzupełnij pola oznaczone gwiazdką.</div></div>
 <div class="step"><div><b>Potem przypisz go do zasobu lub osoby</b><br/>Formularze pokazują zamkniętą listę rekordów. Nie tworzą pozycji z przypadkowo wpisanego tekstu.</div></div>
-<div class="step"><div><b>Podejrzyj szczegóły bez opuszczania karty</b><br/>Na karcie maszyny użyj przycisku podglądu opiekuna, użytkownika, lokalizacji lub dostawcy. Otworzy się okno ze wszystkimi atrybutami.</div></div>
+<div class="step"><div><b>Podejrzyj szczegóły bez opuszczania karty</b><br/>Na karcie maszyny użyj przycisku podglądu opiekuna, użytkownika, lokalizacji lub dostawcy. Otworzy się okno że wszystkimi atrybutami.</div></div>
 </div>
 <div class="callout warn"><b>Pola schematu zmienia administrator firmy.</b> Pole używane przez wpisy trzeba najpierw świadomie wyczyścić. Usunięcie wpisu odpina powiązanie, ale nie usuwa maszyny ani osoby.</div>
 </section>
@@ -608,7 +608,7 @@ BI       → VM-BI-01      → HV-02 → CLUSTER-PROD</pre>
   | sudo bash -s -- --token cmdb_ent_...</pre>
 <p>Skrypt pobiera agenta, sprawdza SHA-256, zakłada usługę i timer systemd oraz wysyła pierwszy raport.</p>
 <details><summary>Przydatne opcje Linux</summary><div><pre>--interval 4
---ca-bundle /sciezka/ca.pem
+--ca-bundle /ścieżka/ca.pem
 --no-processes</pre></div></details>
 <div class="callout warn"><b>Certyfikat self-signed:</b> jeśli organizacja używa własnego CA lub certyfikatu self-signed, certyfikat CA trzeba dostarczyć na maszynę osobnym, zaufanym kanałem i wskazać przez <code>--ca-bundle</code>.</div>
 </section>

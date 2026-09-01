@@ -157,7 +157,7 @@ def test_lista_pokazuje_czego_brakuje(client, tenant_a, make_user):
     _wpis(client)
     strona = client.get("/slowniki?kategoria=dostawca").text
     assert "szkic" in strona
-    assert "Sposob kontaktu" in strona, "ma byc widac, ktorego pola brakuje"
+    assert "Sposób kontaktu" in strona, "ma byc widac, ktorego pola brakuje"
 
 
 # --- edycja schematu --------------------------------------------------------
@@ -422,6 +422,55 @@ def test_uzycie_dzialu_liczy_odwolania_z_innych_slownikow(client, tenant_a, make
     with SessionLocal() as db:
         dzial = db.get(WpisSlownika, dzial_id)
         assert slowniki.uzycie_wpisu(db, ctx, dzial) == 1, "osoba wskazuje ten dzial"
+
+
+def test_osoba_ma_pole_lokalizacji(client, tenant_a, make_user):
+    """Bez miejsca pracy przy osobie nie da sie odpowiedziec, kto siedzi
+    w danym biurze - a to pierwsze pytanie przy przeprowadzce i inwentaryzacji."""
+    _admin(client, tenant_a, make_user)
+    client.get("/slowniki?kategoria=osoba")
+
+    from cmdb_server.services import slowniki
+    from cmdb_server.services.scoping import TenantContext
+
+    ctx = TenantContext(tenant_id=tenant_a["id"], tenant_slug="firma-a", actor="test")
+    with SessionLocal() as db:
+        pole = slowniki.schemat(db, ctx, "osoba").wg_roli("lokalizacja_osoby")
+    assert pole is not None, "rola ma byc obsadzona we wzorcu"
+    assert pole.typ == "odwolanie" and pole.cel == "lokalizacja"
+
+
+def test_lokalizacja_pokazuje_kto_w_niej_pracuje(client, tenant_a, make_user):
+    """Pytanie zadaje sie od strony miejsca, a odpowiedz lezy przy ludziach."""
+    from .test_sprzet_slowniki_konta import _dodaj_wpis
+
+    _admin(client, tenant_a, make_user)
+    biuro = _dodaj_wpis(client, "lokalizacja", "Gdansk")
+    _dodaj_wpis(client, "osoba", "Anna Zielinska",
+                {"pole_email": "anna@firma.pl", "pole_lokalizacja": biuro})
+    _dodaj_wpis(client, "osoba", "Piotr Dalej", {"pole_email": "piotr@firma.pl"})
+
+    karta = client.get(f"/slowniki/wpis/{biuro}").text
+    assert "Anna Zielinska" in karta
+    assert f"wskazuje={biuro}" in karta, "ma byc odnosnik do pelnej listy"
+
+    lista = client.get(f"/slowniki?kategoria=osoba&wskazuje={biuro}").text
+    assert "Anna Zielinska" in lista
+    assert "Piotr Dalej" not in lista, "filtr ma odsiewac osoby z innych miejsc"
+    assert "Pokaż wszystkie" in lista, "zdjecie filtru ma byc jednym klikaniem"
+
+
+def test_filtr_wskazania_nie_wychodzi_poza_firme(client, tenant_a, tenant_b, make_user):
+    from .test_sprzet_slowniki_konta import _dodaj_wpis
+
+    _admin(client, tenant_a, make_user)
+    biuro = _dodaj_wpis(client, "lokalizacja", "Katowice")
+    _dodaj_wpis(client, "osoba", "Ewa Obca",
+                {"pole_email": "ewa@firma.pl", "pole_lokalizacja": biuro})
+
+    _admin(client, tenant_b, make_user, email="admin@firma-b.pl")
+    lista = client.get(f"/slowniki?kategoria=osoba&wskazuje={biuro}").text
+    assert "Ewa Obca" not in lista
 
 
 def test_okno_podgladu_ma_nieprzezroczyste_tlo():
