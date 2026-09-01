@@ -349,7 +349,7 @@ def test_przycisk_zmiany_firmy_jest_zapasowy(client, tenant_a, make_user):
     from pathlib import Path
 
     katalog = Path(__file__).resolve().parent.parent / "cmdb_server"
-    szablon = (katalog / "templates" / "base.html").read_text(encoding="utf-8")
+    szablon = (katalog / "templates" / "base_modern.html").read_text(encoding="utf-8")
     skrypt = (katalog / "static" / "app.js").read_text(encoding="utf-8")
 
     assert "data-zapasowy" in szablon, "przycisk musi zostac dla przegladarki bez skryptu"
