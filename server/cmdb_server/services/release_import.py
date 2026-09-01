@@ -111,14 +111,85 @@ def check_bytes(path, artifact):
         raise ImportFailure("SHA-256 pliku nie zgadza sie z podpisanym manifestem")
 
 
+def check_artifact(path, artifact, manifest):
+    check_bytes(path, artifact)
+    if artifact["kind"] == "worker" and (
+            architektura.wykryj_z_pliku(path) != artifact["arch"] or
+            architektura.podsystem_pe(path) != architektura.PE_GUI):
+        raise ImportFailure("Niepoprawny format polaczonego workera Windows")
+    if artifact["kind"] == "source" and pakiet.sprawdz_paczke(path) != manifest["version"]:
+        raise ImportFailure("Wersja paczki Linux nie zgadza sie z manifestem")
+    if artifact["kind"] == "setup" and path.read_bytes()[:2] != b"MZ":
+        raise ImportFailure("Niepoprawny format instalatora")
+
+
+def download_artifact(github, asset, artifact, destination, manifest):
+    with destination.open("xb") as stream:
+        github.asset(asset["id"], artifact["size"], stream)
+    check_artifact(destination, artifact, manifest)
+
+
+def repair_existing(db, existing, envelope, manifest, by_name, github, settings):
+    """Restore exact signed bytes for catalog rows without resurrecting deletions."""
+    root = Path(settings.release_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    artifacts = {artifact["kind"]: artifact for artifact in manifest["artifacts"]}
+    requested = []
+    for evidence in existing:
+        if evidence.release_id is None:
+            continue
+        if evidence.envelope != envelope:
+            raise ImportFailure("Podpisany manifest istniejacego wydania ulegl zmianie")
+        row = db.get(AgentRelease, evidence.release_id)
+        artifact = artifacts.get(evidence.kind)
+        if row is None or artifact is None or (
+                row.version != manifest["version"] or row.os_family != artifact["os"] or
+                row.arch != artifact["arch"] or row.sha256 != artifact["sha256"] or
+                row.size_bytes != artifact["size"]):
+            raise ImportFailure("Wpis katalogu nie odpowiada podpisanemu manifestowi")
+        requested.append((artifact, row.storage_name, evidence))
+        if evidence.kind == "worker":
+            setup = artifacts["setup"]
+            if not evidence.setup_storage_name:
+                evidence.setup_storage_name = str(uuid4()) + ".exe"
+            requested.append((setup, evidence.setup_storage_name, evidence))
+
+    repairs = []
+    for artifact, storage_name, _ in requested:
+        target = root / storage_name
+        if target.resolve().parent != root:
+            raise ImportFailure("Niepoprawna sciezka pliku w katalogu wydan")
+        try:
+            check_artifact(target, artifact, manifest)
+        except (OSError, ImportFailure, pakiet.BrakZrodel):
+            if artifact["name"] not in by_name or artifact["size"] > settings.max_release_bytes:
+                raise ImportFailure("Brak pliku wydania lub przekroczony limit")
+            repairs.append((artifact, target))
+
+    if not repairs:
+        return 0
+    with tempfile.TemporaryDirectory(prefix=".repair-", dir=root) as temporary:
+        downloaded = []
+        for artifact, target in repairs:
+            path = Path(temporary) / artifact["name"]
+            download_artifact(github, by_name[artifact["name"]], artifact, path, manifest)
+            downloaded.append((path, target))
+        for path, target in downloaded:
+            path.replace(target)
+    audit(db, None, action="release.repaired", target=manifest["tag"],
+          detail={"files": [artifact["kind"] for artifact, _ in repairs]}, actor="release-import")
+    db.commit()
+    return len(repairs)
+
+
 def import_release(db, release, github, settings):
     if release.get("draft") or release.get("prerelease") or not str(release.get("tag_name", "")).startswith("agent-v"):
         return 0
     tag = release["tag_name"]
     existing = db.scalars(select(ReleaseProvenance).where(
         ReleaseProvenance.repository == settings.release_repository, ReleaseProvenance.tag == tag)).all()
-    if existing:
-        # Includes user-deleted releases (release_id=NULL): never resurrect them.
+    if existing and all(item.release_id is None for item in existing):
+        # User-deleted releases are tombstoned and never resurrected.
         return 0
     assets = release.get("assets", [])
     if not isinstance(assets, list) or len(assets) > 30:
@@ -134,6 +205,9 @@ def import_release(db, release, github, settings):
     manifest = verify(envelope, settings.release_public_keys, settings.release_repository, settings.release_ref)
     if manifest["tag"] != tag:
         raise ImportFailure("Tag nie odpowiada podpisanemu manifestowi")
+    if existing:
+        repair_existing(db, existing, envelope, manifest, by_name, github, settings)
+        return 0
     root = Path(settings.release_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
     moved = []
@@ -144,17 +218,7 @@ def import_release(db, release, github, settings):
                 if artifact["name"] not in by_name or artifact["size"] > settings.max_release_bytes:
                     raise ImportFailure("Brak pliku wydania lub przekroczony limit")
                 path = Path(temporary) / artifact["name"]  # names strictly validated by signed protocol
-                with path.open("xb") as stream:
-                    github.asset(by_name[artifact["name"]]["id"], artifact["size"], stream)
-                check_bytes(path, artifact)
-                if artifact["kind"] == "worker" and (
-                        architektura.wykryj_z_pliku(path) != artifact["arch"] or
-                        architektura.podsystem_pe(path) != architektura.PE_GUI):
-                    raise ImportFailure("Niepoprawny format polaczonego workera Windows")
-                if artifact["kind"] == "source" and pakiet.sprawdz_paczke(path) != manifest["version"]:
-                    raise ImportFailure("Wersja paczki Linux nie zgadza sie z manifestem")
-                if artifact["kind"] == "setup" and path.read_bytes()[:2] != b"MZ":
-                    raise ImportFailure("Niepoprawny format instalatora")
+                download_artifact(github, by_name[artifact["name"]], artifact, path, manifest)
                 paths[artifact["kind"]] = (path, artifact)
             for kind in ("worker", "source"):
                 _, artifact = paths[kind]

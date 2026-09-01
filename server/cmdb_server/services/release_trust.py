@@ -18,35 +18,49 @@ def trusted_build(digest: str, version: str, arch: str) -> bool:
     return expected == {"version": version, "arch": arch}
 
 
-def distributable(release) -> bool:
+def admission_problem(release) -> str | None:
+    """Return an admin-facing reason why a release cannot be distributed."""
     provenance = getattr(release, "provenance", None)
     if provenance is not None:
         if verified_artifact(release) is None:
-            return False
+            return (
+                "Podpisany manifest nie pasuje do konfiguracji tego serwera. "
+                "Sprawdź CMDB_RELEASE_PUBLIC_KEYS, CMDB_RELEASE_REPOSITORY i CMDB_RELEASE_REF."
+            )
     elif (release.os_family or "").lower() != "windows":
-        return True
+        return None
     elif release.arch == architektura.ARCH_TRAY:
-        return False
+        return "To jest stary program zasobnika, a nie połączony worker Windows."
     elif not trusted_build(release.sha256, release.version, release.arch):
-        return False
+        return "SHA-256 pliku nie znajduje się w katalogu zatwierdzonych workerów Windows."
     # Recheck bytes at activation AND offer/download, including old database rows.
     root = Path(get_settings().release_dir).resolve()
     path = root / release.storage_name
     try:
-        if path.resolve().parent != root or not path.is_file():
-            return False
+        if path.resolve().parent != root:
+            return "Nieprawidłowa ścieżka pliku wydania."
+        if not path.is_file():
+            return "Brakuje pliku wydania w magazynie serwera; automatyczny import spróbuje go odtworzyć."
+        if path.stat().st_size != release.size_bytes:
+            return "Rozmiar pliku wydania nie zgadza się z podpisanym manifestem."
         if release.os_family == "windows":
             if architektura.wykryj_z_pliku(path) != release.arch:
-                return False
+                return "Architektura pliku Windows nie zgadza się z podpisanym manifestem."
             if architektura.podsystem_pe(path) not in (architektura.PE_GUI, architektura.PE_KONSOLA):
-                return False
+                return "Plik nie jest prawidłowym workerem Windows."
         digest = hashlib.sha256()
         with path.open("rb") as stream:
             for block in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(block)
-        return digest.hexdigest() == release.sha256
+        if digest.hexdigest() != release.sha256:
+            return "SHA-256 pliku nie zgadza się z podpisanym manifestem."
+        return None
     except OSError:
-        return False
+        return "Nie udało się odczytać pliku wydania z magazynu serwera."
+
+
+def distributable(release) -> bool:
+    return admission_problem(release) is None
 
 
 def verified_artifact(release, kind=None):

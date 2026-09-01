@@ -65,7 +65,7 @@ def signed_release(tmp_path, monkeypatch):
 
 
 def test_import_is_atomic_idempotent_and_does_not_select_any_target(signed_release):
-    settings, row, github, _, payload, _ = signed_release
+    settings, row, github, _, _, _ = signed_release
     with SessionLocal() as db:
         assert release_import.import_release(db, row, github, settings) == 2
         assert release_import.import_release(db, row, github, settings) == 0
@@ -138,6 +138,35 @@ def test_tampered_files_and_evidence_block_distribution(signed_release):
         path = Path(settings.release_dir) / release.storage_name
         path.write_bytes(path.read_bytes() + b"tampered")
         assert not release_trust.distributable(release)
+
+
+def test_existing_signed_release_repairs_missing_or_tampered_files(signed_release):
+    settings, row, github, blobs, _, _ = signed_release
+    with SessionLocal() as db:
+        release_import.import_release(db, row, github, settings)
+        worker = db.scalar(select(AgentRelease).where(AgentRelease.os_family == "windows"))
+        worker_path = Path(settings.release_dir) / worker.storage_name
+        setup_path = Path(settings.release_dir) / worker.provenance.setup_storage_name
+        worker_path.unlink()
+        setup_path.write_bytes(b"tampered")
+
+        # Repair never creates targets or a second catalog row. It restores only
+        # the exact bytes already bound to the stored signed manifest.
+        assert release_import.import_release(db, row, github, settings) == 0
+        assert worker_path.read_bytes() == blobs[2]
+        assert setup_path.read_bytes() == blobs[3]
+        assert release_trust.distributable(worker)
+        assert db.scalar(select(func.count(AgentRelease.id))) == 2
+        assert db.scalar(select(func.count(GlobalAgentTarget.id))) == 0
+
+
+def test_admission_problem_explains_missing_release_file(signed_release):
+    settings, row, github, _, _, _ = signed_release
+    with SessionLocal() as db:
+        release_import.import_release(db, row, github, settings)
+        worker = db.scalar(select(AgentRelease).where(AgentRelease.os_family == "windows"))
+        (Path(settings.release_dir) / worker.storage_name).unlink()
+        assert "Brakuje pliku wydania" in release_trust.admission_problem(worker)
 
 
 def test_import_status_and_existing_rollout_controls(client, signed_release, make_user, monkeypatch):

@@ -42,6 +42,21 @@ def test_all_pages_render(client, tenant_a, make_user):
     assert "10.10.5.21" in detail                   # siec
 
 
+def test_pomoc_uzywa_zewnetrznych_stylow_zgodnych_z_csp(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "pomoc@firma.pl", "bardzo-dlugie-haslo")
+    _login(client, "pomoc@firma.pl", "bardzo-dlugie-haslo")
+
+    response = client.get("/pomoc")
+    assert response.status_code == 200
+    assert 'href="/static/pomoc.css?v=' in response.text
+    assert 'src="/static/pomoc.js?v=' in response.text
+    assert "<style>" not in response.text
+    assert "<script>" not in response.text
+    assert 'style="' not in response.text
+    assert client.get("/static/pomoc.css").status_code == 200
+    assert client.get("/static/pomoc.js").status_code == 200
+
+
 def test_asset_without_report_renders(client, tenant_a, make_user):
     """Maszyna zarejestrowana, ale bez raportu - widok nie moze sie wysypac."""
     enroll(client, tenant_a["token"], machine_id="maszyna-nowa-01", hostname="NOWA")

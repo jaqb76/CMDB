@@ -255,9 +255,9 @@ def render(
 
 
 @router.get("/pomoc", response_class=HTMLResponse)
-def pomoc(user: PortalUser = Depends(require_user)) -> HTMLResponse:
+def pomoc(request: Request, user: PortalUser = Depends(require_user)) -> Response:
     """Samodzielny podręcznik dostępny dopiero po zalogowaniu do portalu."""
-    return HTMLResponse((TEMPLATES_DIR / "pomoc.html").read_text(encoding="utf-8"))
+    return templates.TemplateResponse(request, "pomoc.html", {"user": user})
 
 
 # Minimalna dlugosc hasla panelu. Ta sama wartosc obowiazuje przy zakladaniu

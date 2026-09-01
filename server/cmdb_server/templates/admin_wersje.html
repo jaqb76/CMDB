@@ -121,7 +121,9 @@
           <div class="muted">{{ etykiety_arch.get(w.arch, '') }}</div></td>
         <td class="strong">{{ w.version }}</td>
         <td>
-          {% if not release_admitted.get(w.id) %}<span class="badge">zablokowana — brak zatwierdzonego workera</span>
+          {% if not release_admitted.get(w.id) %}
+            <span class="badge">zablokowana</span>
+            <div class="muted small">{{ release_problems.get(w.id) }}</div>
           {% elif jest_oficjalna %}<span class="badge badge-ok">aktywna</span>
           {% else %}<span class="badge">wgrana</span>{% endif %}
         </td>
