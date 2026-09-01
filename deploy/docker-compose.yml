@@ -23,6 +23,12 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        # Ustaw przy budowaniu, np.:
+        #   CMDB_WERSJA=$(git log -1 --format='%h (%cs)') docker compose build
+        # Bez tego stopka powie "nieznana" - i to jest uczciwe, bo numer
+        # wzięty z powietrza kazałby uznać poprawkę za wdrożoną.
+        CMDB_WERSJA: ${CMDB_WERSJA:-nieznana}
     restart: unless-stopped
     depends_on:
       db:

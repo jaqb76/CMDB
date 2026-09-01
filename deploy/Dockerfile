@@ -27,6 +27,13 @@ COPY agent/ /tmp/agent/
 # paczki i po tym kroku znika.
 RUN python -m cmdb_server.pakiet /tmp/agent --do "$CMDB_AGENT_BUNDLE_DIR"     && cp /tmp/agent/packaging/install.ps1 /tmp/agent/packaging/install-agent.ps1           /app/cmdb_server/bootstrap/     && rm -rf /tmp/agent
 
+# Ktora wersja portalu siedzi w tym obrazie. Katalog .git do obrazu nie
+# trafia, wiec serwer nie ma jak tego odczytac sam - numer musi zostac
+# wpisany przy budowaniu. Argument stoi tuz przed uruchomieniem, zeby jego
+# zmiana nie uniewazniala warstw z zaleznosciami.
+ARG CMDB_WERSJA=nieznana
+ENV CMDB_WERSJA=$CMDB_WERSJA
+
 # Serwer nie potrzebuje roota - uruchamiamy jako zwykly uzytkownik.
 RUN useradd --system --create-home --uid 10001 cmdb && chown -R cmdb:cmdb /app
 USER cmdb

@@ -31,6 +31,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import wersja
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
@@ -118,6 +119,7 @@ def render_admin(request: Request, template: str, user: PortalUser, strona: str,
         "strona": strona,
         "csrf_token": issue_csrf_token(user.id),
         "motyw": motyw_z_ciasteczka(request),
+        "wersja_portalu": wersja.opis(),
         **extra,
     }
     return templates.TemplateResponse(request, template, payload)

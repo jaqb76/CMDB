@@ -618,3 +618,6 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 }
 .lista-powiazan li:first-child { border-top: 0; }
 .lista-powiazan .btn-small { margin-left: auto; }
+
+/* Wersja portalu w stopce - drugoplanowa, ale zawsze do przeczytania. */
+.wersja-portalu { font-variant-numeric: tabular-nums; white-space: nowrap; }

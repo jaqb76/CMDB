@@ -24,6 +24,7 @@ from jinja2 import ChainableUndefined, Undefined
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
+from .. import wersja
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
@@ -242,6 +243,10 @@ def render(
         "user": user,
         "ctx": ctx,
         "motyw": motyw_z_ciasteczka(request),
+        # Stopka na kazdej stronie: pytanie "na czym pracujemy" pada przy
+        # kazdym zgloszeniu, a strona przed wdrozeniem i po nim wyglada
+        # tak samo.
+        "wersja_portalu": wersja.opis(),
         "csrf_token": issue_csrf_token(user.id),
         "all_tenants": tenants,
         # Prog braku kontaktu moze byc ustawiony per firma - szablony maja
