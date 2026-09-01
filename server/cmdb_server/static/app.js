@@ -2,6 +2,90 @@
 (function () {
   "use strict";
 
+  // Zwijane menu aplikacji. Na duzym ekranie wybor jest zapamietywany w
+  // localStorage, bo to preferencja konkretnej przegladarki. Na telefonie
+  // panel zawsze startuje zamkniety i wysuwa sie nad trescia.
+  (function () {
+    var shell = document.querySelector("[data-sidebar-shell]");
+    if (!shell) { return; }
+
+    var body = document.body;
+    var toggles = document.querySelectorAll("[data-sidebar-toggle]");
+    var closeButtons = document.querySelectorAll("[data-sidebar-close]");
+    var mobile = window.matchMedia("(max-width: 760px)");
+    var storageKey = "cmdb_sidebar_expanded";
+
+    function savedExpanded() {
+      try { return window.localStorage.getItem(storageKey) === "1"; }
+      catch (e) { return false; }
+    }
+
+    function saveExpanded(expanded) {
+      try { window.localStorage.setItem(storageKey, expanded ? "1" : "0"); }
+      catch (e) { /* Tryb prywatny moze blokowac localStorage. */ }
+    }
+
+    function desktopExpanded() { return !body.classList.contains("sidebar-collapsed"); }
+    function mobileOpen() { return body.classList.contains("sidebar-mobile-open"); }
+
+    function updateButtons() {
+      var expanded = mobile.matches ? mobileOpen() : desktopExpanded();
+      toggles.forEach(function (button) {
+        button.setAttribute("aria-expanded", expanded ? "true" : "false");
+        button.title = expanded ? "Zwiń menu" : "Rozwiń menu";
+        button.setAttribute("aria-label", expanded ? "Zwiń menu" : "Rozwiń menu");
+        var label = button.querySelector(".nav-label");
+        if (label) { label.textContent = expanded ? "Zwiń menu" : "Rozwiń menu"; }
+      });
+    }
+
+    function closeMobile() {
+      body.classList.remove("sidebar-mobile-open");
+      updateButtons();
+    }
+
+    if (!mobile.matches && savedExpanded()) {
+      body.classList.remove("sidebar-collapsed");
+    }
+    updateButtons();
+
+    toggles.forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (mobile.matches) {
+          body.classList.toggle("sidebar-mobile-open");
+        } else {
+          body.classList.toggle("sidebar-collapsed");
+          saveExpanded(desktopExpanded());
+        }
+        updateButtons();
+      });
+    });
+    closeButtons.forEach(function (button) { button.addEventListener("click", closeMobile); });
+
+    // Po przejsciu z widoku mobilnego na desktop nie zostawiamy niewidzialnej
+    // warstwy blokujacej strone.
+    mobile.addEventListener("change", function () {
+      closeMobile();
+      if (!mobile.matches) {
+        body.classList.toggle("sidebar-collapsed", !savedExpanded());
+      }
+      updateButtons();
+    });
+
+    // Aktywna pozycja jest wyznaczana z adresu, wiec wszystkie istniejace
+    // widoki dostaja poprawne zaznaczenie bez zmian w kontrolerach.
+    var path = window.location.pathname.replace(/\/$/, "") || "/";
+    document.querySelectorAll(".app-nav-link[href]").forEach(function (link) {
+      if (link.classList.contains("is-active")) { return; }
+      var href = new URL(link.href, window.location.origin).pathname.replace(/\/$/, "") || "/";
+      var exact = link.hasAttribute("data-nav-exact");
+      if ((exact && path === href) || (!exact && href !== "/" && (path === href || path.indexOf(href + "/") === 0))) {
+        link.classList.add("is-active");
+        link.setAttribute("aria-current", "page");
+      }
+    });
+  })();
+
   // Zakladki na karcie maszyny.
   document.querySelectorAll("[data-tabs]").forEach(function (root) {
     var buttons = root.querySelectorAll(".tab-button");

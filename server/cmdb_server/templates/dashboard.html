@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Pulpit - CMDB{% endblock %}
 {% block content %}
-<h1>Pulpit</h1>
+<header class="dashboard-head">
+  <h1>Pulpit</h1>
+  <p class="muted">Najważniejsze informacje o zasobach, agentach i ostatnich zmianach.</p>
+</header>
 
-<section class="cards">
+<section class="cards dashboard-cards">
   {# "Maszyn" bylo nietrafione: w ewidencji sa tez monitory i sprzet sieciowy,
      ktore maszynami nie sa. Obok stoi liczba tych z agentem, bo to ona
      rzadzi wieksza czescia panelu. #}
@@ -25,6 +28,7 @@
   </a>
 </section>
 
+<div class="dashboard-section-grid">
 {% if by_typ %}
 <section class="panel">
   <h2>Rodzaje sprzętu</h2>
@@ -47,6 +51,7 @@
   </ul>
 </section>
 {% endif %}
+</div>
 
 {% if reczne %}
 <section class="panel">

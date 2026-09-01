@@ -1,10 +1,5 @@
-{#
-  Uklad panelu glownego administratora.
-
-  Celowo osobny od ukladu firmowego: superadmin zarzadza systemem, a nie
-  ogląda inwentarz jednej organizacji. Wspolna nawigacja mieszala te dwie
-  role i kazala domyslac sie, w czyim kontekscie sie jest.
-#}
+{# Osobny układ administratora głównego: funkcje systemowe nie mieszają się
+   z codzienną obsługą zasobów pojedynczej firmy. #}
 <!doctype html>
 <html lang="pl"{% if motyw %} data-theme="{{ motyw }}"{% endif %}>
 <head>
@@ -15,39 +10,54 @@
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
 </head>
-<body class="admin-scope">
-<header class="topbar topbar-admin">
-  <div class="brand"><a href="/admin">CMDB <span class="brand-tag">administracja</span></a></div>
-  <nav class="mainnav">
-    <a href="/admin" {% if strona == 'przeglad' %}class="is-active"{% endif %}>Przegląd</a>
-    <a href="/admin/firmy" {% if strona == 'firmy' %}class="is-active"{% endif %}>Firmy i konta</a>
-    <a href="/admin/wersje" {% if strona == 'wersje' %}class="is-active"{% endif %}>Wersje agentów</a>
-    <a href="/admin/podatnosci" {% if strona == 'podatnosci' %}class="is-active"{% endif %}>Podatności</a>
-    <a href="/admin/audyt" {% if strona == 'audyt' %}class="is-active"{% endif %}>Audyt</a>
-    <a href="/pomoc">Pomoc</a>
-  </nav>
-  <div class="userbox">
-    <button type="button" class="motyw" data-motyw
-            title="Motyw: automatyczny / jasny / ciemny">
-      <span class="motyw-ikona motyw-auto">auto</span>
-      <span class="motyw-ikona motyw-jasny">jasny</span>
-      <span class="motyw-ikona motyw-ciemny">ciemny</span>
+<body class="app-layout admin-scope sidebar-collapsed">
+<div class="app-shell" data-sidebar-shell>
+  <aside class="app-sidebar app-sidebar-admin" aria-label="Menu administratora głównego">
+    <div class="sidebar-brand">
+      <a href="/admin" class="sidebar-logo" aria-label="CMDB — administracja">C</a>
+      <a href="/admin" class="sidebar-brand-name">CMDB <span>administracja</span></a>
+    </div>
+    <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-expanded="false" title="Rozwiń menu">
+      <span class="nav-icon" aria-hidden="true">☰</span><span class="nav-label">Rozwiń menu</span>
     </button>
-    <a class="user-email" href="/konto" title="Moje konto i zmiana hasła">{{ user.email }}</a>
-    <form method="post" action="/logout" class="inline-form">
-      <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
-    </form>
+
+    <nav class="app-nav">
+      <div class="nav-group-label">Start</div>
+      <a class="app-nav-link{% if strona == 'przeglad' %} is-active{% endif %}" href="/admin" title="Przegląd" data-nav-exact><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">Przegląd</span></a>
+
+      <div class="nav-group-label">Zarządzanie systemem</div>
+      <a class="app-nav-link{% if strona == 'firmy' %} is-active{% endif %}" href="/admin/firmy" title="Firmy i konta"><span class="nav-icon" aria-hidden="true">▦</span><span class="nav-label">Firmy i konta</span></a>
+      <a class="app-nav-link{% if strona == 'wersje' %} is-active{% endif %}" href="/admin/wersje" title="Wydania agentów"><span class="nav-icon" aria-hidden="true">↥</span><span class="nav-label">Wydania agentów</span></a>
+      <a class="app-nav-link{% if strona == 'podatnosci' %} is-active{% endif %}" href="/admin/podatnosci" title="Podatności"><span class="nav-icon" aria-hidden="true">!</span><span class="nav-label">Podatności</span></a>
+
+      <div class="nav-group-label">Nadzór</div>
+      <a class="app-nav-link{% if strona == 'audyt' %} is-active{% endif %}" href="/admin/audyt" title="Pełny audyt"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Pełny audyt</span></a>
+    </nav>
+
+    <nav class="sidebar-bottom" aria-label="Nawigacja dodatkowa">
+      <a class="app-nav-link" href="/pomoc" title="Pomoc i podręcznik"><span class="nav-icon" aria-hidden="true">?</span><span class="nav-label">Pomoc i podręcznik</span></a>
+    </nav>
+  </aside>
+
+  <button type="button" class="sidebar-backdrop" data-sidebar-close aria-label="Zamknij menu"></button>
+  <div class="app-workspace">
+    <header class="topbar topbar-admin">
+      <div class="topbar-context">
+        <button type="button" class="topbar-menu" data-sidebar-toggle aria-expanded="false" title="Rozwiń menu" aria-label="Rozwiń menu">☰</button>
+        <div><span class="topbar-scope">CMDB</span><strong>Administrator główny</strong></div>
+      </div>
+      <div class="userbox">
+        <button type="button" class="motyw" data-motyw title="Motyw: automatyczny / jasny / ciemny">
+          <span class="motyw-ikona motyw-auto">auto</span><span class="motyw-ikona motyw-jasny">jasny</span><span class="motyw-ikona motyw-ciemny">ciemny</span>
+        </button>
+        <a class="user-email" href="/konto" title="Moje konto i zmiana hasła">{{ user.email }}</a>
+        <form method="post" action="/logout" class="inline-form"><button type="submit" class="btn btn-small btn-ghost">Wyloguj</button></form>
+      </div>
+    </header>
+    <main class="content">{% block content %}{% endblock %}</main>
+    <footer class="footer">CMDB &middot; panel głównego administratora &middot; widok obejmuje wszystkie firmy &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span></footer>
   </div>
-</header>
-
-<main class="content">
-  {% block content %}{% endblock %}
-</main>
-
-<footer class="footer">
-  CMDB &middot; panel głównego administratora &middot; widok obejmuje wszystkie firmy
-  &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span>
-</footer>
-<script src="/static/app.js"></script>
+</div>
+<script src="{{ zasob('app.js') }}"></script>
 </body>
 </html>

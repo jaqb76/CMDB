@@ -182,6 +182,52 @@ def test_przelacznik_jest_w_obu_panelach(client, tenant_a, make_user):
     assert "data-motyw" in client.get("/admin").text
 
 
+# --- zwijane menu i nowy pulpit ---------------------------------------------
+
+def test_zwijane_menu_jest_w_obu_panelach(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "menu@firma.pl", "haslo-do-testow-123")
+    _login(client, "menu@firma.pl", "haslo-do-testow-123")
+
+    portal = client.get("/").text
+    assert 'data-sidebar-shell' in portal
+    assert 'data-sidebar-toggle' in portal
+    assert 'class="app-layout sidebar-collapsed"' in portal
+    assert "Wszystkie zasoby" in portal
+    assert "Wykrywanie sieci" in portal
+
+    make_user(None, "root@menu.pl", "haslo-do-testow-123")
+    _login(client, "root@menu.pl", "haslo-do-testow-123")
+    administracja = client.get("/admin").text
+    assert 'data-sidebar-shell' in administracja
+    assert 'data-sidebar-toggle' in administracja
+    assert "Firmy i konta" in administracja
+    assert "Wydania agentów" in administracja
+    # Administrator glowny dostaje wlasne menu systemowe, bez pozycji
+    # operacyjnych konkretnej firmy.
+    assert "Wykrywanie sieci" not in administracja
+
+
+def test_pulpit_jest_nowym_widokiem_startowym(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "start@firma.pl", "haslo-do-testow-123")
+    _login(client, "start@firma.pl", "haslo-do-testow-123")
+
+    strona = client.get("/").text
+    assert "dashboard-head" in strona
+    assert "dashboard-cards" in strona
+    assert "Najważniejsze informacje o zasobach" in strona
+
+
+def test_skrypt_pamieta_szerokosc_menu():
+    from pathlib import Path
+
+    skrypt = (Path(__file__).resolve().parent.parent
+              / "cmdb_server" / "static" / "app.js").read_text(encoding="utf-8")
+    assert "cmdb_sidebar_expanded" in skrypt
+    assert "localStorage" in skrypt
+    assert "sidebar-mobile-open" in skrypt
+    assert "max-width: 760px" in skrypt
+
+
 # --- ikona ------------------------------------------------------------------
 
 def test_favicon_jest_wydawany(client):
