@@ -368,3 +368,42 @@ def test_prawa_strona_paska_nie_zawija(client, tenant_a, make_user):
     assert "flex-wrap: nowrap" in fragment
     # Adres skraca sie zamiast rozpychac pasek.
     assert "text-overflow: ellipsis" in styl.split(".user-email {")[1].split("}")[0]
+
+# --- przelaczanie klasycznego i nowego ukladu -------------------------------
+
+def test_uzytkownik_moze_przelaczac_stary_i_nowy_layout(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "layout@firma.pl", "haslo-do-testow-123")
+    _login(client, "layout@firma.pl", "haslo-do-testow-123")
+
+    nowy = client.get("/").text
+    assert 'data-sidebar-shell' in nowy
+    assert 'data-layout-switch="classic"' in nowy
+    assert "Najważniejsze informacje o zasobach" in nowy
+
+    client.cookies.set("cmdb_layout", "classic")
+    klasyczny = client.get("/").text
+    assert 'data-sidebar-shell' not in klasyczny
+    assert 'class="mainnav"' in klasyczny
+    assert 'data-layout-switch="modern"' in klasyczny
+    assert "Najważniejsze informacje o zasobach" not in klasyczny
+
+    make_user(None, "root-layout@cmdb.pl", "haslo-do-testow-123")
+    _login(client, "root-layout@cmdb.pl", "haslo-do-testow-123")
+    klasyczny_admin = client.get("/admin").text
+    assert 'data-sidebar-shell' not in klasyczny_admin
+    assert 'data-layout-switch="modern"' in klasyczny_admin
+
+
+def test_rozwiniete_menu_nie_miga_przy_przejsciu_miedzy_stronami():
+    from pathlib import Path
+
+    katalog = Path(__file__).resolve().parent.parent / "cmdb_server"
+    portal = (katalog / "templates" / "base_modern.html").read_text(encoding="utf-8")
+    administracja = (katalog / "templates" / "base_admin_modern.html").read_text(encoding="utf-8")
+    skrypt = (katalog / "static" / "app.js").read_text(encoding="utf-8")
+
+    for szablon in (portal, administracja):
+        assert 'localStorage.getItem("cmdb_sidebar_expanded")' in szablon
+        assert szablon.index('localStorage.getItem("cmdb_sidebar_expanded")') < szablon.index('data-sidebar-shell')
+    assert "data-layout-switch" in skrypt
+    assert "cmdb_layout=" in skrypt

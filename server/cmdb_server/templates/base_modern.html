@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pl"{% if motyw %} data-theme="{{ motyw }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CMDB{% endblock %}</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="{{ zasob('app.css') }}">
+</head>
+<body class="app-layout sidebar-collapsed">
+<script>
+  // Ustaw szerokosc przed narysowaniem menu, aby nie migalo przy nawigacji.
+  (function () {
+    try {
+      if (window.matchMedia("(min-width: 761px)").matches &&
+          window.localStorage.getItem("cmdb_sidebar_expanded") === "1") {
+        document.body.classList.remove("sidebar-collapsed");
+      }
+    } catch (e) { /* localStorage moze byc niedostepny w trybie prywatnym. */ }
+  })();
+</script>
+<div class="app-shell" data-sidebar-shell>
+  <aside class="app-sidebar" aria-label="Menu portalu firmowego">
+    <div class="sidebar-brand">
+      <a href="/" class="sidebar-logo" aria-label="CMDB — pulpit">C</a>
+      <a href="/" class="sidebar-brand-name">CMDB Portal</a>
+    </div>
+    <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-expanded="false" title="Rozwiń menu">
+      <span class="nav-icon" aria-hidden="true">☰</span><span class="nav-label">Rozwiń menu</span>
+    </button>
+
+    <nav class="app-nav">
+      <div class="nav-group-label">Start</div>
+      <a class="app-nav-link" href="/" title="Pulpit" data-nav-exact><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">Pulpit</span></a>
+
+      <div class="nav-group-label">Zasoby</div>
+      <a class="app-nav-link" href="/assets" title="Wszystkie zasoby"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Wszystkie zasoby</span></a>
+      <a class="app-nav-link" href="/relacje" title="Relacje i zależności"><span class="nav-icon" aria-hidden="true">⇄</span><span class="nav-label">Relacje i zależności</span></a>
+
+      <div class="nav-group-label">Monitorowanie</div>
+      <a class="app-nav-link" href="/zmiany" title="Ostatnie zmiany"><span class="nav-icon" aria-hidden="true">↻</span><span class="nav-label">Ostatnie zmiany</span></a>
+      <a class="app-nav-link" href="/wykrywanie" title="Wykrywanie sieci"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Wykrywanie sieci</span></a>
+      <a class="app-nav-link" href="/jakosc" title="Jakość danych"><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-label">Jakość danych</span></a>
+
+      <div class="nav-group-label">Analiza</div>
+      <a class="app-nav-link" href="/raporty" title="Raporty"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Raporty</span></a>
+      <a class="app-nav-link" href="/audit" title="Audyt operacji"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Audyt operacji</span></a>
+
+      <div class="nav-group-label">Agenty</div>
+      <a class="app-nav-link" href="/tokens" title="Tokeny agentów"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Tokeny agentów</span></a>
+      <a class="app-nav-link" href="/pobierz" title="Instalacja agenta"><span class="nav-icon" aria-hidden="true">↓</span><span class="nav-label">Instalacja agenta</span></a>
+      {% if ctx and ctx.can_write %}
+      <a class="app-nav-link" href="/wersje-agentow" title="Wersje agentów"><span class="nav-icon" aria-hidden="true">↥</span><span class="nav-label">Wersje agentów</span></a>
+      {% endif %}
+
+      <div class="nav-group-label">Konfiguracja</div>
+      <a class="app-nav-link" href="/slowniki" title="Słowniki"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">Słowniki</span></a>
+    </nav>
+
+    <nav class="sidebar-bottom" aria-label="Nawigacja dodatkowa">
+      <a class="app-nav-link" href="#" data-layout-switch="classic" title="Przełącz na klasyczny układ"><span class="nav-icon" aria-hidden="true">↶</span><span class="nav-label">Klasyczny widok</span></a>
+      {% if user.is_superadmin %}
+      <a class="app-nav-link nav-system" href="/admin" title="Administracja główna"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Administracja główna</span></a>
+      {% endif %}
+      <a class="app-nav-link" href="/pomoc" title="Pomoc i podręcznik"><span class="nav-icon" aria-hidden="true">?</span><span class="nav-label">Pomoc i podręcznik</span></a>
+    </nav>
+  </aside>
+
+  <button type="button" class="sidebar-backdrop" data-sidebar-close aria-label="Zamknij menu"></button>
+  <div class="app-workspace">
+    <header class="topbar">
+      <div class="topbar-context">
+        <button type="button" class="topbar-menu" data-sidebar-toggle aria-expanded="false" title="Rozwiń menu" aria-label="Rozwiń menu">☰</button>
+        <div><span class="topbar-scope">Portal firmowy</span>{% if ctx %}<strong>{{ ctx.tenant_slug }}</strong>{% endif %}</div>
+      </div>
+      <div class="userbox">
+        <button type="button" class="motyw" data-motyw title="Motyw: automatyczny / jasny / ciemny">
+          <span class="motyw-ikona motyw-auto">auto</span><span class="motyw-ikona motyw-jasny">jasny</span><span class="motyw-ikona motyw-ciemny">ciemny</span>
+        </button>
+        {% if user.is_superadmin and all_tenants %}
+          <form method="get" action="/switch-tenant" class="inline-form">
+            <select name="slug" class="tenant-select" data-autosubmit aria-label="Aktywna firma">
+              {% for t in all_tenants %}<option value="{{ t.slug }}" {% if ctx and t.id == ctx.tenant_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn btn-small" data-zapasowy>Zmień</button>
+          </form>
+        {% endif %}
+        {% if user.is_global_viewer %}<span class="badge badge-warn" title="Konto widzi wszystkie firmy, ale niczego w nich nie zmienia">tylko odczyt</span>{% endif %}
+        <a class="user-email" href="/konto" title="Moje konto i zmiana hasła">{{ user.email }}</a>
+        <form method="post" action="/logout" class="inline-form"><button type="submit" class="btn btn-small btn-ghost">Wyloguj</button></form>
+      </div>
+    </header>
+    <main class="content">{% block content %}{% endblock %}</main>
+    <footer class="footer">CMDB {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wyłącznie dla Twojej firmy &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span></footer>
+  </div>
+</div>
+<script src="{{ zasob('app.js') }}"></script>
+{% block skrypty %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Pulpit - CMDB{% endblock %}
+{% block content %}
+<h1>Pulpit</h1>
+
+<section class="cards">
+  {# "Maszyn" bylo nietrafione: w ewidencji sa tez monitory i sprzet sieciowy,
+     ktore maszynami nie sa. Obok stoi liczba tych z agentem, bo to ona
+     rzadzi wieksza czescia panelu. #}
+  <a class="card" href="/assets">
+    <div class="card-value">{{ total }}</div>
+    <div class="card-label">wpisów w ewidencji</div>
+  </a>
+  <a class="card" href="/assets?zrodlo=agent">
+    <div class="card-value">{{ z_agentem }}</div>
+    <div class="card-label">z zainstalowanym agentem</div>
+  </a>
+  <a class="card {% if stale %}card-warn{% endif %}" href="/assets?state=stale">
+    <div class="card-value">{{ stale }}</div>
+    <div class="card-label">bez kontaktu &gt; {{ stale_after_hours }} h</div>
+  </a>
+  <a class="card {% if unassigned %}card-warn{% endif %}" href="/assets?owner=none">
+    <div class="card-value">{{ unassigned }}</div>
+    <div class="card-label">bez przypisanego opiekuna</div>
+  </a>
+</section>
+
+{% if by_typ %}
+<section class="panel">
+  <h2>Rodzaje sprzętu</h2>
+  <ul class="chips">
+    {% for rodzaj, ile in by_typ %}
+      <li><a class="chip" href="/assets?typ={{ rodzaj or '' }}">{{ typy.get(rodzaj, rodzaj or 'nieokreslony') }} <b>{{ ile }}</b></a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if by_os %}
+<section class="panel">
+  <h2>Systemy operacyjne</h2>
+  <p class="muted small">Wyłącznie sprzęt z agentem — monitor ani przełącznik nie maja systemu.</p>
+  <ul class="chips">
+    {% for family, count in by_os %}
+      <li><a class="chip" href="/assets?os_family={{ family or '' }}">{{ family or 'nieznany' }} <b>{{ count }}</b></a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if reczne %}
+<section class="panel">
+  <h2>Wpisy ręczne</h2>
+  <p class="muted small">
+    Sprzęt bez agenta: monitory, przełączniki, drukarki. Opisuje go wyłącznie
+    to, co wpisał człowiek, więc data mówi o ostatniej zmianie wpisu.
+  </p>
+  <table class="table">
+    <thead><tr><th>Wpis</th><th>Rodzaj</th><th>Lokalizacja</th><th>Opiekun</th><th>Zmieniony</th></tr></thead>
+    <tbody>
+    {% for a in reczne %}
+      <tr>
+        <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
+        <td class="small">{{ typy.get(a.typ, a.typ or '—') }}</td>
+        <td class="small">{% if a.lokalizacja %}{{ a.lokalizacja.wartosc }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="small">{{ a.owner.wartosc if a.owner else '—' }}</td>
+        <td class="muted small">{{ a.last_seen | ago }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<div class="two-col">
+  <section class="panel">
+    <h2>Ostatni kontakt</h2>
+    {% if recent %}
+    <table class="table">
+      <thead><tr><th>Maszyna</th><th>Rodzaj</th><th>System</th><th>Opiekun</th><th>Widziana</th></tr></thead>
+      <tbody>
+      {% for a in recent %}
+        <tr>
+          <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
+          <td class="small">{{ typy.get(a.typ, a.typ or '—') }}</td>
+          <td>{{ a.os_name or a.os_family or '-' }}</td>
+          <td>{{ a.owner.wartosc if a.owner else '—' }}</td>
+          <td class="muted">{{ a.last_seen | ago }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">Żaden agent jeszcze się nie zgłosił. Wygeneruj token w zakładce
+        <a href="/tokens">Tokeny agentów</a> i zainstaluj agenta na maszynie.</p>
+    {% endif %}
+    <p class="muted small">
+      Zgłoszenia agentów. Wpisy ręczne się nie zgłaszają, więc sa niżej —
+      data przy nich mówiłaby o kontakcie, którego nie było.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Ostatnie zmiany konfiguracji</h2>
+    {% if changed %}
+    <table class="table">
+      <thead><tr><th>Maszyna</th><th>Zmiana</th></tr></thead>
+      <tbody>
+      {% for a in changed %}
+        <tr>
+          <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
+          <td class="muted">{{ a.last_change_at | ago }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">Brak zarejestrowanych zmian.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

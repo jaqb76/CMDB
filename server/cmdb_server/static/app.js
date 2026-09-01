@@ -513,3 +513,17 @@
   })();
 
 })();
+
+// Przelaczanie pelnego ukladu portalu. Wybor dotyczy portalu firmowego i
+// panelu administratora oraz jest zachowany pomiedzy kolejnymi stronami.
+(function () {
+  "use strict";
+  document.querySelectorAll("[data-layout-switch]").forEach(function (button) {
+    button.addEventListener("click", function (event) {
+      event.preventDefault();
+      var layout = button.getAttribute("data-layout-switch") === "classic" ? "classic" : "modern";
+      document.cookie = "cmdb_layout=" + layout + "; Path=/; Max-Age=31536000; SameSite=Lax";
+      window.location.reload();
+    });
+  });
+})();

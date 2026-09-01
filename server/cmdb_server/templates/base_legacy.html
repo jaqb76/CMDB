@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pl"{% if motyw %} data-theme="{{ motyw }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CMDB{% endblock %}</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="{{ zasob('app.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><a href="/">CMDB</a></div>
+  <nav class="mainnav">
+    <a href="/">Pulpit</a>
+    <a href="/assets">Sprzęt</a>
+    <a href="/zmiany">Zmiany</a>
+    <a href="/relacje">Relacje</a>
+    <a href="/wykrywanie">Wykrywanie sieci</a>
+    <a href="/jakosc">Jakość danych</a>
+        <a href="/slowniki">Słowniki</a>
+    <a href="/tokens">Tokeny agentów</a>
+    <a href="/pobierz">Instalacja agenta</a>
+    {% if ctx and ctx.can_write %}<a href="/wersje-agentow">Wersje agentów</a>{% endif %}
+    <a href="/raporty">Raporty</a>
+    <a href="/audit">Audyt</a>
+    <a href="/pomoc">Pomoc</a>
+  </nav>
+  <div class="userbox">
+    <button type="button" class="btn btn-small btn-ghost" data-layout-switch="modern" title="Przełącz na nowy układ">Nowy widok</button>
+    <button type="button" class="motyw" data-motyw
+            title="Motyw: automatyczny / jasny / ciemny">
+      <span class="motyw-ikona motyw-auto">auto</span>
+      <span class="motyw-ikona motyw-jasny">jasny</span>
+      <span class="motyw-ikona motyw-ciemny">ciemny</span>
+    </button>
+    {% if user.is_superadmin %}
+      <a href="/admin" class="btn btn-small nav-admin">&larr; Administracja</a>
+    {% endif %}
+    {% if user.is_superadmin and all_tenants %}
+      <form method="get" action="/switch-tenant" class="inline-form">
+        <select name="slug" class="tenant-select" data-autosubmit>
+          {% for t in all_tenants %}
+            <option value="{{ t.slug }}" {% if ctx and t.id == ctx.tenant_id %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        {# Zapasowy przycisk: lista sama wysyla formularz, wiec przy dzialajacym
+           skrypcie jest zbedny i tylko rozpycha pasek. Bez skryptu zostaje. #}
+        <button type="submit" class="btn btn-small" data-zapasowy>Zmień</button>
+      </form>
+    {% elif ctx %}
+      <span class="tenant-name">{{ ctx.tenant_slug }}</span>
+    {% endif %}
+    {% if user.is_global_viewer %}
+      <span class="badge badge-warn" title="Konto widzi wszystkie firmy, ale niczego w nich nie zmienia">tylko odczyt</span>
+    {% endif %}
+    <a class="user-email" href="/konto" title="Moje konto i zmiana hasła">{{ user.email }}</a>
+    <form method="post" action="/logout" class="inline-form">
+      <button type="submit" class="btn btn-small btn-ghost">Wyloguj</button>
+    </form>
+  </div>
+</header>
+
+<main class="content">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  CMDB {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wyłącznie dla Twojej firmy
+  &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span>
+</footer>
+<script src="{{ zasob('app.js') }}"></script>
+{% block skrypty %}{% endblock %}
+</body>
+</html>
