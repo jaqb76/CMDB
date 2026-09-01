@@ -79,6 +79,13 @@ KATALOG_W_ARCHIWUM = "cmdb-agent"
 # aktualizacja ma dotyczyc instalacji, a nie czyjegos katalogu roboczego.
 ZNACZNIK_INSTALACJI = ".cmdb-instalacja"
 
+# Katalog, w ktorym instalator zaklada agenta na Linuksie (KATALOG_PROGRAMU
+# w install-agent.sh). Sam ten adres jest juz dowodem instalacji: nikt nie
+# trzyma tam kopii roboczej repozytorium. Znacznik pojawil sie pozniej niz
+# instalator, wiec maszyny postawione wczesniej go nie maja - a to nie powod,
+# zeby zostawily je bez aktualizacji.
+KATALOG_INSTALACJI = Path("/opt/cmdb-agent")
+
 
 class UpgradeError(Exception):
     """Aktualizacja nie doszla do skutku - agent pracuje dalej na starej wersji."""
@@ -232,7 +239,7 @@ def zastosuj(config, state, client: CmdbClient) -> str | None:
     poboczna wzgledem glownego zadania agenta.
     """
     biezacy = wlasny_plik()
-    korzen = katalog_instalacji() if biezacy is None else None
+    korzen, powod_braku = (None, None) if biezacy is not None else diagnoza_instalacji()
 
     if biezacy is not None:
         posprzataj_poprzednia(biezacy)
@@ -247,7 +254,7 @@ def zastosuj(config, state, client: CmdbClient) -> str | None:
     zrodla = oferta.get("kind") == RODZAJ_ZRODLA
     przeszkoda = None
     if biezacy is None and korzen is None:
-        przeszkoda = (
+        przeszkoda = powod_braku or (
             "agent nie dziala z instalacji zalozonej instalatorem - "
             "uruchom ponownie install-agent.sh"
         )
@@ -346,23 +353,51 @@ def uruchom_ponownie(argumenty: list[str]) -> int:
 
 # --- instalacja ze zrodel ---------------------------------------------------
 
-def katalog_instalacji() -> Path | None:
-    """Katalog, w ktorym agent jest zainstalowany ze zrodel.
+def diagnoza_instalacji() -> tuple[Path | None, str | None]:
+    """Katalog instalacji ze zrodel albo POWOD, dla ktorego nim nie jest.
 
-    Zwraca sciezke tylko wtedy, gdy to faktycznie instalacja zalozona przez
-    instalator - poznajemy ja po pliku-znaczniku. Bez tego warunku agent
-    uruchomiony z kopii repozytorium podmienialby katalog roboczy
-    programisty, a to nie jest aktualizacja, tylko utrata pracy.
+    Powod jest tu rownie wazny jak sciezka. Agent zglasza go serwerowi, a on
+    trafia do panelu - jedno zdanie "agent nie dziala z instalacji zalozonej
+    instalatorem" nie pozwalalo odroznic braku znacznika od braku prawa
+    zapisu, wiec z panelu nie dalo sie dojsc, co naprawic.
+
+    Instalacje poznajemy po pliku-znaczniku ALBO po tym, ze agent lezy
+    w katalogu, w ktorym stawia go instalator. Sam znacznik nie wystarczal:
+    pojawil sie pozniej niz instalator, wiec maszyny postawione wczesniej
+    odrzucaly kazda aktualizacje i nie mialy jak z tego wyjsc.
     """
     if getattr(sys, "frozen", False):
-        return None
+        return None, "agent dziala z pliku wykonywalnego, nie ze zrodel"
+
     korzen = Path(__file__).resolve().parent.parent
     if not (korzen / ZNACZNIK_INSTALACJI).is_file():
-        log.debug("brak znacznika instalacji w %s - aktualizacja ze zrodel pominieta", korzen)
-        return None
+        if korzen != KATALOG_INSTALACJI:
+            return None, (
+                f"katalog {korzen} nie wyglada na instalacje agenta - brakuje "
+                f"znacznika {ZNACZNIK_INSTALACJI}; uruchom install-agent.sh"
+            )
+        # Instalacja sprzed wprowadzenia znacznika. Odtwarzamy go, zeby przy
+        # nastepnym przebiegu nie trzeba bylo tego ustalac ponownie.
+        try:
+            (korzen / ZNACZNIK_INSTALACJI).write_text(
+                "odtworzony przez agenta", encoding="utf-8")
+            log.info("odtworzylem znacznik instalacji w %s", korzen)
+        except OSError as exc:
+            return None, f"nie moge zalozyc znacznika instalacji w {korzen}: {exc}"
+
     if not os.access(korzen, os.W_OK):
-        log.debug("katalog %s nie jest zapisywalny - aktualizacja pominieta", korzen)
-        return None
+        return None, (
+            f"katalog {korzen} nie jest zapisywalny dla uzytkownika, "
+            f"na ktorym dziala usluga (uid {getattr(os, 'geteuid', lambda: '?')()})"
+        )
+    return korzen, None
+
+
+def katalog_instalacji() -> Path | None:
+    """Katalog instalacji ze zrodel albo None. Powod pomija - patrz wyzej."""
+    korzen, powod = diagnoza_instalacji()
+    if powod:
+        log.debug("aktualizacja ze zrodel pominieta: %s", powod)
     return korzen
 
 

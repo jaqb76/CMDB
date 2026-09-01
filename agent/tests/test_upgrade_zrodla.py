@@ -209,7 +209,11 @@ class _StanAtrapa:
 
 def _zastosuj(monkeypatch, klient, frozen=False, korzen=None):
     monkeypatch.setattr(upgrade, "wlasny_plik", lambda: Path("/tmp/agent.exe") if frozen else None)
-    monkeypatch.setattr(upgrade, "katalog_instalacji", lambda: korzen)
+    # Powod odmowy jest czescia odpowiedzi - panel pokazuje go przy maszynie.
+    monkeypatch.setattr(
+        upgrade, "diagnoza_instalacji",
+        lambda: (korzen, None) if korzen else (
+            None, "brak instalacji ze zrodel - uruchom install-agent.sh"))
     monkeypatch.setattr(upgrade, "sprawdz_oferte", lambda c, t: klient.oferta)
     zgloszone = []
     monkeypatch.setattr(
@@ -295,3 +299,56 @@ def test_usluga_jest_jednorazowa():
     tresc = _tresc_instalatora()
     assert "Type=oneshot" in tresc
     assert "RemainAfterExit" not in tresc
+
+
+# --- diagnoza instalacji ----------------------------------------------------
+
+def test_kanoniczny_katalog_jest_instalacja_bez_znacznika(tmp_path, monkeypatch):
+    """Znacznik pojawil sie pozniej niz instalator. Maszyny postawione
+    wczesniej odrzucaly KAZDA aktualizacje - w panelu widac bylo 'agent nie
+    dziala z instalacji zalozonej instalatorem' przy maszynie, ktora wlasnie
+    z instalatora pochodzila, i nie bylo z tego wyjscia."""
+    korzen = tmp_path / "opt-cmdb-agent"
+    (korzen / "cmdb_agent").mkdir(parents=True)
+    monkeypatch.setattr(upgrade, "__file__", str(korzen / "cmdb_agent" / "upgrade.py"))
+    monkeypatch.setattr(upgrade, "KATALOG_INSTALACJI", korzen.resolve())
+
+    sciezka, powod = upgrade.diagnoza_instalacji()
+    assert sciezka == korzen.resolve()
+    assert powod is None
+    # Znacznik zostaje odtworzony, zeby nie ustalac tego przy kazdym przebiegu.
+    assert (korzen / upgrade.ZNACZNIK_INSTALACJI).is_file()
+
+
+def test_powod_odmowy_mowi_czego_brakuje(tmp_path, monkeypatch):
+    """Panel dostawal jedno zdanie na wszystkie przypadki, wiec nie dalo sie
+    odroznic braku znacznika od braku prawa zapisu."""
+    korzen = tmp_path / "gdzies-indziej"
+    (korzen / "cmdb_agent").mkdir(parents=True)
+    monkeypatch.setattr(upgrade, "__file__", str(korzen / "cmdb_agent" / "upgrade.py"))
+
+    sciezka, powod = upgrade.diagnoza_instalacji()
+    assert sciezka is None
+    assert str(korzen) in powod and upgrade.ZNACZNIK_INSTALACJI in powod
+
+
+def test_powod_trafia_do_zgloszenia_dla_serwera(tmp_path, monkeypatch):
+    """To ten napis widac w panelu przy maszynie - musi mowic, co naprawic."""
+    korzen = tmp_path / "gdzies-indziej"
+    (korzen / "cmdb_agent").mkdir(parents=True)
+    monkeypatch.setattr(upgrade, "__file__", str(korzen / "cmdb_agent" / "upgrade.py"))
+    monkeypatch.setattr(upgrade, "wlasny_plik", lambda: None)
+    monkeypatch.setattr(upgrade, "sprawdz_oferte",
+                        lambda *a, **k: {"version": "0.6.40+1", "kind": upgrade.RODZAJ_ZRODLA})
+
+    zgloszone = {}
+    monkeypatch.setattr(upgrade, "_zglos",
+                        lambda client, token, wersja, stan, detal=None: zgloszone.update(
+                            {"wersja": wersja, "stan": stan, "detal": detal}))
+
+    class _Stan:
+        agent_token = "t"
+
+    assert upgrade.zastosuj(object(), _Stan(), object()) is None
+    assert zgloszone["stan"] == "odrzucona"
+    assert str(korzen) in zgloszone["detal"]

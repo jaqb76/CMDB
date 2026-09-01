@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Agent na Linuksie nie odrzuca juz aktualizacji w katalogu /opt/cmdb-agent, gdy brakuje w nim znacznika instalacji, a powod odmowy podaje wprost - ze sciezka i brakujacym plikiem."
+}
