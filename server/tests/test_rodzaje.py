@@ -249,3 +249,29 @@ def test_skrypt_przestawia_pola_bez_przeladowania():
               / "cmdb_server" / "static" / "app.js").read_text(encoding="utf-8")
     assert "data-rodzaj-sprzetu" in skrypt
     assert "data-pola-rodzaju-lista" in skrypt
+
+
+def test_formularz_dodawania_jest_zwiezly(client, tenant_a, make_user):
+    """Nazwa, rola i uwagi opisywaly to samo trzy razy, a uzytkownik przy
+    monitorze nie znaczy nic. Zostaje niezbedne minimum."""
+    _admin_firmy(client, tenant_a, make_user)
+    strona = client.get("/assets/nowy").text
+
+    assert 'name="rola"' not in strona, "role ustawia sie na karcie"
+    assert 'name="uzytkownik_id"' not in strona, "uzytkownika ustawia sie na karcie"
+    assert strona.count('name="uwagi"') == 1, "jedno pole opisowe wystarczy"
+
+    # Trzy listy slownikowe w jednym wierszu zamiast trzech ekranow.
+    assert "grid-3" in strona
+    for pole in ('name="nazwa"', 'name="numer_seryjny"', 'name="ip"',
+                 'name="lokalizacja_id"', 'name="dostawca_id"', 'name="owner_id"'):
+        assert pole in strona, f"{pole} jest potrzebne"
+
+
+def test_adres_ip_i_numer_seryjny_maja_wyjasnienie(client, tenant_a, make_user):
+    """Oba wygladaja na zbedne przy monitorze, a maja funkcje: po numerze wpis
+    laczy sie z agentem, po adresie rozpoznaje go wykrywanie sieci."""
+    _admin_firmy(client, tenant_a, make_user)
+    strona = client.get("/assets/nowy").text
+    assert "połączy się z agentem" in strona
+    assert "wykrywanie sieci rozpozna" in strona

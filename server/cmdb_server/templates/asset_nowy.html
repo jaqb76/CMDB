@@ -49,57 +49,49 @@
       <div>
         <label for="numer_seryjny">Numer seryjny</label>
         <input id="numer_seryjny" name="numer_seryjny" maxlength="128">
+        <div class="small muted">Po nim wpis połączy się z agentem, gdy ten stanie na tym sprzęcie.</div>
       </div>
       <div>
         <label for="ip">Adres IP</label>
         <input id="ip" name="ip" maxlength="64" placeholder="np. 10.10.5.30">
+        <div class="small muted">Po nim wykrywanie sieci rozpozna to urządzenie wśród znalezisk.</div>
       </div>
     </div>
 
-    <label for="lokalizacja_id">Lokalizacja</label>
-    <select id="lokalizacja_id" name="lokalizacja_id">
-      <option value="">— nieprzypisana —</option>
-      {% for l in podpowiedzi.lokalizacja %}<option value="{{ l.id }}">{{ l.wartosc }}</option>{% endfor %}
-    </select>
-
-    <label for="dostawca_id">Dostawca</label>
-    <select id="dostawca_id" name="dostawca_id">
-      <option value="">— nieprzypisany —</option>
-      {% for d in podpowiedzi.dostawca %}<option value="{{ d.id }}">{{ d.wartosc }}</option>{% endfor %}
-    </select>
-    <p class="small muted">
-      Brakujący rekord dodaj i opisz wcześniej w <a href="/slowniki">słownikach firmy</a>.
-    </p>
-
-    <div class="grid-2">
+    {# Trzy listy ze slownika obok siebie: kazda jest jednym wyborem, wiec
+       rozciagniete na cala szerokosc zajmowaly trzy ekrany zamiast jednego
+       wiersza. #}
+    <div class="grid-3">
+      <div>
+        <label for="lokalizacja_id">Lokalizacja</label>
+        <select id="lokalizacja_id" name="lokalizacja_id">
+          <option value="">— nieprzypisana —</option>
+          {% for l in podpowiedzi.lokalizacja %}<option value="{{ l.id }}">{{ l.wartosc }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="dostawca_id">Dostawca</label>
+        <select id="dostawca_id" name="dostawca_id">
+          <option value="">— nieprzypisany —</option>
+          {% for d in podpowiedzi.dostawca %}<option value="{{ d.id }}">{{ d.wartosc }}</option>{% endfor %}
+        </select>
+      </div>
       <div>
         <label for="owner_id">Opiekun</label>
         <select id="owner_id" name="owner_id">
           <option value="">— nieprzypisany —</option>
-          {% for o in owners %}
-            <option value="{{ o.id }}">{{ o.wartosc }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label for="uzytkownik_id">Uzytkownik</label>
-        <select id="uzytkownik_id" name="uzytkownik_id">
-          <option value="">— nieprzypisany —</option>
-          {% for o in owners %}
-            <option value="{{ o.id }}">{{ o.wartosc }}</option>
-          {% endfor %}
+          {% for o in owners %}<option value="{{ o.id }}">{{ o.wartosc }}</option>{% endfor %}
         </select>
       </div>
     </div>
-    {% if not owners %}
-      <p class="small muted">Lista osób jest pusta — dodaj je w <a href="/slowniki?kategoria=osoba">słowniku osób</a>.</p>
-    {% endif %}
-
-    <label for="rola">Rola</label>
-    <input id="rola" name="rola" maxlength="200" placeholder="np. switch dostepowy, drukarka kadr">
+    <p class="small muted">
+      Brakujący rekord dodaj i opisz w <a href="/slowniki">słownikach firmy</a>.
+      Użytkownika i rolę ustawia się na karcie sprzętu — przy dodawaniu rzadko
+      są jeszcze znane.
+    </p>
 
     <label for="uwagi">Uwagi</label>
-    <textarea id="uwagi" name="uwagi" rows="3"></textarea>
+    <textarea id="uwagi" name="uwagi" rows="2"></textarea>
 
     <fieldset class="kolumny-grupa" data-pola-rodzaju hidden>
       <legend data-legenda-rodzaju>Właściwe dla rodzaju</legend>

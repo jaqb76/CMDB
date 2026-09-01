@@ -112,6 +112,10 @@ h2 { font-size: 15px; margin: 0 0 12px; text-transform: uppercase; letter-spacin
 }
 .two-col { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* Trzy listy jednego wyboru obok siebie - rozciagniete na cala szerokosc
+   zajmowaly trzy ekrany zamiast jednego wiersza. */
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 860px) { .grid-3 { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .two-col, .grid-2 { grid-template-columns: 1fr; } }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
