@@ -1,6 +1,7 @@
 package pl.hubzso.cmdb.ui
 
 import android.app.Application
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +57,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import pl.hubzso.cmdb.data.ApiFactory
 import pl.hubzso.cmdb.data.AssetSummary
+import pl.hubzso.cmdb.data.AssetDetail
 import pl.hubzso.cmdb.data.ChangeEntry
 import pl.hubzso.cmdb.data.CmdbApi
 import pl.hubzso.cmdb.data.Dashboard
@@ -80,6 +82,7 @@ data class AppState(
     val user: User? = null,
     val dashboard: Dashboard? = null,
     val assets: List<AssetSummary> = emptyList(),
+    val selectedAsset: AssetDetail? = null,
     val people: List<DictionaryEntry> = emptyList(),
     val changes: List<ChangeEntry> = emptyList(),
     val reports: List<ReportDefinition> = emptyList(),
@@ -166,6 +169,16 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
             .onSuccess { refreshAll() }
     }
 
+    fun openAsset(id: String) = viewModelScope.launch {
+        val service = api ?: return@launch
+        _state.value = _state.value.copy(loading = true, error = null)
+        runCatching { service.asset(id) }
+            .onSuccess { _state.value = _state.value.copy(loading = false, selectedAsset = it) }
+            .onFailure { _state.value = _state.value.copy(loading = false, error = it.userMessage()) }
+    }
+
+    fun closeAsset() { _state.value = _state.value.copy(selectedAsset = null) }
+
     fun clearError() { _state.value = _state.value.copy(error = null) }
 }
 
@@ -176,7 +189,8 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
         when {
             state.restoring -> LoadingScreen()
             state.user == null -> LoginScreen(state.loading, state.error, vm::login, vm::clearError)
-            else -> MainScreen(state, vm::refreshAll, vm::logout, vm::sendReport, vm::clearError)
+            else -> MainScreen(state, vm::refreshAll, vm::logout, vm::sendReport,
+                vm::openAsset, vm::closeAsset, vm::clearError)
         }
     }
 }
@@ -227,14 +241,21 @@ private fun MainScreen(
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     onSendReport: (String) -> Unit,
+    onOpenAsset: (String) -> Unit,
+    onCloseAsset: () -> Unit,
     onErrorShown: () -> Unit,
 ) {
     var section by remember { mutableStateOf(Section.DASHBOARD) }
     val snackbar = remember { SnackbarHostState() }
+    if (state.selectedAsset != null) BackHandler(onBack = onCloseAsset)
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); onErrorShown() } }
     Scaffold(
-        topBar = { TopAppBar(title = { Text(section.label) }, actions = { Button(onClick = onLogout) { Text("Wyloguj") } }) },
-        bottomBar = {
+        topBar = { TopAppBar(
+            title = { Text(state.selectedAsset?.asset?.hostname ?: section.label) },
+            navigationIcon = { if (state.selectedAsset != null) Button(onClick = onCloseAsset) { Text("Wstecz") } },
+            actions = { if (state.selectedAsset == null) Button(onClick = onLogout) { Text("Wyloguj") } },
+        ) },
+        bottomBar = { if (state.selectedAsset == null) {
             NavigationBar {
                 Section.entries.forEach { item ->
                     NavigationBarItem(
@@ -245,13 +266,14 @@ private fun MainScreen(
                     )
                 }
             }
-        },
+        } },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         if (state.loading && state.dashboard == null) LoadingScreen()
+        else if (state.selectedAsset != null) AssetDetailScreen(state.selectedAsset, padding)
         else when (section) {
-            Section.DASHBOARD -> DashboardScreen(state.dashboard, padding, onRefresh)
-            Section.ASSETS -> AssetList(state.assets, padding)
+            Section.DASHBOARD -> DashboardScreen(state.dashboard, padding, onRefresh, onOpenAsset)
+            Section.ASSETS -> AssetList(state.assets, padding, onOpenAsset)
             Section.PEOPLE -> PeopleScreen(state.people, padding)
             Section.CHANGES -> ChangesScreen(state.changes, padding)
             Section.REPORTS -> ReportsScreen(state.reports, padding, state.user?.canWrite == true, onSendReport)
@@ -259,7 +281,7 @@ private fun MainScreen(
     }
 }
 
-@Composable private fun DashboardScreen(data: Dashboard?, padding: PaddingValues, onRefresh: () -> Unit) {
+@Composable private fun DashboardScreen(data: Dashboard?, padding: PaddingValues, onRefresh: () -> Unit, onOpen: (String) -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Metric("Maszyny", data?.total ?: 0, Modifier.weight(1f))
@@ -267,7 +289,7 @@ private fun MainScreen(
             Metric("Bez opiekuna", data?.unassigned ?: 0, Modifier.weight(1f))
         } }
         item { Text("Ostatni kontakt", style = MaterialTheme.typography.titleLarge) }
-        items(data?.recent.orEmpty(), key = { it.id }) { AssetRow(it) }
+        items(data?.recent.orEmpty(), key = { it.id }) { asset -> AssetRow(asset) { onOpen(asset.id) } }
         item { Button(onClick = onRefresh, modifier = Modifier.fillMaxWidth()) { Text("Odśwież") } }
     }
 }
@@ -276,14 +298,66 @@ private fun MainScreen(
     Column(Modifier.padding(14.dp)) { Text(value.toString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold); Text(label) }
 }
 
-@Composable private fun AssetList(data: List<AssetSummary>, padding: PaddingValues) = LazyColumn(
+@Composable private fun AssetList(data: List<AssetSummary>, padding: PaddingValues, onOpen: (String) -> Unit) = LazyColumn(
     Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)
-) { items(data, key = { it.id }) { AssetRow(it) } }
+) { items(data, key = { it.id }) { AssetRow(it) { onOpen(it.id) } } }
 
-@Composable private fun AssetRow(asset: AssetSummary) = Card(Modifier.fillMaxWidth().clickable { }) {
+@Composable private fun AssetRow(asset: AssetSummary, onClick: () -> Unit) = Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
     Column(Modifier.padding(14.dp)) {
         Text(asset.hostname, fontWeight = FontWeight.SemiBold)
         Text(listOfNotNull(asset.primaryIp, asset.osFamily, asset.owner?.value).joinToString(" • "), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable private fun AssetDetailScreen(data: AssetDetail, padding: PaddingValues) = LazyColumn(
+    Modifier.fillMaxSize().padding(padding),
+    contentPadding = PaddingValues(16.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+) {
+    item {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(data.asset.hostname, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                DetailLine("Adres IP", data.asset.primaryIp)
+                DetailLine("System", data.asset.osFamily)
+                DetailLine("Typ", data.asset.type)
+                DetailLine("Źródło", data.asset.source)
+                DetailLine("Opiekun", data.asset.owner?.value)
+                DetailLine("Użytkownik", data.asset.user?.value)
+                DetailLine("Lokalizacja", data.asset.location?.value)
+                DetailLine("Ostatni kontakt", data.asset.lastSeen)
+            }
+        }
+    }
+    if (data.facts.isNotEmpty()) {
+        item { Text("Podsumowanie sprzętu", style = MaterialTheme.typography.titleLarge) }
+        items(data.facts.entries.toList(), key = { it.key }) { (key, value) ->
+            Card(Modifier.fillMaxWidth()) { DetailLine(key, value.toString(), Modifier.padding(14.dp)) }
+        }
+    }
+    if (data.attributes.isNotEmpty()) {
+        item { Text("Dane dodatkowe", style = MaterialTheme.typography.titleLarge) }
+        items(data.attributes.entries.toList(), key = { it.key }) { (key, value) ->
+            Card(Modifier.fillMaxWidth()) { DetailLine(key, value.toString(), Modifier.padding(14.dp)) }
+        }
+    }
+    data.currentReport?.let { report ->
+        item { Text("Pełny raport agenta", style = MaterialTheme.typography.titleLarge) }
+        items(report.entries.toList(), key = { it.key }) { (key, value) ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(key, fontWeight = FontWeight.SemiBold)
+                    Text(value.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun DetailLine(label: String, value: String?, modifier: Modifier = Modifier) {
+    if (!value.isNullOrBlank()) Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontWeight = FontWeight.Medium)
     }
 }
 
