@@ -609,16 +609,34 @@ def asset_list(
 # Trasa /assets/nowy musi byc zadeklarowana PRZED /assets/{asset_id}, bo
 # inaczej "nowy" zostaloby potraktowane jako identyfikator maszyny.
 
+# Nazwa pola w formularzu -> kolumna i maksymalna dlugosc.
+_POLA_RECZNE = {
+    "nazwa": ("hostname", 255),
+    "producent": ("manufacturer", 200),
+    "model": ("model", 200),
+    "numer_seryjny": ("serial_number", 128),
+    "ip": ("primary_ip", 64),
+    "uwagi": ("purchase_notes", None),
+}
+
+
 def _dane_recznego_sprzetu(dane: dict) -> dict:
-    """Pola wspolne dla dodawania i edycji - jedno miejsce na obcinanie dlugosci."""
-    return {
-        "hostname": (dane.get("nazwa") or "").strip()[:255],
-        "manufacturer": (dane.get("producent") or "").strip()[:200] or None,
-        "model": (dane.get("model") or "").strip()[:200] or None,
-        "serial_number": (dane.get("numer_seryjny") or "").strip()[:128] or None,
-        "primary_ip": (dane.get("ip") or "").strip()[:64] or None,
-        "purchase_notes": (dane.get("uwagi") or "").strip() or None,
-    }
+    """Pola wspolne dla dodawania i edycji - jedno miejsce na obcinanie dlugosci.
+
+    Przepisujemy WYLACZNIE to, co formularz faktycznie przyslal. Wczesniej
+    brakujacy klucz dawal None, wiec usuniecie pola z jednego formularza
+    zerowalo wartosc ustawiona w innym - i to bez sladu, bo zapis konczyl sie
+    powodzeniem.
+    """
+    wynik = {}
+    for nazwa, (kolumna, limit) in _POLA_RECZNE.items():
+        if nazwa not in dane:
+            continue
+        wartosc = (dane.get(nazwa) or "").strip()
+        wynik[kolumna] = (wartosc[:limit] if limit else wartosc) or None
+    if "hostname" in wynik and wynik["hostname"] is None:
+        wynik["hostname"] = ""
+    return wynik
 
 
 @router.get("/assets/nowy", response_class=HTMLResponse)
@@ -743,7 +761,6 @@ async def zapisz_dane_sprzetu(
     model: str = Form(""),
     numer_seryjny: str = Form(""),
     ip: str = Form(""),
-    uwagi: str = Form(""),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
@@ -771,7 +788,7 @@ async def zapisz_dane_sprzetu(
 
     pola = _dane_recznego_sprzetu(
         {"nazwa": nazwa, "producent": producent, "model": model,
-         "numer_seryjny": numer_seryjny, "ip": ip, "uwagi": uwagi}
+         "numer_seryjny": numer_seryjny, "ip": ip}
     )
     if not pola["hostname"]:
         raise HTTPException(status_code=400, detail="nazwa jest wymagana")
@@ -811,6 +828,34 @@ async def zapisz_dane_sprzetu(
     if ukryte:
         adres += "?ukryte=" + urllib.parse.quote(", ".join(ukryte))
     return RedirectResponse(adres, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/assets/{asset_id}/uwagi")
+def zapisz_uwagi(
+    asset_id: str,
+    request: Request,
+    uwagi: str = Form(""),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Uwagi maja wlasna zakladke i wlasny zapis.
+
+    Wczesniej to samo pole stalo w dwoch formularzach - w danych sprzetu
+    i w zakupie. Dwa miejsca na jedna wartosc rozjezdzaja sie przy pierwszym
+    zapisie tego, ktore akurat bylo puste.
+    """
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+    asset = scoping.get_asset(db, ctx, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono maszyny")
+    asset.purchase_notes = uwagi.strip() or None
+    audit(db, ctx, action="asset.uwagi", target=asset.hostname, ip=client_ip(request))
+    db.commit()
+    return RedirectResponse(f"/assets/{asset.id}#uwagi",
+                            status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/assets/{asset_id}/usun")

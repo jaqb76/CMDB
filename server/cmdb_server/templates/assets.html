@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Maszyny - CMDB{% endblock %}
+{% block title %}Sprzęt - CMDB{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Sprzet <span class="muted">({{ assets | length }})</span></h1>
+  <h1>Sprzęt <span class="muted">({{ assets | length }})</span></h1>
   <div class="head-actions">
     {% if ctx.can_write %}
       <a class="btn btn-small btn-primary" href="/assets/nowy">Dodaj sprzet recznie</a>

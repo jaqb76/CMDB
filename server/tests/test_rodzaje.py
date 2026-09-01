@@ -261,8 +261,8 @@ def test_formularz_dodawania_jest_zwiezly(client, tenant_a, make_user):
     assert 'name="uzytkownik_id"' not in strona, "uzytkownika ustawia sie na karcie"
     assert strona.count('name="uwagi"') == 1, "jedno pole opisowe wystarczy"
 
-    # Trzy listy slownikowe w jednym wierszu zamiast trzech ekranow.
-    assert "grid-3" in strona
+    # Ten sam uklad co na karcie: pola tozsamosci w jednym zawijanym wierszu.
+    assert strona.count('class="row-form"') >= 2
     for pole in ('name="nazwa"', 'name="numer_seryjny"', 'name="ip"',
                  'name="lokalizacja_id"', 'name="dostawca_id"', 'name="owner_id"'):
         assert pole in strona, f"{pole} jest potrzebne"
@@ -273,8 +273,8 @@ def test_adres_ip_i_numer_seryjny_maja_wyjasnienie(client, tenant_a, make_user):
     laczy sie z agentem, po adresie rozpoznaje go wykrywanie sieci."""
     _admin_firmy(client, tenant_a, make_user)
     strona = client.get("/assets/nowy").text
-    assert "połączy się z agentem" in strona
-    assert "wykrywanie sieci rozpozna" in strona
+    assert "połączy ten wpis z agentem" in strona
+    assert "rozpozna go wykrywanie sieci" in strona
 
 
 def test_rola_jest_tylko_w_jednym_formularzu(client, tenant_a, make_user):
@@ -311,3 +311,45 @@ def test_sprzet_sieciowy_nie_ma_drugiego_adresu(client, tenant_a, make_user):
     strona = client.get("/rodzaje/siec/pola").text
     assert "adres_zarzadzania" not in strona
     assert "liczba_portow" in strona
+
+
+def test_uwagi_maja_wlasna_zakladke_i_jedno_pole(client, tenant_a, make_user):
+    """To samo pole stalo w danych sprzetu i w zakupie - dwa miejsca na jedna
+    wartosc rozjezdzaja sie przy zapisie tego, ktore akurat bylo puste."""
+    _admin_firmy(client, tenant_a, make_user)
+    asset_id = _sprzet(client, tenant_a)
+    strona = client.get(f"/assets/{asset_id}").text
+
+    assert 'data-tab="uwagi"' in strona
+    assert strona.count('name="uwagi"') == 1
+    assert 'name="purchase_notes"' not in strona
+
+
+def test_uwagi_widac_w_podsumowaniu(client, tenant_a, make_user):
+    """Podsumowanie siegalo po asset.notes - pole, ktorego w modelu nie ma,
+    wiec wartosc byla ZAWSZE nieznana, niezaleznie od tego, co wpisano."""
+    _admin_firmy(client, tenant_a, make_user)
+    asset_id = _sprzet(client, tenant_a)
+
+    csrf = _extract_csrf(client.get(f"/assets/{asset_id}").text)
+    assert client.post(f"/assets/{asset_id}/uwagi",
+                       data={"uwagi": "stoi w szafie R3", "csrf_token": csrf},
+                       follow_redirects=False).status_code == 303
+
+    strona = client.get(f"/assets/{asset_id}").text
+    assert strona.count("stoi w szafie R3") >= 2, "w podsumowaniu i w zakladce"
+
+
+def test_zapis_danych_nie_kasuje_uwag(client, tenant_a, make_user):
+    """Mapper przepisuje wylacznie to, co formularz przyslal - inaczej
+    usuniecie pola z jednego formularza zerowaloby wartosc z innego."""
+    _admin_firmy(client, tenant_a, make_user)
+    asset_id = _sprzet(client, tenant_a)
+    csrf = _extract_csrf(client.get(f"/assets/{asset_id}").text)
+    client.post(f"/assets/{asset_id}/uwagi",
+                data={"uwagi": "klucz u kierownika", "csrf_token": csrf},
+                follow_redirects=False)
+
+    _zapisz_dane(client, asset_id, producent="AOC")
+    with SessionLocal() as db:
+        assert db.get(Asset, asset_id).purchase_notes == "klucz u kierownika"

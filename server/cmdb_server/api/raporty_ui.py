@@ -265,7 +265,6 @@ def zapisz_zakup(
     purchase_currency: str = Form(""),
     invoice_number: str = Form(""),
     support_contract: str = Form(""),
-    purchase_notes: str = Form(""),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
@@ -319,7 +318,6 @@ def zapisz_zakup(
     maszyna.purchase_currency = purchase_currency.strip()[:8].upper() or None
     maszyna.invoice_number = invoice_number.strip()[:120] or None
     maszyna.support_contract = support_contract.strip()[:200] or None
-    maszyna.purchase_notes = purchase_notes.strip() or None
 
     audit(db, ctx, action="asset.zakup", target=maszyna.hostname, ip=client_ip(request))
     db.commit()

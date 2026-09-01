@@ -20,24 +20,28 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     {#
-      Rodzaj jest pierwszym pytaniem, bo buduje reszte formularza: monitor
-      pyta o przekatna, przelacznik o liczbe portow. Zestawy pol wszystkich
-      rodzajow ida do strony naraz, wiec zmiana rodzaju przestawia formularz
-      od razu - przeladowanie skasowaloby to, co juz wpisano.
+      Ten sam uklad co na karcie sprzetu: pola tozsamosci w jednym wierszu,
+      ktory zawija sie sam. Dwa rozne uklady dla tych samych pol zmuszalyby
+      do szukania ich za kazdym razem od nowa.
+
+      Rodzaj jest pierwszym pytaniem, bo buduje reszte formularza. Zestawy pol
+      wszystkich rodzajow ida do strony naraz, wiec zmiana rodzaju przestawia
+      go od razu - przeladowanie skasowaloby to, co juz wpisano.
     #}
-    <label for="typ">Rodzaj sprzętu</label>
-    <select id="typ" name="typ" data-rodzaj-sprzetu
-            data-pola='{{ pola_rodzajow }}'>
-      {% for klucz, etykieta in typy.items() %}
-        <option value="{{ klucz }}" {% if klucz == domyslny_typ %}selected{% endif %}>{{ etykieta }}</option>
-      {% endfor %}
-    </select>
-
-    <label for="nazwa">Nazwa</label>
-    <input id="nazwa" name="nazwa" required maxlength="255"
-           placeholder="np. SW-MAGAZYN-01, HP LaserJet kadry">
-
-    <div class="grid-2">
+    <div class="row-form">
+      <div>
+        <label for="nazwa">Nazwa</label>
+        <input id="nazwa" name="nazwa" required maxlength="255"
+               placeholder="np. SW-MAGAZYN-01">
+      </div>
+      <div>
+        <label for="typ">Rodzaj</label>
+        <select id="typ" name="typ" data-rodzaj-sprzetu data-pola='{{ pola_rodzajow }}'>
+          {% for klucz, etykieta in typy.items() %}
+            <option value="{{ klucz }}" {% if klucz == domyslny_typ %}selected{% endif %}>{{ etykieta }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div>
         <label for="producent">Producent</label>
         <input id="producent" name="producent" maxlength="200">
@@ -49,19 +53,18 @@
       <div>
         <label for="numer_seryjny">Numer seryjny</label>
         <input id="numer_seryjny" name="numer_seryjny" maxlength="128">
-        <div class="small muted">Po nim wpis połączy się z agentem, gdy ten stanie na tym sprzęcie.</div>
       </div>
       <div>
         <label for="ip">Adres IP</label>
         <input id="ip" name="ip" maxlength="64" placeholder="np. 10.10.5.30">
-        <div class="small muted">Po nim wykrywanie sieci rozpozna to urządzenie wśród znalezisk.</div>
       </div>
     </div>
+    <p class="small muted">
+      Numer seryjny połączy ten wpis z agentem, gdy ten stanie na tym sprzęcie;
+      po adresie IP rozpozna go wykrywanie sieci. Oba można uzupełnić później.
+    </p>
 
-    {# Trzy listy ze slownika obok siebie: kazda jest jednym wyborem, wiec
-       rozciagniete na cala szerokosc zajmowaly trzy ekrany zamiast jednego
-       wiersza. #}
-    <div class="grid-3">
+    <div class="row-form">
       <div>
         <label for="lokalizacja_id">Lokalizacja</label>
         <select id="lokalizacja_id" name="lokalizacja_id">
@@ -83,15 +86,16 @@
           {% for o in owners %}<option value="{{ o.id }}">{{ o.wartosc }}</option>{% endfor %}
         </select>
       </div>
+      <div>
+        <label for="uwagi">Uwagi</label>
+        <input id="uwagi" name="uwagi" maxlength="500">
+      </div>
     </div>
     <p class="small muted">
       Brakujący rekord dodaj i opisz w <a href="/slowniki">słownikach firmy</a>.
       Użytkownika i rolę ustawia się na karcie sprzętu — przy dodawaniu rzadko
       są jeszcze znane.
     </p>
-
-    <label for="uwagi">Uwagi</label>
-    <textarea id="uwagi" name="uwagi" rows="2"></textarea>
 
     <fieldset class="kolumny-grupa" data-pola-rodzaju hidden>
       <legend data-legenda-rodzaju>Właściwe dla rodzaju</legend>

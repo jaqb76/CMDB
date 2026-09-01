@@ -191,11 +191,6 @@
       <input id="ip" name="ip" maxlength="64" value="{{ asset.primary_ip or '' }}"
              {% if not ctx.can_write %}disabled{% endif %}>
     </div>
-    <div>
-      <label for="uwagi">Uwagi</label>
-      <input id="uwagi" name="uwagi" value="{{ asset.purchase_notes or '' }}"
-             {% if not ctx.can_write %}disabled{% endif %}>
-    </div>
     {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
 
     {#
@@ -286,6 +281,7 @@
     <button type="button" class="tab-button is-active" data-tab="overview">Przeglad</button>
     {% if z_agentem %}<button type="button" class="tab-button" data-tab="hardware">Sprzet</button>{% endif %}
     <button type="button" class="tab-button" data-tab="zakup">Zakup i gwarancja</button>
+    <button type="button" class="tab-button" data-tab="uwagi">Uwagi</button>
     {% if z_agentem %}
     <button type="button" class="tab-button" data-tab="software">Oprogramowanie</button>
     <button type="button" class="tab-button" data-tab="aktualizacje">Aktualizacje</button>
@@ -327,7 +323,7 @@
           <dt>Dostawca</dt>
           <dd>{% if asset.dostawca %}<a href="/slowniki/wpis/{{ asset.dostawca.id }}">{{ asset.dostawca.wartosc }}</a>{% else %}—{% endif %}</dd>
           <dt>Rola</dt><dd>{{ asset.role_label or '—' }}</dd>
-          <dt>Uwagi</dt><dd>{{ asset.notes or '—' }}</dd>
+          <dt>Uwagi</dt><dd>{{ asset.purchase_notes or '—' }}</dd>
           {% for pole in wartosci_rodzaju %}
           <dt>{{ pole.etykieta }}</dt><dd>{{ pole.wartosc }}</dd>
           {% endfor %}
@@ -446,9 +442,28 @@
         <input id="support_contract" name="support_contract" maxlength="200"
                value="{{ asset.support_contract or '' }}"
                placeholder="np. NBD on-site do 2028-03-01">
-        <label for="purchase_notes">Uwagi</label>
-        <textarea id="purchase_notes" name="purchase_notes" rows="3">{{ asset.purchase_notes or '' }}</textarea>
         <button type="submit" class="btn btn-primary">Zapisz</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="tab-panel" data-panel="uwagi" id="uwagi">
+    <div class="panel">
+      <h2>Uwagi</h2>
+      <p class="small muted">
+        Jedno miejsce na wszystko, co nie mieści się w polach: numer szafy,
+        ustalenia z serwisem, powód wycofania. Wcześniej to samo pole stało
+        w dwóch formularzach i rozjeżdżało się przy zapisie tego, które akurat
+        było puste.
+      </p>
+      <form method="post" action="/assets/{{ asset.id }}/uwagi" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea id="uwagi" name="uwagi" rows="8" maxlength="4000"
+                  {% if not ctx.can_write %}disabled{% endif %}
+                  placeholder="np. stoi w szafie R3, klucz u kierownika zmiany">{{ asset.purchase_notes or '' }}</textarea>
+        {% if ctx.can_write %}
+        <div><button type="submit" class="btn btn-primary">Zapisz uwagi</button></div>
+        {% endif %}
       </form>
     </div>
   </section>
