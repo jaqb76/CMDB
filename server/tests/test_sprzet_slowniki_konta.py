@@ -170,7 +170,6 @@ def test_danych_maszyny_z_agentem_nie_edytuje_sie_recznie(client, tenant_a, make
         asset_id = db.execute(select(Asset)).scalar_one().id
 
     csrf = _extract_csrf(client.get(f"/assets/{asset_id}").text)
-    lokalizacja_id = _dodaj_wpis(client, "lokalizacja", "Pokoj 214")
     odpowiedz = client.post(
         f"/assets/{asset_id}/dane",
         data={"nazwa": "PODMIENIONA", "typ": TYP_KOMPUTER, "producent": "", "model": "",
@@ -207,6 +206,7 @@ def test_opiekun_i_uzytkownik_to_dwie_rozne_osoby(client, tenant_a, make_user):
     with SessionLocal() as db:
         asset_id = db.execute(select(Asset)).scalar_one().id
 
+    lokalizacja_id = _dodaj_wpis(client, "lokalizacja", "Pokoj 214")
     csrf = _extract_csrf(client.get(f"/assets/{asset_id}").text)
     odpowiedz = client.post(
         f"/assets/{asset_id}/owner",

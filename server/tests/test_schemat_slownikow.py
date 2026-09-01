@@ -113,8 +113,7 @@ def test_formularz_maszyny_wybiera_gotowy_rekord(client, tenant_a, make_user):
     _dodaj_sprzet(client, nazwa="DRUKARKA-1", dostawca_id=dostawca_id, lokalizacja="")
 
     with SessionLocal() as db:
-        wpis = db.execute(select(WpisSlownika).where(
-            WpisSlownika.kategoria == "dostawca")).scalar_one()
+        wpis = db.get(WpisSlownika, dostawca_id)
         assert wpis.wartosc == "Nowy Dostawca"
         assert wpis.atrybuty["nazwa_firmy"] == "Nowy Dostawca"
         assert db.execute(select(Asset)).scalar_one().dostawca_id == wpis.id
