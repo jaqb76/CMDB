@@ -278,6 +278,12 @@ def store_report(
     if not historical:
         apply_identity(asset, report, payload)
         asset.facts = summarize(payload)
+        # Numer seryjny znamy dopiero z raportu - przy rejestracji agent go nie
+        # podaje. To jest wiec pierwszy moment, w ktorym da sie rozpoznac, ze
+        # ta maszyna zostala wczesniej wpisana recznie.
+        from . import scalanie
+
+        scalanie.scal_automatycznie(db, ctx, asset)
         if current is None:
             current = AssetCurrentReport(asset_id=asset.id, tenant_id=ctx.tenant_id)
             db.add(current)

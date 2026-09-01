@@ -1089,6 +1089,38 @@ def historia_zmian(
     )
 
 
+@router.post("/duplikaty/scal")
+def scal_duplikaty(
+    request: Request,
+    docelowy_id: str = Form(...),
+    zrodlowy_id: str = Form(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Reczne polaczenie wpisu recznego z maszyna, ktora zglosil agent.
+
+    Automat laczy tylko wtedy, gdy dowod jest jednoznaczny; tutaj decyduje
+    czlowiek - miedzy innymi w przypadkach, w ktorych numer seryjny okazal sie
+    wypelniaczem producenta albo pasowaly dwa wpisy naraz.
+    """
+    from ..services import scalanie
+
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+    docelowy = scoping.get_asset(db, ctx, docelowy_id)
+    zrodlowy = scoping.get_asset(db, ctx, zrodlowy_id)
+    if docelowy is None or zrodlowy is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono zasobu")
+    try:
+        scalanie.scal(db, ctx, docelowy, zrodlowy, sposob="recznie", ip=client_ip(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    return RedirectResponse(f"/assets/{docelowy.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.get("/duplikaty", response_class=HTMLResponse)
 def widok_duplikatow(
     request: Request,
@@ -1100,6 +1132,8 @@ def widok_duplikatow(
     return render(
         request, "duplikaty.html", user, ctx, db,
         grupy=duplicates.znajdz_duplikaty(db, ctx.tenant_id),
+        zrodlo_reczne=ZRODLO_RECZNE,
+        zrodlo_agent=ZRODLO_AGENT,
     )
 
 
