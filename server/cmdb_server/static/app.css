@@ -592,3 +592,20 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 }
 .btn-oko:hover { color: var(--accent); border-color: var(--accent); }
 .btn-oko:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+
+/* --- pasek akcji pod formularzem --- */
+/* Zapis po lewej, usuwanie dosuniete do prawej krawedzi: dwie akcje o roznych
+   skutkach nie powinny stac obok siebie na wyciagniecie tego samego ruchu.
+   Przycisk zapisu stoi POZA formularzem i wskazuje go atrybutem "form" -
+   inaczej nie dalby sie postawic obok usuwania, ktore jest osobnym
+   formularzem, a formularzy nie wolno zagniezdzac. */
+.pasek-akcji {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-top: 18px; padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* Pola wlasciwe dla rodzaju zajmuja wlasny wiersz w calosci - wczesniej stały
+   obok przycisku i zostawialy pol formularza pustego. */
+.kolumny-grupa { width: 100%; min-width: 0; }

@@ -353,3 +353,17 @@ def test_zapis_danych_nie_kasuje_uwag(client, tenant_a, make_user):
     _zapisz_dane(client, asset_id, producent="AOC")
     with SessionLocal() as db:
         assert db.get(Asset, asset_id).purchase_notes == "klucz u kierownika"
+
+
+def test_pasek_akcji_rozdziela_zapis_od_usuwania(client, tenant_a, make_user):
+    """Dwie akcje o roznych skutkach nie stoja obok siebie: zapis po lewej,
+    usuwanie przy prawej krawedzi."""
+    _admin_firmy(client, tenant_a, make_user)
+    asset_id = _sprzet(client, tenant_a)
+    strona = client.get(f"/assets/{asset_id}").text
+
+    assert 'class="pasek-akcji"' in strona
+    # Przycisk zapisu stoi poza formularzem i wskazuje go atrybutem "form" -
+    # formularzy nie wolno zagniezdzac, a usuwanie jest osobnym.
+    assert 'form="dane-sprzetu"' in strona
+    assert 'id="dane-sprzetu"' in strona

@@ -156,8 +156,9 @@
   {% if bledy_pol %}
   <div class="alert alert-error">Nie zapisano — popraw zaznaczone pola.</div>
   {% endif %}
-  <form method="post" action="/assets/{{ asset.id }}/dane" class="row-form">
+  <form method="post" action="/assets/{{ asset.id }}/dane" id="dane-sprzetu" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row-form">
     <div>
       <label for="nazwa">Nazwa</label>
       <input id="nazwa" name="nazwa" required maxlength="255" value="{{ asset.hostname }}"
@@ -191,7 +192,7 @@
       <input id="ip" name="ip" maxlength="64" value="{{ asset.primary_ip or '' }}"
              {% if not ctx.can_write %}disabled{% endif %}>
     </div>
-    {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
+  </div>
 
     {#
       Pola właściwe dla rodzaju. Rodzaj przestaje być rubryką obok innych,
@@ -199,7 +200,7 @@
       o przekątną, przełącznik o liczbę portów.
     #}
     {% if pola_rodzaju %}
-    <fieldset class="kolumny-grupa" style="flex-basis:100%">
+    <fieldset class="kolumny-grupa">
       <legend>Właściwe dla rodzaju: {{ typy.get(asset.typ, asset.typ) }}</legend>
       <div class="pola-siatka">
         {% for p in pola_rodzaju %}
@@ -260,11 +261,14 @@
     {% endif %}
   </form>
   {% if ctx.can_write %}
+  <div class="pasek-akcji">
+    <button type="submit" form="dane-sprzetu" class="btn btn-primary">Zapisz</button>
     <form method="post" action="/assets/{{ asset.id }}/usun" class="inline-form"
-          data-confirm="Usunac wpis {{ asset.hostname }}? Wpisu recznego nie da sie odzyskac.">
+          data-confirm="Usunąć wpis {{ asset.hostname }}? Wpisu ręcznego nie da się odzyskać.">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" class="btn btn-small btn-danger">Usun wpis</button>
+      <button type="submit" class="btn btn-small btn-danger">Usuń wpis</button>
     </form>
+  </div>
   {% endif %}
 </section>
 {% endif %}
