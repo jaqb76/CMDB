@@ -42,6 +42,10 @@
     </nav>
 
     <nav class="sidebar-bottom" aria-label="Nawigacja dodatkowa">
+      {# Droga powrotna w to samo miejsce, w ktorym portal firmowy trzyma
+         przejscie do administracji - inaczej jedynym wyjsciem stad byl adres
+         wpisany z reki albo klikniecie we wlasny e-mail. #}
+      <a class="app-nav-link nav-powrot" href="/" title="Wróć do portalu firmowego"><span class="nav-icon" aria-hidden="true">←</span><span class="nav-label">Portal firmowy</span></a>
       <a class="app-nav-link" href="#" data-layout-switch="classic" title="Przełącz na klasyczny układ"><span class="nav-icon" aria-hidden="true">↶</span><span class="nav-label">Klasyczny widok</span></a>
       <a class="app-nav-link" href="/pomoc" title="Pomoc i podręcznik"><span class="nav-icon" aria-hidden="true">?</span><span class="nav-label">Pomoc i podręcznik</span></a>
     </nav>
@@ -55,6 +59,9 @@
         <div><span class="topbar-scope">CMDB</span><strong>Administrator główny</strong></div>
       </div>
       <div class="userbox">
+        {# Przy zwinietym menu w panelu bocznym widac tylko strzalke, wiec
+           podpisany powrot zostaje takze w pasku gornym. #}
+        <a href="/" class="btn btn-small nav-powrot" title="Wróć do portalu firmowego">&larr; Portal firmowy</a>
         <button type="button" class="motyw" data-motyw title="Motyw: automatyczny / jasny / ciemny">
           <span class="motyw-ikona motyw-auto">auto</span><span class="motyw-ikona motyw-jasny">jasny</span><span class="motyw-ikona motyw-ciemny">ciemny</span>
         </button>

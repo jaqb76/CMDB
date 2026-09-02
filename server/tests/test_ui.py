@@ -207,6 +207,26 @@ def test_zwijane_menu_jest_w_obu_panelach(client, tenant_a, make_user):
     assert "Wykrywanie sieci" not in administracja
 
 
+def test_z_administracji_widac_droge_powrotna_do_portalu(client, tenant_a, make_user):
+    """Wyjscie z panelu administratora bylo tylko przez klikniecie we wlasny
+    e-mail - czego nikt nie zgaduje."""
+    make_user(None, "root@powrot.pl", "haslo-do-testow-123")
+    _login(client, "root@powrot.pl", "haslo-do-testow-123")
+
+    nowy = client.get("/admin").text
+    # Powrot jest i w menu bocznym, i w pasku gornym - zwiniete menu pokazuje
+    # samą strzalke, wiec podpis musi zostac gdzies widoczny.
+    assert nowy.count("nav-powrot") == 2
+    assert nowy.count("Portal firmowy") == 2
+    assert 'class="app-nav-link nav-powrot" href="/"' in nowy
+    assert '<a href="/" class="btn btn-small nav-powrot"' in nowy
+
+    client.cookies.set("cmdb_layout", "classic")
+    klasyczny = client.get("/admin").text
+    assert '<a href="/" class="btn btn-small nav-powrot"' in klasyczny
+    assert "Portal firmowy" in klasyczny
+
+
 def test_pulpit_jest_nowym_widokiem_startowym(client, tenant_a, make_user):
     make_user(tenant_a["id"], "start@firma.pl", "haslo-do-testow-123")
     _login(client, "start@firma.pl", "haslo-do-testow-123")

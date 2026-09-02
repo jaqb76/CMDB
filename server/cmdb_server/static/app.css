@@ -691,6 +691,10 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 .app-nav-link:hover { background: rgb(255 255 255 / .07); color: #fff; text-decoration: none; }
 .app-nav-link.is-active { background: var(--accent); color: var(--accent-contrast); }
 .app-nav-link.nav-system { color: #bca9ff; }
+/* Powrot do portalu firmowego: wyrozniony, bo jest jedynym wyjsciem z panelu
+   administratora i musi rzucac sie w oczy tak samo jak przejscie do niego. */
+.app-nav-link.nav-powrot { color: #9ecbff; font-weight: 600; }
+.btn.nav-powrot { color: var(--accent); border-color: var(--accent); }
 .nav-icon {
   width: 16px; flex: 0 0 16px; display: inline-flex; align-items: center;
   justify-content: center; font-size: 17px; line-height: 1;
