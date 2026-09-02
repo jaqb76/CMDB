@@ -2,9 +2,10 @@
 (function () {
   "use strict";
 
-  // Zwijane menu aplikacji. Na duzym ekranie wybor jest zapamietywany w
-  // localStorage, bo to preferencja konkretnej przegladarki. Na telefonie
-  // panel zawsze startuje zamkniety i wysuwa sie nad trescia.
+  // Zwijane menu aplikacji. Na duzym ekranie wybor jedzie w ciasteczku, bo
+  // serwer musi znac go juz przy renderowaniu strony - inaczej kazde przejscie
+  // zaczynaloby sie od menu zwinietego i widac by bylo jego rozwijanie. Na
+  // telefonie panel zawsze startuje zamkniety i wysuwa sie nad trescia.
   (function () {
     var shell = document.querySelector("[data-sidebar-shell]");
     if (!shell) { return; }
@@ -13,16 +14,22 @@
     var toggles = document.querySelectorAll("[data-sidebar-toggle]");
     var closeButtons = document.querySelectorAll("[data-sidebar-close]");
     var mobile = window.matchMedia("(max-width: 760px)");
-    var storageKey = "cmdb_sidebar_expanded";
+    var cookieKey = "cmdb_sidebar";
 
-    function savedExpanded() {
-      try { return window.localStorage.getItem(storageKey) === "1"; }
-      catch (e) { return false; }
+    function zapisanyStan() {
+      var wpisy = document.cookie ? document.cookie.split("; ") : [];
+      for (var i = 0; i < wpisy.length; i++) {
+        var para = wpisy[i].split("=");
+        if (para[0] === cookieKey) { return para.slice(1).join("="); }
+      }
+      return null;
     }
 
+    function savedExpanded() { return zapisanyStan() === "rozwiniete"; }
+
     function saveExpanded(expanded) {
-      try { window.localStorage.setItem(storageKey, expanded ? "1" : "0"); }
-      catch (e) { /* Tryb prywatny moze blokowac localStorage. */ }
+      document.cookie = cookieKey + "=" + (expanded ? "rozwiniete" : "zwiniete") +
+        "; Path=/; Max-Age=31536000; SameSite=Lax";
     }
 
     function desktopExpanded() { return !body.classList.contains("sidebar-collapsed"); }
@@ -44,13 +51,27 @@
       updateButtons();
     }
 
-    if (!mobile.matches && savedExpanded()) {
-      body.classList.remove("sidebar-collapsed");
+    // Przejscie ze starego zapisu w localStorage: przegladarka, ktora pamieta
+    // rozwiniete menu sprzed zmiany, przepisuje je raz na ciasteczko. Bez tego
+    // serwer az do pierwszego klikniecia wysylalby menu zwiniete.
+    if (zapisanyStan() === null) {
+      var stary = false;
+      try { stary = window.localStorage.getItem("cmdb_sidebar_expanded") === "1"; }
+      catch (e) { /* Tryb prywatny moze blokowac localStorage. */ }
+      if (stary) {
+        saveExpanded(true);
+        if (!mobile.matches) { body.classList.remove("sidebar-collapsed"); }
+      }
     }
+
+    // Serwer wyslal juz strone w zapamietanym stanie, wiec tutaj wystarczy
+    // dopasowac opisy przyciskow.
     updateButtons();
 
     toggles.forEach(function (button) {
       button.addEventListener("click", function () {
+        // Plynne przejscie ma sens tylko wtedy, gdy szerokosc zmienia czlowiek.
+        body.classList.add("menu-animuje");
         if (mobile.matches) {
           body.classList.toggle("sidebar-mobile-open");
         } else {
@@ -60,7 +81,20 @@
         updateButtons();
       });
     });
-    closeButtons.forEach(function (button) { button.addEventListener("click", closeMobile); });
+    closeButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        body.classList.add("menu-animuje");
+        closeMobile();
+      });
+    });
+
+    // Na telefonie wybor pozycji od razu chowa panel - inaczej wysunieta
+    // warstwa wisi nad strona przez caly czas jej wczytywania.
+    document.querySelectorAll(".app-nav-link[href]").forEach(function (link) {
+      link.addEventListener("click", function () {
+        if (mobile.matches) { closeMobile(); }
+      });
+    });
 
     // Po przejsciu z widoku mobilnego na desktop nie zostawiamy niewidzialnej
     // warstwy blokujacej strone.
@@ -72,11 +106,14 @@
       updateButtons();
     });
 
-    // Aktywna pozycja jest wyznaczana z adresu, wiec wszystkie istniejace
-    // widoki dostaja poprawne zaznaczenie bez zmian w kontrolerach.
+    // Zaznaczenie ustawia juz szablon; tutaj zostaje tylko dopisanie
+    // aria-current oraz zapasowe wyliczenie dla widokow spoza listy.
     var path = window.location.pathname.replace(/\/$/, "") || "/";
     document.querySelectorAll(".app-nav-link[href]").forEach(function (link) {
-      if (link.classList.contains("is-active")) { return; }
+      if (link.classList.contains("is-active")) {
+        link.setAttribute("aria-current", "page");
+        return;
+      }
       var href = new URL(link.href, window.location.origin).pathname.replace(/\/$/, "") || "/";
       var exact = link.hasAttribute("data-nav-exact");
       if ((exact && path === href) || (!exact && href !== "/" && (path === href || path.indexOf(href + "/") === 0))) {

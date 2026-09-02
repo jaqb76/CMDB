@@ -1,3 +1,11 @@
+{# Szerokosc menu pamieta ciasteczko, wiec serwer od razu wysyla strone w tym
+   samym stanie co poprzednia - menu nie zwija sie i nie rozwija przy kazdym
+   przejsciu. #}
+{% set menu_rozwiniete = request.cookies.get('cmdb_sidebar') == 'rozwiniete' %}
+{# Zaznaczenie aktywnej pozycji liczy serwer, wiec nie przeskakuje ono juz po
+   wczytaniu skryptu. #}
+{% set sciezka = request.url.path.rstrip('/') or '/' %}
+{% macro akt(href, dokladnie=False) %}{% if (dokladnie and sciezka == href) or (not dokladnie and href != '/' and (sciezka == href or sciezka.startswith(href + '/'))) %} is-active{% endif %}{% endmacro %}
 <!doctype html>
 <html lang="pl"{% if motyw %} data-theme="{{ motyw }}"{% endif %}>
 <head>
@@ -8,54 +16,46 @@
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
 </head>
-<body class="app-layout sidebar-collapsed">
-<script>
-  // Ustaw szerokosc przed narysowaniem menu, aby nie migalo przy nawigacji.
-  (function () {
-    try {
-      if (window.matchMedia("(min-width: 761px)").matches &&
-          window.localStorage.getItem("cmdb_sidebar_expanded") === "1") {
-        document.body.classList.remove("sidebar-collapsed");
-      }
-    } catch (e) { /* localStorage moze byc niedostepny w trybie prywatnym. */ }
-  })();
-</script>
+<body class="app-layout{% if not menu_rozwiniete %} sidebar-collapsed{% endif %}">
 <div class="app-shell" data-sidebar-shell>
   <aside class="app-sidebar" aria-label="Menu portalu firmowego">
     <div class="sidebar-brand">
       <a href="/" class="sidebar-logo" aria-label="CMDB — pulpit">C</a>
       <a href="/" class="sidebar-brand-name">CMDB Portal</a>
     </div>
-    <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-expanded="false" title="Rozwiń menu">
-      <span class="nav-icon" aria-hidden="true">☰</span><span class="nav-label">Rozwiń menu</span>
+    <button type="button" class="sidebar-toggle" data-sidebar-toggle
+            aria-expanded="{{ 'true' if menu_rozwiniete else 'false' }}"
+            title="{{ 'Zwiń menu' if menu_rozwiniete else 'Rozwiń menu' }}"
+            aria-label="{{ 'Zwiń menu' if menu_rozwiniete else 'Rozwiń menu' }}">
+      <span class="nav-icon" aria-hidden="true">☰</span><span class="nav-label">{{ 'Zwiń menu' if menu_rozwiniete else 'Rozwiń menu' }}</span>
     </button>
 
     <nav class="app-nav">
       <div class="nav-group-label">Start</div>
-      <a class="app-nav-link" href="/" title="Pulpit" data-nav-exact><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">Pulpit</span></a>
+      <a class="app-nav-link{{ akt('/', True) }}" href="/" title="Pulpit" data-nav-exact><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">Pulpit</span></a>
 
       <div class="nav-group-label">Zasoby</div>
-      <a class="app-nav-link" href="/assets" title="Wszystkie zasoby"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Wszystkie zasoby</span></a>
-      <a class="app-nav-link" href="/relacje" title="Relacje i zależności"><span class="nav-icon" aria-hidden="true">⇄</span><span class="nav-label">Relacje i zależności</span></a>
+      <a class="app-nav-link{{ akt('/assets') }}" href="/assets" title="Wszystkie zasoby"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Wszystkie zasoby</span></a>
+      <a class="app-nav-link{{ akt('/relacje') }}" href="/relacje" title="Relacje i zależności"><span class="nav-icon" aria-hidden="true">⇄</span><span class="nav-label">Relacje i zależności</span></a>
 
       <div class="nav-group-label">Monitorowanie</div>
-      <a class="app-nav-link" href="/zmiany" title="Ostatnie zmiany"><span class="nav-icon" aria-hidden="true">↻</span><span class="nav-label">Ostatnie zmiany</span></a>
-      <a class="app-nav-link" href="/wykrywanie" title="Wykrywanie sieci"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Wykrywanie sieci</span></a>
-      <a class="app-nav-link" href="/jakosc" title="Jakość danych"><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-label">Jakość danych</span></a>
+      <a class="app-nav-link{{ akt('/zmiany') }}" href="/zmiany" title="Ostatnie zmiany"><span class="nav-icon" aria-hidden="true">↻</span><span class="nav-label">Ostatnie zmiany</span></a>
+      <a class="app-nav-link{{ akt('/wykrywanie') }}" href="/wykrywanie" title="Wykrywanie sieci"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Wykrywanie sieci</span></a>
+      <a class="app-nav-link{{ akt('/jakosc') }}" href="/jakosc" title="Jakość danych"><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-label">Jakość danych</span></a>
 
       <div class="nav-group-label">Analiza</div>
-      <a class="app-nav-link" href="/raporty" title="Raporty"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Raporty</span></a>
-      <a class="app-nav-link" href="/audit" title="Audyt operacji"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Audyt operacji</span></a>
+      <a class="app-nav-link{{ akt('/raporty') }}" href="/raporty" title="Raporty"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Raporty</span></a>
+      <a class="app-nav-link{{ akt('/audit') }}" href="/audit" title="Audyt operacji"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Audyt operacji</span></a>
 
       <div class="nav-group-label">Agenty</div>
-      <a class="app-nav-link" href="/tokens" title="Tokeny agentów"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Tokeny agentów</span></a>
-      <a class="app-nav-link" href="/pobierz" title="Instalacja agenta"><span class="nav-icon" aria-hidden="true">↓</span><span class="nav-label">Instalacja agenta</span></a>
+      <a class="app-nav-link{{ akt('/tokens') }}" href="/tokens" title="Tokeny agentów"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Tokeny agentów</span></a>
+      <a class="app-nav-link{{ akt('/pobierz') }}" href="/pobierz" title="Instalacja agenta"><span class="nav-icon" aria-hidden="true">↓</span><span class="nav-label">Instalacja agenta</span></a>
       {% if ctx and ctx.can_write %}
-      <a class="app-nav-link" href="/wersje-agentow" title="Wersje agentów"><span class="nav-icon" aria-hidden="true">↥</span><span class="nav-label">Wersje agentów</span></a>
+      <a class="app-nav-link{{ akt('/wersje-agentow') }}" href="/wersje-agentow" title="Wersje agentów"><span class="nav-icon" aria-hidden="true">↥</span><span class="nav-label">Wersje agentów</span></a>
       {% endif %}
 
       <div class="nav-group-label">Konfiguracja</div>
-      <a class="app-nav-link" href="/slowniki" title="Słowniki"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">Słowniki</span></a>
+      <a class="app-nav-link{{ akt('/slowniki') }}" href="/slowniki" title="Słowniki"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">Słowniki</span></a>
     </nav>
 
     <nav class="sidebar-bottom" aria-label="Nawigacja dodatkowa">
@@ -63,7 +63,7 @@
       {% if user.is_superadmin %}
       <a class="app-nav-link nav-system" href="/admin" title="Administracja główna"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Administracja główna</span></a>
       {% endif %}
-      <a class="app-nav-link" href="/pomoc" title="Pomoc i podręcznik"><span class="nav-icon" aria-hidden="true">?</span><span class="nav-label">Pomoc i podręcznik</span></a>
+      <a class="app-nav-link{{ akt('/pomoc') }}" href="/pomoc" title="Pomoc i podręcznik"><span class="nav-icon" aria-hidden="true">?</span><span class="nav-label">Pomoc i podręcznik</span></a>
     </nav>
   </aside>
 

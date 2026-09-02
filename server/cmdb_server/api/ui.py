@@ -75,7 +75,7 @@ from . import download
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-_ODCISKI: dict[str, str] = {}
+_ODCISKI: dict[str, tuple[tuple[int, int], str]] = {}
 # ChainableUndefined: brak sekcji w raporcie (np. maszyna jeszcze nie raportowala)
 # nie moze wywalac calego widoku - '{{ a.b.c }}' renderuje sie pusto zamiast rzucac.
 templates.env.undefined = ChainableUndefined
@@ -171,18 +171,27 @@ def _odcisk(nazwa: str) -> str:
     podrecznej. Znacznik zmienia sie razem z plikiem, wiec nowa wersja jest
     dla przegladarki innym adresem i pobiera ja natychmiast.
 
-    Skrot liczymy raz, przy pierwszym uzyciu: pliki statyczne nie zmieniaja
-    sie w trakcie pracy procesu.
+    Skrot liczymy raz na wersje pliku. Kluczem pamieci jest czas modyfikacji
+    i rozmiar, wiec podmiana arkusza albo skryptu jest widoczna bez restartu
+    procesu - inaczej poprawka wygladu wygladala na nieskuteczna, bo adres
+    z ?v= sie nie zmienial i przegladarka podawala plik ze swojej pamieci.
     """
-    if nazwa not in _ODCISKI:
-        plik = STATIC_DIR / nazwa
+    plik = STATIC_DIR / nazwa
+    try:
+        stan = plik.stat()
+    except OSError:
+        # Brak pliku nie jest powodem, zeby strona sie nie otworzyla.
+        return f"/static/{nazwa}"
+    wersja = (stan.st_mtime_ns, stan.st_size)
+    zapamietane = _ODCISKI.get(nazwa)
+    if zapamietane is None or zapamietane[0] != wersja:
         try:
             skrot = hashlib.sha256(plik.read_bytes()).hexdigest()[:10]
         except OSError:
-            # Brak pliku nie jest powodem, zeby strona sie nie otworzyla.
             return f"/static/{nazwa}"
-        _ODCISKI[nazwa] = f"/static/{nazwa}?v={skrot}"
-    return _ODCISKI[nazwa]
+        zapamietane = (wersja, f"/static/{nazwa}?v={skrot}")
+        _ODCISKI[nazwa] = zapamietane
+    return zapamietane[1]
 
 
 templates.env.globals["zasob"] = _odcisk

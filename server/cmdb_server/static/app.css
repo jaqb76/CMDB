@@ -629,8 +629,16 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 .app-layout { --sidebar-width: 238px; --sidebar-collapsed-width: 64px; }
 .app-layout .app-shell {
   display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  min-height: 100vh; transition: grid-template-columns .2s ease;
+  min-height: 100vh;
 }
+/* Animacje wlacza dopiero klikniecie przycisku menu. Przy wczytywaniu strony
+   nie ma czego animowac - szerokosc przychodzi juz z serwera - a bez tego
+   warunku kazda pozniejsza korekta klasy byla widoczna jako zwijanie
+   i rozwijanie menu w trakcie przechodzenia miedzy stronami. */
+.app-layout.menu-animuje .app-shell { transition: grid-template-columns .2s ease; }
+.app-layout.menu-animuje .sidebar-brand-name,
+.app-layout.menu-animuje .nav-label { transition: opacity .12s ease, transform .2s ease; }
+.app-layout.menu-animuje .nav-group-label { transition: opacity .12s ease; }
 .app-layout.sidebar-collapsed .app-shell {
   grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
 }
@@ -656,7 +664,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 .sidebar-logo:hover, .sidebar-brand-name:hover { text-decoration: none; }
 .sidebar-brand-name {
   min-width: 150px; color: #f5f8ff; font-size: 14px; font-weight: 700;
-  opacity: 1; transform: translateX(0); transition: opacity .12s ease, transform .2s ease;
+  opacity: 1; transform: translateX(0);
 }
 .sidebar-brand-name span {
   display: block; color: #8ca0bd; font-size: 9px; font-weight: 600;
@@ -673,7 +681,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 .nav-group-label {
   height: 20px; margin: 10px 9px 2px; overflow: hidden; white-space: nowrap;
   color: #8196b4; font-size: 9px; font-weight: 700; letter-spacing: .12em;
-  text-transform: uppercase; opacity: 1; transition: opacity .12s ease;
+  text-transform: uppercase; opacity: 1;
 }
 .app-nav-link {
   min-height: 38px; display: flex; align-items: center; gap: 11px;
@@ -687,10 +695,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   width: 16px; flex: 0 0 16px; display: inline-flex; align-items: center;
   justify-content: center; font-size: 17px; line-height: 1;
 }
-.nav-label {
-  min-width: 155px; opacity: 1; transform: translateX(0);
-  transition: opacity .12s ease, transform .2s ease;
-}
+.nav-label { min-width: 155px; opacity: 1; transform: translateX(0); }
 .sidebar-bottom {
   margin-top: auto; padding-top: 9px; border-top: 1px solid rgb(255 255 255 / .09);
 }
@@ -749,9 +754,10 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   .app-layout.sidebar-collapsed .app-shell { display: block; }
   .app-sidebar {
     position: fixed; left: 0; top: 0; width: min(278px, calc(100vw - 42px));
-    transform: translateX(-105%); transition: transform .2s ease;
+    transform: translateX(-105%);
     box-shadow: 12px 0 32px rgb(0 0 0 / .28);
   }
+  .menu-animuje .app-sidebar { transition: transform .2s ease; }
   .sidebar-mobile-open .app-sidebar { transform: translateX(0); }
   .sidebar-mobile-open { overflow: hidden; }
   .sidebar-mobile-open .sidebar-backdrop {

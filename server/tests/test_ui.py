@@ -222,8 +222,8 @@ def test_skrypt_pamieta_szerokosc_menu():
 
     skrypt = (Path(__file__).resolve().parent.parent
               / "cmdb_server" / "static" / "app.js").read_text(encoding="utf-8")
-    assert "cmdb_sidebar_expanded" in skrypt
-    assert "localStorage" in skrypt
+    assert "cmdb_sidebar" in skrypt
+    assert "rozwiniete" in skrypt
     assert "sidebar-mobile-open" in skrypt
     assert "max-width: 760px" in skrypt
 
@@ -394,16 +394,94 @@ def test_uzytkownik_moze_przelaczac_stary_i_nowy_layout(client, tenant_a, make_u
     assert 'data-layout-switch="modern"' in klasyczny_admin
 
 
-def test_rozwiniete_menu_nie_miga_przy_przejsciu_miedzy_stronami():
+def test_rozwiniete_menu_nie_miga_przy_przejsciu_miedzy_stronami(client, tenant_a, make_user):
+    """Stan menu przychodzi z serwera, wiec kolejna strona rysuje sie od razu
+    rozwinieta - bez zwijania i rozwijania przy kazdym kliknieciu pozycji."""
+    make_user(tenant_a["id"], "menu-stan@firma.pl", "haslo-do-testow-123")
+    _login(client, "menu-stan@firma.pl", "haslo-do-testow-123")
+
+    zwiniete = client.get("/assets").text
+    assert 'class="app-layout sidebar-collapsed"' in zwiniete
+
+    client.cookies.set("cmdb_sidebar", "rozwiniete")
+    rozwiniete = client.get("/assets").text
+    assert 'class="app-layout"' in rozwiniete
+    assert "sidebar-collapsed" not in rozwiniete
+    assert "Zwiń menu" in rozwiniete
+    # Zaden skrypt nie poprawia juz szerokosci po narysowaniu strony.
+    assert "localStorage" not in rozwiniete
+
+
+def test_aktywna_pozycja_menu_jest_zaznaczana_przez_serwer(client, tenant_a, make_user):
+    make_user(tenant_a["id"], "menu-akt@firma.pl", "haslo-do-testow-123")
+    _login(client, "menu-akt@firma.pl", "haslo-do-testow-123")
+
+    strona = client.get("/assets").text
+    assert 'class="app-nav-link is-active" href="/assets"' in strona
+    assert 'class="app-nav-link is-active" href="/zmiany"' not in strona
+
+    pulpit = client.get("/").text
+    assert 'class="app-nav-link is-active" href="/"' in pulpit
+
+
+def test_szablony_nie_maja_skryptow_w_tresci_strony():
+    """Naglowek CSP dopuszcza tylko script-src 'self', wiec skrypt wpisany
+    wprost w szablon przegladarka blokuje - i widac to dopiero na serwerze,
+    bo testy HTML-a same z siebie niczego nie wykonuja."""
+    from pathlib import Path
+
+    katalog = Path(__file__).resolve().parent.parent / "cmdb_server" / "templates"
+    for szablon in sorted(katalog.glob("*.html")):
+        tresc = szablon.read_text(encoding="utf-8")
+        for fragment in tresc.split("<script")[1:]:
+            naglowek = fragment.split(">")[0]
+            assert "src=" in naglowek, f"{szablon.name}: skrypt w tresci strony"
+
+
+def test_menu_nie_animuje_sie_przy_wczytywaniu_strony():
+    """Przejscie miedzy stronami nie moze uruchamiac animacji menu - zwijanie
+    i rozwijanie ma byc widoczne tylko wtedy, gdy klika je czlowiek."""
     from pathlib import Path
 
     katalog = Path(__file__).resolve().parent.parent / "cmdb_server"
-    portal = (katalog / "templates" / "base_modern.html").read_text(encoding="utf-8")
-    administracja = (katalog / "templates" / "base_admin_modern.html").read_text(encoding="utf-8")
+    styl = (katalog / "static" / "app.css").read_text(encoding="utf-8")
     skrypt = (katalog / "static" / "app.js").read_text(encoding="utf-8")
 
-    for szablon in (portal, administracja):
-        assert 'localStorage.getItem("cmdb_sidebar_expanded")' in szablon
-        assert szablon.index('localStorage.getItem("cmdb_sidebar_expanded")') < szablon.index('data-sidebar-shell')
+    for regula in styl.split("}"):
+        if "transition" in regula and ("grid-template-columns" in regula or ".nav-label" in regula
+                                       or ".sidebar-brand-name" in regula or ".app-sidebar" in regula):
+            assert "menu-animuje" in regula, regula
+    assert 'classList.add("menu-animuje")' in skrypt
+
+
+def test_odcisk_pliku_statycznego_zmienia_sie_po_podmianie(tmp_path, monkeypatch):
+    """Bez tego poprawka w app.css albo app.js wygladala na nieskuteczna:
+    adres z ?v= zostawal ten sam, wiec przegladarka podawala stary plik."""
+    from cmdb_server.api import ui
+
+    katalog = tmp_path
+    plik = katalog / "app.css"
+    plik.write_text("a{}", encoding="utf-8")
+    monkeypatch.setattr(ui, "STATIC_DIR", katalog)
+    monkeypatch.setattr(ui, "_ODCISKI", {})
+
+    pierwszy = ui._odcisk("app.css")
+    assert pierwszy == ui._odcisk("app.css")
+
+    plik.write_text("a{color:red}", encoding="utf-8")
+    import os
+
+    os.utime(plik, (0, 0))
+    assert ui._odcisk("app.css") != pierwszy
+
+
+def test_menu_pamieta_szerokosc_w_ciasteczku():
+    from pathlib import Path
+
+    katalog = Path(__file__).resolve().parent.parent / "cmdb_server"
+    skrypt = (katalog / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert 'cookieKey = "cmdb_sidebar"' in skrypt
+    assert "document.cookie = cookieKey" in skrypt
     assert "data-layout-switch" in skrypt
     assert "cmdb_layout=" in skrypt

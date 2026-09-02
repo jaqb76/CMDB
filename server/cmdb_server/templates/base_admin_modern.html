@@ -1,3 +1,7 @@
+{# Szerokosc menu pamieta ciasteczko, wiec serwer od razu wysyla strone w tym
+   samym stanie co poprzednia - menu nie zwija sie i nie rozwija przy kazdym
+   przejsciu. #}
+{% set menu_rozwiniete = request.cookies.get('cmdb_sidebar') == 'rozwiniete' %}
 {# Osobny układ administratora głównego: funkcje systemowe nie mieszają się
    z codzienną obsługą zasobów pojedynczej firmy. #}
 <!doctype html>
@@ -10,26 +14,18 @@
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
 </head>
-<body class="app-layout admin-scope sidebar-collapsed">
-<script>
-  // Ustaw szerokosc przed narysowaniem menu, aby nie migalo przy nawigacji.
-  (function () {
-    try {
-      if (window.matchMedia("(min-width: 761px)").matches &&
-          window.localStorage.getItem("cmdb_sidebar_expanded") === "1") {
-        document.body.classList.remove("sidebar-collapsed");
-      }
-    } catch (e) { /* localStorage moze byc niedostepny w trybie prywatnym. */ }
-  })();
-</script>
+<body class="app-layout admin-scope{% if not menu_rozwiniete %} sidebar-collapsed{% endif %}">
 <div class="app-shell" data-sidebar-shell>
   <aside class="app-sidebar app-sidebar-admin" aria-label="Menu administratora głównego">
     <div class="sidebar-brand">
       <a href="/admin" class="sidebar-logo" aria-label="CMDB — administracja">C</a>
       <a href="/admin" class="sidebar-brand-name">CMDB <span>administracja</span></a>
     </div>
-    <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-expanded="false" title="Rozwiń menu">
-      <span class="nav-icon" aria-hidden="true">☰</span><span class="nav-label">Rozwiń menu</span>
+    <button type="button" class="sidebar-toggle" data-sidebar-toggle
+            aria-expanded="{{ 'true' if menu_rozwiniete else 'false' }}"
+            title="{{ 'Zwiń menu' if menu_rozwiniete else 'Rozwiń menu' }}"
+            aria-label="{{ 'Zwiń menu' if menu_rozwiniete else 'Rozwiń menu' }}">
+      <span class="nav-icon" aria-hidden="true">☰</span><span class="nav-label">{{ 'Zwiń menu' if menu_rozwiniete else 'Rozwiń menu' }}</span>
     </button>
 
     <nav class="app-nav">
