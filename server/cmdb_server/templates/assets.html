@@ -28,7 +28,7 @@
   <select name="lokalizacja">
     <option value="">każda lokalizacja</option>
     {% for l in lokalizacje %}
-      <option value="{{ l.id }}" {% if filters.lokalizacja == l %}selected{% endif %}>{{ l }}</option>
+      <option value="{{ l.id }}" {% if filters.lokalizacja == l.id %}selected{% endif %}>{{ l.wartosc }}</option>
     {% endfor %}
   </select>
   <select name="owner">

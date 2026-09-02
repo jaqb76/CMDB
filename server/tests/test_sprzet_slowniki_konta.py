@@ -191,6 +191,28 @@ def test_reczny_sprzet_nie_liczy_sie_jako_bez_kontaktu(client, tenant_a, make_us
     assert "SW-MAGAZYN-01" in client.get("/assets").text
 
 
+def test_filtr_lokalizacji_pokazuje_nazwy_miejsc(client, tenant_a, make_user):
+    """Lista rozwijana pokazywala reprezentacje obiektu Pythona zamiast nazwy
+    miejsca - nie dalo sie wybrac lokalizacji, bo nie bylo wiadomo, ktora jest
+    ktora."""
+    _admin_firmy(client, tenant_a, make_user)
+    _dodaj_sprzet(client)
+
+    with SessionLocal() as db:
+        wpis = db.execute(
+            select(WpisSlownika).where(WpisSlownika.kategoria == "lokalizacja")
+        ).scalars().first()
+        nazwa, wpis_id = wpis.wartosc, wpis.id
+
+    lista = client.get("/assets").text
+    assert "WpisSlownika object" not in lista
+    assert f'<option value="{wpis_id}" >{nazwa}</option>' in lista
+
+    wybrana = client.get(f"/assets?lokalizacja={wpis_id}").text
+    assert f'<option value="{wpis_id}" selected>{nazwa}</option>' in wybrana
+    assert "SW-MAGAZYN-01" in wybrana
+
+
 # --- opiekun i uzytkownik ---------------------------------------------------
 
 def test_opiekun_i_uzytkownik_to_dwie_rozne_osoby(client, tenant_a, make_user):
