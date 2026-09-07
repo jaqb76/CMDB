@@ -109,6 +109,8 @@ data class AppState(
     val assetQuery: String = "",
     val assetOs: String = "",
     val assetUnassigned: Boolean = false,
+    val rememberedServer: String = "",
+    val rememberedEmail: String = "",
     val user: User? = null,
     val dashboard: Dashboard? = null,
     val assets: List<AssetSummary> = emptyList(),
@@ -145,17 +147,45 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun establishTenant(user: User) {
         val available = api!!.tenants()
-        val selected = user.tenant ?: available.singleOrNull()
+        val selected = user.tenant
+            ?: available.firstOrNull { it.slug == session.tenantSlug }
+            ?: available.singleOrNull()
         factory.tenantSlug = selected?.slug
         val scopedUser = if (selected != null) api!!.me() else user
-        _state.value = AppState(restoring = false, user = scopedUser, tenants = available, tenantRequired = selected == null)
-        if (selected != null) refreshAll()
+        _state.value = AppState(
+            restoring = false,
+            rememberedServer = session.serverUrl.orEmpty(),
+            rememberedEmail = session.loginEmail.orEmpty(),
+            user = scopedUser,
+            tenants = available,
+            tenantRequired = selected == null,
+        )
+        if (selected != null) {
+            session.saveTenant(selected.slug)
+            refreshAll()
+        }
+    }
+
+    fun chooseTenant() {
+        assetSearch?.cancel()
+        factory.tenantSlug = null
+        _state.value = _state.value.copy(
+            loading = false,
+            tenantRequired = true,
+            dashboard = null,
+            assets = emptyList(),
+            error = null,
+        )
     }
 
     fun selectTenant(tenant: Tenant) = viewModelScope.launch {
         assetSearch?.cancel()
         factory.tenantSlug = tenant.slug
-        runCatching { api!!.me() }.onSuccess {
+        _state.value = _state.value.copy(loading = true, error = null)
+        runCatching {
+            session.saveTenant(tenant.slug)
+            api!!.me()
+        }.onSuccess {
             _state.value = AppState(restoring = false, user = it, tenants = _state.value.tenants)
             refreshAll()
         }.onFailure { _state.value = _state.value.copy(error = it.userMessage()) }
@@ -171,10 +201,19 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
                     establishTenant(api!!.me())
                 }.onFailure {
                     session.clear()
-                    _state.value = AppState(restoring = false, error = it.userMessage())
+                    _state.value = AppState(
+                        restoring = false,
+                        rememberedServer = session.serverUrl.orEmpty(),
+                        rememberedEmail = session.loginEmail.orEmpty(),
+                        error = it.userMessage(),
+                    )
                 }
             } else {
-                _state.value = AppState(restoring = false)
+                _state.value = AppState(
+                    restoring = false,
+                    rememberedServer = session.serverUrl.orEmpty(),
+                    rememberedEmail = session.loginEmail.orEmpty(),
+                )
             }
         }
     }
@@ -183,9 +222,10 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
         _state.value = _state.value.copy(loading = true, error = null)
         runCatching {
             require(server.trim().startsWith("https://")) { "Adres musi rozpoczynać się od https://" }
-            val temporary = factory.create(server)
-            val result = temporary.login(LoginRequest(email.trim(), password))
-            session.save(server, result.accessToken)
+            session.saveLogin(server, email)
+            val temporary = factory.create(session.serverUrl!!)
+            val result = temporary.login(LoginRequest(session.loginEmail!!, password))
+            session.saveSession(result.accessToken)
             api = factory.create(server)
             establishTenant(result.user)
         }.onFailure {
@@ -198,11 +238,23 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
         session.clear()
         factory.tenantSlug = null
         api = null
-        _state.value = AppState(restoring = false)
+        _state.value = AppState(
+            restoring = false,
+            rememberedServer = session.serverUrl.orEmpty(),
+            rememberedEmail = session.loginEmail.orEmpty(),
+        )
     }
 
     fun refreshAll() = viewModelScope.launch {
         val service = api ?: return@launch
+        if (factory.tenantSlug.isNullOrBlank()) {
+            _state.value = _state.value.copy(
+                loading = false,
+                tenantRequired = true,
+                error = "Wybierz firmę przed pobraniem danych.",
+            )
+            return@launch
+        }
         val userId = _state.value.user?.id
         val tenantSlug = factory.tenantSlug
         val filters = Triple(_state.value.assetQuery, _state.value.assetOs, _state.value.assetUnassigned)
@@ -318,7 +370,10 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
     MaterialTheme(colorScheme = colors) {
         when {
             state.restoring -> LoadingScreen()
-            state.user == null -> LoginScreen(state.loading, state.error, vm::login, vm::clearError)
+            state.user == null -> LoginScreen(
+                state.rememberedServer, state.rememberedEmail,
+                state.loading, state.error, vm::login, vm::clearError,
+            )
             state.tenantRequired -> Scaffold { padding ->
                 LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                     item { Text("Wybierz firmę", style = MaterialTheme.typography.headlineSmall) }
@@ -336,7 +391,7 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
             }, theme,
                 vm::sendReport, vm::saveReport, vm::deleteReport,
                 vm::openAsset, vm::closeAsset, vm::saveDictionary, vm::deleteDictionary,
-                vm::updateAssignment, vm::searchAssets, vm::moreAssets, vm::clearError)
+                vm::updateAssignment, vm::searchAssets, vm::moreAssets, vm::chooseTenant, vm::clearError)
         }
     }
 }
@@ -347,13 +402,15 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
 
 @Composable
 private fun LoginScreen(
+    initialServer: String,
+    initialEmail: String,
     loading: Boolean,
     error: String?,
     onLogin: (String, String, String) -> Unit,
     onErrorShown: () -> Unit,
 ) {
-    var server by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
+    var server by rememberSaveable(initialServer) { mutableStateOf(initialServer) }
+    var email by rememberSaveable(initialEmail) { mutableStateOf(initialEmail) }
     var password by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(error) { error?.let { snackbar.showSnackbar(it); onErrorShown() } }
@@ -398,6 +455,7 @@ private fun MainScreen(
     onUpdateAssignment: (String, AssignmentWrite) -> Unit,
     onSearchAssets: (String, String, Boolean) -> Unit,
     onMoreAssets: () -> Unit,
+    onChooseTenant: () -> Unit,
     onErrorShown: () -> Unit,
 ) {
     var section by remember { mutableStateOf(Section.DASHBOARD) }
@@ -409,6 +467,10 @@ private fun MainScreen(
             title = { Text(state.selectedAsset?.asset?.hostname ?: section.label) },
             navigationIcon = { if (state.selectedAsset != null) Button(enabled = !state.saving, onClick = onCloseAsset) { Text("Wstecz") } },
             actions = { if (state.selectedAsset == null) {
+                if (state.tenants.size > 1) TextButton(
+                    enabled = !state.saving && !state.loading,
+                    onClick = onChooseTenant,
+                ) { Text(state.user?.tenant?.name ?: "Firma") }
                 TextButton(onClick = onToggleTheme) { Text(when (theme) { "dark" -> "Ciemny"; "light" -> "Jasny"; else -> "Systemowy" }) }
                 TextButton(enabled = !state.saving && !state.loading, onClick = onLogout) { Text("Wyloguj") }
             } },

@@ -27,18 +27,38 @@ class SessionStore(private val context: Context) {
         private set
     @Volatile var serverUrl: String? = null
         private set
+    @Volatile var loginEmail: String? = null
+        private set
+    @Volatile var tenantSlug: String? = null
+        private set
 
     suspend fun restore() {
         val values = context.sessionDataStore.data.first()
         token = encrypted.getString(TOKEN, null)
         serverUrl = values[SERVER]
+        loginEmail = values[EMAIL]
+        tenantSlug = values[TENANT]
     }
 
-    suspend fun save(server: String, accessToken: String) {
-        context.sessionDataStore.edit { it[SERVER] = server.trim().trimEnd('/') }
+    suspend fun saveLogin(server: String, email: String) {
+        val normalizedServer = server.trim().trimEnd('/')
+        val normalizedEmail = email.trim().lowercase()
+        context.sessionDataStore.edit {
+            it[SERVER] = normalizedServer
+            it[EMAIL] = normalizedEmail
+        }
+        serverUrl = normalizedServer
+        loginEmail = normalizedEmail
+    }
+
+    suspend fun saveSession(accessToken: String) {
         encrypted.edit().putString(TOKEN, accessToken).apply()
-        serverUrl = server.trim().trimEnd('/')
         token = accessToken
+    }
+
+    suspend fun saveTenant(slug: String) {
+        context.sessionDataStore.edit { it[TENANT] = slug }
+        tenantSlug = slug
     }
 
     suspend fun clear() {
@@ -49,5 +69,7 @@ class SessionStore(private val context: Context) {
     private companion object {
         const val TOKEN = "access_token"
         val SERVER = stringPreferencesKey("server_url")
+        val EMAIL = stringPreferencesKey("login_email")
+        val TENANT = stringPreferencesKey("tenant_slug")
     }
 }
