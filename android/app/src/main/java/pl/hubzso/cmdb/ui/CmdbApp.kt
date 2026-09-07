@@ -365,27 +365,15 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
     val preferences = remember { context.getSharedPreferences("cmdb_appearance", 0) }
     var theme by remember { mutableStateOf(preferences.getString("theme", "system") ?: "system") }
     val darkMode = if (theme == "system") systemDark else theme == "dark"
-    val colors = if (darkMode) darkColorScheme(primary = Color(0xFF8CB4FF), secondary = Color(0xFF9CCAFF))
-        else lightColorScheme(primary = Color(0xFF195EAF), secondary = Color(0xFF356A9A))
-    MaterialTheme(colorScheme = colors) {
+    CmdbVisualTheme(darkMode) {
         when {
-            state.restoring -> LoadingScreen()
-            state.user == null -> LoginScreen(
+            state.restoring -> ModernLoadingScreen()
+            state.user == null -> ModernLoginScreen(
                 state.rememberedServer, state.rememberedEmail,
                 state.loading, state.error, vm::login, vm::clearError,
             )
-            state.tenantRequired -> Scaffold { padding ->
-                LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-                    item { Text("Wybierz firmę", style = MaterialTheme.typography.headlineSmall) }
-                    items(state.tenants, key = { it.id }) { tenant ->
-                        Button(onClick = { vm.selectTenant(tenant) }, modifier = Modifier.fillMaxWidth()) { Text(tenant.name) }
-                    }
-                    state.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
-                    if (state.tenants.isEmpty()) item { Text("Brak dostępnych firm") }
-                    item { TextButton(onClick = { vm.logout() }) { Text("Wyloguj") } }
-                }
-            }
-            else -> MainScreen(state, vm::refreshAll, vm::logout, {
+            state.tenantRequired -> ModernTenantScreen(state, vm::selectTenant, vm::logout)
+            else -> ModernMainScreen(state, vm::refreshAll, vm::logout, {
                 theme = when (theme) { "system" -> "light"; "light" -> "dark"; else -> "system" }
                 preferences.edit().putString("theme", theme).apply()
             }, theme,
