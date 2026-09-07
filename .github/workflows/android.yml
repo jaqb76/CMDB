@@ -1,5 +1,11 @@
 name: CMDB Android build
 on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/os-data-collection-agent-gfz2o8"]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
   pull_request:
     paths:
       - "android/**"
@@ -7,7 +13,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: android-${{ github.event.pull_request.number }}
+  group: android-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   android:
@@ -31,3 +37,4 @@ jobs:
           name: CMDB-Mobile-debug-${{ github.run_id }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
