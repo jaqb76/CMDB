@@ -46,6 +46,8 @@ import kotlinx.serialization.Serializable
     val owner: DictionaryEntry? = null,
     val user: DictionaryEntry? = null,
     val location: DictionaryEntry? = null,
+    @SerialName("role_label") val roleLabel: String? = null,
+    val place: String? = null,
 )
 
 @Serializable data class AssetPage(
@@ -73,6 +75,40 @@ import kotlinx.serialization.Serializable
     val attributes: Map<String, kotlinx.serialization.json.JsonElement>,
 )
 
+@Serializable data class DictionaryCategory(
+    val key: String,
+    val label: String,
+)
+
+@Serializable data class DictionaryField(
+    val key: String,
+    val label: String,
+    val type: String,
+    val required: Boolean = false,
+    val group: String = "Pozostałe",
+    val hint: String? = null,
+    val options: List<String> = emptyList(),
+    val target: String? = null,
+    val format: String? = null,
+    val min: Double? = null,
+    val max: Double? = null,
+)
+
+@Serializable data class DictionarySchema(
+    val category: String,
+    val label: String,
+    val version: Int,
+    val fields: List<DictionaryField> = emptyList(),
+)
+
+@Serializable data class AssignmentWrite(
+    @SerialName("owner_id") val ownerId: String? = null,
+    @SerialName("user_id") val userId: String? = null,
+    @SerialName("location_id") val locationId: String? = null,
+    @SerialName("role_label") val roleLabel: String? = null,
+    val place: String? = null,
+)
+
 @Serializable data class ChangeEntry(
     val id: String,
     @SerialName("asset_id") val assetId: String,
@@ -95,6 +131,30 @@ import kotlinx.serialization.Serializable
     val active: Boolean,
     @SerialName("last_status") val lastStatus: String? = null,
     @SerialName("last_sent_at") val lastSentAt: String? = null,
+    @SerialName("send_to_vendors") val sendToVendors: Boolean = false,
+    val columns: List<String> = emptyList(),
+)
+
+@Serializable data class ReportOption(val key: String, val label: String)
+@Serializable data class ReportColumn(
+    val key: String,
+    val label: String,
+    val group: String,
+    val default: Boolean = false,
+)
+@Serializable data class ReportCatalog(
+    val types: List<ReportOption>,
+    val frequencies: List<ReportOption>,
+    val columns: List<ReportColumn>,
+)
+@Serializable data class ReportWrite(
+    val name: String,
+    val type: String,
+    val frequency: String,
+    val recipients: String,
+    val active: Boolean,
+    @SerialName("send_to_vendors") val sendToVendors: Boolean,
+    val columns: List<String>,
 )
 
 @Serializable data class ApiMessage(val detail: String)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -64,6 +65,9 @@ class ReportBody(BaseModel):
     type: str = Field(min_length=1, max_length=32)
     frequency: str = Field(default="tygodniowo", max_length=16)
     recipients: str = Field(min_length=1, max_length=4000)
+    active: bool = True
+    send_to_vendors: bool = False
+    columns: list[str] = Field(default_factory=list, max_length=100)
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -132,6 +136,8 @@ def asset_item(row: Asset) -> dict:
         "owner": dictionary_item(row.owner),
         "user": dictionary_item(row.uzytkownik),
         "location": dictionary_item(row.lokalizacja),
+        "role_label": row.role_label,
+        "place": row.miejsce,
     }
 
 
@@ -178,10 +184,24 @@ def _user_item(user: PortalUser, tenant: Tenant | None, ctx: TenantContext | Non
 
 
 @router.get("/me")
-def me(user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db)) -> dict:
-    tenant = db.get(Tenant, user.tenant_id) if user.tenant_id else None
+def me(user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db),
+       tenant_slug: Annotated[str | None, Header(alias="X-CMDB-Tenant")] = None) -> dict:
+    if tenant_slug and widzi_wszystkie_firmy(user):
+        ctx = mobile_context(user, tenant_slug, db)
+        tenant = db.get(Tenant, ctx.tenant_id)
+    else:
+        tenant = db.get(Tenant, user.tenant_id) if user.tenant_id else None
     ctx = tenant_context_for(user, tenant) if tenant else None
     return _user_item(user, tenant, ctx)
+
+
+@router.get("/tenants")
+def tenants(user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db)) -> list[dict]:
+    stmt = select(Tenant).where(Tenant.is_active.is_(True))
+    if not widzi_wszystkie_firmy(user):
+        stmt = stmt.where(Tenant.id == user.tenant_id)
+    return [{"id": row.id, "name": row.name, "slug": row.slug}
+            for row in db.execute(stmt.order_by(Tenant.name)).scalars()]
 
 
 @router.get("/dashboard")
@@ -222,9 +242,15 @@ def dashboard(ctx: TenantContext = Depends(mobile_context), db: Session = Depend
 def assets(
     q: str = Query("", max_length=200), page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    os_family: str = Query("", max_length=100),
+    unassigned: bool = False,
     ctx: TenantContext = Depends(mobile_context), db: Session = Depends(get_db),
 ) -> dict:
     stmt = scoping.assets_query(ctx).where(Asset.lifecycle == LIFECYCLE_AKTYWNY)
+    if os_family:
+        stmt = stmt.where(Asset.os_family == os_family)
+    if unassigned:
+        stmt = stmt.where(Asset.owner_id.is_(None))
     if q.strip():
         pattern = f"%{q.strip()}%"
         stmt = stmt.where(or_(Asset.hostname.ilike(pattern), Asset.fqdn.ilike(pattern),
@@ -276,6 +302,39 @@ def dictionary(category: str, ctx: TenantContext = Depends(mobile_context), db: 
     return [dictionary_item(row) for row in slowniki.wpisy(db, ctx, category)]
 
 
+@router.get("/dictionaries")
+def dictionary_categories(ctx: TenantContext = Depends(mobile_context)) -> list[dict]:
+    """Kategorie dostępne w portalu; klient nie utrzymuje własnej stałej listy."""
+    return [{"key": key, "label": label} for key, label in KATEGORIE_SLOWNIKA.items()]
+
+
+@router.get("/dictionaries/{category}/schema")
+def dictionary_schema(category: str, ctx: TenantContext = Depends(mobile_context),
+                      db: Session = Depends(get_db)) -> dict:
+    """Schemat formularza w stabilnym, mobilnym formacie JSON."""
+    if category not in KATEGORIE_SLOWNIKA:
+        raise HTTPException(404, "nieznana kategoria slownika")
+    description = slowniki.schemat(db, ctx, category)
+    return {
+        "category": category,
+        "label": KATEGORIE_SLOWNIKA[category],
+        "version": description.wersja,
+        "fields": [{
+            "key": field.klucz,
+            "label": field.etykieta,
+            "type": field.typ,
+            "required": field.wymagane,
+            "group": field.grupa,
+            "hint": field.podpowiedz,
+            "options": field.opcje,
+            "target": field.cel,
+            "format": field.format,
+            "min": field.min,
+            "max": field.max,
+        } for field in description.pola],
+    }
+
+
 @router.post("/dictionaries/{category}", status_code=201)
 def dictionary_create(category: str, body: DictionaryBody, request: Request,
                       ctx: TenantContext = Depends(mobile_context), db: Session = Depends(get_db)) -> dict:
@@ -316,9 +375,10 @@ def dictionary_update(category: str, entry_id: str, body: DictionaryBody, reques
 def dictionary_delete(category: str, entry_id: str, request: Request,
                       ctx: TenantContext = Depends(mobile_context), db: Session = Depends(get_db)) -> None:
     require_write(ctx)
-    row = slowniki.usun(db, ctx, entry_id)
+    row = slowniki.wpis(db, ctx, entry_id)
     if row is None or row.kategoria != category:
         raise HTTPException(404, "nie znaleziono wpisu slownika")
+    slowniki.usun(db, ctx, entry_id)
     audit(db, ctx, "slownik.mobile_deleted", f"{category}:{row.wartosc}", ip=client_ip(request))
     db.commit()
 
@@ -337,8 +397,7 @@ def change_list(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=
 
 @router.get("/audit")
 def audit_list(ctx: TenantContext = Depends(mobile_context), db: Session = Depends(get_db)) -> list[dict]:
-    rows = db.execute(select(AuditLog).where(or_(AuditLog.tenant_id == ctx.tenant_id,
-        AuditLog.tenant_id.is_(None))).order_by(AuditLog.created_at.desc()).limit(200)).scalars().all()
+    rows = db.execute(select(AuditLog).where(AuditLog.tenant_id == ctx.tenant_id).order_by(AuditLog.created_at.desc()).limit(200)).scalars().all()
     return [{"id": row.id, "actor": row.actor, "action": row.action, "target": row.target,
              "detail": row.detail, "ip": row.ip, "created_at": _iso(row.created_at)} for row in rows]
 
@@ -346,7 +405,33 @@ def audit_list(ctx: TenantContext = Depends(mobile_context), db: Session = Depen
 def report_item(row: DefinicjaRaportu) -> dict:
     return {"id": row.id, "name": row.nazwa, "type": row.rodzaj, "frequency": row.czestotliwosc,
             "recipients": row.adresaci, "active": row.aktywny, "last_status": row.ostatni_status,
-            "last_sent_at": _iso(row.ostatnia_wysylka)}
+            "last_sent_at": _iso(row.ostatnia_wysylka), "send_to_vendors": row.do_dostawcow,
+            "columns": row.kolumny or []}
+
+
+def validate_report_body(body: ReportBody) -> None:
+    from ..services import kolumny
+    if not body.name.strip():
+        raise HTTPException(400, "podaj nazwę raportu")
+    if body.type not in raporty.RODZAJE or body.frequency not in raporty.CZESTOTLIWOSCI:
+        raise HTTPException(400, "nieznany rodzaj lub czestotliwosc raportu")
+    allowed = {item["klucz"] for item in kolumny.KOLUMNY}
+    if any(key not in allowed for key in body.columns):
+        raise HTTPException(400, "nieznana kolumna raportu")
+    if not raporty.adresaci(SimpleNamespace(adresaci=body.recipients)):
+        raise HTTPException(400, "nie podano poprawnego adresu")
+
+
+@router.get("/reports/catalog")
+def report_catalog(ctx: TenantContext = Depends(mobile_context)) -> dict:
+    from ..services import kolumny
+    return {
+        "types": [{"key": key, "label": label} for key, label in raporty.RODZAJE.items()],
+        "frequencies": [{"key": key, "label": key.capitalize()} for key in raporty.CZESTOTLIWOSCI],
+        "columns": [{"key": item["klucz"], "label": item["etykieta"],
+                     "group": item["grupa"], "default": item.get("domyslna", False)}
+                    for item in kolumny.KOLUMNY],
+    }
 
 
 @router.get("/reports")
@@ -360,13 +445,30 @@ def report_list(ctx: TenantContext = Depends(mobile_context), db: Session = Depe
 def report_create(body: ReportBody, request: Request, user: PortalUser = Depends(mobile_user),
                   ctx: TenantContext = Depends(mobile_context), db: Session = Depends(get_db)) -> dict:
     require_write(ctx)
-    if body.type not in raporty.RODZAJE or body.frequency not in raporty.CZESTOTLIWOSCI:
-        raise HTTPException(400, "nieznany rodzaj lub czestotliwosc raportu")
+    validate_report_body(body)
     row = DefinicjaRaportu(tenant_id=ctx.tenant_id, nazwa=body.name.strip(), rodzaj=body.type,
-        czestotliwosc=body.frequency, adresaci=body.recipients.strip(), utworzyl=user.email)
+        czestotliwosc=body.frequency, adresaci=body.recipients.strip(), utworzyl=user.email,
+        aktywny=body.active, do_dostawcow=body.send_to_vendors, kolumny=body.columns or None)
     if not raporty.adresaci(row):
         raise HTTPException(400, "nie podano poprawnego adresu")
     db.add(row); audit(db, ctx, "raport.mobile_created", row.nazwa, ip=client_ip(request))
+    db.commit(); db.refresh(row)
+    return report_item(row)
+
+
+@router.put("/reports/{report_id}")
+def report_update(report_id: str, body: ReportBody, request: Request,
+                  ctx: TenantContext = Depends(mobile_context), db: Session = Depends(get_db)) -> dict:
+    require_write(ctx)
+    validate_report_body(body)
+    row = _report(db, ctx, report_id)
+    row.nazwa = body.name.strip(); row.rodzaj = body.type
+    row.czestotliwosc = body.frequency; row.adresaci = body.recipients.strip()
+    row.aktywny = body.active; row.do_dostawcow = body.send_to_vendors
+    row.kolumny = body.columns or None
+    if not raporty.adresaci(row):
+        raise HTTPException(400, "nie podano poprawnego adresu")
+    audit(db, ctx, "raport.mobile_updated", row.nazwa, ip=client_ip(request))
     db.commit(); db.refresh(row)
     return report_item(row)
 
