@@ -22,6 +22,7 @@ from .api import agent as agent_api
 from .api import download as download_api
 from .api import raporty_ui
 from .api import asset_management
+from .api import mobile as mobile_api
 from .api import ui as ui_api
 from .config import get_settings
 from .db import init_db
@@ -161,6 +162,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_api.router)
     app.include_router(raporty_ui.router)
     app.include_router(asset_management.router)
+    app.include_router(mobile_api.router)
     from .api import discovery_ui
     app.include_router(discovery_ui.router)
 
