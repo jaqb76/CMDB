@@ -108,6 +108,20 @@ fun Throwable.userMessage(): String = when (this) {
         401 -> "Sesja wygasła albo dane logowania są nieprawidłowe."
         403 -> "To konto nie ma uprawnień do tej operacji."
         404 -> "Nie znaleziono danych."
+        429 -> {
+            val seconds = response()?.headers()?.get("Retry-After")?.toLongOrNull()
+            if (seconds == null) "Zbyt wiele prób logowania. Spróbuj ponownie później."
+            else {
+                val minutes = kotlin.math.ceil(seconds / 60.0).toLong()
+                val wait = when {
+                    minutes >= 120 -> "około ${kotlin.math.ceil(minutes / 60.0).toLong()} godz."
+                    minutes >= 60 -> "około 1 godz."
+                    minutes > 1 -> "$minutes min"
+                    else -> "1 min"
+                }
+                "Logowanie jest czasowo zablokowane. Spróbuj ponownie za $wait lub poproś administratora o odblokowanie konta."
+            }
+        }
         400, 422 -> runCatching {
             val body = response()?.errorBody()?.string().orEmpty()
             val detail = Json.parseToJsonElement(body).let { it as? kotlinx.serialization.json.JsonObject }?.get("detail")

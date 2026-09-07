@@ -218,3 +218,19 @@ def test_dynamic_dictionary_crud_and_validation(client, tenant_a, make_user):
     assert created.json()['attributes']['aktywny'] is False
     updated = client.put(path + '/' + created.json()['id'], headers=headers, json={'attributes': {'skrot': 'OPS', 'aktywny': True, 'numer': '3'}})
     assert updated.status_code == 200 and updated.json()['value'] == 'OPS'
+
+
+def test_mobile_lockout_returns_retry_after(client, tenant_a, make_user, monkeypatch):
+    from cmdb_server.config import get_settings
+    make_user(tenant_a['id'], 'locked@example.pl', 'bardzo-dlugie-haslo')
+    monkeypatch.setattr(get_settings(), 'login_max_failures', 2)
+    for _ in range(2):
+        client.post('/api/v1/mobile/auth/login', json={
+            'email': 'locked@example.pl', 'password': 'zle-haslo',
+        })
+    blocked = client.post('/api/v1/mobile/auth/login', json={
+        'email': 'locked@example.pl', 'password': 'bardzo-dlugie-haslo',
+    })
+    assert blocked.status_code == 429
+    assert int(blocked.headers['retry-after']) > 0
+    assert 'czasowo zablokowane' in blocked.json()['detail']

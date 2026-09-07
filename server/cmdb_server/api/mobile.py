@@ -7,6 +7,7 @@ nie jest tokenem agenta i nie jest akceptowany przez endpointy agentow.
 from __future__ import annotations
 
 from datetime import datetime
+from math import ceil
 from typing import Annotated
 from types import SimpleNamespace
 
@@ -149,7 +150,12 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> d
     if blocked_until is not None:
         audit(db, None, action="mobile.login.blocked", target=body.email, ip=ip, actor=body.email)
         db.commit()
-        raise HTTPException(429, "logowanie jest czasowo zablokowane")
+        seconds = max(1, ceil((blocked_until - utcnow()).total_seconds()))
+        raise HTTPException(
+            429,
+            "Zbyt wiele błędnych prób. Logowanie jest czasowo zablokowane.",
+            headers={"Retry-After": str(seconds)},
+        )
     user = authenticate_user(db, body.email, body.password)
     if user is None:
         audit(db, None, action="mobile.login.failed", target=body.email, ip=ip, actor=body.email)

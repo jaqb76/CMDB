@@ -73,3 +73,17 @@ aktualizacji, odinstaluj poprzedni APK (usunie lokalną sesję) i zainstaluj now
 5. Utwórz raport, zmień kolumny i częstotliwość. Wysyłaj wyłącznie na świadomie wskazane adresy.
 6. Konto viewer/audytora: sprawdź brak możliwości zapisu. Konto globalne: wybierz firmę.
 7. Przełącz każdy motyw, zamknij aplikację i uruchom ponownie.
+
+
+## Błąd 429 podczas logowania
+
+Po przekroczeniu limitu błędnych haseł portal blokuje konto i adres źródłowy.
+Aplikacja 0.2.2 pokazuje czas do ponownej próby. Administrator może odblokować
+logowanie z katalogu `deploy` poleceniem:
+
+```bash
+docker compose exec server cmdb-admin odblokuj --wszystko
+```
+
+Po odblokowaniu przed kolejną próbą sprawdź hasło przez portal WWW. Sam restart
+kontenera nie usuwa blokady, ponieważ jest zapisana w PostgreSQL.
