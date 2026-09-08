@@ -174,6 +174,108 @@
       nie znaczy, że gwarancji nie ma — znaczy, że nikt jej nie uzupełnił.
     </p>
     {% endif %}
+
+  {# --- dostepnosc uslug i certyfikaty --- #}
+  {% elif raport.rodzaj == 'uslugi' %}
+    <table cellpadding="0" cellspacing="8" border="0" width="100%"
+           style="border-collapse:separate; margin:0 0 18px">
+      <tr>
+        {{ kafelek(d.niedostepne | length, 'usług nie odpowiada', true) }}
+        {{ kafelek(d.wygasle | length, 'certyfikatów po terminie', true) }}
+        {{ kafelek(d.koncza_sie | length, 'certyfikatów kończy się wkrótce', true) }}
+      </tr>
+    </table>
+
+    <p style="font-size:13px; margin:0 0 18px">
+      Monitorowanych usług: <b>{{ d.liczba }}</b>.
+      Średnia dostępność z ostatnich 7 dni:
+      <b>{% if d.srednia_dostepnosc is not none %}{{ d.srednia_dostepnosc }}%{% else %}brak pomiarów{% endif %}</b>.
+      {% if d.bez_pomiarow %}
+      {{ d.bez_pomiarow }} usług nie ma jeszcze pomiarów — to nie to samo co 100%.
+      {% endif %}
+    </p>
+
+    {{ paski(d.wykres_stanow) }}
+
+    {% if d.niedostepne %}
+    <h2 style="font-size:15px; margin:18px 0 8px">Nie odpowiadają</h2>
+    <table cellpadding="6" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      <tr style="background:#f5f6f8">
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Usługa</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Adres</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Przyczyna</th>
+      </tr>
+      {% for c in d.niedostepne %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.nazwa }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.host }}:{{ c.port }}</td>
+        <td style="border-bottom:1px solid #eef0f3; color:#a52222">{{ c.ostatni_blad or 'brak odpowiedzi' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if d.wygasle or d.koncza_sie or d.niezaufane %}
+    <h2 style="font-size:15px; margin:18px 0 8px">Certyfikaty wymagające uwagi</h2>
+    <table cellpadding="6" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      <tr style="background:#f5f6f8">
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Usługa</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Wystawca</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Ważny do</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Stan</th>
+      </tr>
+      {% for c, dni in d.wygasle + d.koncza_sie %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.nazwa }}<br>
+          <span style="color:#6b7280; font-size:12px">{{ c.host }}</span></td>
+        <td style="border-bottom:1px solid #eef0f3; font-size:12px">{{ c.cert_wystawca or '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.cert_do.strftime('%Y-%m-%d') if c.cert_do else '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3; font-weight:700;
+                   color:{% if dni <= c.prog_alarmu_dni %}#a52222{% else %}#8a6100{% endif %}">
+          {% if dni < 0 %}wygasł {{ -dni }} dni temu{% else %}za {{ dni }} dni{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% for c, dni in d.niezaufane %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.nazwa }}<br>
+          <span style="color:#6b7280; font-size:12px">{{ c.host }}</span></td>
+        <td style="border-bottom:1px solid #eef0f3; font-size:12px">{{ c.cert_wystawca or '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.cert_do.strftime('%Y-%m-%d') if c.cert_do else '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3; font-weight:700; color:#a52222">łańcuch niezaufany</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if d.najgorsze %}
+    <h2 style="font-size:15px; margin:18px 0 8px">Najniższa dostępność (7 dni)</h2>
+    <table cellpadding="6" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      <tr style="background:#f5f6f8">
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Usługa</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Dostępność</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Sprawdzeń</th>
+      </tr>
+      {% for p in d.najgorsze %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ p.cel.nazwa }}</td>
+        <td style="border-bottom:1px solid #eef0f3; font-weight:700;
+                   color:{% if p.okno.procent < 99 %}#a52222{% else %}#1c2024{% endif %}">{{ p.okno.procent }}%</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ p.okno.udane }} / {{ p.okno.pomiary }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if not d.liczba %}
+    <p style="font-size:13px; color:#6b7280">
+      Ta firma nie monitoruje jeszcze żadnej usługi. Cel podaje się adresem IP
+      albo nazwą na stronie „Monitorowanie usług”.
+    </p>
+    {% endif %}
   {% endif %}
 
   {# --- wykorzystanie zasobow --- #}

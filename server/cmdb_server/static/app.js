@@ -564,3 +564,44 @@
     });
   });
 })();
+
+// Formularz monitorowanej uslugi: pola zalezne od sposobu sprawdzenia.
+// Sciezka HTTP nie ma sensu przy sprawdzeniu TCP, a nazwa w certyfikacie
+// przy protokole bez TLS - pokazywanie ich zawsze kaze wypelniac pola,
+// ktore i tak zostana pominiete przy zapisie. Bez skryptu widac wszystkie
+// pola i formularz nadal dziala; serwer i tak sprawdza je od nowa.
+(function () {
+  "use strict";
+  var Z_TLS = ["tls", "https"];
+  var Z_HTTP = ["http", "https"];
+
+  document.querySelectorAll("[data-monitoring-form]").forEach(function (form) {
+    var wybor = form.querySelector("[data-monitoring-protokol]");
+    var port = form.querySelector("[data-monitoring-port]");
+    var blokHttp = form.querySelector("[data-monitoring-http]");
+    var blokTls = form.querySelector("[data-monitoring-tls]");
+    if (!wybor) { return; }
+
+    // Port sprzed zmiany, zeby nie nadpisac wartosci wpisanej recznie:
+    // ktos, kto wpisal 8443, nie chce dostac z powrotem 443 tylko dlatego,
+    // ze przelaczyl sposob sprawdzenia.
+    var poprzedniDomyslny = wybor.options[wybor.selectedIndex]
+      ? wybor.options[wybor.selectedIndex].dataset.port : null;
+
+    function rysuj() {
+      var wybrany = wybor.value;
+      if (blokHttp) { blokHttp.hidden = Z_HTTP.indexOf(wybrany) === -1; }
+      if (blokTls) { blokTls.hidden = Z_TLS.indexOf(wybrany) === -1; }
+
+      var domyslny = wybor.options[wybor.selectedIndex]
+        ? wybor.options[wybor.selectedIndex].dataset.port : null;
+      if (port && domyslny && (!port.value || port.value === poprzedniDomyslny)) {
+        port.value = domyslny;
+      }
+      poprzedniDomyslny = domyslny;
+    }
+
+    wybor.addEventListener("change", rysuj);
+    rysuj();
+  });
+})();

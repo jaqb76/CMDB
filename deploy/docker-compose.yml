@@ -55,6 +55,18 @@ services:
       CMDB_LOGIN_LOCKOUT_HOURS: ${CMDB_LOGIN_LOCKOUT_HOURS:-24}
       # Bez klucza pobieranie ocen CVSS dziala, tylko wolniej (5 zapytan / 30 s).
       CMDB_NVD_API_KEY: ${CMDB_NVD_API_KEY:-}
+      # Monitorowanie uslug: sprawdzenia wychodza Z TEGO kontenera, wiec musi
+      # on widziec monitorowane adresy. Wylaczenie zostawia konfiguracje
+      # w bazie - przydaje sie na instalacji zapasowej, ktora nie ma alarmowac
+      # rownolegle z produkcyjna.
+      CMDB_MONITORING_ENABLED: ${CMDB_MONITORING_ENABLED:-true}
+      CMDB_MONITORING_TICK_SECONDS: ${CMDB_MONITORING_TICK_SECONDS:-60}
+      CMDB_MONITORING_WORKERS: ${CMDB_MONITORING_WORKERS:-8}
+      CMDB_MONITORING_MAX_TARGETS: ${CMDB_MONITORING_MAX_TARGETS:-200}
+      CMDB_MONITORING_HISTORY_DAYS: ${CMDB_MONITORING_HISTORY_DAYS:-30}
+      # Petla zwrotna kontenera to nie jest petla zwrotna maszyny - wlaczaj
+      # swiadomie i tylko wtedy, gdy monitorowana usluga stoi w tym kontenerze.
+      CMDB_MONITORING_ALLOW_LOOPBACK: ${CMDB_MONITORING_ALLOW_LOOPBACK:-false}
       # Adres, pod ktorym klienci widza serwer - trafia do wydawanego skryptu
       # instalacyjnego. Za proxy nie da sie go wiarygodnie odgadnac z zadania.
       CMDB_PUBLIC_URL: ${CMDB_PUBLIC_URL:?ustaw CMDB_PUBLIC_URL, np. https://cmdb.firma.pl}

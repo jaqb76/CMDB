@@ -80,15 +80,19 @@ async def lifespan(app: FastAPI):
     zadanie = asyncio.create_task(petla())
     from .services.release_import import loop as release_loop
     import_job = asyncio.create_task(release_loop())
+    # Monitorowanie uslug ma wlasna petle, a nie kolejny krok w harmonogramie
+    # raportow: raport idzie raz na dobe, a cel sprawdza sie co kilka minut.
+    from .services.monitoring import petla as monitoring_loop
+    monitoring_job = asyncio.create_task(monitoring_loop())
+    zadania = (zadanie, import_job, monitoring_job)
     try:
         yield
     finally:
-        zadanie.cancel()
-        import_job.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await zadanie
-        with contextlib.suppress(asyncio.CancelledError):
-            await import_job
+        for tlo in zadania:
+            tlo.cancel()
+        for tlo in zadania:
+            with contextlib.suppress(asyncio.CancelledError):
+                await tlo
 
 
 # Endpoint zywotnosci: bez tokenu, bez danych, odpytywany lokalnie.
@@ -165,6 +169,8 @@ def create_app() -> FastAPI:
     app.include_router(mobile_api.router)
     from .api import discovery_ui
     app.include_router(discovery_ui.router)
+    from .api import monitoring_ui
+    app.include_router(monitoring_ui.router)
 
     # Agenci wysylaja raporty spakowane gzipem - rozpakowujemy z limitem.
     app.add_middleware(GzipRequestMiddleware, max_bytes=settings.max_report_bytes)

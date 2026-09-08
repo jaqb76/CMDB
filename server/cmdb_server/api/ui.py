@@ -41,6 +41,7 @@ from ..models import (
     AuditLog,
     EnrollmentToken,
     InventorySnapshot,
+    MonitorUslugi,
     PortalUser,
     Tenant,
     WpisSlownika,
@@ -54,8 +55,8 @@ from ..security import (
     verify_password,
 )
 from ..services import (
-    changes, cve, duplicates, logowanie, pakiet, rodzaje, scoping, slowniki, upgrades,
-    ustawienia,
+    changes, cve, duplicates, logowanie, monitoring, pakiet, rodzaje, scoping, slowniki,
+    upgrades, ustawienia,
 )
 from ..services import schemat as definicje_pol
 from ..services.auth import (
@@ -528,6 +529,10 @@ def dashboard(
             select(func.count(Asset.id)).where(
                 Asset.tenant_id == ctx.tenant_id, Asset.zrodlo == ZRODLO_AGENT)
         ).scalar_one(),
+        # Monitorowane uslugi trafiaja na pulpit, bo awaria uslugi jest
+        # jedyna rzecza w tym panelu, ktora wymaga reakcji TERAZ - reszta
+        # opisuje stan, ktory zaczekaja do jutra.
+        uslugi=monitoring.podsumowanie(db, ctx.tenant_id),
     )
 
 
@@ -996,6 +1001,15 @@ def asset_detail(
         software=payload.get("software") or {},
         users_info=payload.get("users") or {},
         collector_errors=payload.get("errors") or [],
+        # Usługi monitorowane pod tym zasobem. Pytanie "czy ten serwer
+        # dziala" pada przy karcie maszyny, a nie na osobnej liscie.
+        uslugi=db.execute(
+            select(MonitorUslugi).where(
+                MonitorUslugi.tenant_id == ctx.tenant_id,
+                MonitorUslugi.asset_id == asset.id,
+            ).order_by(MonitorUslugi.nazwa)
+        ).scalars().all(),
+        dni_do_konca=monitoring.dni_do_konca,
     )
 
 

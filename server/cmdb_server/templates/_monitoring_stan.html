@@ -1,0 +1,30 @@
+{# Odznaka stanu celu. Jedno miejsce, bo stan pokazujemy na liscie, na
+   stronie celu i na karcie zasobu - trzy rozne kolory dla tej samej
+   wartosci to najprostszy sposob, zeby nikt juz nie ufal zadnemu. #}
+{% macro odznaka(stan) %}
+  {%- if stan == 'ok' -%}<span class="badge badge-ok">działa</span>
+  {%- elif stan == 'ostrzezenie' -%}<span class="badge badge-warn">ostrzeżenie</span>
+  {%- elif stan == 'awaria' -%}<span class="badge badge-danger">awaria</span>
+  {%- else -%}<span class="badge" title="Cel nie został jeszcze sprawdzony">nieznany</span>
+  {%- endif -%}
+{% endmacro %}
+
+{# Waznosc certyfikatu w dniach - z barwa odpowiadajaca progom celu. #}
+{% macro certyfikat(monitor, dni) %}
+  {%- if monitor.protokol not in ('tls', 'https') -%}
+    <span class="muted">nie dotyczy</span>
+  {%- elif monitor.cert_do is none -%}
+    <span class="muted">nie odczytano</span>
+  {%- else -%}
+    {{ monitor.cert_do.strftime('%Y-%m-%d') }}
+    {%- if dni is not none %}
+      {% if dni < 0 %}<span class="badge badge-danger">wygasł {{ -dni }} dni temu</span>
+      {% elif dni <= monitor.prog_alarmu_dni %}<span class="badge badge-danger">za {{ dni }} dni</span>
+      {% elif dni <= monitor.prog_ostrzezenia_dni %}<span class="badge badge-warn">za {{ dni }} dni</span>
+      {% else %}<span class="muted small">za {{ dni }} dni</span>{% endif %}
+    {%- endif %}
+    {%- if monitor.weryfikuj_lancuch and monitor.cert_zaufany is false %}
+      <br><span class="badge badge-danger" title="{{ monitor.cert_blad }}">łańcuch niezaufany</span>
+    {%- endif %}
+  {%- endif -%}
+{% endmacro %}

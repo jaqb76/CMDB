@@ -23,6 +23,10 @@
     <div class="card-value">{{ unassigned }}</div>
     <div class="card-label">bez przypisanego opiekuna</div>
   </a>
+  <a class="card {% if uslugi and uslugi.awaria %}card-danger{% elif uslugi and uslugi.ostrzezenie %}card-warn{% endif %}" href="/monitoring">
+    <div class="card-value">{{ uslugi.awaria + uslugi.ostrzezenie if uslugi else 0 }}</div>
+    <div class="card-label">usługi wymagające uwagi{% if uslugi and uslugi.razem %} z {{ uslugi.razem }}{% endif %}</div>
+  </a>
 </section>
 
 {% if by_typ %}

@@ -114,11 +114,19 @@ obrazu, więc działa od pierwszego uruchomienia.
 
 ### Dostęp wychodzący
 
-Serwer potrzebuje wychodzącego HTTPS wyłącznie do pobierania danych
-o podatnościach (Debian Security Tracker, baza USN Ubuntu — łącznie ~130 MB
-przy odświeżeniu). Bez niego wszystko inne działa, a strona podatności pokazuje
-stan „nieznany”. Agenci **nigdy** nie są odpytywani przez serwer — łączność
-jest zawsze jednostronna, od agenta do serwera.
+Serwer potrzebuje wychodzącego HTTPS do pobierania danych o podatnościach
+(Debian Security Tracker, baza USN Ubuntu — łącznie ~130 MB przy odświeżeniu).
+Bez niego wszystko inne działa, a strona podatności pokazuje stan „nieznany”.
+
+Drugim wyjściem na zewnątrz jest **monitorowanie usług**: serwer nawiązuje
+połączenie z każdym skonfigurowanym celem, więc musi go widzieć. Usługa
+w segmencie sieci niedostępnym dla serwera będzie raportowana jako
+niedostępna — i będzie to prawda z jego punktu widzenia, choć nie z punktu
+widzenia jej użytkowników. Lista adresów, pod które serwer świadomie nie
+pójdzie, jest w [`monitorowanie-uslug.md`](monitorowanie-uslug.md).
+
+Agenci **nigdy** nie są odpytywani przez serwer — ta łączność jest zawsze
+jednostronna, od agenta do serwera.
 
 ## Zmienne konfiguracyjne serwera
 
@@ -132,6 +140,12 @@ jest zawsze jednostronna, od agenta do serwera.
 | `CMDB_STALE_AFTER_HOURS` | `48` | po ilu godzinach maszyna jest „bez kontaktu” |
 | `CMDB_REPORT_INTERVAL_SECONDS` | `3600` | odstęp narzucany agentom w odpowiedzi |
 | `CMDB_MAX_REPORT_BYTES` | `8388608` | limit rozmiaru raportu |
+| `CMDB_MONITORING_ENABLED` | `true` | monitorowanie usług i certyfikatów |
+| `CMDB_MONITORING_TICK_SECONDS` | `60` | jak często budzi się pętla sprawdzeń |
+| `CMDB_MONITORING_WORKERS` | `8` | ile sprawdzeń naraz |
+| `CMDB_MONITORING_MAX_TARGETS` | `200` | limit monitorowanych usług na firmę |
+| `CMDB_MONITORING_HISTORY_DAYS` | `30` | retencja pomiarów dostępności |
+| `CMDB_MONITORING_ALLOW_LOOPBACK` | `false` | zezwolenie na cele pod adresem pętli zwrotnej |
 | `CMDB_LOG_LEVEL` | `INFO` | poziom dziennika |
 
 W trybie `prod` serwer **odmawia startu**, jeśli klucz sesji jest domyślny
@@ -209,6 +223,13 @@ snapshotów górna granica to ok. 5–7 MB na maszynę.
 Uwaga przy wielu replikach: throttling nieudanych uwierzytelnień jest
 lokalny dla procesu. Przy kilku replikach przenieś licznik do Redis albo
 ustaw limit na poziomie nginx (`limit_req`).
+
+Zadania w tle — wysyłka raportów i monitorowanie usług — uzgadniają się
+**blokadą doradczą PostgreSQL**, więc kolejne repliki nie powielają sprawdzeń
+ani alarmów: proces, który nie dostanie blokady, pomija ten obieg. Nie wymaga
+to żadnej dodatkowej konfiguracji, ale znaczy też, że monitorowanie idzie
+z **jednej** repliki naraz — przy kilku tysiącach celów zwiększ
+`CMDB_MONITORING_WORKERS`, a nie liczbę replik.
 
 ## Kopie zapasowe
 

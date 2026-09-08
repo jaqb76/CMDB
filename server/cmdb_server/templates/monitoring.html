@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% import "_monitoring_stan.html" as stany %}
+{% block title %}Monitorowanie usług - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Monitorowanie usług</h1>
+    <p class="muted">
+      Serwer CMDB sam łączy się z podanym adresem albo nazwą i sprawdza dwie
+      rzeczy: czy usługa odpowiada i do kiedy ważny jest jej certyfikat.
+      Mierzymy to, co zobaczy użytkownik usługi — nie to, co widać z jej wnętrza.
+    </p>
+  </div>
+</div>
+
+{% if komunikat %}
+<div class="alert {% if 'awaria' in komunikat or 'Nie ' in komunikat %}alert-error{% else %}alert-ok{% endif %}">
+  {{ komunikat }}
+</div>
+{% endif %}
+
+{% if not ctx.can_write %}
+<div class="alert">
+  Konto ma uprawnienia tylko do odczytu — stan usług można oglądać, ale nie
+  da się dodać celu ani wymusić sprawdzenia.
+</div>
+{% endif %}
+
+<section class="kafelki">
+  <a class="kafelek {% if podsumowanie.awaria %}kafelek-alarm{% endif %}" href="/monitoring?stan=awaria">
+    <div class="kafelek-wartosc">{{ podsumowanie.awaria }}</div>
+    <div class="kafelek-opis">awaria — nie odpowiada albo certyfikat po terminie</div>
+  </a>
+  <a class="kafelek" href="/monitoring?stan=ostrzezenie">
+    <div class="kafelek-wartosc">{{ podsumowanie.ostrzezenie }}</div>
+    <div class="kafelek-opis">ostrzeżenie — pojedynczy błąd albo certyfikat na wyczerpaniu</div>
+  </a>
+  <a class="kafelek" href="/monitoring?stan=ok">
+    <div class="kafelek-wartosc">{{ podsumowanie.ok }}</div>
+    <div class="kafelek-opis">działa poprawnie {% if podsumowanie.wylaczone %}&middot; {{ podsumowanie.wylaczone }} wyłączonych{% endif %}</div>
+  </a>
+</section>
+
+{% if podsumowanie.razem and not poczta %}
+<div class="alert alert-warn">
+  Firma nie ma skonfigurowanej <a href="/raporty">poczty wychodzącej</a> —
+  powiadomienia o awariach i wygasających certyfikatach nie mają czym wyjść.
+  Stan usług widać w panelu, ale nikt nie dostanie o nim wiadomości.
+</div>
+{% endif %}
+
+<section class="panel">
+  <h2>Monitorowane usługi{% if filtr_stanu %} — {{ filtr_stanu }}{% endif %}</h2>
+  {% if filtr_stanu %}<p><a class="btn btn-small" href="/monitoring">Pokaż wszystkie</a></p>{% endif %}
+
+  {% if cele %}
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Cel</th><th>Adres</th><th>Stan</th><th>Odpowiedź</th>
+        <th>Dostępność 24 h</th><th>Certyfikat ważny do</th><th>Sprawdzono</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for c in cele %}
+      {% set d = dostepnosci.get(c.id) %}
+      <tr {% if not c.aktywny %}class="row-muted"{% endif %}>
+        <td class="strong">
+          <a href="/monitoring/{{ c.id }}">{{ c.nazwa }}</a>
+          {% if not c.aktywny %}<span class="badge">wyłączony</span>{% endif %}
+          {% if c.asset %}<br><a class="small muted" href="/assets/{{ c.asset_id }}">{{ c.asset.hostname }}</a>{% endif %}
+        </td>
+        <td class="small">{{ c.host }}:{{ c.port }}<br><span class="muted">{{ c.protokol | upper }}{% if c.protokol in protokoly_http %} {{ c.sciezka }}{% endif %}</span></td>
+        <td>
+          {{ stany.odznaka(c.stan) }}
+          {% if c.ostatni_blad %}<div class="muted small">{{ c.ostatni_blad[:70] }}</div>{% endif %}
+        </td>
+        <td class="small">
+          {% if c.czas_odpowiedzi_ms is not none %}{{ c.czas_odpowiedzi_ms }} ms{% else %}—{% endif %}
+          {% if c.ostatni_kod %}<br><span class="muted">HTTP {{ c.ostatni_kod }}</span>{% endif %}
+        </td>
+        <td class="small">
+          {% if d and d.procent is not none %}
+            {{ d.procent }}%
+            <div class="meter {% if d.procent < 95 %}meter-danger{% elif d.procent < 99.5 %}meter-warn{% endif %}">
+              <span class="meter-fill" style="width: {{ d.procent }}%"></span>
+            </div>
+            <span class="muted">{{ d.udane }} / {{ d.pomiary }} sprawdzeń</span>
+          {% else %}
+            <span class="muted" title="Brak pomiarów w oknie — to nie jest to samo co 100%">brak danych</span>
+          {% endif %}
+        </td>
+        <td class="small">{{ stany.certyfikat(c, dni_do_konca(c)) }}</td>
+        <td class="small">{% if c.ostatnie_sprawdzenie %}{{ c.ostatnie_sprawdzenie | ago }}{% else %}<span class="muted">nigdy</span>{% endif %}</td>
+        <td class="small">
+          {% if ctx.can_write %}
+          <form method="post" action="/monitoring/{{ c.id }}/sprawdz" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small">Sprawdź teraz</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">
+    Nie monitorujemy jeszcze żadnej usługi. Cel podaje się adresem IP albo
+    nazwą — nie musi mieć wpisu w ewidencji: certyfikat domeny u zewnętrznego
+    dostawcy albo adres na load balancerze też jest usługą, którą trzeba pilnować.
+  </p>
+  {% endif %}
+</section>
+
+{% if ctx.can_write %}
+<section class="panel">
+  <h2>Nowa monitorowana usługa</h2>
+  {% if limit_osiagniety %}
+  <div class="alert alert-warn">
+    Osiągnięto limit monitorowanych usług dla tej firmy. Usuń albo wyłącz
+    któryś z celów, żeby dodać nowy.
+  </div>
+  {% else %}
+  <form method="post" action="/monitoring" class="stack" data-monitoring-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="row-form">
+      <div>
+        <label for="nazwa">Nazwa <span class="wymagane">*</span></label>
+        <input id="nazwa" name="nazwa" required maxlength="200" placeholder="Poczta firmowa">
+      </div>
+      <div>
+        <label for="host">Adres IP lub nazwa <span class="wymagane">*</span></label>
+        <input id="host" name="host" required maxlength="255" placeholder="poczta.firma.pl albo 10.0.0.15">
+      </div>
+      <div>
+        <label for="protokol">Co sprawdzamy</label>
+        <select id="protokol" name="protokol" data-monitoring-protokol>
+          {% for klucz, opis in protokoly.items() %}
+            <option value="{{ klucz }}" data-port="{{ porty_domyslne.get(klucz, 443) }}"
+                    {% if klucz == 'https' %}selected{% endif %}>{{ opis }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="port">Port</label>
+        <input id="port" name="port" type="number" min="1" max="65535" value="443" data-monitoring-port>
+      </div>
+    </div>
+
+    <div class="row-form" data-monitoring-http>
+      <div>
+        <label for="sciezka">Ścieżka HTTP</label>
+        <input id="sciezka" name="sciezka" value="/" maxlength="500" placeholder="/health">
+        <div class="muted small">Strona główna bywa przekierowaniem — <code>/health</code> mówi o aplikacji więcej.</div>
+      </div>
+      <div>
+        <label for="oczekiwany_kod">Oczekiwany kod</label>
+        <input id="oczekiwany_kod" name="oczekiwany_kod" type="number" min="0" max="599" value="0">
+        <div class="muted small">0 znaczy „dowolny kod poniżej 400”.</div>
+      </div>
+    </div>
+
+    <div class="row-form" data-monitoring-tls>
+      <div>
+        <label for="nazwa_tls">Nazwa w certyfikacie</label>
+        <input id="nazwa_tls" name="nazwa_tls" maxlength="255" placeholder="poczta.firma.pl">
+        <div class="muted small">
+          Wypełnij, gdy cel podano adresem IP — serwer obsługujący kilka domen
+          bez tej nazwy poda certyfikat pierwszej z brzegu.
+        </div>
+      </div>
+      <div>
+        <label class="konto-wpis">
+          <input type="checkbox" name="weryfikuj_lancuch" value="true" checked>
+          Wymagaj zaufanego łańcucha
+        </label>
+        <div class="muted small">
+          Wyłącz przy usługach z certyfikatem własnego urzędu firmy — serwer CMDB
+          go nie zna. Data ważności jest sprawdzana zawsze.
+        </div>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label for="interwal_sekund">Odstęp sprawdzeń (s)</label>
+        <input id="interwal_sekund" name="interwal_sekund" type="number" min="60" max="86400" value="300">
+      </div>
+      <div>
+        <label for="limit_sekund">Limit czasu (s)</label>
+        <input id="limit_sekund" name="limit_sekund" type="number" min="1" max="60" value="10">
+      </div>
+      <div>
+        <label for="liczba_prob">Prób przed alarmem</label>
+        <input id="liczba_prob" name="liczba_prob" type="number" min="1" max="10" value="2">
+        <div class="muted small">Jedna zgubiona odpowiedź zdarza się w każdej sieci.</div>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label for="prog_ostrzezenia_dni">Ostrzeżenie o certyfikacie (dni)</label>
+        <input id="prog_ostrzezenia_dni" name="prog_ostrzezenia_dni" type="number" min="1" max="365" value="30">
+      </div>
+      <div>
+        <label for="prog_alarmu_dni">Alarm o certyfikacie (dni)</label>
+        <input id="prog_alarmu_dni" name="prog_alarmu_dni" type="number" min="0" max="365" value="7">
+      </div>
+      <div>
+        <label for="asset_id">Powiąż z zasobem</label>
+        <select id="asset_id" name="asset_id">
+          <option value="">— bez powiązania —</option>
+          {% for m in maszyny %}<option value="{{ m.id }}">{{ m.hostname }}</option>{% endfor %}
+        </select>
+        <div class="muted small">Opcjonalnie: usługa nie musi mieć sprzętu w ewidencji.</div>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label class="konto-wpis">
+          <input type="checkbox" name="powiadamiaj" value="true" checked>
+          Wyślij wiadomość przy zmianie stanu
+        </label>
+      </div>
+      <div>
+        <label for="adresaci">Adresaci powiadomień</label>
+        <input id="adresaci" name="adresaci" maxlength="2000" placeholder="dyzur@firma.pl, it@firma.pl">
+        <div class="muted small">Kilka adresów rozdziel przecinkiem albo średnikiem.</div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Dodaj i sprawdź</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Jak to działa</h2>
+  <table class="table">
+    <tbody>
+      <tr>
+        <th style="width:220px">Dostępność i certyfikat osobno</th>
+        <td class="small">
+          To dwie niezależne awarie: usługa potrafi odpowiadać z certyfikatem
+          wygasającym jutro i potrafi milczeć z certyfikatem ważnym rok.
+          Stan celu widoczny na liście to gorsza z tych dwóch ocen.
+        </td>
+      </tr>
+      <tr>
+        <th>Powiadomienie przy zmianie</th>
+        <td class="small">
+          Wiadomość idzie w chwili, gdy stan się zmienia — przy potwierdzonej
+          awarii, przy powrocie usługi i przy każdym przekroczonym progu
+          ważności certyfikatu. Awaria trwająca tydzień nie zamienia się
+          w tysiąc wiadomości. Wysyłka idzie przez
+          <a href="/raporty">pocztę tej firmy</a>.
+        </td>
+      </tr>
+      <tr>
+        <th>Odnowiony certyfikat</th>
+        <td class="small">
+          Nowy certyfikat zeruje progi powiadomień, więc przed następnym
+          końcem ważności ostrzeżenie przyjdzie ponownie — i przyjdzie też
+          potwierdzenie, że odnowienie zadziałało.
+        </td>
+      </tr>
+      <tr>
+        <th>Czego to nie zastąpi</th>
+        <td class="small">
+          Odpowiadamy na dwa pytania: „czy odpowiada” i „do kiedy ważny
+          certyfikat”. Nie ma tu zależności między usługami, okien serwisowych
+          ani eskalacji dyżurów.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+{% endblock %}

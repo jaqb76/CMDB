@@ -208,6 +208,51 @@ Wydanie agenta opisane jest parą **system + architektura**, a architekturę
 serwer odczytuje z nagłówka pliku — dzięki temu build dla x86-64 nigdy nie
 trafi na ARM. Szczegóły: [`docs/agent-linux.md`](docs/agent-linux.md).
 
+## Monitorowanie usług i certyfikatów SSL
+
+Ewidencja odpowiada na pytanie „co mamy”. Osobny moduł odpowiada na dwa inne:
+**czy to działa** i **do kiedy ważny jest certyfikat**. Cel podaje się adresem
+IP albo nazwą hosta — i **nie musi mieć wpisu w ewidencji**: certyfikat domeny
+u zewnętrznego dostawcy albo adres na load balancerze też jest usługą, którą
+ktoś musi pilnować.
+
+Próbę nawiązuje **serwer CMDB, a nie agent**. Agent widzi maszynę od środka
+i nie wie, czy usługa odpowiada komukolwiek innemu; certyfikat, który wygasł,
+wygląda z maszyny tak samo jak ważny. Mierzymy to, co zobaczy użytkownik usługi.
+
+| Protokół | Co sprawdza |
+|---|---|
+| `tcp` | port przyjmuje połączenia |
+| `tls` | połączenie szyfrowane **i certyfikat** — także dla SMTPS, IMAPS, LDAPS |
+| `http` | kod odpowiedzi serwera WWW |
+| `https` | kod odpowiedzi **i certyfikat** |
+
+**Dostępność i certyfikat oceniamy osobno**, bo osobno się psują: usługa
+potrafi odpowiadać z certyfikatem wygasającym jutro i potrafi milczeć
+z certyfikatem ważnym rok. Stan celu na liście to gorsza z dwóch ocen, ale
+powiadomienia o nich idą niezależnie. Procent dostępności liczy się wyłącznie
+z historii pomiarów — brak pomiarów pokazujemy jako „brak danych”, a nie 100%.
+
+Wiadomość idzie **przy zmianie stanu i tylko przy zmianie**: przy potwierdzonej
+awarii (jedna zgubiona odpowiedź to jeszcze nie awaria), przy powrocie usługi
+i przy każdym przekroczonym progu ważności certyfikatu — 30 dni, 7 dni, po
+terminie. Odnowiony certyfikat zeruje progi, więc przed następnym końcem
+ważności ostrzeżenie przyjdzie ponownie. Wysyłka idzie przez serwer SMTP tej
+firmy, ten sam co raporty.
+
+Usługi wewnętrzne z certyfikatem własnego urzędu firmy nie przejdą weryfikacji
+łańcucha — to stan normalny, a nie awaria, i wyłącza się dla nich *Wymagaj
+zaufanego łańcucha*. **Data ważności jest sprawdzana zawsze**, niezależnie od
+tego ustawienia.
+
+Oprócz alarmów w chwili awarii dostępny jest cykliczny raport pocztą
+**Dostępność usług i certyfikaty** — podsumowanie okresu dla kogoś, kto nie
+siedzi przy alarmach.
+
+Szczegóły, ustawienia serwera i lista adresów, pod które serwer świadomie nie
+pójdzie (m.in. usługa metadanych chmury pod `169.254.169.254`):
+[`docs/monitorowanie-uslug.md`](docs/monitorowanie-uslug.md).
+
 ## Wielofirmowość i tokeny
 
 Rejestracja agenta jest dwustopniowa:
@@ -235,6 +280,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | [`docs/aktualizacje.md`](docs/aktualizacje.md) | brakujące poprawki, źródła danych per system, czego to nie jest |
 | [`docs/podatnosci.md`](docs/podatnosci.md) | badanie CVE, dane dystrybucji, porównywanie wersji dpkg |
 | [`docs/raporty.md`](docs/raporty.md) | raporty pocztą, SMTP per firma, harmonogram, dane gwarancji |
+| [`docs/monitorowanie-uslug.md`](docs/monitorowanie-uslug.md) | monitorowanie dostępności usług i ważności certyfikatów SSL, progi, powiadomienia |
 | [`docs/wdrozenie.md`](docs/wdrozenie.md) | docker compose, TLS, kopie zapasowe, utrzymanie |
 
 ## Testy

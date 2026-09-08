@@ -26,7 +26,7 @@
 <a href="#reczne">Sprzęt dodawany ręcznie</a>
 <a href="#gwarancje">Zakup i gwarancja</a>
 <a href="#historia">Zmiany i historia</a>
-<a href="#raporty">Raporty i audyt</a><a href="#architektura">Analiza architektury firmy</a><a href="#customizacja-raportow">Personalizacja raportów</a><a href="#wykresy">Wykresy w raportach</a><a href="#relacje">Relacje i zależności</a>
+<a href="#raporty">Raporty i audyt</a><a href="#monitorowanie">Monitorowanie usług i certyfikatów</a><a href="#architektura">Analiza architektury firmy</a><a href="#customizacja-raportow">Personalizacja raportów</a><a href="#wykresy">Wykresy w raportach</a><a href="#relacje">Relacje i zależności</a>
 <div class="navgroup">Agent</div>
 <a href="#token">Token rejestracyjny</a>
 <a href="#wersje-agentow">Wersje i lista zmian</a>
@@ -196,7 +196,7 @@ Cena: 5200 PLN</pre>
 <div class="grid2">
 <div class="card">
 <strong>Raporty</strong>
-<p>Portal może pokazywać raporty dotyczące inwentaryzacji, podatności, gwarancji i wykorzystania zasobów.</p>
+<p>Portal może pokazywać raporty dotyczące inwentaryzacji, podatności, gwarancji, wykorzystania zasobów oraz dostępności usług i certyfikatów.</p>
 <p>Najpierw otwórz raport w portalu, aby sprawdzić jego treść.</p>
 </div>
 <div class="card">
@@ -204,6 +204,35 @@ Cena: 5200 PLN</pre>
 <p>Audyt pomaga ustalić, kto się logował, kto utworzył lub wycofał token, kiedy zarejestrowano agenta albo kto zmienił opiekuna.</p>
 </div>
 </div>
+</section><section class="guide" data-search="monitorowanie usługi certyfikat ssl tls wygasa dostępność ping port awaria powiadomienie alarm https adres ip nazwa hosta uptime" id="monitorowanie">
+<div class="section-head"><div><h2>9a. Monitorowanie usług i certyfikatów SSL</h2><p class="muted">Serwer CMDB sam łączy się z podanym adresem i sprawdza, czy usługa odpowiada oraz do kiedy ważny jest jej certyfikat.</p></div><span class="badge">Reaguje natychmiast</span></div>
+<div class="grid2">
+<div class="card">
+<strong>Co podajesz</strong>
+<p>Adres IP albo nazwę hosta i port — nic więcej nie jest wymagane. Cel <b>nie musi mieć wpisu w ewidencji</b>: certyfikat domeny u zewnętrznego dostawcy albo adres na load balancerze też jest usługą, którą ktoś musi pilnować. Opcjonalnie powiążesz cel z zasobem, a wtedy jego stan widać też na karcie maszyny.</p>
+</div>
+<div class="card">
+<strong>Cztery sposoby sprawdzenia</strong>
+<p><b>TCP</b> — port przyjmuje połączenia. <b>TLS</b> — połączenie szyfrowane plus certyfikat, także dla usług, które nie mówią po HTTP (SMTPS, IMAPS, LDAPS). <b>HTTP</b> i <b>HTTPS</b> — dodatkowo kod odpowiedzi aplikacji. Otwarty port nie znaczy, że aplikacja za nim żyje.</p>
+</div>
+<div class="card">
+<strong>Dostępność i certyfikat osobno</strong>
+<p>To dwie niezależne awarie: usługa potrafi odpowiadać z certyfikatem wygasającym jutro i potrafi milczeć z certyfikatem ważnym rok. Stan celu na liście to <b>gorsza</b> z dwóch ocen, ale powiadomienia o nich idą osobno.</p>
+</div>
+<div class="card">
+<strong>Kiedy przyjdzie wiadomość</strong>
+<p>Przy potwierdzonej awarii (po ustawionej liczbie prób — jedna zgubiona odpowiedź zdarza się w każdej sieci), przy powrocie usługi oraz przy każdym przekroczonym progu ważności certyfikatu: ostrzeżenie, alarm, po terminie. Awaria trwająca tydzień nie zamienia się w tysiąc wiadomości.</p>
+</div>
+<div class="card">
+<strong>Certyfikat własnego urzędu firmy</strong>
+<p>Serwer CMDB go nie zna, więc łańcuch będzie „niezaufany”. Wyłącz wtedy <i>Wymagaj zaufanego łańcucha</i> — data ważności jest sprawdzana zawsze, niezależnie od tego ustawienia.</p>
+</div>
+<div class="card">
+<strong>Dostępność w procentach</strong>
+<p>Liczy się z zapisanej historii pomiarów, nie ze stanu „teraz”. Brak pomiarów pokazujemy jako „brak danych”, a nie 100% — zero sprawdzeń z wynikiem „wszystko działa” byłoby po prostu nieprawdą.</p>
+</div>
+</div>
+<p class="muted">Powiadomienia idą pocztą tej firmy — najpierw uzupełnij <b>Pocztę wychodzącą</b> na stronie Raporty. Oprócz alarmów w chwili awarii możesz włączyć cykliczny raport <b>Dostępność usług i certyfikaty</b>: podsumowanie tygodnia dla kogoś, kto nie siedzi przy alarmach.</p>
 </section><section class="guide" data-search="personalizacja customizacja raport kolumny tabeli identyfikacja system sprzęt zakup podatności pokaż domyślne wolne" id="customizacja-raportow">
 <div class="section-head">
 <div>

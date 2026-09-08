@@ -170,6 +170,98 @@
   </p>
   {% endif %}
 
+{# --- dostepnosc uslug i certyfikaty --- #}
+{% elif raport.rodzaj == 'uslugi' %}
+  <div class="kafelki">
+    {{ kafelek(d.niedostepne | length, 'usług nie odpowiada', true) }}
+    {{ kafelek(d.wygasle | length, 'certyfikatów po terminie', true) }}
+    {{ kafelek(d.koncza_sie | length, 'certyfikatów kończy się wkrótce', true) }}
+  </div>
+
+  <p class="uwaga-raportu">
+    Monitorowanych usług: <b>{{ d.liczba }}</b>.
+    Średnia dostępność z ostatnich 7 dni:
+    <b>{% if d.srednia_dostepnosc is not none %}{{ d.srednia_dostepnosc }}%{% else %}brak pomiarów{% endif %}</b>.
+    {% if d.bez_pomiarow %}
+    {{ d.bez_pomiarow }} usług nie ma jeszcze pomiarów — brak pomiarów to nie to samo co 100%.
+    {% endif %}
+  </p>
+
+  {{ pierscien(wykresy.z_paskow(d.wykres_stanow), 'Stan monitorowanych usług', 'usług') }}
+
+  {% if d.niedostepne %}
+  <section class="wykres-blok">
+    <h3>Nie odpowiadają</h3>
+    <table class="table">
+      <thead><tr><th>Usługa</th><th>Adres</th><th>Przyczyna</th><th>Od</th></tr></thead>
+      <tbody>
+      {% for c in d.niedostepne %}
+        <tr>
+          <td class="strong">{{ c.nazwa }}</td>
+          <td class="small">{{ c.host }}:{{ c.port }} <span class="muted">{{ c.protokol | upper }}</span></td>
+          <td class="wartosc-alarm small">{{ c.ostatni_blad or 'brak odpowiedzi' }}</td>
+          <td class="small">{{ c.ostatnia_zmiana_stanu | dt }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if d.wygasle or d.koncza_sie or d.niezaufane %}
+  <section class="wykres-blok">
+    <h3>Certyfikaty wymagające uwagi</h3>
+    <table class="table">
+      <thead><tr><th>Usługa</th><th>Wystawca</th><th>Ważny do</th><th>Stan</th></tr></thead>
+      <tbody>
+      {% for c, dni in d.wygasle + d.koncza_sie %}
+        <tr>
+          <td class="strong">{{ c.nazwa }}<div class="muted small">{{ c.host }}</div></td>
+          <td class="small">{{ c.cert_wystawca or '-' }}</td>
+          <td class="small">{{ c.cert_do.strftime('%Y-%m-%d') if c.cert_do else '-' }}</td>
+          <td class="strong {% if dni <= c.prog_alarmu_dni %}wartosc-alarm{% else %}wartosc-uwaga{% endif %}">
+            {% if dni < 0 %}wygasł {{ -dni }} dni temu{% else %}za {{ dni }} dni{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% for c, dni in d.niezaufane %}
+        <tr>
+          <td class="strong">{{ c.nazwa }}<div class="muted small">{{ c.host }}</div></td>
+          <td class="small">{{ c.cert_wystawca or '-' }}</td>
+          <td class="small">{{ c.cert_do.strftime('%Y-%m-%d') if c.cert_do else '-' }}</td>
+          <td class="strong wartosc-alarm">łańcuch niezaufany</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if d.najgorsze %}
+  <section class="wykres-blok">
+    <h3>Najniższa dostępność (7 dni)</h3>
+    <table class="table">
+      <thead><tr><th>Usługa</th><th class="lp">Dostępność</th><th class="lp">Sprawdzeń</th></tr></thead>
+      <tbody>
+      {% for p in d.najgorsze %}
+        <tr>
+          <td class="strong">{{ p.cel.nazwa }}<div class="muted small">{{ p.cel.host }}:{{ p.cel.port }}</div></td>
+          <td class="lp strong {% if p.okno.procent < 99 %}wartosc-alarm{% endif %}">{{ p.okno.procent }}%</td>
+          <td class="lp muted">{{ p.okno.udane }} / {{ p.okno.pomiary }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if not d.liczba %}
+  <p class="uwaga-raportu">
+    Ta firma nie monitoruje jeszcze żadnej usługi. Cel podaje się adresem IP
+    albo nazwą na stronie <a href="/monitoring">Monitorowanie usług</a>.
+  </p>
+  {% endif %}
+
 {# --- wykorzystanie zasobow --- #}
 {% elif raport.rodzaj == 'wykorzystanie' %}
   {% macro dziesiatka(pozycje, tytul, podpis) %}

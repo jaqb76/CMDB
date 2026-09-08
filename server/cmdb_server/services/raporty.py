@@ -32,6 +32,7 @@ RODZAJE = {
     "gwarancje": "Gwarancje i wsparcie",
     "wykorzystanie": "Wykorzystanie zasobow",
     "aktualizacje": "Brakujace aktualizacje",
+    "uslugi": "Dostepnosc uslug i certyfikaty",
 }
 
 CZESTOTLIWOSCI = {
@@ -369,12 +370,77 @@ def dane_wykorzystanie(db: Session, tenant_id: str) -> dict:
     return zestawienia.zbierz(db, _maszyny(db, tenant_id), _ostatni_raport)
 
 
+# --- uslugi i certyfikaty ---------------------------------------------------
+
+def dane_uslugi(db: Session, tenant_id: str) -> dict:
+    """Stan monitorowanych uslug i waznosc ich certyfikatow.
+
+    Powiadomienia ida w chwili zmiany stanu i trafiaja do dyzurnego. Ten
+    raport odpowiada na inne pytanie - "jak nam sie to wiodlo przez ostatni
+    okres" - i idzie do kogos, kto nie siedzi przy alarmach. Stad procent
+    dostepnosci zamiast pojedynczych zdarzen.
+    """
+    from . import monitoring
+
+    cele = monitoring.cele_firmy(db, tenant_id, tylko_aktywne=True)
+    dzisiaj = utcnow()
+
+    niedostepne = [c for c in cele if c.stan_dostepnosci == "awaria"]
+    wygasle, koncza_sie, niezaufane = [], [], []
+    for cel in cele:
+        dni = monitoring.dni_do_konca(cel, dzisiaj)
+        if cel.weryfikuj_lancuch and cel.cert_zaufany is False:
+            niezaufane.append((cel, dni))
+        if dni is None:
+            continue
+        if dni < 0:
+            wygasle.append((cel, dni))
+        elif dni <= cel.prog_ostrzezenia_dni:
+            koncza_sie.append((cel, dni))
+
+    wygasle.sort(key=lambda para: para[1])
+    koncza_sie.sort(key=lambda para: para[1])
+
+    # Dostepnosc liczymy z historii pomiarow, a nie ze stanu "teraz":
+    # usluga, ktora wstala minute przed wyslaniem raportu, nie byla dostepna
+    # przez caly tydzien i raport nie moze tego zamiatac pod dywan.
+    dostepnosci = [
+        {"cel": cel, "okno": monitoring.dostepnosc(db, cel.id, tenant_id, 168)}
+        for cel in cele
+    ]
+    zmierzone = [d for d in dostepnosci if d["okno"]["procent"] is not None]
+    najgorsze = sorted(zmierzone, key=lambda d: d["okno"]["procent"])[:10]
+    srednia = (round(sum(d["okno"]["procent"] for d in zmierzone) / len(zmierzone), 2)
+               if zmierzone else None)
+
+    return {
+        "cele": cele,
+        "liczba": len(cele),
+        "niedostepne": niedostepne,
+        "wygasle": wygasle,
+        "koncza_sie": koncza_sie,
+        "niezaufane": niezaufane,
+        "najgorsze": najgorsze,
+        "srednia_dostepnosc": srednia,
+        # Cel bez pomiarow to nie jest cel sprawny - to cel, ktorego nikt
+        # jeszcze nie zmierzyl. Liczymy go osobno, zeby nie zawyzal sredniej.
+        "bez_pomiarow": len(dostepnosci) - len(zmierzone),
+        "wykres_stanow": wykres([
+            ("dziala", sum(1 for c in cele if c.stan == "ok")),
+            ("ostrzezenie", sum(1 for c in cele if c.stan == "ostrzezenie")),
+            ("awaria", sum(1 for c in cele if c.stan == "awaria")),
+            ("nieznany", sum(1 for c in cele if c.stan == "nieznany")),
+        ]),
+    }
+
+
 BUDOWNICZOWIE = {
     "podatnosci": dane_podatnosci,
     "sprzet": dane_sprzet,
     "gwarancje": dane_gwarancje,
     "wykorzystanie": dane_wykorzystanie,
     "aktualizacje": dane_aktualizacje,
+    "uslugi": dane_uslugi,
 }
 
 
@@ -516,6 +582,29 @@ def wersja_tekstowa(raport: dict) -> str:
                 for p in pozycje
             ]
             linie.append("")
+
+    elif raport["rodzaj"] == "uslugi":
+        linie += [
+            f"Monitorowanych uslug: {d['liczba']}",
+            f"Niedostepnych teraz: {len(d['niedostepne'])}",
+            f"Certyfikatow po terminie: {len(d['wygasle'])}",
+            f"Certyfikatow konczacych sie wkrotce: {len(d['koncza_sie'])}",
+            ("Srednia dostepnosc (7 dni): "
+             + (f"{d['srednia_dostepnosc']}%" if d["srednia_dostepnosc"] is not None
+                else "brak pomiarow")),
+            "",
+            "Nie odpowiadaja:",
+        ]
+        linie += [
+            f"  {c.nazwa} ({c.host}:{c.port}): {c.ostatni_blad or 'brak odpowiedzi'}"
+            for c in d["niedostepne"]
+        ] or ["  brak"]
+        linie += ["", "Certyfikaty wymagajace uwagi:"]
+        linie += [
+            f"  {c.nazwa} ({c.host}): "
+            + (f"wygasl {abs(dni)} dni temu" if dni < 0 else f"wygasa za {dni} dni")
+            for c, dni in d["wygasle"] + d["koncza_sie"]
+        ] or ["  brak"]
 
     linie += ["", "Raport wygenerowany automatycznie przez CMDB."]
     return "\n".join(linie)

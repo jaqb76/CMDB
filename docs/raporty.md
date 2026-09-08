@@ -6,7 +6,7 @@ przez wspólną skrzynkę operatora — inaczej wiadomości o jednej organizacji
 przechodziłyby przez infrastrukturę, do której ma dostęp inna, a cały system
 jest zbudowany wokół tego, że firmy się nie widzą.
 
-## Trzy rodzaje
+## Rodzaje raportów
 
 | Rodzaj | Odpowiada na pytanie |
 |---|---|
@@ -14,6 +14,7 @@ jest zbudowany wokół tego, że firmy się nie widzą.
 | **Inwentaryzacja sprzętu** | co w ogóle mamy i w jakim stanie |
 | **Gwarancje i wsparcie** | czemu kończy się wsparcie |
 | **Wykorzystanie zasobów** | od czego zacząć — pierwsza dziesiątka w każdej kategorii |
+| **Dostępność usług i certyfikaty** | co nie odpowiada i któremu certyfikatowi kończy się ważność |
 
 ### Wykorzystanie zasobów
 
@@ -40,6 +41,25 @@ angielska ścieżka zawodzi na każdym systemie w innym języku.
 Dysk pokazujemy jako **najbardziej zapełniony wolumen**, a nie średnią —
 maszyna z pełnym dyskiem systemowym i pustym dyskiem danych ma problem,
 którego średnia nie widzi.
+
+### Dostępność usług i certyfikaty
+
+Podsumowanie tego, co pokazuje strona *Monitorowanie usług*: które usługi nie
+odpowiadają, którym certyfikatom kończy się ważność, jaka była średnia
+i najniższa dostępność przez ostatnie siedem dni.
+
+Ten raport i powiadomienia z monitorowania odpowiadają na **różne pytania**.
+Powiadomienie idzie do dyżurnego w chwili zmiany stanu — „właśnie przestało
+działać”. Raport trafia do kogoś, kto przy alarmach nie siedzi, i mówi „tak
+nam się to wiodło przez tydzień”. Stąd procenty dostępności zamiast
+pojedynczych zdarzeń.
+
+Dostępność liczymy z historii pomiarów, a nie ze stanu „teraz”: usługa, która
+wstała minutę przed wysyłką raportu, nie była dostępna przez cały tydzień
+i raport nie może tego zamiatać pod dywan. Cele bez pomiarów liczone są osobno
+— cel, którego nikt jeszcze nie zmierzył, nie jest celem sprawnym i nie może
+zawyżać średniej. Szczegóły samego monitorowania:
+[`monitorowanie-uslug.md`](monitorowanie-uslug.md).
 
 Każdy ma podgląd w panelu (`/raporty/podgląd/<rodzaj>`) — ta sama treść, która
 pójdzie pocztą. Podgląd różniący się od wysyłki byłby gorszy niż jego brak.

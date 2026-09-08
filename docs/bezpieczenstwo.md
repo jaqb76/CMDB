@@ -158,6 +158,40 @@ zawiera gotową listę zbieranych pól do takiej rozmowy.
 * Czas zebrania z zegara klienta jest przycinany: raport „z przyszłości"
   albo sprzed roku dostaje czas serwera.
 
+## Połączenia wychodzące z serwera
+
+Monitorowanie usług jest jedynym miejscem, w którym **serwer łączy się pod
+adres podany przez człowieka**. Cel wpisuje administrator firmy, a połączenie
+nawiązuje serwer wspólny dla wszystkich firm — adres znaczy więc dla serwera
+co innego niż dla wpisującego.
+
+Odmawiamy adresów, przy których ta różnica jest groźna:
+
+| Adres | Dlaczego |
+|---|---|
+| `169.254.0.0/16`, `fe80::/10` | pod `169.254.169.254` odpowiada usługa metadanych chmury |
+| `127.0.0.0/8`, `::1` | pętla zwrotna wskazuje na sam serwer CMDB |
+| `0.0.0.0`, `::`, multicast, adresy zarezerwowane | nie są usługą |
+
+Adres IPv4 zapisany jako IPv6 (`::ffff:169.254.169.254`) to ten sam adres
+i podlega tej samej odmowie — sprawdzanie postaci zapisu przepuściłoby go
+bez pytania.
+
+Sprawdzenie następuje **po rozwiązaniu nazwy**, a połączenie idzie dokładnie
+pod sprawdzony adres: inaczej między jednym a drugim odpowiedź DNS mogłaby się
+zmienić i serwer poszedłby tam, gdzie nikt nie zaglądał. Adres wpisany wprost
+odrzucamy już w formularzu; nazwę sprawdzamy przy każdym połączeniu, bo jej
+odpowiedź zmienia się w czasie.
+
+Sama sonda jest wąska z założenia: nie podąża za przekierowaniem, nie czyta
+treści odpowiedzi (tylko linię statusu), a ścieżka HTTP nie może zawierać
+znaków nowej linii — inaczej dałoby się dopisać własne nagłówki do żądania.
+Wynik widoczny w panelu to kod odpowiedzi i czas, nigdy zawartość.
+
+Blokada pętli zwrotnej znosi się świadomie
+(`CMDB_MONITORING_ALLOW_LOOPBACK=true`) na instalacji, która ma pilnować usług
+na tej samej maszynie. Całe monitorowanie wyłącza `CMDB_MONITORING_ENABLED=false`.
+
 ## Podział uprawnień na stacji
 
 Na maszynie klienta pracują dwa procesy o różnych uprawnieniach:
@@ -194,7 +228,8 @@ nie może podmienić tego, co zadanie uruchamia.
 
 `audit_log` zapisuje: logowania udane i nieudane, wydanie i wycofanie
 tokenu, rejestrację agenta, wycofanie poświadczenia, zmianę opiekuna,
-dodanie i usunięcie opiekuna — z adresem IP i znacznikiem czasu.
+dodanie i usunięcie opiekuna oraz dodanie, zmianę i usunięcie celu
+monitorowania — z adresem IP i znacznikiem czasu.
 Podgląd w panelu: zakładka **Audyt**.
 
 ## Serwer wystawiony do internetu

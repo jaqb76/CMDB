@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% import "_monitoring_stan.html" as stany %}
+{% block title %}{{ monitor.nazwa }} - monitorowanie - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ monitor.nazwa }} {{ stany.odznaka(monitor.stan) }}</h1>
+    <p class="muted">
+      {{ monitor.host }}:{{ monitor.port }} &middot; {{ protokoly.get(monitor.protokol, monitor.protokol) }}
+      {% if monitor.ostatni_adres %}&middot; ostatnio pod adresem {{ monitor.ostatni_adres }}{% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-small" href="/monitoring">&larr; Wszystkie usługi</a>
+    {% if ctx.can_write %}
+    <form method="post" action="/monitoring/{{ monitor.id }}/sprawdz" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-small btn-primary">Sprawdź teraz</button>
+    </form>
+    <form method="post" action="/monitoring/{{ monitor.id }}/przelacz" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-small">{{ 'Wyłącz' if monitor.aktywny else 'Włącz' }}</button>
+    </form>
+    <form method="post" action="/monitoring/{{ monitor.id }}/usun" class="inline-form"
+          data-confirm="Usunąć cel {{ monitor.nazwa }} razem z historią pomiarów?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-small btn-danger">Usuń</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if komunikat %}
+<div class="alert {% if 'awaria' in komunikat %}alert-error{% else %}alert-ok{% endif %}">{{ komunikat }}</div>
+{% endif %}
+
+{% if not monitor.aktywny %}
+<div class="alert alert-warn">
+  Cel jest wyłączony — nie jest sprawdzany, a jego stan pozostaje nieznany.
+  Historia pomiarów zostaje nienaruszona.
+</div>
+{% endif %}
+
+{% if monitor.blad_powiadomienia %}
+<div class="alert alert-error">
+  <b>Powiadomienie nie doszło:</b> {{ monitor.blad_powiadomienia }}
+  <div class="small">Zgłoszenie zostanie ponowione przy kolejnym sprawdzeniu — powiadomienie, które nie dotarło, nie jest powiadomieniem.</div>
+</div>
+{% endif %}
+
+<section class="kafelki">
+  {% for okno in okna %}
+  <div class="kafelek {% if okno.procent is not none and okno.procent < 99 %}kafelek-alarm{% endif %}">
+    <div class="kafelek-wartosc">
+      {% if okno.procent is not none %}{{ okno.procent }}%{% else %}—{% endif %}
+    </div>
+    <div class="kafelek-opis">
+      dostępność w ostatnich {{ okno.godziny }} h
+      {% if okno.pomiary %}&middot; {{ okno.udane }} / {{ okno.pomiary }} sprawdzeń{% else %}&middot; brak pomiarów{% endif %}
+      {% if okno.sredni_czas_ms is not none %}<br>średnia odpowiedź {{ okno.sredni_czas_ms }} ms{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<div class="two-col">
+<section class="panel">
+  <h2>Ostatnie sprawdzenie</h2>
+  <table class="table">
+    <tbody>
+      <tr><th>Stan celu</th><td>{{ stany.odznaka(monitor.stan) }}</td></tr>
+      <tr><th>Dostępność</th><td>{{ stany.odznaka(monitor.stan_dostepnosci) }}
+        {% if monitor.kolejne_bledy %}<span class="muted small">{{ monitor.kolejne_bledy }} kolejnych błędów</span>{% endif %}</td></tr>
+      <tr><th>Certyfikat</th><td>{{ stany.odznaka(monitor.stan_certyfikatu) }}</td></tr>
+      <tr><th>Sprawdzono</th><td>{{ monitor.ostatnie_sprawdzenie | dt }}
+        {% if monitor.ostatnie_sprawdzenie %}<span class="muted small">({{ monitor.ostatnie_sprawdzenie | ago }})</span>{% endif %}</td></tr>
+      <tr><th>Stan od</th><td>{{ monitor.ostatnia_zmiana_stanu | dt }}</td></tr>
+      <tr><th>Czas odpowiedzi</th><td>{% if monitor.czas_odpowiedzi_ms is not none %}{{ monitor.czas_odpowiedzi_ms }} ms{% else %}—{% endif %}</td></tr>
+      {% if monitor.protokol in protokoly_http %}
+      <tr><th>Kod HTTP</th><td>{{ monitor.ostatni_kod or '—' }}</td></tr>
+      {% endif %}
+      <tr><th>Adres</th><td>{{ monitor.ostatni_adres or '—' }}</td></tr>
+      {% if monitor.ostatni_blad %}
+      <tr><th>Błąd</th><td class="wartosc-alarm">{{ monitor.ostatni_blad }}</td></tr>
+      {% endif %}
+      <tr><th>Ostatnie powiadomienie</th><td>{{ monitor.ostatnie_powiadomienie | dt }}</td></tr>
+      {% if monitor.asset %}
+      <tr><th>Zasób</th><td><a href="/assets/{{ monitor.asset_id }}">{{ monitor.asset.hostname }}</a></td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Certyfikat</h2>
+  {% if monitor.protokol not in protokoly_tls %}
+  <p class="muted">Ten cel jest sprawdzany bez TLS — nie ma certyfikatu do obejrzenia.</p>
+  {% elif monitor.cert_do is none %}
+  <p class="muted">
+    Certyfikatu jeszcze nie odczytano.
+    {% if monitor.cert_blad %}<br>{{ monitor.cert_blad }}{% endif %}
+  </p>
+  {% else %}
+  <table class="table">
+    <tbody>
+      <tr><th>Ważny do</th><td>{{ stany.certyfikat(monitor, dni) }}</td></tr>
+      <tr><th>Ważny od</th><td>{{ monitor.cert_od | dt }}</td></tr>
+      <tr><th>Wystawiony dla</th><td>{{ monitor.cert_podmiot or '—' }}</td></tr>
+      <tr><th>Wystawca</th><td>{{ monitor.cert_wystawca or '—' }}</td></tr>
+      <tr><th>Łańcuch</th><td>
+        {% if not monitor.weryfikuj_lancuch %}<span class="muted">nie sprawdzany na życzenie</span>
+        {% elif monitor.cert_zaufany %}<span class="badge badge-ok">zaufany</span>
+        {% else %}<span class="badge badge-danger">niezaufany</span> <span class="small">{{ monitor.cert_blad }}</span>{% endif %}
+      </td></tr>
+      <tr><th>Nazwy w certyfikacie</th><td class="small">{{ (monitor.cert_nazwy or []) | join(', ') or '—' }}</td></tr>
+      <tr><th>Odcisk SHA-256</th><td class="small"><code>{{ monitor.cert_odcisk or '—' }}</code></td></tr>
+      <tr><th>Progi</th><td class="small">ostrzeżenie {{ monitor.prog_ostrzezenia_dni }} dni, alarm {{ monitor.prog_alarmu_dni }} dni</td></tr>
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+</div>
+
+<section class="panel">
+  <h2>Ostatnie pomiary</h2>
+  {% if pomiary %}
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>Kiedy</th><th>Wynik</th><th>Czas</th><th>Kod</th><th>Błąd</th></tr></thead>
+    <tbody>
+      {% for p in pomiary %}
+      <tr>
+        <td class="small">{{ p.sprawdzono | dt }}</td>
+        <td>{{ stany.odznaka(p.stan) }}</td>
+        <td class="small">{% if p.czas_odpowiedzi_ms is not none %}{{ p.czas_odpowiedzi_ms }} ms{% else %}—{% endif %}</td>
+        <td class="small">{{ p.kod or '—' }}</td>
+        <td class="small muted">{{ p.blad or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted small">
+    Historia pomiarów jest podstawą procentu dostępności — bez niej dałoby się
+    powiedzieć tylko „działa teraz”, a pytanie po awarii brzmi „jak długo nie działało”.
+  </p>
+  {% else %}
+  <p class="muted">Brak pomiarów. Cel nie był jeszcze sprawdzany.</p>
+  {% endif %}
+</section>
+
+{% if ctx.can_write %}
+<section class="panel">
+  <h2>Ustawienia celu</h2>
+  <form method="post" action="/monitoring/{{ monitor.id }}" class="stack" data-monitoring-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="row-form">
+      <div>
+        <label for="nazwa">Nazwa <span class="wymagane">*</span></label>
+        <input id="nazwa" name="nazwa" required maxlength="200" value="{{ monitor.nazwa }}">
+      </div>
+      <div>
+        <label for="host">Adres IP lub nazwa <span class="wymagane">*</span></label>
+        <input id="host" name="host" required maxlength="255" value="{{ monitor.host }}">
+      </div>
+      <div>
+        <label for="protokol">Co sprawdzamy</label>
+        <select id="protokol" name="protokol" data-monitoring-protokol>
+          {% for klucz, opis in protokoly.items() %}
+            <option value="{{ klucz }}" data-port="{{ porty_domyslne.get(klucz, 443) }}"
+                    {% if klucz == monitor.protokol %}selected{% endif %}>{{ opis }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="port">Port</label>
+        <input id="port" name="port" type="number" min="1" max="65535" value="{{ monitor.port }}" data-monitoring-port>
+      </div>
+    </div>
+
+    <div class="row-form" data-monitoring-http>
+      <div>
+        <label for="sciezka">Ścieżka HTTP</label>
+        <input id="sciezka" name="sciezka" value="{{ monitor.sciezka }}" maxlength="500">
+      </div>
+      <div>
+        <label for="oczekiwany_kod">Oczekiwany kod</label>
+        <input id="oczekiwany_kod" name="oczekiwany_kod" type="number" min="0" max="599" value="{{ monitor.oczekiwany_kod }}">
+        <div class="muted small">0 znaczy „dowolny kod poniżej 400”.</div>
+      </div>
+    </div>
+
+    <div class="row-form" data-monitoring-tls>
+      <div>
+        <label for="nazwa_tls">Nazwa w certyfikacie</label>
+        <input id="nazwa_tls" name="nazwa_tls" maxlength="255" value="{{ monitor.nazwa_tls or '' }}">
+      </div>
+      <div>
+        <label class="konto-wpis">
+          <input type="checkbox" name="weryfikuj_lancuch" value="true" {% if monitor.weryfikuj_lancuch %}checked{% endif %}>
+          Wymagaj zaufanego łańcucha
+        </label>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label for="interwal_sekund">Odstęp sprawdzeń (s)</label>
+        <input id="interwal_sekund" name="interwal_sekund" type="number" min="60" max="86400" value="{{ monitor.interwal_sekund }}">
+      </div>
+      <div>
+        <label for="limit_sekund">Limit czasu (s)</label>
+        <input id="limit_sekund" name="limit_sekund" type="number" min="1" max="60" value="{{ monitor.limit_sekund }}">
+      </div>
+      <div>
+        <label for="liczba_prob">Prób przed alarmem</label>
+        <input id="liczba_prob" name="liczba_prob" type="number" min="1" max="10" value="{{ monitor.liczba_prob }}">
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label for="prog_ostrzezenia_dni">Ostrzeżenie o certyfikacie (dni)</label>
+        <input id="prog_ostrzezenia_dni" name="prog_ostrzezenia_dni" type="number" min="1" max="365" value="{{ monitor.prog_ostrzezenia_dni }}">
+      </div>
+      <div>
+        <label for="prog_alarmu_dni">Alarm o certyfikacie (dni)</label>
+        <input id="prog_alarmu_dni" name="prog_alarmu_dni" type="number" min="0" max="365" value="{{ monitor.prog_alarmu_dni }}">
+      </div>
+      <div>
+        <label for="asset_id">Powiąż z zasobem</label>
+        <select id="asset_id" name="asset_id">
+          <option value="">— bez powiązania —</option>
+          {% for m in maszyny %}
+            <option value="{{ m.id }}" {% if m.id == monitor.asset_id %}selected{% endif %}>{{ m.hostname }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label class="konto-wpis">
+          <input type="checkbox" name="powiadamiaj" value="true" {% if monitor.powiadamiaj %}checked{% endif %}>
+          Wyślij wiadomość przy zmianie stanu
+        </label>
+        <label class="konto-wpis">
+          <input type="checkbox" name="aktywny" value="true" {% if monitor.aktywny %}checked{% endif %}>
+          Cel włączony
+        </label>
+      </div>
+      <div>
+        <label for="adresaci">Adresaci powiadomień</label>
+        <input id="adresaci" name="adresaci" maxlength="2000" value="{{ monitor.adresaci or '' }}">
+      </div>
+    </div>
+
+    <p class="muted small">
+      Zmiana adresu, portu, protokołu albo ścieżki zeruje stan i historię
+      powiadomień: pod tą samą nazwą stoi wtedy inna usługa, a alarm o awarii
+      czegoś, czego już nie monitorujemy, byłby fałszywy.
+    </p>
+    <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

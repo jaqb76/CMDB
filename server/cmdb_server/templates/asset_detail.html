@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_monitoring_stan.html" as stany %}
 {% from "_zmiany.html" import podsumowanie_raportu, tabela_zmian %}
 {% block title %}{{ asset.hostname }} - CMDB{% endblock %}
 {% block content %}
@@ -383,6 +384,30 @@
         </tbody>
       </table>
       {% else %}<p class="muted">Brak danych o interfejsach.</p>{% endif %}
+    </div>
+    {% endif %}
+
+    {# Uslugi monitorowane pod tym zasobem. Widac je tu, bo pytanie "czy ten
+       serwer dziala" pada przy karcie maszyny, a nie na osobnej liscie. #}
+    {% if uslugi %}
+    <div class="panel">
+      <h2>Monitorowane usługi</h2>
+      <table class="table">
+        <thead><tr><th>Usługa</th><th>Adres</th><th>Stan</th><th>Certyfikat</th><th>Sprawdzono</th></tr></thead>
+        <tbody>
+        {% for u in uslugi %}
+          <tr>
+            <td><a href="/monitoring/{{ u.id }}">{{ u.nazwa }}</a>
+              {% if not u.aktywny %}<span class="badge">wyłączony</span>{% endif %}</td>
+            <td class="small">{{ u.host }}:{{ u.port }} <span class="muted">{{ u.protokol | upper }}</span></td>
+            <td>{{ stany.odznaka(u.stan) }}
+              {% if u.ostatni_blad %}<div class="muted small">{{ u.ostatni_blad[:60] }}</div>{% endif %}</td>
+            <td class="small">{{ stany.certyfikat(u, dni_do_konca(u)) }}</td>
+            <td class="small">{% if u.ostatnie_sprawdzenie %}{{ u.ostatnie_sprawdzenie | ago }}{% else %}<span class="muted">nigdy</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
     </div>
     {% endif %}
   </section>

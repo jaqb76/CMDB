@@ -28,6 +28,11 @@ serwer          ▼
 Zasada: **pełny raport w JSON, kolumny relacyjne tylko dla tego, po czym
 filtrujemy**. Dodanie nowego pola do raportu nie wymaga migracji bazy.
 
+Wyjątkiem od reguły „stanu nie zapisujemy" jest `monitory_uslug.stan`. „Bez
+kontaktu" przy maszynie wynika z `last_seen` w chwili patrzenia i nie musi
+nigdzie leżeć, ale o zmianie stanu usługi trzeba powiadomić w momencie,
+w którym nastąpiła — a nie wtedy, gdy ktoś akurat otworzy stronę.
+
 | Tabela | Rola |
 |---|---|
 | `tenants` | firma — korzeń izolacji danych |
@@ -37,6 +42,8 @@ filtrujemy**. Dodanie nowego pola do raportu nie wymaga migracji bazy.
 | `assets` | maszyna: kolumny do filtrowania + `facts` (skrót do listy) |
 | `owners` | opiekun/właściciel po stronie firmy |
 | `inventory_snapshots` | pełny raport agenta jako JSONB — źródło prawdy |
+| `monitory_uslug` | cel monitorowania (adres, port, progi) wraz z ostatnim stanem i ostatnim certyfikatem |
+| `pomiary_monitorow` | historia sprawdzeń — podstawa procentu dostępności |
 | `audit_log` | ślad operacji wrażliwych |
 
 Na PostgreSQL kolumny JSON to `JSONB`, a `inventory_snapshots.payload`

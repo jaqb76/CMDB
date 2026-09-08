@@ -886,3 +886,187 @@ class DiscoveryDevice(Base):
     # nie widac, jest gorszy od reki - tego pola uzywa panel i dziennik audytu.
     link_mode: Mapped[str | None] = mapped_column(String(16))
     link_reason: Mapped[str | None] = mapped_column(String(200))
+
+
+# --- monitorowanie uslug i certyfikatow -------------------------------------
+
+# Stan celu. "nieznany" celowo NIE jest tym samym co "ok": cel dopiero dodany
+# albo wylaczony nie zostal jeszcze sprawdzony, a zielona kropka przy czyms,
+# czego nikt nie zmierzyl, jest gorsza niz jawne przyznanie sie do niewiedzy.
+STAN_OK = "ok"
+STAN_OSTRZEZENIE = "ostrzezenie"
+STAN_AWARIA = "awaria"
+STAN_NIEZNANY = "nieznany"
+STANY_MONITORA = (STAN_OK, STAN_OSTRZEZENIE, STAN_AWARIA, STAN_NIEZNANY)
+
+# Kolejnosc wagi stanow - stan celu to najgorszy ze skladowych (dostepnosc,
+# certyfikat). Dzieki temu dzialajaca usluga z certyfikatem wygasajacym za
+# tydzien nie swieci na zielono.
+WAGA_STANU = {STAN_OK: 0, STAN_NIEZNANY: 1, STAN_OSTRZEZENIE: 2, STAN_AWARIA: 3}
+
+# Co sprawdzamy pod adresem. TCP odpowiada na pytanie "czy port przyjmuje
+# polaczenia", TLS dodatkowo zdejmuje certyfikat - takze z uslug, ktore nie
+# mowia po HTTP (SMTPS, IMAPS, LDAPS, RDP), a HTTP(S) pyta jeszcze aplikacje
+# o kod odpowiedzi. Otwarty port nie znaczy, ze aplikacja za nim zyje.
+PROTOKOL_TCP = "tcp"
+PROTOKOL_TLS = "tls"
+PROTOKOL_HTTP = "http"
+PROTOKOL_HTTPS = "https"
+PROTOKOLY_MONITORA: dict[str, str] = {
+    PROTOKOL_TCP: "TCP - port przyjmuje polaczenia",
+    PROTOKOL_TLS: "TLS - polaczenie szyfrowane i certyfikat",
+    PROTOKOL_HTTP: "HTTP - kod odpowiedzi serwera WWW",
+    PROTOKOL_HTTPS: "HTTPS - kod odpowiedzi i certyfikat",
+}
+# Protokoly, przy ktorych zdejmujemy certyfikat.
+PROTOKOLY_Z_TLS = (PROTOKOL_TLS, PROTOKOL_HTTPS)
+# Protokoly, przy ktorych pytamy aplikacje o kod odpowiedzi.
+PROTOKOLY_Z_HTTP = (PROTOKOL_HTTP, PROTOKOL_HTTPS)
+PORTY_DOMYSLNE = {PROTOKOL_TCP: 443, PROTOKOL_TLS: 443, PROTOKOL_HTTP: 80, PROTOKOL_HTTPS: 443}
+
+
+class MonitorUslugi(Base):
+    """Cel monitorowania: adres IP albo nazwa, port i sposob sprawdzenia.
+
+    Celowo NIE jest to zasob (Asset). Usluga bywa czyms, co nie ma sprzetu
+    w ewidencji - certyfikat domeny u zewnetrznego dostawcy, adres VIP na
+    load balancerze, ten sam serwer widziany pod czterema nazwami. Wiazanie
+    z zasobem jest mozliwe (asset_id), ale nie wymagane: monitorowanie ma
+    dzialac takze dla tego, czego CMDB nie inwentaryzuje.
+
+    Stan jest tu ZAPISANY, w odroznieniu od "bez kontaktu" przy maszynie,
+    ktore wynika z last_seen w chwili patrzenia. Roznica jest istotna:
+    o zmianie stanu usługi trzeba powiadomic w momencie, w ktorym nastapila,
+    a nie wtedy, gdy ktos akurat otworzy strone.
+    """
+
+    __tablename__ = "monitory_uslug"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "nazwa", name="uq_monitor_nazwa"),
+        Index("ix_monitor_tenant_aktywny", "tenant_id", "aktywny"),
+        Index("ix_monitor_nastepne", "aktywny", "ostatnie_sprawdzenie"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nazwa: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Adres IP albo nazwa DNS. Nazwa jest rozwiazywana przy KAZDYM sprawdzeniu,
+    # bo zmiana adresu pod nazwa jest sama w sobie informacja.
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(Integer, nullable=False, default=443)
+    protokol: Mapped[str] = mapped_column(String(16), nullable=False, default=PROTOKOL_HTTPS)
+    # Sciezka pytana po HTTP(S). Strona glowna bywa przekierowaniem, a
+    # /health mowi o aplikacji wiecej niz "/".
+    sciezka: Mapped[str] = mapped_column(String(500), nullable=False, default="/")
+    # Kod uznawany za poprawny. 0 znaczy "kazdy kod ponizej 400".
+    oczekiwany_kod: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Nazwa wysylana w SNI i sprawdzana w certyfikacie, gdy rozni sie od
+    # adresu - przy monitorowaniu po IP inaczej nie da sie trafic we wlasciwy
+    # certyfikat serwera obslugujacego kilka domen.
+    nazwa_tls: Mapped[str | None] = mapped_column(String(255))
+    # Czy lancuch certyfikatu ma byc uznany za wymagany. Wewnetrzne uslugi
+    # czesto maja certyfikat wlasnego urzedu, ktorego serwer CMDB nie zna -
+    # wtedy niezaufany lancuch jest stanem normalnym, a nie awaria. Data
+    # waznosci jest sprawdzana zawsze, niezaleznie od tego ustawienia.
+    weryfikuj_lancuch: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    interwal_sekund: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
+    limit_sekund: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    # Po ilu kolejnych nieudanych probach uznajemy usluge za niedostepna.
+    # Jedna zgubiona odpowiedz zdarza sie w kazdej sieci; powiadomienie o niej
+    # uczy ludzi ignorowania powiadomien.
+    liczba_prob: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+
+    # Ile dni przed koncem waznosci certyfikatu zaczynamy ostrzegac i alarmowac.
+    prog_ostrzezenia_dni: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    prog_alarmu_dni: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+
+    # Powiazanie z zasobem jest opcjonalne - patrz dokumentacja klasy.
+    asset_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="SET NULL"), index=True
+    )
+
+    powiadamiaj: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Adresy rozdzielone przecinkiem, srednikiem albo nowa linia.
+    adresaci: Mapped[str | None] = mapped_column(Text)
+    aktywny: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # --- stan wyliczony przy ostatnim sprawdzeniu ---
+    stan: Mapped[str] = mapped_column(String(16), nullable=False, default=STAN_NIEZNANY)
+    # Dostepnosc i certyfikat sa ocenianie osobno, bo osobno sie psuja
+    # i osobno o nich powiadamiamy. Widoczny stan celu to gorszy z tych dwoch.
+    stan_dostepnosci: Mapped[str] = mapped_column(String(16), nullable=False, default=STAN_NIEZNANY)
+    stan_certyfikatu: Mapped[str] = mapped_column(String(16), nullable=False, default=STAN_NIEZNANY)
+    kolejne_bledy: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ostatnie_sprawdzenie: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ostatnia_zmiana_stanu: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ostatni_blad: Mapped[str | None] = mapped_column(Text)
+    czas_odpowiedzi_ms: Mapped[int | None] = mapped_column(Integer)
+    ostatni_kod: Mapped[int | None] = mapped_column(Integer)
+    ostatni_adres: Mapped[str | None] = mapped_column(String(64))
+
+    # --- ostatnio zdjety certyfikat ---
+    cert_podmiot: Mapped[str | None] = mapped_column(String(500))
+    cert_wystawca: Mapped[str | None] = mapped_column(String(500))
+    cert_od: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cert_do: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Odcisk rozroznia certyfikaty. Po odnowieniu zmienia sie, a wraz z nim
+    # zeruja sie progi powiadomien - inaczej odnowiony certyfikat nie
+    # doczekalby sie zadnego ostrzezenia przed nastepnym koncem waznosci.
+    cert_odcisk: Mapped[str | None] = mapped_column(String(95))
+    cert_nazwy: Mapped[list | None] = mapped_column(JSONType)
+    cert_zaufany: Mapped[bool | None] = mapped_column(Boolean)
+    cert_blad: Mapped[str | None] = mapped_column(Text)
+
+    # --- co juz zostalo zgloszone ---
+    # Zapisujemy stan, o ktorym powiadomilismy, a nie sam fakt wyslania:
+    # dzieki temu wiadomosc idzie przy KAZDEJ zmianie i tylko przy zmianie.
+    powiadomiona_dostepnosc: Mapped[str | None] = mapped_column(String(16))
+    # Ostatni ogloszony prog certyfikatu w dniach (0 = juz wygasl). Sam stan
+    # nie wystarczy: certyfikat stoi w "ostrzezeniu" przez trzy tygodnie,
+    # a kolejne progi maja sie odezwac po drodze.
+    powiadomiony_prog: Mapped[int | None] = mapped_column(Integer)
+    # Stan certyfikatu, o ktorym juz zglosilismy - lapie to, czego prog nie
+    # widzi: niezaufany lancuch i powrot do porzadku po odnowieniu.
+    powiadomiony_stan_cert: Mapped[str | None] = mapped_column(String(16))
+    powiadomiony_odcisk: Mapped[str | None] = mapped_column(String(95))
+    ostatnie_powiadomienie: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    blad_powiadomienia: Mapped[str | None] = mapped_column(Text)
+
+    utworzony: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    utworzyl: Mapped[str | None] = mapped_column(String(255))
+
+    asset: Mapped["Asset | None"] = relationship(foreign_keys=[asset_id])
+
+
+class PomiarMonitora(Base):
+    """Pojedyncze sprawdzenie. Z historii bierze sie dostepnosc w procentach.
+
+    Bez zapisanych pomiarow da sie powiedziec tylko "dziala teraz". Pytanie,
+    ktore pada po awarii, brzmi jednak "jak dlugo nie dzialalo" - i na nie
+    odpowiada wylacznie historia.
+    """
+
+    __tablename__ = "pomiary_monitorow"
+    __table_args__ = (Index("ix_pomiar_monitor_czas", "monitor_id", "sprawdzono"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    monitor_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("monitory_uslug.id", ondelete="CASCADE"), nullable=False
+    )
+    sprawdzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    # Stan DOSTEPNOSCI, nie stan celu: dostepnosc liczona z historii nie moze
+    # spadac przez certyfikat, ktory konczy sie za trzy tygodnie.
+    stan: Mapped[str] = mapped_column(String(16), nullable=False)
+    czas_odpowiedzi_ms: Mapped[int | None] = mapped_column(Integer)
+    kod: Mapped[int | None] = mapped_column(Integer)
+    blad: Mapped[str | None] = mapped_column(String(500))

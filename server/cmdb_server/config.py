@@ -119,6 +119,31 @@ class Settings(BaseSettings):
     # Bezplatny: https://nvd.nist.gov/developers/request-an-api-key
     nvd_api_key: str = ""
 
+    # --- monitorowanie uslug i certyfikatow ---
+    # Sprawdzenia wychodza Z SERWERA CMDB, wiec musi on widziec monitorowane
+    # adresy. Wylaczenie zostawia konfiguracje w bazie i nic nie kasuje -
+    # przydaje sie na instalacji zapasowej, ktora nie ma alarmowac rownolegle.
+    monitoring_enabled: bool = True
+    # Co ile sekund budzi sie petla. Kazdy cel ma wlasny odstep; ten tylko
+    # wyznacza dokladnosc, z jaka da sie go dotrzymac.
+    monitoring_tick_seconds: int = Field(default=60, ge=10, le=900)
+    # Ile sprawdzen naraz. Kazde zajmuje watek i czeka na siec, wiec liczba
+    # moze byc wieksza niz liczba rdzeni - ale nie na tyle, zeby jeden obieg
+    # wygladal dla monitorowanej sieci jak skan portow.
+    monitoring_workers: int = Field(default=8, ge=1, le=64)
+    # Ile celow moze miec jedna firma. Monitorowanie chodzi na serwerze
+    # wspolnym dla wszystkich firm, wiec limit jest granica, za ktora jedna
+    # organizacja zaczyna zabierac czas pozostalym.
+    monitoring_max_targets: int = Field(default=200, ge=1, le=5000)
+    # Ile dni trzymamy pomiary. Dostepnosc liczy sie z historii, wiec musi
+    # ona siegac dalej niz okno, ktore pokazujemy w panelu.
+    monitoring_history_days: int = Field(default=30, ge=1, le=365)
+    # Adresy petli zwrotnej sa domyslnie zablokowane: cel wpisany przez
+    # administratora firmy kaze serwerowi nawiazac polaczenie, a 127.0.0.1
+    # znaczy dla serwera co innego niz dla tego, kto go wpisal. Wlacza sie to
+    # swiadomie na instalacji, ktora ma pilnowac uslug na tej samej maszynie.
+    monitoring_allow_loopback: bool = False
+
     # Po ilu godzinach bez kontaktu maszyna jest oznaczana jako "stale".
     stale_after_hours: int = 48
 
