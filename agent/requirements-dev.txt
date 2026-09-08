@@ -1,0 +1,14 @@
+# Zaleznosci TESTOW agenta. Sam agent ich nie ma i miec nie moze.
+#
+# Agent chodzi wylacznie na bibliotece standardowej - to nie jest wygoda,
+# tylko warunek dzialania: instaluje sie go na cudzych maszynach jednym
+# plikiem i nie ma tam czego doinstalowywac. Testy uruchamiane sa u nas,
+# wiec ich zaleznosci nie dotycza tego ograniczenia.
+pytest>=8.0
+
+# Wylacznie do WYSTAWIENIA certyfikatu dla testowego serwera TLS, po ktorym
+# chodzi sonda monitorowania. Sam agent certyfikatow nie wystawia ani nie
+# rozbiera: liczy odcisk (hashlib) i odsyla certyfikat serwerowi CMDB, ktory
+# ma parser X.509. Bez tej biblioteki nie da sie postawic serwera TLS do
+# testu, a zaslepiony socket sprawdzalby wylacznie zaslepke.
+cryptography>=42.0

@@ -100,7 +100,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pytest
+      - run: pip install -r agent/requirements-dev.txt
       - run: python -m pytest -q
         working-directory: agent
 
@@ -120,7 +120,7 @@ jobs:
         run: |
           version=$(python agent/packaging/release_version.py --write)
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - run: pip install pytest
+      - run: pip install -r agent/requirements-dev.txt
       - run: python -m pytest -q tests/test_discovery.py tests/test_tray_startup.py tests/test_unified_exe.py tests/test_central_policy.py tests/test_gui_status.py
         working-directory: agent
       - name: Check Windows subnet and ARP readers (no active scan)

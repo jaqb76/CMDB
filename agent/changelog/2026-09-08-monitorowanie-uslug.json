@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Agent monitoruje dostępność usług i ważność certyfikatów SSL. Osobna usługa sprawdza cele wskazane w panelu CMDB we własnym rytmie, wysyła podsumowania co kwadrans, a potwierdzone awarie natychmiast. Instalator zakłada ją obok inwentaryzacji."
+}

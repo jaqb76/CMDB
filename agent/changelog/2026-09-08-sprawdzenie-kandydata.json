@@ -1,0 +1,5 @@
+{
+  "category": "fixed",
+  "systemy": ["windows"],
+  "text": "Sprawdzenie kandydata przed aktualizacją nie wymaga już zgodności całej odpowiedzi sondy workera, tylko wersji, protokołu i odpowiedzi na wartość jednorazową. Nowsze wydanie może dzięki temu ogłosić nową umiejętność, nie blokując aktualizacji do siebie."
+}
