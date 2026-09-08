@@ -7,6 +7,7 @@ on:
       - 'server/**'
       - 'agent/**'
       - 'android/**'
+      - '.github/scripts/mercury_review.py'
       - '.github/workflows/mercury-review.yml'
 
 permissions:
@@ -16,130 +17,29 @@ jobs:
   mercury-review:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      INCEPTION_API_KEY: ${{ secrets.INCEPTION_API_KEY }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Verify secret
-        shell: bash
+      - name: Run Mercury review
+        env:
+          INCEPTION_API_KEY: ${{ secrets.INCEPTION_API_KEY }}
         run: |
-          if [ -z "$INCEPTION_API_KEY" ]; then
-            echo "Repository secret INCEPTION_API_KEY is not configured."
-            exit 2
-          fi
+          test -n "$INCEPTION_API_KEY" || { echo 'Missing INCEPTION_API_KEY secret'; exit 2; }
+          python .github/scripts/mercury_review.py
 
-      - name: Build review context
-        shell: bash
-        run: |
-          mkdir -p .mercury
-          {
-            echo '# Commit'
-            git log -1 --format='%H%n%s%n%b'
-            echo
-            echo '# Diff against previous commit (truncated to 60k chars)'
-            git diff HEAD^ HEAD -- server agent android | head -c 60000
-            echo
-            echo '# README architecture excerpt (truncated to 30k chars)'
-            head -c 30000 README.md || true
-          } > .mercury/context.txt
-
-      - name: Ask Mercury 2.5
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import pathlib
-          import urllib.request
-          import urllib.error
-          import time
-
-          context = pathlib.Path('.mercury/context.txt').read_text(encoding='utf-8', errors='replace')
-          prompt = '''Jestes senior software architect i security reviewerem. Analizujesz rzeczywisty projekt CMDB: FastAPI + PostgreSQL/JSONB, agent Windows/Linux, aplikacja Android, multi-tenant. Ocen ponizszy aktualny commit/diff i kontekst architektury.
-
-Nie podawaj ogolnikow. Szukaj realnych regresji, race conditions, problemow z retry/idempotency, offline/restart agentow, izolacja tenantow, autoryzacja, kompatybilnoscia wsteczna, utrata danych, falszywymi alarmami oraz bledami wdrozen.
-
-Dla kazdego znalezionego problemu uzyj formatu:
-PROBLEM -> SCENARIUSZ -> SKUTEK -> TEST -> POPRAWKA
-
-Na koncu podaj:
-- 5 najpowazniejszych ryzyk w kolejnosci,
-- ocene architektury 1-10,
-- jedna zmiane o najwiekszym ROI,
-- liste rzeczy, ktore wygladaja dobrze i nie wymagaja zmiany.
-
-Odpowiadaj po polsku. Nie zakladaj istnienia kodu, ktorego nie widzisz. Jesli czegos nie da sie potwierdzic, oznacz to jako HIPOTEZA DO WERYFIKACJI.
-
-=== KONTEKST REPOZYTORIUM ===\n''' + context
-
-          payload = {
-              'model': 'mercury-2.5',
-              'reasoning_effort': 'low',
-              'messages': [{'role': 'user', 'content': prompt}],
-              'max_tokens': 5000,
-          }
-
-          req = urllib.request.Request(
-              'https://api.inceptionlabs.ai/v1/chat/completions',
-              data=json.dumps(payload).encode('utf-8'),
-              headers={
-                  'Authorization': 'Bearer ' + os.environ['INCEPTION_API_KEY'],
-                  'Content-Type': 'application/json',
-              },
-              method='POST',
-          )
-
-          started = time.perf_counter()
-          try:
-              with urllib.request.urlopen(req, timeout=180) as response:
-                  raw = response.read().decode('utf-8')
-          except urllib.error.HTTPError as exc:
-              body = exc.read().decode('utf-8', errors='replace')
-              raise SystemExit(f'Inception API HTTP {exc.code}: {body[:2000]}')
-
-          elapsed = time.perf_counter() - started
-          data = json.loads(raw)
-          text = data['choices'][0]['message']['content']
-          usage = data.get('usage', {})
-
-          pathlib.Path('.mercury/review.md').write_text(text, encoding='utf-8')
-          pathlib.Path('.mercury/metadata.json').write_text(
-              json.dumps({
-                  'model': 'mercury-2.5',
-                  'reasoning_effort': 'low',
-                  'elapsed_seconds': round(elapsed, 3),
-                  'usage': usage,
-              }, ensure_ascii=False, indent=2),
-              encoding='utf-8',
-          )
-
-          print(f'Mercury completed in {elapsed:.3f}s')
-          print(json.dumps(usage, ensure_ascii=False))
-          PY
-
-      - name: Publish result in job summary
+      - name: Publish summary
         if: success()
-        shell: bash
         run: |
-          echo '## Mercury 2.5 review' >> "$GITHUB_STEP_SUMMARY"
           cat .mercury/review.md >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
-          echo '### Metadata' >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
           cat .mercury/metadata.json >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload Mercury result
+      - name: Upload result
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: mercury-2.5-review
-          path: |
-            .mercury/review.md
-            .mercury/metadata.json
+          path: .mercury/
           retention-days: 7
