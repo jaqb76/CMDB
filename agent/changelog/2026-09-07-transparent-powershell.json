@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Kolektor Windows i wykrywanie podsieci przekazują jawne zapytania PowerShell bez EncodedCommand/Base64. Kolektor nie wymusza ExecutionPolicy Bypass. Zmiana nie wyłącza ochrony antywirusowej ani nie dodaje wyjątków; wymaga nowego wydania agenta."
+}

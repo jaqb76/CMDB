@@ -66,10 +66,11 @@ def _command(args, timeout=8):
 
 
 def _powershell(script):
-    import base64
     script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $ErrorActionPreference='Stop'; " + script
-    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
-    return json.loads(_command(["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]) or "[]")
+    from .collectors.windows import powershell_executable
+
+    return json.loads(_command([powershell_executable(), "-NoProfile", "-NonInteractive",
+                                "-OutputFormat", "Text", "-Command", script]) or "[]")
 
 
 def local_subnets():

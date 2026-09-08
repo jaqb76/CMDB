@@ -9,14 +9,13 @@ Decyzje, ktore warto znac przy modyfikacji:
 * Grupa administratorow wyszukiwana jest po znanym SID S-1-5-32-544, a nie po
   nazwie. Na polskim Windows grupa nazywa sie "Administratorzy" i skrypty
   szukajace "Administrators" zwracaja pusta liste.
-* Kazde wywolanie PowerShella idzie przez -EncodedCommand (Base64/UTF-16LE),
-  co eliminuje problemy z cudzyslowami i znakami narodowymi w argumentach.
+* Zapytania PowerShell sa jawne (-Command), bez Base64 i zmiany ExecutionPolicy.
+  Skrypt jest jednym argumentem procesu, bez posredniej powloki.
 * Wszystkie daty formatujemy jawnie do ISO 8601 UTC - domyslna serializacja
   DateTime przez ConvertTo-Json rozni sie miedzy PowerShell 5.1 a 7.
 """
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import os
@@ -88,15 +87,13 @@ def run_powershell(script: str, timeout: int = 180):
     znakami ("Gosc", "Konto domyslne") wracaja nietkniete takze przy
     przekierowaniu stdout do potoku.
     """
-    encoded = base64.b64encode((_PS_PREAMBLE + script).encode("utf-16-le")).decode("ascii")
     stdout = run_command(
         [
             powershell_executable(),
             "-NoProfile",
             "-NonInteractive",
-            "-ExecutionPolicy", "Bypass",
             "-OutputFormat", "Text",
-            "-EncodedCommand", encoded,
+            "-Command", _PS_PREAMBLE + script,
         ],
         timeout=timeout,
     )
