@@ -8,7 +8,8 @@
     <h1>{{ monitor.nazwa }} {{ stany.odznaka(monitor.stan) }}</h1>
     <p class="muted">
       {{ monitor.host }}:{{ monitor.port }} &middot; {{ protokoly.get(monitor.protokol, monitor.protokol) }}
-      {% if monitor.wykonawca %}&middot; sprawdza <a href="/assets/{{ monitor.wykonawca_id }}">{{ monitor.wykonawca.hostname }}</a>{% endif %}
+      {% if monitor.wykonawca %}&middot; sprawdza <a href="/assets/{{ monitor.wykonawca_id }}">{{ monitor.wykonawca.hostname }}</a>
+      {% else %}&middot; <span class="wartosc-alarm">bez maszyny sprawdzającej</span>{% endif %}
       {% if monitor.ostatni_adres %}&middot; ostatnio pod adresem {{ monitor.ostatni_adres }}{% endif %}
     </p>
   </div>
@@ -37,6 +38,15 @@
 
 {% if komunikat %}
 <div class="alert {% if 'awaria' in komunikat %}alert-error{% else %}alert-ok{% endif %}">{{ komunikat }}</div>
+{% endif %}
+
+{% if osierocony %}
+<div class="alert alert-error">
+  <b>Tego celu nikt nie sprawdza:</b> {{ osierocony }}.
+  Sonduje agent, więc cel bez czynnej maszyny sprawdzającej nie jest
+  monitorowany wcale — stan i dostępność poniżej pochodzą sprzed tej chwili.
+  Wskaż inną maszynę w ustawieniach celu.
+</div>
 {% endif %}
 
 {% if not monitor.aktywny %}

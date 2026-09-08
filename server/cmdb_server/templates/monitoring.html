@@ -44,6 +44,14 @@
   </a>
 </section>
 
+{% if podsumowanie.bez_wykonawcy %}
+<div class="alert alert-error">
+  <b>{{ podsumowanie.bez_wykonawcy }}</b> celów nie ma czynnej maszyny sprawdzającej —
+  <b>nikt ich nie sprawdza</b>. Sonduje agent, więc cel bez agenta nie jest
+  monitorowany wcale: przepisz je innej maszynie w ustawieniach celu.
+</div>
+{% endif %}
+
 {% if podsumowanie.milczace %}
 <div class="alert alert-warn">
   <b>{{ podsumowanie.milczace }}</b> celów nie ma świeżych raportów — agent, który
@@ -94,8 +102,12 @@
         <td class="small">{{ c.host }}:{{ c.port }}<br><span class="muted">{{ c.protokol | upper }}{% if c.protokol in protokoly_http %} {{ c.sciezka }}{% endif %}</span></td>
         <td class="small">
           {% if c.wykonawca %}<a href="/assets/{{ c.wykonawca_id }}">{{ c.wykonawca.hostname }}</a>
-          {% else %}<span class="muted">brak wykonawcy</span>{% endif %}
-          <div class="muted">co {{ c.interwal_sekund }} s</div>
+          {% else %}<span class="muted">—</span>{% endif %}
+          {% if osierocone.get(c.id) %}
+            <br><span class="badge badge-danger" title="{{ osierocone[c.id] }}">nikt nie sprawdza</span>
+          {% else %}
+            <div class="muted">co {{ c.interwal_sekund }} s</div>
+          {% endif %}
         </td>
         <td>
           {{ stany.odznaka(c.stan) }}

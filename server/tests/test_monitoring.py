@@ -921,3 +921,107 @@ def test_raport_uslug_nie_widzi_celow_innej_firmy(client, tenant_a, tenant_b, ma
     dodaj_cel(tenant_b["id"], obcy_id, nazwa="Cudza usluga")
     zaloguj(client, tenant_a, make_user)
     assert "Cudza usluga" not in client.get("/raporty/podglad/uslugi").text
+
+
+# --- agent jako jedyny wykonawca --------------------------------------------
+
+def test_serwer_nie_ma_czym_sondowac():
+    """Sonduje agent i tylko agent - w module serwera nie ma gniazda.
+
+    To nie jest test kosmetyczny: sonda po stronie serwera znaczylaby jedno
+    miejsce z wgladem w sieci wszystkich firm, a dwie implementacje sondy
+    (serwer + agent stdlib-only) rozjezdzalyby sie po cichu.
+    """
+    import inspect
+
+    zrodlo = inspect.getsource(monitoring)
+    for zakazane in ("import socket", "import ssl", "socket.socket",
+                     "wrap_socket", "getaddrinfo", "create_connection"):
+        assert zakazane not in zrodlo, f"serwer nie moze sondowac: {zakazane}"
+    # ...i nie ma funkcji, ktora by o to prosila.
+    for nieistniejaca in ("sprawdz_teraz", "przebieg", "petla", "sonduj"):
+        assert not hasattr(monitoring, nieistniejaca), nieistniejaca
+
+
+def test_cel_bez_wykonawcy_jest_widocznym_problemem(client, tenant_a, make_user):
+    """Cel bez czynnego agenta nie jest sprawdzany WCALE.
+
+    Musi to byc widac od razu, a nie dopiero po dwoch pominietych raportach:
+    "brak raportow" mowi, ze cos sie zepsulo, a tu nic sie nie psulo -
+    po prostu nikomu tego nie zlecono.
+    """
+    zarejestruj_agenta(client, tenant_a)
+    with SessionLocal() as db:
+        asset_id = db.execute(select(Asset.id)).scalar_one()
+    monitor_id = dodaj_cel(tenant_a["id"], asset_id, nazwa="Osierocony")
+    zaloguj(client, tenant_a, make_user)
+
+    with SessionLocal() as db:
+        assert monitoring.bez_wykonawcy(db.get(MonitorUslugi, monitor_id)) is None
+        # Maszyna zostaje wycofana - agent przestaje chodzic.
+        db.get(Asset, asset_id).lifecycle = "wycofany"
+        db.commit()
+        monitor = db.get(MonitorUslugi, monitor_id)
+        assert "wycofana" in monitoring.bez_wykonawcy(monitor)
+        assert monitoring.podsumowanie(db, tenant_a["id"])["bez_wykonawcy"] == 1
+
+    assert "nikt nie sprawdza" in client.get("/monitoring").text
+    assert "Tego celu nikt nie sprawdza" in client.get(f"/monitoring/{monitor_id}").text
+    assert "Nikt ich nie sprawdza" in client.get("/raporty/podglad/uslugi").text
+
+
+def test_usuniecie_maszyny_nie_kasuje_celu_ani_historii(client, tenant_a):
+    """SET NULL, a nie CASCADE: znikniecie maszyny nie moze po cichu zabrac
+    konfiguracji celu razem z historia jego awarii."""
+    enrolled = zarejestruj_agenta(client, tenant_a)
+    with SessionLocal() as db:
+        asset_id = db.execute(select(Asset.id)).scalar_one()
+    monitor_id = dodaj_cel(tenant_a["id"], asset_id)
+    poczatek = utcnow() - datetime.timedelta(hours=1)
+    wyslij_raport(client, enrolled, [wpis(
+        monitor_id, sond=15, udanych=9,
+        przerwy=[{"od": poczatek.isoformat(),
+                  "do": (poczatek + datetime.timedelta(minutes=5)).isoformat(),
+                  "blad": "cisza", "sond": 5}])])
+
+    with SessionLocal() as db:
+        db.delete(db.get(Asset, asset_id))
+        db.commit()
+        monitor = db.get(MonitorUslugi, monitor_id)
+        assert monitor is not None                    # cel zyje
+        assert monitor.wykonawca_id is None           # ...ale bez wykonawcy
+        assert monitoring.bez_wykonawcy(monitor)      # i widac dlaczego
+        assert db.scalar(select(func.count(PrzerwaDostepnosci.id))) == 1
+
+
+def test_wycofana_maszyna_nie_moze_zostac_wykonawca(client, tenant_a, make_user):
+    """Lista rozwijana jej nie pokaze, ale zadanie da sie zlozyc wprost."""
+    zarejestruj_agenta(client, tenant_a)
+    _, csrf = zaloguj(client, tenant_a, make_user)
+    with SessionLocal() as db:
+        asset_id = db.execute(select(Asset.id)).scalar_one()
+        db.get(Asset, asset_id).lifecycle = "wycofany"
+        db.commit()
+
+    odpowiedz = client.post("/monitoring", data={
+        "csrf_token": csrf, "nazwa": "Portal", "host": "portal.firma.pl",
+        "wykonawca_id": asset_id, "port": "443", "protokol": "https", "sciezka": "/",
+        "oczekiwany_kod": "0", "interwal_sekund": "60", "interwal_certyfikatu": "86400",
+        "limit_sekund": "10", "liczba_prob": "2", "prog_ostrzezenia_dni": "30",
+        "prog_alarmu_dni": "7",
+    }, follow_redirects=False)
+    assert odpowiedz.status_code == 400
+    assert "aktywna maszyna z agentem" in odpowiedz.json()["detail"]
+
+
+def test_wylaczony_cel_nie_liczy_sie_jako_osierocony(client, tenant_a):
+    """Cel wylaczony swiadomie to inna sprawa niz cel bez wykonawcy."""
+    zarejestruj_agenta(client, tenant_a)
+    with SessionLocal() as db:
+        asset_id = db.execute(select(Asset.id)).scalar_one()
+    monitor_id = dodaj_cel(tenant_a["id"], asset_id, aktywny=False)
+    with SessionLocal() as db:
+        db.delete(db.get(Asset, asset_id))
+        db.commit()
+        assert monitoring.bez_wykonawcy(db.get(MonitorUslugi, monitor_id)) is None
+        assert monitoring.podsumowanie(db, tenant_a["id"])["bez_wykonawcy"] == 0

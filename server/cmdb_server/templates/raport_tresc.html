@@ -208,6 +208,27 @@
   </section>
   {% endif %}
 
+  {% if d.osierocone %}
+  <section class="wykres-blok">
+    <h3>Nikt ich nie sprawdza</h3>
+    <p class="muted small">
+      Sonduje agent, więc cel bez czynnej maszyny sprawdzającej nie jest
+      monitorowany wcale. Trzeba je przepisać innej maszynie.
+    </p>
+    <table class="table">
+      <thead><tr><th>Usługa</th><th>Przyczyna</th></tr></thead>
+      <tbody>
+      {% for c, powod in d.osierocone %}
+        <tr>
+          <td class="strong">{{ c.nazwa }}<div class="muted small">{{ c.host }}:{{ c.port }}</div></td>
+          <td class="small wartosc-alarm">{{ powod }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
   {% if d.milczace %}
   <section class="wykres-blok">
     <h3>Bez raportów agenta</h3>

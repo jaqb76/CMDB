@@ -959,9 +959,15 @@ class MonitorUslugi(Base):
     # Maszyna z agentem, ktora wykonuje sprawdzenia. To ona stoi w sieci,
     # w ktorej usluga zyje - serwer CMDB czesto tej sieci nie widzi wcale,
     # a gdyby widzial wszystkie naraz, bylby jednym miejscem z wgladem
-    # w sieci wszystkich firm.
+    # w sieci wszystkich firm. Agent jest JEDYNYM wykonawca: serwer nie ma
+    # czym sondowac i nie ma trybu, w ktorym by to robil.
+    #
+    # SET NULL, a nie CASCADE: znikniecie maszyny nie moze po cichu zabrac
+    # konfiguracji celu razem z historia jego awarii. Cel bez wykonawcy jest
+    # widocznym problemem do naprawienia - trzeba go przepisac innemu
+    # agentowi - a nie danymi do wyrzucenia.
     wykonawca_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("assets.id", ondelete="CASCADE"), index=True
+        String(36), ForeignKey("assets.id", ondelete="SET NULL"), index=True
     )
 
     # Adres IP albo nazwa DNS. Nazwa jest rozwiazywana przy KAZDYM sprawdzeniu,

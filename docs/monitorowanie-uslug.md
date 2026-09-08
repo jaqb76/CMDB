@@ -33,6 +33,13 @@ Podział pracy wychodzi z tego sam:
 | **agent** | pobiera politykę, wykonuje sondy, składa przerwy, raportuje |
 | **serwer** | wydaje politykę, przyjmuje wyniki, rozbiera certyfikat, ocenia stan, powiadamia |
 
+**Agent jest jedynym wykonawcą.** Nie ma trybu, w którym sonduje serwer, i nie
+ma go świadomie: taki tryb znaczyłby jedno miejsce z wglądem w sieci wszystkich
+firm, a przy okazji drugą implementację sondy — bo agent chodzi na samej
+bibliotece standardowej i kodu serwera importować nie może, a dwie
+implementacje tego samego pomiaru rozjeżdżają się po cichu. W
+`services/monitoring.py` nie ma ani jednego gniazda i pilnuje tego test.
+
 Certyfikat rozbiera serwer, bo agent chodzi na samej bibliotece standardowej,
 w której nie ma parsera X.509. Agent liczy odcisk SHA-256 (`hashlib`
 wystarczy) i przysyła **cały certyfikat tylko wtedy, gdy odcisk się zmienił** —
@@ -199,6 +206,22 @@ odpowiada na słabsze pytanie niż monitorowanie z sieci obok.
 Wyłączenie albo wycofanie maszyny gasi monitorowanie jej celów; widać to na
 karcie zasobu w sekcji **„Ta maszyna sprawdza”**. Cele trzeba wtedy przepisać
 innemu agentowi.
+
+### Cel bez maszyny sprawdzającej
+
+Skoro agent jest jedynym wykonawcą, cel bez czynnego agenta **nie jest
+sprawdzany wcale**. Dzieje się to, gdy maszyna zostanie wycofana, wyłączona
+albo usunięta. Taki cel dostaje w panelu znacznik **„nikt nie sprawdza”** wraz
+z przyczyną, liczy się osobno w podsumowaniu i trafia do raportu.
+
+Osobno od „braku raportów”, bo to inna usterka i naprawia się ją inaczej: tam
+agent przestał się odzywać, tu nikomu tego nie zlecono. Znacznik pojawia się
+**od razu**, a nie po dwóch pominiętych okresach — nic się nie psuło, więc nie
+ma na co czekać.
+
+Usunięcie maszyny **nie kasuje celu ani historii jego awarii** (klucz obcy jest
+`SET NULL`, nie `CASCADE`). Cel bez wykonawcy to widoczny problem do
+naprawienia — przepisz go innej maszynie — a nie dane do wyrzucenia.
 
 Zmiana wykonawcy **zeruje stan i historię powiadomień** — to wtedy inny pomiar,
 choć pod tą samą nazwą. Historia przerw zostaje: opisuje to, co było naprawdę.

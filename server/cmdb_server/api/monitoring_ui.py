@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
+    LIFECYCLE_AKTYWNY,
     PORTY_DOMYSLNE,
     PROTOKOLY_MONITORA,
     PROTOKOLY_Z_HTTP,
@@ -108,7 +109,11 @@ def _wykonawca(db: Session, ctx: TenantContext, wykonawca_id: str,
     ).scalar_one_or_none()
     if maszyna is None:
         raise HTTPException(404, "nie znaleziono maszyny wskazanej jako wykonawca")
-    if maszyna.zrodlo != ZRODLO_AGENT or not maszyna.is_active:
+    if (maszyna.zrodlo != ZRODLO_AGENT or not maszyna.is_active
+            or maszyna.lifecycle != LIFECYCLE_AKTYWNY):
+        # Lista rozwijana i tak nie pokaze maszyny wycofanej, ale zadanie
+        # da sie zlozyc z pominieciem formularza - a cel przypisany maszynie,
+        # ktorej agent juz nie chodzi, nie bylby sprawdzany wcale.
         raise HTTPException(400, "sprawdzac moze tylko aktywna maszyna z agentem")
     zapytanie = select(func.count(MonitorUslugi.id)).where(
         MonitorUslugi.wykonawca_id == maszyna.id)
@@ -171,6 +176,7 @@ def strona_monitoringu(
         cele=cele,
         dostepnosci={c.id: monitoring.dostepnosc(db, c.id, ctx.tenant_id, 24) for c in cele},
         milczace={c.id: monitoring.milczy(c, teraz) for c in cele},
+        osierocone={c.id: monitoring.bez_wykonawcy(c) for c in cele},
         podsumowanie=monitoring.podsumowanie(db, ctx.tenant_id),
         maszyny=_agenci(db, ctx),
         limit_osiagniety=monitoring.limit_osiagniety(db, ctx.tenant_id),
@@ -269,6 +275,7 @@ def strona_celu(
         maszyny=_agenci(db, ctx),
         dni=monitoring.dni_do_konca(monitor),
         milczy=monitoring.milczy(monitor),
+        osierocony=monitoring.bez_wykonawcy(monitor),
         oczekuje_sprawdzenia=bool(
             monitor.wymuszone_o is not None
             and (monitor.ostatnie_sprawdzenie is None

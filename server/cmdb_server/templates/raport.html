@@ -216,6 +216,28 @@
     </table>
     {% endif %}
 
+    {% if d.osierocone %}
+    <h2 style="font-size:15px; margin:18px 0 8px">Nikt ich nie sprawdza</h2>
+    <p style="font-size:12px; color:#6b7280; margin:0 0 8px">
+      Sonduje agent, więc cel bez czynnej maszyny sprawdzającej nie jest
+      monitorowany wcale. Trzeba je przepisać innej maszynie.
+    </p>
+    <table cellpadding="6" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      <tr style="background:#f5f6f8">
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Usługa</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Przyczyna</th>
+      </tr>
+      {% for c, powod in d.osierocone %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.nazwa }}<br>
+          <span style="color:#6b7280; font-size:12px">{{ c.host }}:{{ c.port }}</span></td>
+        <td style="border-bottom:1px solid #eef0f3; color:#a52222">{{ powod }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
     {% if d.milczace %}
     <h2 style="font-size:15px; margin:18px 0 8px">Bez raportów agenta</h2>
     <p style="font-size:12px; color:#6b7280; margin:0 0 8px">

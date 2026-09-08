@@ -222,6 +222,24 @@ def milczy(monitor: MonitorUslugi, teraz: datetime | None = None) -> bool:
     return (teraz or utcnow()) - as_utc(monitor.ostatni_raport) > prog
 
 
+def bez_wykonawcy(monitor: MonitorUslugi) -> str | None:
+    """Dlaczego tego celu nikt nie sprawdza. None znaczy "jest kto".
+
+    Agent jest jedynym wykonawca - serwer nie ma czym sondowac. Cel bez
+    czynnego agenta nie jest wiec sprawdzany W OGOLE, i to musi byc widac
+    od razu, a nie dopiero po dwoch pominietych raportach: "brak raportow"
+    mowi, ze cos sie zepsulo, a tu nic sie nie psulo - po prostu nikomu
+    tego nie zlecono.
+    """
+    if not monitor.aktywny:
+        return None  # cel wylaczony swiadomie; to inna sprawa
+    if monitor.wykonawca_id is None or monitor.wykonawca is None:
+        return "nie wskazano maszyny, ktora ma sprawdzac"
+    if not monitor.wykonawca.is_active or monitor.wykonawca.lifecycle != "aktywny":
+        return f"maszyna {monitor.wykonawca.hostname} jest wycofana albo nieaktywna"
+    return None
+
+
 def _prog_certyfikatu(monitor: MonitorUslugi, dni: int | None) -> int | None:
     """Najnizszy przekroczony prog powiadomienia albo None."""
     if dni is None:
@@ -602,9 +620,12 @@ def podsumowanie(db: Session, tenant_id: str) -> dict:
     # jest awaria uslugi - to utrata monitorowania, i naprawia sie ja gdzie
     # indziej: przy agencie, a nie przy usludze.
     teraz = utcnow()
-    licznik["milczace"] = sum(
-        1 for monitor in cele_firmy(db, tenant_id, tylko_aktywne=True) if milczy(monitor, teraz)
-    )
+    aktywne = cele_firmy(db, tenant_id, tylko_aktywne=True)
+    licznik["milczace"] = sum(1 for monitor in aktywne if milczy(monitor, teraz))
+    # Cel bez czynnego agenta nie jest sprawdzany w ogole. Osobno od
+    # milczacych, bo to inna usterka i naprawia sie ja inaczej: tam agent
+    # przestal gadac, tu nikomu nie zlecono sprawdzania.
+    licznik["bez_wykonawcy"] = sum(1 for monitor in aktywne if bez_wykonawcy(monitor))
     return licznik
 
 

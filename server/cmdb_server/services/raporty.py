@@ -391,6 +391,11 @@ def dane_uslugi(db: Session, tenant_id: str) -> dict:
     # agencie. Zamilczenie zliczone jako "dziala" byloby najgorszym z bledow
     # tego raportu: cisza wygladalaby jak sprawnosc.
     milczace = [c for c in cele if monitoring.milczy(c, dzisiaj)]
+    # Cel bez czynnej maszyny sprawdzajacej nie jest sprawdzany wcale.
+    # Osobno od milczacych: tam agent przestal gadac, tu nikomu tego nie
+    # zlecono - i naprawia sie to inaczej.
+    osierocone = [(c, monitoring.bez_wykonawcy(c)) for c in cele]
+    osierocone = [(c, powod) for c, powod in osierocone if powod]
     wygasle, koncza_sie, niezaufane = [], [], []
     for cel in cele:
         dni = monitoring.dni_do_konca(cel, dzisiaj)
@@ -423,6 +428,7 @@ def dane_uslugi(db: Session, tenant_id: str) -> dict:
         "liczba": len(cele),
         "niedostepne": niedostepne,
         "milczace": milczace,
+        "osierocone": osierocone,
         "wygasle": wygasle,
         "koncza_sie": koncza_sie,
         "niezaufane": niezaufane,
@@ -594,6 +600,7 @@ def wersja_tekstowa(raport: dict) -> str:
             f"Monitorowanych uslug: {d['liczba']}",
             f"Niedostepnych teraz: {len(d['niedostepne'])}",
             f"Bez raportow agenta: {len(d['milczace'])}",
+            f"Bez maszyny sprawdzajacej: {len(d['osierocone'])}",
             f"Certyfikatow po terminie: {len(d['wygasle'])}",
             f"Certyfikatow konczacych sie wkrotce: {len(d['koncza_sie'])}",
             ("Srednia dostepnosc (7 dni): "

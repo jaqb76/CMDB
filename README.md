@@ -216,12 +216,17 @@ IP albo nazwą hosta — i **nie musi mieć wpisu w ewidencji**: certyfikat dome
 u zewnętrznego dostawcy albo adres na load balancerze też jest usługą, którą
 ktoś musi pilnować.
 
-**Sonduje agent na wskazanej maszynie, nie serwer.** Usługa żyje w sieci
-klienta, za NAT-em i firewallem — serwer CMDB tej sieci zwykle nie widzi,
+**Sonduje agent na wskazanej maszynie — i tylko agent.** Usługa żyje w sieci
+klienta, za NAT-em i firewallem; serwer CMDB tej sieci zwykle nie widzi,
 a gdyby widział sieci wszystkich firm naraz, byłby jednym miejscem, z którego
 da się zajrzeć do każdej z nich. Agent już tam stoi i mierzy to, co zobaczy
 użytkownik usługi. Serwer wydaje politykę, przyjmuje wyniki, rozbiera
-certyfikat, ocenia stan i powiadamia.
+certyfikat, ocenia stan i powiadamia — nie ma trybu, w którym sonduje sam.
+
+Cel bez czynnej maszyny sprawdzającej nie jest więc monitorowany wcale
+i dostaje w panelu znacznik **„nikt nie sprawdza”** wraz z przyczyną. Usunięcie
+maszyny nie kasuje przy tym celu ani historii jego awarii — to problem do
+naprawienia, a nie dane do wyrzucenia.
 
 ```
    maszyna z agentem                        serwer CMDB
