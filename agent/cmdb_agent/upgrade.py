@@ -205,8 +205,20 @@ def _czy_dziala(plik: Path, expected_version: str) -> tuple[bool, str]:
             probe = subprocess.run([str(plik), "worker-probe", "--nonce", nonce], capture_output=True,
                 timeout=30, creationflags=flagi_bez_okna(), env=srodowisko_dla_potomka())
             payload = json.loads(probe.stdout)
-            if (probe.returncode != 0 or payload != {"protocol": 1, "version": expected_version,
-                    "nonce": nonce, "commands": ["run", "enroll", "status"], "discovery_control": "cmdb-policy-v1"}):
+            # Sprawdzamy to, co MUSI sie zgadzac - a nie rownosc calego
+            # slownika. Kandydat jest nowszy z zalozenia i wolno mu oglosic
+            # umiejetnosc, ktorej ta wersja jeszcze nie zna; wymaganie
+            # rownosci znaczyloby, ze kazde rozszerzenie agenta blokuje
+            # aktualizacje do siebie samego. Wlasciwosci, na ktorych stoi
+            # bezpieczenstwo - wlasciwy plik, wlasciwa wersja, odpowiedz na
+            # swieza wartosc jednorazowa - sprawdzamy nadal dokladnie.
+            wymagane = {"run", "enroll", "status"}
+            if (probe.returncode != 0
+                    or payload.get("protocol") != 1
+                    or payload.get("version") != expected_version
+                    or payload.get("nonce") != nonce
+                    or payload.get("discovery_control") != "cmdb-policy-v1"
+                    or not wymagane.issubset(set(payload.get("commands") or []))):
                 return False, "brak zgodnego protokolu workera/polityki CMDB"
         except (OSError, subprocess.SubprocessError, ValueError):
             return False, "test protokolu workera nie powiodl sie"

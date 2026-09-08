@@ -118,12 +118,11 @@ Serwer potrzebuje wychodzącego HTTPS do pobierania danych o podatnościach
 (Debian Security Tracker, baza USN Ubuntu — łącznie ~130 MB przy odświeżeniu).
 Bez niego wszystko inne działa, a strona podatności pokazuje stan „nieznany”.
 
-Drugim wyjściem na zewnątrz jest **monitorowanie usług**: serwer nawiązuje
-połączenie z każdym skonfigurowanym celem, więc musi go widzieć. Usługa
-w segmencie sieci niedostępnym dla serwera będzie raportowana jako
-niedostępna — i będzie to prawda z jego punktu widzenia, choć nie z punktu
-widzenia jej użytkowników. Lista adresów, pod które serwer świadomie nie
-pójdzie, jest w [`monitorowanie-uslug.md`](monitorowanie-uslug.md).
+**Monitorowanie usług tego nie zmienia**: sonduje agent na maszynie klienta,
+a nie serwer. Serwer wydaje politykę i przyjmuje wyniki tym samym połączeniem,
+którym agent raportuje inwentarz — nie musi widzieć monitorowanych adresów
+i nigdy się z nimi nie łączy. Szczegóły:
+[`monitorowanie-uslug.md`](monitorowanie-uslug.md).
 
 Agenci **nigdy** nie są odpytywani przez serwer — ta łączność jest zawsze
 jednostronna, od agenta do serwera.
@@ -140,11 +139,11 @@ jednostronna, od agenta do serwera.
 | `CMDB_STALE_AFTER_HOURS` | `48` | po ilu godzinach maszyna jest „bez kontaktu” |
 | `CMDB_REPORT_INTERVAL_SECONDS` | `3600` | odstęp narzucany agentom w odpowiedzi |
 | `CMDB_MAX_REPORT_BYTES` | `8388608` | limit rozmiaru raportu |
-| `CMDB_MONITORING_ENABLED` | `true` | monitorowanie usług i certyfikatów |
-| `CMDB_MONITORING_TICK_SECONDS` | `60` | jak często budzi się pętla sprawdzeń |
-| `CMDB_MONITORING_WORKERS` | `8` | ile sprawdzeń naraz |
+| `CMDB_MONITORING_ENABLED` | `true` | wydawanie polityki monitorowania agentom |
+| `CMDB_MONITORING_REPORT_SECONDS` | `900` | co ile agent przysyła podsumowanie okresu |
 | `CMDB_MONITORING_MAX_TARGETS` | `200` | limit monitorowanych usług na firmę |
-| `CMDB_MONITORING_HISTORY_DAYS` | `30` | retencja pomiarów dostępności |
+| `CMDB_MONITORING_MAX_PER_AGENT` | `50` | limit celów przypisanych jednemu agentowi |
+| `CMDB_MONITORING_HISTORY_DAYS` | `90` | retencja okien i przerw |
 | `CMDB_MONITORING_ALLOW_LOOPBACK` | `false` | zezwolenie na cele pod adresem pętli zwrotnej |
 | `CMDB_LOG_LEVEL` | `INFO` | poziom dziennika |
 
@@ -224,12 +223,12 @@ Uwaga przy wielu replikach: throttling nieudanych uwierzytelnień jest
 lokalny dla procesu. Przy kilku replikach przenieś licznik do Redis albo
 ustaw limit na poziomie nginx (`limit_req`).
 
-Zadania w tle — wysyłka raportów i monitorowanie usług — uzgadniają się
-**blokadą doradczą PostgreSQL**, więc kolejne repliki nie powielają sprawdzeń
-ani alarmów: proces, który nie dostanie blokady, pomija ten obieg. Nie wymaga
-to żadnej dodatkowej konfiguracji, ale znaczy też, że monitorowanie idzie
-z **jednej** repliki naraz — przy kilku tysiącach celów zwiększ
-`CMDB_MONITORING_WORKERS`, a nie liczbę replik.
+Wysyłka raportów i sprzątanie historii monitorowania uzgadniają się
+**blokadą doradczą PostgreSQL**, więc kolejne repliki nie powielają wysyłek:
+proces, który nie dostanie blokady, pomija ten obieg. Samo monitorowanie
+skaluje się inaczej niż reszta — sondy wykonują agenci, więc rośnie ono
+z liczbą maszyn klienta, a nie z liczbą replik serwera. Serwer widzi z tego
+jeden mały zapis na cel co `CMDB_MONITORING_REPORT_SECONDS`.
 
 ## Kopie zapasowe
 

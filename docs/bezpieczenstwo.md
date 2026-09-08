@@ -158,41 +158,58 @@ zawiera gotową listę zbieranych pól do takiej rozmowy.
 * Czas zebrania z zegara klienta jest przycinany: raport „z przyszłości"
   albo sprzed roku dostaje czas serwera.
 
-## Połączenia wychodzące z serwera
+## Monitorowanie usług: kto się z kim łączy
 
-Monitorowanie usług jest jedynym miejscem, w którym **serwer łączy się pod
-adres podany przez człowieka**. Cel wpisuje administrator firmy, a połączenie
-nawiązuje serwer wspólny dla wszystkich firm — adres znaczy więc dla serwera
-co innego niż dla wpisującego.
+Monitorowanie jest jedynym miejscem, w którym **program CMDB łączy się pod
+adres podany przez człowieka**. Robi to **agent**, nie serwer — i to jest
+decyzja bezpieczeństwa, a nie tylko wygody: serwer widzący sieci wszystkich
+firm naraz byłby jednym miejscem, z którego da się zajrzeć do każdej z nich.
 
-Odmawiamy adresów, przy których ta różnica jest groźna:
+Łączność serwer–agent pozostaje jednostronna: agent pobiera politykę i wysyła
+raporty tym samym połączeniem HTTPS, którym raportuje inwentarz. Serwer nigdy
+nie łączy się z maszyną ani z monitorowaną usługą.
+
+**Polityka nie jest przywilejem zapamiętanym.** Agent pobiera ją świeżo,
+związaną z jednorazową wartością, ważną przez chwilę i przypisaną do jego
+`asset_id` i `machine_id` — tak samo jak polityka skanowania sieci. Zapisany
+stan agenta nigdy nie jest upoważnieniem; bez tego odebranie celu w panelu nie
+odbierałoby go naprawdę, bo agent chodziłby dalej po ostatniej znanej liście.
+
+Agent dostaje **wyłącznie cele przypisane jemu** — nie widzi celów innych
+maszyn tej samej firmy ani niczego o pozostałych firmach. Przy przyjmowaniu
+raportu ten sam warunek działa w drugą stronę: identyfikator celu przychodzi
+z zewnątrz, więc sprawdzamy go warunkiem na wykonawcę i firmę. Inaczej
+wystarczyłoby zgadnąć cudze `id`, żeby ogłosić komuś awarię albo wyciszyć
+prawdziwą.
+
+Adresy, pod które agent odmawia pójść:
 
 | Adres | Dlaczego |
 |---|---|
-| `169.254.0.0/16`, `fe80::/10` | pod `169.254.169.254` odpowiada usługa metadanych chmury |
-| `127.0.0.0/8`, `::1` | pętla zwrotna wskazuje na sam serwer CMDB |
+| `169.254.0.0/16`, `fe80::/10` | pod `169.254.169.254` odpowiada usługa metadanych chmury, a agent bywa maszyną wirtualną u dostawcy |
 | `0.0.0.0`, `::`, multicast, adresy zarezerwowane | nie są usługą |
 
 Adres IPv4 zapisany jako IPv6 (`::ffff:169.254.169.254`) to ten sam adres
-i podlega tej samej odmowie — sprawdzanie postaci zapisu przepuściłoby go
-bez pytania.
-
-Sprawdzenie następuje **po rozwiązaniu nazwy**, a połączenie idzie dokładnie
-pod sprawdzony adres: inaczej między jednym a drugim odpowiedź DNS mogłaby się
-zmienić i serwer poszedłby tam, gdzie nikt nie zaglądał. Adres wpisany wprost
-odrzucamy już w formularzu; nazwę sprawdzamy przy każdym połączeniu, bo jej
-odpowiedź zmienia się w czasie.
+i podlega tej samej odmowie — sprawdzanie postaci zapisu przepuściłoby go bez
+pytania. Sprawdzenie następuje **po rozwiązaniu nazwy**, a połączenie idzie
+dokładnie pod sprawdzony adres: inaczej między jednym a drugim odpowiedź DNS
+mogłaby się zmienić.
 
 Sama sonda jest wąska z założenia: nie podąża za przekierowaniem, nie czyta
 treści odpowiedzi (tylko linię statusu), a ścieżka HTTP nie może zawierać
 znaków nowej linii — inaczej dałoby się dopisać własne nagłówki do żądania.
-Wynik widoczny w panelu to kod odpowiedzi i czas, nigdy zawartość.
+Do panelu trafia kod odpowiedzi i czas, nigdy zawartość.
 
-Blokada pętli zwrotnej znosi się świadomie
-(`CMDB_MONITORING_ALLOW_LOOPBACK=true`) na instalacji, która ma pilnować usług
-na tej samej maszynie. Całe monitorowanie wyłącza `CMDB_MONITORING_ENABLED=false`.
+Agent sprawdza ustawienia celu **jeszcze raz u siebie**, mimo że polityka
+przychodzi po uwierzytelnionym HTTPS: to jego maszynę obciąży odstęp ustawiony
+na sekundę albo tysiąc celów naraz.
 
-## Podział uprawnień na stacji
+Raport agenta jest **danymi, a nie prawdą o świecie**: każde pole ma
+ograniczoną długość i zakres, okno nie może kończyć się przed swoim
+początkiem ani mieć więcej udanych sond niż wszystkich, a certyfikat, którego
+nie da się rozebrać, kończy się wpisem o błędzie zamiast wyjątkiem.
+
+## Podział uprawnień na stacji## Podział uprawnień na stacji
 
 Na maszynie klienta pracują dwa procesy o różnych uprawnieniach:
 

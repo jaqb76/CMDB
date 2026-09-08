@@ -21,6 +21,7 @@ param(
     [string] $InstallDir = "$env:ProgramFiles\CMDB Agent",
     [string] $DataDir    = "$env:ProgramData\CMDB",
     [string] $TaskName   = "CMDB Agent",
+    [string] $MonitorTaskName = "CMDB Agent Monitor",
     [switch] $RemoveData,
     # Wywolywane z instalatora, ktory sam usuwa swoje pliki.
     [switch] $KeepFiles
@@ -34,10 +35,12 @@ if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
 }
 
 # --- zadanie harmonogramu ---------------------------------------------------
-if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
-    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-    Write-Host "Usunieto zadanie: $TaskName"
+foreach ($zadanie in @($TaskName, $MonitorTaskName)) {
+    if (Get-ScheduledTask -TaskName $zadanie -ErrorAction SilentlyContinue) {
+        Stop-ScheduledTask -TaskName $zadanie -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $zadanie -Confirm:$false
+        Write-Host "Usunieto zadanie: $zadanie"
+    }
 }
 
 # --- ikona w zasobniku ------------------------------------------------------

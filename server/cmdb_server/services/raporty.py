@@ -386,6 +386,11 @@ def dane_uslugi(db: Session, tenant_id: str) -> dict:
     dzisiaj = utcnow()
 
     niedostepne = [c for c in cele if c.stan_dostepnosci == "awaria"]
+    # Cele, o ktorych agent przestal raportowac. Osobno od awarii, bo to nie
+    # jest awaria uslugi - to utrata monitorowania, i naprawia sie ja przy
+    # agencie. Zamilczenie zliczone jako "dziala" byloby najgorszym z bledow
+    # tego raportu: cisza wygladalaby jak sprawnosc.
+    milczace = [c for c in cele if monitoring.milczy(c, dzisiaj)]
     wygasle, koncza_sie, niezaufane = [], [], []
     for cel in cele:
         dni = monitoring.dni_do_konca(cel, dzisiaj)
@@ -417,6 +422,7 @@ def dane_uslugi(db: Session, tenant_id: str) -> dict:
         "cele": cele,
         "liczba": len(cele),
         "niedostepne": niedostepne,
+        "milczace": milczace,
         "wygasle": wygasle,
         "koncza_sie": koncza_sie,
         "niezaufane": niezaufane,
@@ -587,6 +593,7 @@ def wersja_tekstowa(raport: dict) -> str:
         linie += [
             f"Monitorowanych uslug: {d['liczba']}",
             f"Niedostepnych teraz: {len(d['niedostepne'])}",
+            f"Bez raportow agenta: {len(d['milczace'])}",
             f"Certyfikatow po terminie: {len(d['wygasle'])}",
             f"Certyfikatow konczacych sie wkrotce: {len(d['koncza_sie'])}",
             ("Srednia dostepnosc (7 dni): "

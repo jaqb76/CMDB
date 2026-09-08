@@ -216,6 +216,30 @@
     </table>
     {% endif %}
 
+    {% if d.milczace %}
+    <h2 style="font-size:15px; margin:18px 0 8px">Bez raportów agenta</h2>
+    <p style="font-size:12px; color:#6b7280; margin:0 0 8px">
+      Agent przestał przysyłać wyniki. To nie jest awaria usługi ani jej
+      sprawność — to brak wiedzy, i naprawia się go przy agencie.
+    </p>
+    <table cellpadding="6" cellspacing="0" border="0" width="100%"
+           style="border-collapse:collapse; font-size:13px">
+      <tr style="background:#f5f6f8">
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Usługa</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Sprawdza</th>
+        <th align="left" style="border-bottom:1px solid #dcdfe4">Ostatni raport</th>
+      </tr>
+      {% for c in d.milczace %}
+      <tr>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.nazwa }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ c.wykonawca.hostname if c.wykonawca else '—' }}</td>
+        <td style="border-bottom:1px solid #eef0f3; color:#8a6100">
+          {{ c.ostatni_raport.strftime('%Y-%m-%d %H:%M') if c.ostatni_raport else 'nigdy' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
     {% if d.wygasle or d.koncza_sie or d.niezaufane %}
     <h2 style="font-size:15px; margin:18px 0 8px">Certyfikaty wymagające uwagi</h2>
     <table cellpadding="6" cellspacing="0" border="0" width="100%"
@@ -264,7 +288,7 @@
         <td style="border-bottom:1px solid #eef0f3">{{ p.cel.nazwa }}</td>
         <td style="border-bottom:1px solid #eef0f3; font-weight:700;
                    color:{% if p.okno.procent < 99 %}#a52222{% else %}#1c2024{% endif %}">{{ p.okno.procent }}%</td>
-        <td style="border-bottom:1px solid #eef0f3">{{ p.okno.udane }} / {{ p.okno.pomiary }}</td>
+        <td style="border-bottom:1px solid #eef0f3">{{ p.okno.udanych }} / {{ p.okno.sond }}</td>
       </tr>
       {% endfor %}
     </table>

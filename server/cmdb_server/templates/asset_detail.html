@@ -389,6 +389,31 @@
 
     {# Uslugi monitorowane pod tym zasobem. Widac je tu, bo pytanie "czy ten
        serwer dziala" pada przy karcie maszyny, a nie na osobnej liscie. #}
+    {% if sprawdza %}
+    <div class="panel">
+      <h2>Ta maszyna sprawdza</h2>
+      <p class="muted small">
+        Agent na tej maszynie monitoruje poniższe usługi. Jej wyłączenie
+        albo wycofanie zgasi ich monitorowanie — cele trzeba wtedy przepisać
+        innemu agentowi.
+      </p>
+      <table class="table">
+        <thead><tr><th>Usługa</th><th>Adres</th><th>Stan</th><th>Sonda co</th></tr></thead>
+        <tbody>
+        {% for u in sprawdza %}
+          <tr>
+            <td><a href="/monitoring/{{ u.id }}">{{ u.nazwa }}</a>
+              {% if not u.aktywny %}<span class="badge">wyłączony</span>{% endif %}</td>
+            <td class="small">{{ u.host }}:{{ u.port }} <span class="muted">{{ u.protokol | upper }}</span></td>
+            <td>{{ stany.odznaka(u.stan) }}</td>
+            <td class="small">{{ u.interwal_sekund }} s</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
     {% if uslugi %}
     <div class="panel">
       <h2>Monitorowane usługi</h2>

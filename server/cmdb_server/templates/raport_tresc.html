@@ -208,6 +208,28 @@
   </section>
   {% endif %}
 
+  {% if d.milczace %}
+  <section class="wykres-blok">
+    <h3>Bez raportów agenta</h3>
+    <p class="muted small">
+      Agent przestał przysyłać wyniki. To nie jest awaria usługi ani jej
+      sprawność — to brak wiedzy, i naprawia się go przy agencie.
+    </p>
+    <table class="table">
+      <thead><tr><th>Usługa</th><th>Sprawdza</th><th>Ostatni raport</th></tr></thead>
+      <tbody>
+      {% for c in d.milczace %}
+        <tr>
+          <td class="strong">{{ c.nazwa }}<div class="muted small">{{ c.host }}:{{ c.port }}</div></td>
+          <td class="small">{{ c.wykonawca.hostname if c.wykonawca else '-' }}</td>
+          <td class="small wartosc-uwaga">{{ c.ostatni_raport | dt }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
   {% if d.wygasle or d.koncza_sie or d.niezaufane %}
   <section class="wykres-blok">
     <h3>Certyfikaty wymagające uwagi</h3>
@@ -247,7 +269,7 @@
         <tr>
           <td class="strong">{{ p.cel.nazwa }}<div class="muted small">{{ p.cel.host }}:{{ p.cel.port }}</div></td>
           <td class="lp strong {% if p.okno.procent < 99 %}wartosc-alarm{% endif %}">{{ p.okno.procent }}%</td>
-          <td class="lp muted">{{ p.okno.udane }} / {{ p.okno.pomiary }}</td>
+          <td class="lp muted">{{ p.okno.udanych }} / {{ p.okno.sond }}</td>
         </tr>
       {% endfor %}
       </tbody>

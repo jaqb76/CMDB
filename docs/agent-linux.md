@@ -80,6 +80,31 @@ systemctl list-timers cmdb-agent.timer    # NEXT / LEFT / LAST / PASSED
 Usługa działa z `ProtectSystem=strict` i `ProtectHome=true`: agent czyta dane
 systemowe, ale zapisywać może wyłącznie do `/var/lib/cmdb-agent`.
 
+### Druga jednostka: monitorowanie usług
+
+Obok inwentaryzacji instalator zakłada `cmdb-agent-monitor.service` — usługę
+**długo żyjącą** (`Type=simple`, `Restart=always`). Musi być osobna:
+inwentaryzacja odpala się raz na kilka godzin i kończy, a sonda dostępności ma
+chodzić co minutę — jedno w drugim zmieścić się nie da.
+
+```bash
+systemctl status cmdb-agent-monitor.service    # tu "active (running)" jest poprawne
+journalctl -u cmdb-agent-monitor.service -f    # co i kiedy sonduje
+```
+
+Cele i ich odstępy przychodzą z serwera przy każdym pobraniu polityki, więc
+zmiana w panelu działa bez wchodzenia na maszynę. Bez przypisanych celów
+usługa tylko pyta o politykę i śpi — dlatego zakładamy ją zawsze.
+
+Zatrzymanie **dokańcza raport**: agent łapie `SIGTERM` i wysyła ostatnie
+podsumowanie (`TimeoutStopSec=30`), zanim zakończy pracę. Inaczej kwadrans
+pomiarów przepadałby przy każdym restarcie. Otwarta przerwa i znane odciski
+certyfikatów przeżywają restart — leżą w
+`/var/lib/cmdb-agent/monitoring-state.json`.
+
+Opis samego monitorowania:
+[`monitorowanie-uslug.md`](monitorowanie-uslug.md).
+
 ## Aktualizacja
 
 Agent uruchomiony ze źródeł **świadomie pomija samoaktualizację** — nie ma

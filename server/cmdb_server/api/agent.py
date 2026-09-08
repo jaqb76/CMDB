@@ -16,8 +16,10 @@ from sqlalchemy.orm import Session
 from .. import wersja
 from ..config import get_settings
 from ..db import get_db
-from ..models import AgentCredential, Asset, DiscoveryPolicy, EnrollmentToken, Tenant, utcnow
+from ..models import (AgentCredential, Asset, DiscoveryPolicy, EnrollmentToken,
+                      MonitorUslugi, Tenant, utcnow)
 from ..discovery_policy import ScanPolicy
+from ..monitoring_schema import OdpowiedzMonitorowania, RaportDostepnosci
 from ..schemas import (
     EnrollRequest,
     EnrollResponse,
@@ -206,6 +208,83 @@ def discovery_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9
             "revision": row.revision if row else "unassigned",
             "expires_at": (utcnow() + timedelta(seconds=60)).isoformat(),
             "policy": policy.model_dump()}
+
+
+@router.get("/agent/monitoring-policy")
+def monitoring_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9a-f]{32}$"),
+                      db: Session = Depends(get_db),
+                      auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Cele, ktore ta maszyna ma sprawdzac.
+
+    Ta sama zasada co przy polityce skanowania: swieza, zwiazana z jednorazowa
+    wartoscia, wazna przez chwile. Zapisany stan agenta NIGDY nie jest
+    upowaznieniem - inaczej odebranie celu w panelu nie odbieraloby go
+    naprawde, bo agent chodzilby dalej po ostatniej znanej liscie.
+
+    Agent dostaje wylacznie cele przypisane JEMU. Nie widzi ani celow innych
+    maszyn tej samej firmy, ani niczego o pozostalych firmach.
+    """
+    credential, ctx = auth
+    asset = db.get(Asset, credential.asset_id)
+    if asset is None or asset.tenant_id != ctx.tenant_id:
+        raise HTTPException(404, "maszyna nie istnieje")
+
+    from ..services import monitoring
+
+    pusta = {"enabled": False, "interwal_raportu": get_settings().monitoring_report_seconds,
+             "cele": [], "wydano": utcnow().isoformat()}
+    if not asset.is_active or asset.enrollment_blocked or not get_settings().monitoring_enabled:
+        policy = pusta
+    else:
+        policy = monitoring.polityka_dla_agenta(db, asset)
+
+    response.headers["Cache-Control"] = "no-store"
+    return {"protocol": 1, "nonce": nonce, "asset_id": asset.id, "machine_id": asset.machine_id,
+            "expires_at": (utcnow() + timedelta(seconds=60)).isoformat(),
+            "policy": policy}
+
+
+@router.post("/agent/monitoring", response_model=OdpowiedzMonitorowania)
+def monitoring_report(raport: RaportDostepnosci, request: Request,
+                      db: Session = Depends(get_db),
+                      auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Przyjmuje podsumowania i przerwy zebrane przez agenta.
+
+    Agent moze zglosic wylacznie cele, ktore SAM ma sprawdzac. Identyfikator
+    celu przychodzi z zewnatrz, wiec sprawdzamy go warunkiem na wykonawce
+    i firme - inaczej wystarczyloby zgadnac cudze id, zeby oglosic komus
+    awarie albo wyciszyc prawdziwa.
+    """
+    from ..services import monitoring
+
+    credential, ctx = auth
+    asset = db.get(Asset, credential.asset_id)
+    if asset is None or asset.tenant_id != ctx.tenant_id:
+        raise HTTPException(404, "maszyna nie istnieje")
+
+    teraz = utcnow()
+    przyjeto = pominieto = 0
+    for wpis in raport.cele:
+        monitor = db.execute(
+            select(MonitorUslugi).where(
+                MonitorUslugi.id == wpis.id,
+                MonitorUslugi.tenant_id == ctx.tenant_id,
+                MonitorUslugi.wykonawca_id == asset.id,
+            ).with_for_update()
+        ).scalar_one_or_none()
+        if monitor is None or not monitor.aktywny:
+            # Cel usuniety albo przepisany innemu agentowi w miedzyczasie.
+            # To nie jest blad agenta - polityke dostanie odswiezona.
+            pominieto += 1
+            continue
+        monitoring.przyjmij_raport(db, monitor, wpis.model_dump(mode="json"), teraz)
+        przyjeto += 1
+    db.commit()
+
+    return OdpowiedzMonitorowania(
+        przyjeto=przyjeto, pominieto=pominieto, server_time=teraz,
+        interwal_raportu=get_settings().monitoring_report_seconds,
+    )
 
 
 # --- aktualizacja agenta ----------------------------------------------------

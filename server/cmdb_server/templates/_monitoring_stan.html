@@ -9,6 +9,12 @@
   {%- endif -%}
 {% endmacro %}
 
+{# Cisza agenta to nie jest sprawna usluga ani awaria uslugi - to brak
+   wiedzy, i naprawia sie go gdzie indziej: przy agencie, a nie przy usludze. #}
+{% macro milczenie(monitor) %}
+  <span class="badge badge-warn" title="Agent przestał raportować — ostatni stan pochodzi sprzed jego milczenia">brak raportów</span>
+{% endmacro %}
+
 {# Waznosc certyfikatu w dniach - z barwa odpowiadajaca progom celu. #}
 {% macro certyfikat(monitor, dni) %}
   {%- if monitor.protokol not in ('tls', 'https') -%}
@@ -26,5 +32,14 @@
     {%- if monitor.weryfikuj_lancuch and monitor.cert_zaufany is false %}
       <br><span class="badge badge-danger" title="{{ monitor.cert_blad }}">łańcuch niezaufany</span>
     {%- endif %}
+  {%- endif -%}
+{% endmacro %}
+
+{# Ile trwala przerwa. None znaczy "trwa nadal" - a nie "zero sekund". #}
+{% macro trwanie(sekundy) %}
+  {%- if sekundy is none -%}<span class="badge badge-danger">trwa</span>
+  {%- elif sekundy < 60 -%}{{ sekundy }} s
+  {%- elif sekundy < 3600 -%}{{ (sekundy // 60) }} min {{ sekundy % 60 }} s
+  {%- else -%}{{ (sekundy // 3600) }} h {{ ((sekundy % 3600) // 60) }} min
   {%- endif -%}
 {% endmacro %}

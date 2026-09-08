@@ -33,6 +33,14 @@ kontaktu" przy maszynie wynika z `last_seen` w chwili patrzenia i nie musi
 nigdzie leżeć, ale o zmianie stanu usługi trzeba powiadomić w momencie,
 w którym nastąpiła — a nie wtedy, gdy ktoś akurat otworzy stronę.
 
+Monitorowanie jest też jedynym miejscem, gdzie dane **przychodzą już
+podsumowane**. Agent sonduje co minutę, ale nie przysyła sondy: przysyła jeden
+wiersz okna („15 sond, 9 udanych”) i same przerwy. Doba monitorowania co
+minutę to 96 wierszy zamiast 1440 na cel, a procent dostępności wychodzi z nich
+dokładnie ten sam. Okno niesie przy tym informację, że agent w ogóle
+monitorował — bez niej „usługa działała" i „nikt nie patrzył" wyglądałyby
+w procencie identycznie.
+
 | Tabela | Rola |
 |---|---|
 | `tenants` | firma — korzeń izolacji danych |
@@ -42,8 +50,9 @@ w którym nastąpiła — a nie wtedy, gdy ktoś akurat otworzy stronę.
 | `assets` | maszyna: kolumny do filtrowania + `facts` (skrót do listy) |
 | `owners` | opiekun/właściciel po stronie firmy |
 | `inventory_snapshots` | pełny raport agenta jako JSONB — źródło prawdy |
-| `monitory_uslug` | cel monitorowania (adres, port, progi) wraz z ostatnim stanem i ostatnim certyfikatem |
-| `pomiary_monitorow` | historia sprawdzeń — podstawa procentu dostępności |
+| `monitory_uslug` | cel monitorowania (adres, port, progi, wykonawca) wraz z ostatnim stanem i certyfikatem |
+| `okna_monitorowania` | podsumowanie okresu raportowania: ile sond, ile udanych — podstawa procentu dostępności |
+| `przerwy_dostepnosci` | od kiedy do kiedy usługa nie odpowiadała; pusty koniec znaczy „trwa nadal” |
 | `audit_log` | ślad operacji wrażliwych |
 
 Na PostgreSQL kolumny JSON to `JSONB`, a `inventory_snapshots.payload`

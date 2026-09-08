@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import json
 import logging
 import logging.handlers
@@ -219,6 +220,43 @@ def do_loop(config: AgentConfig, state: AgentState, client: CmdbClient) -> int:
         time.sleep(delay)
 
 
+def do_monitor(config: AgentConfig, state: AgentState, client: CmdbClient) -> int:
+    """Ciagle monitorowanie uslug przypisanych tej maszynie.
+
+    Osobny, dlugo zyjacy proces - i musi taki byc. Inwentaryzacja odpala sie
+    z harmonogramu raz na kilka godzin i konczy, a sonda dostepnosci ma
+    chodzic co minute; jedno w drugim zmiescic sie nie da.
+
+    Cele i ich odstepy przychodza z serwera przy kazdym pobraniu polityki,
+    wiec zmiana w panelu dziala tu bez ruszania czegokolwiek na maszynie.
+    """
+    from .monitoring import Monitor
+
+    if not state.is_enrolled:
+        log.error("agent nie jest zarejestrowany - najpierw uruchom: cmdb-agent enroll")
+        return 1
+
+    monitor = Monitor(client, state, sciezka_stanu=config.data_dir / "monitoring-state.json")
+
+    def zatrzymaj(_sygnal, _ramka):
+        log.info("otrzymano sygnal zatrzymania - wysylam ostatnie podsumowanie")
+        monitor.zatrzymaj.set()
+
+    # Zatrzymanie uslugi ma dokonczyc raport, a nie uciac go w polowie:
+    # inaczej kwadrans pomiarow przepadalby przy kazdym restarcie, a otwarta
+    # awaria wygladalaby na trwajaca dalej.
+    for nazwa in ("SIGTERM", "SIGINT"):
+        numer = getattr(signal, nazwa, None)
+        if numer is not None:
+            try:
+                signal.signal(numer, zatrzymaj)
+            except (ValueError, OSError):
+                pass  # np. uruchomienie poza glownym watkiem
+
+    monitor.petla()
+    return 0
+
+
 def do_show(config: AgentConfig, output: str | None) -> int:
     report = build_report(get_collector(config))
     text = json.dumps(report, indent=2, ensure_ascii=False)
@@ -333,6 +371,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("enroll", help="rejestruje maszyne i zapisuje wlasne poswiadczenie")
     sub.add_parser("run", help="zbiera i wysyla jeden raport")
     sub.add_parser("loop", help="dziala w petli z ustawionym interwalem")
+    sub.add_parser("monitor", help="monitoruje dostepnosc uslug (proces ciagly)")
     show = sub.add_parser("show", help="zbiera raport i wypisuje go bez wysylania")
     show.add_argument("--out", help="zapisz do pliku zamiast na standardowe wyjscie")
     status_cmd = sub.add_parser("status", help="pokazuje stan agenta i ostatnia synchronizacje")
@@ -368,8 +407,16 @@ def main(argv: list[str] | None = None) -> int:
         import re
         if not re.fullmatch(r"[0-9a-f]{32}", args.nonce):
             return 2
+        # Odpowiedz sondy workera jest UZGODNIENIEM Z POPRZEDNIA wersja agenta:
+        # to zainstalowany agent sprawdza nia kandydata przed podmiana pliku
+        # (upgrade._czy_dziala). Dolozenie tu pola sprawia, ze KAZDY juz
+        # wdrozony agent odmawia aktualizacji do tej wersji - czyli psuje
+        # dokladnie ten mechanizm, ktorym zmiana mialaby dojechac na maszyny.
+        # Nowe mozliwosci oglaszamy wiec gdzie indziej: monitorowanie widac po
+        # tym, ze agent siega po swoja polityke, a usluge zaklada instalator.
         print(json.dumps({"protocol": 1, "version": __version__, "nonce": args.nonce,
-                          "commands": ["run", "enroll", "status"], "discovery_control": "cmdb-policy-v1"}))
+                          "commands": ["run", "enroll", "status"],
+                          "discovery_control": "cmdb-policy-v1"}))
         return 0
 
     overrides = {
@@ -441,6 +488,8 @@ def main(argv: list[str] | None = None) -> int:
             return do_run(config, state, client)
         if args.command == "loop":
             return do_loop(config, state, client)
+        if args.command == "monitor":
+            return do_monitor(config, state, client)
     except CertificatePinError as exc:
         log.error("PRZERWANO: %s", exc)
         return 4

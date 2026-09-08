@@ -40,7 +40,7 @@ def _zwolnij(conn) -> None:
 
 def przebieg() -> dict | None:
     """Jeden obieg. None, gdy robote wykonuje wlasnie inny proces."""
-    from . import raporty
+    from . import monitoring, raporty
 
     with engine.connect() as conn:
         if not _sprobuj_przejac(conn):
@@ -48,7 +48,12 @@ def przebieg() -> dict | None:
         try:
             conn.commit()
             with SessionLocal() as db:
-                return raporty.wyslij_zalegle(db)
+                wynik = raporty.wyslij_zalegle(db)
+                # Sprzatanie historii monitorowania jedzie tu, a nie we
+                # wlasnej petli: to jedno zapytanie na kwadrans, a osobne
+                # zadanie w tle znaczyloby druga blokade do uzgodnienia.
+                wynik["monitorowanie"] = monitoring.usun_stara_historie(db)
+                return wynik
         finally:
             _zwolnij(conn)
             conn.commit()

@@ -1009,6 +1009,15 @@ def asset_detail(
                 MonitorUslugi.asset_id == asset.id,
             ).order_by(MonitorUslugi.nazwa)
         ).scalars().all(),
+        # Druga rola tego samego zasobu: maszyna moze nie tylko BYC
+        # monitorowana, ale i sprawdzac cudze uslugi. Bez tej listy nie widac
+        # przy niej, ze jej wylaczenie zgasi monitorowanie czegos innego.
+        sprawdza=db.execute(
+            select(MonitorUslugi).where(
+                MonitorUslugi.tenant_id == ctx.tenant_id,
+                MonitorUslugi.wykonawca_id == asset.id,
+            ).order_by(MonitorUslugi.nazwa)
+        ).scalars().all(),
         dni_do_konca=monitoring.dni_do_konca,
     )
 

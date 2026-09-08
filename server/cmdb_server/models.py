@@ -931,12 +931,15 @@ class MonitorUslugi(Base):
     Celowo NIE jest to zasob (Asset). Usluga bywa czyms, co nie ma sprzetu
     w ewidencji - certyfikat domeny u zewnetrznego dostawcy, adres VIP na
     load balancerze, ten sam serwer widziany pod czterema nazwami. Wiazanie
-    z zasobem jest mozliwe (asset_id), ale nie wymagane: monitorowanie ma
-    dzialac takze dla tego, czego CMDB nie inwentaryzuje.
+    z zasobem jest mozliwe (asset_id), ale nie wymagane.
+
+    Sprawdza AGENT, nie serwer - patrz services/monitoring.py. Ta tabela jest
+    wiec zapisem ZAMIARU (co, jak czesto, z ktorej maszyny) plus ostatnim
+    znanym stanem; sama niczego nie odpytuje.
 
     Stan jest tu ZAPISANY, w odroznieniu od "bez kontaktu" przy maszynie,
     ktore wynika z last_seen w chwili patrzenia. Roznica jest istotna:
-    o zmianie stanu usługi trzeba powiadomic w momencie, w ktorym nastapila,
+    o zmianie stanu uslugi trzeba powiadomic w momencie, w ktorym nastapila,
     a nie wtedy, gdy ktos akurat otworzy strone.
     """
 
@@ -944,7 +947,7 @@ class MonitorUslugi(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "nazwa", name="uq_monitor_nazwa"),
         Index("ix_monitor_tenant_aktywny", "tenant_id", "aktywny"),
-        Index("ix_monitor_nastepne", "aktywny", "ostatnie_sprawdzenie"),
+        Index("ix_monitor_wykonawca", "wykonawca_id", "aktywny"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -952,13 +955,22 @@ class MonitorUslugi(Base):
         String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
     nazwa: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    # Maszyna z agentem, ktora wykonuje sprawdzenia. To ona stoi w sieci,
+    # w ktorej usluga zyje - serwer CMDB czesto tej sieci nie widzi wcale,
+    # a gdyby widzial wszystkie naraz, bylby jednym miejscem z wgladem
+    # w sieci wszystkich firm.
+    wykonawca_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), index=True
+    )
+
     # Adres IP albo nazwa DNS. Nazwa jest rozwiazywana przy KAZDYM sprawdzeniu,
     # bo zmiana adresu pod nazwa jest sama w sobie informacja.
     host: Mapped[str] = mapped_column(String(255), nullable=False)
     port: Mapped[int] = mapped_column(Integer, nullable=False, default=443)
     protokol: Mapped[str] = mapped_column(String(16), nullable=False, default=PROTOKOL_HTTPS)
     # Sciezka pytana po HTTP(S). Strona glowna bywa przekierowaniem, a
-    # /health mowi o aplikacji wiecej niz "/".
+    # /health mowi o aplikacji wiecej.
     sciezka: Mapped[str] = mapped_column(String(500), nullable=False, default="/")
     # Kod uznawany za poprawny. 0 znaczy "kazdy kod ponizej 400".
     oczekiwany_kod: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -967,12 +979,16 @@ class MonitorUslugi(Base):
     # certyfikat serwera obslugujacego kilka domen.
     nazwa_tls: Mapped[str | None] = mapped_column(String(255))
     # Czy lancuch certyfikatu ma byc uznany za wymagany. Wewnetrzne uslugi
-    # czesto maja certyfikat wlasnego urzedu, ktorego serwer CMDB nie zna -
-    # wtedy niezaufany lancuch jest stanem normalnym, a nie awaria. Data
-    # waznosci jest sprawdzana zawsze, niezaleznie od tego ustawienia.
+    # czesto maja certyfikat wlasnego urzedu, ktorego agent nie zna - wtedy
+    # niezaufany lancuch jest stanem normalnym, a nie awaria. Data waznosci
+    # jest sprawdzana zawsze, niezaleznie od tego ustawienia.
     weryfikuj_lancuch: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    interwal_sekund: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
+    # Dwa osobne rytmy, bo to dwa rozne pytania. "Czy odpowiada" ma sens co
+    # minute; "do kiedy wazny certyfikat" zmienia odpowiedz raz na kilka
+    # miesiecy i pytanie o to co minute jest wylacznie halasem.
+    interwal_sekund: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    interwal_certyfikatu: Mapped[int] = mapped_column(Integer, nullable=False, default=86400)
     limit_sekund: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     # Po ilu kolejnych nieudanych probach uznajemy usluge za niedostepna.
     # Jedna zgubiona odpowiedz zdarza sie w kazdej sieci; powiadomienie o niej
@@ -993,14 +1009,22 @@ class MonitorUslugi(Base):
     adresaci: Mapped[str | None] = mapped_column(Text)
     aktywny: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    # --- stan wyliczony przy ostatnim sprawdzeniu ---
+    # Zadanie sprawdzenia poza kolejnoscia, zlozone z panelu. Nie ma tu flagi
+    # do wyzerowania: agent dostaje zadanie, dopoki ostatnie sprawdzenie jest
+    # starsze niz zadanie, wiec przychodzacy wynik gasi je sam.
+    wymuszone_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # --- stan z ostatniego raportu agenta ---
     stan: Mapped[str] = mapped_column(String(16), nullable=False, default=STAN_NIEZNANY)
-    # Dostepnosc i certyfikat sa ocenianie osobno, bo osobno sie psuja
+    # Dostepnosc i certyfikat sa oceniane osobno, bo osobno sie psuja
     # i osobno o nich powiadamiamy. Widoczny stan celu to gorszy z tych dwoch.
     stan_dostepnosci: Mapped[str] = mapped_column(String(16), nullable=False, default=STAN_NIEZNANY)
     stan_certyfikatu: Mapped[str] = mapped_column(String(16), nullable=False, default=STAN_NIEZNANY)
-    kolejne_bledy: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ostatnie_sprawdzenie: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Kiedy agent ostatnio sie odezwal w sprawie tego celu. Rozne od
+    # ostatniego sprawdzenia: agent moze sondowac co minute, a raportowac
+    # co kwadrans - i to cisza AGENTA, a nie uslugi, znaczy "nie wiem".
+    ostatni_raport: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ostatnia_zmiana_stanu: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ostatni_blad: Mapped[str | None] = mapped_column(Text)
     czas_odpowiedzi_ms: Mapped[int | None] = mapped_column(Integer)
@@ -1015,6 +1039,8 @@ class MonitorUslugi(Base):
     # Odcisk rozroznia certyfikaty. Po odnowieniu zmienia sie, a wraz z nim
     # zeruja sie progi powiadomien - inaczej odnowiony certyfikat nie
     # doczekalby sie zadnego ostrzezenia przed nastepnym koncem waznosci.
+    # Agent przysyla sam odcisk, a caly certyfikat dopiero gdy odcisk sie
+    # zmienil - certyfikat wazny rok nie ma po co jechac przez siec co dobe.
     cert_odcisk: Mapped[str | None] = mapped_column(String(95))
     cert_nazwy: Mapped[list | None] = mapped_column(JSONType)
     cert_zaufany: Mapped[bool | None] = mapped_column(Boolean)
@@ -1041,18 +1067,28 @@ class MonitorUslugi(Base):
     utworzyl: Mapped[str | None] = mapped_column(String(255))
 
     asset: Mapped["Asset | None"] = relationship(foreign_keys=[asset_id])
+    wykonawca: Mapped["Asset | None"] = relationship(foreign_keys=[wykonawca_id])
 
 
-class PomiarMonitora(Base):
-    """Pojedyncze sprawdzenie. Z historii bierze sie dostepnosc w procentach.
+class OknoMonitorowania(Base):
+    """Podsumowanie jednego okresu raportowania jednego celu.
 
-    Bez zapisanych pomiarow da sie powiedziec tylko "dziala teraz". Pytanie,
-    ktore pada po awarii, brzmi jednak "jak dlugo nie dzialalo" - i na nie
-    odpowiada wylacznie historia.
+    Tu mieszka odpowiedz na "ile z tego dzialalo". Agent sonduje co minute,
+    ale nie przysyla tysiaca wierszy "ok" - przysyla jeden wiersz: "od 12:30
+    do 12:45 wykonalem 15 sond, 9 sie udalo". Doba monitorowania co minute to
+    96 wierszy zamiast 1440, a procent dostepnosci wychodzi z nich dokladnie
+    ten sam.
+
+    Okno mowi TAKZE, ze agent w ogole monitorowal. Bez tego nie da sie
+    odroznic "usluga dzialala" od "nikt nie patrzyl" - a to dwie zupelnie
+    rozne rzeczy, ktore w procencie dostepnosci wygladalyby identycznie.
     """
 
-    __tablename__ = "pomiary_monitorow"
-    __table_args__ = (Index("ix_pomiar_monitor_czas", "monitor_id", "sprawdzono"),)
+    __tablename__ = "okna_monitorowania"
+    __table_args__ = (
+        UniqueConstraint("monitor_id", "poczatek", name="uq_okno_monitor_poczatek"),
+        Index("ix_okno_monitor_czas", "monitor_id", "koniec"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(
@@ -1061,12 +1097,51 @@ class PomiarMonitora(Base):
     monitor_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("monitory_uslug.id", ondelete="CASCADE"), nullable=False
     )
-    sprawdzono: Mapped[datetime] = mapped_column(
+    poczatek: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    koniec: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sond: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    udanych: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    przyjeto: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
-    # Stan DOSTEPNOSCI, nie stan celu: dostepnosc liczona z historii nie moze
-    # spadac przez certyfikat, ktory konczy sie za trzy tygodnie.
-    stan: Mapped[str] = mapped_column(String(16), nullable=False)
-    czas_odpowiedzi_ms: Mapped[int | None] = mapped_column(Integer)
-    kod: Mapped[int | None] = mapped_column(Integer)
+
+
+class PrzerwaDostepnosci(Base):
+    """Jedna przerwa w dzialaniu uslugi: od kiedy do kiedy nie odpowiadala.
+
+    To jest tresc raportu agenta. Nie wysylamy tysiaca potwierdzen, ze wszystko
+    gra - wysylamy to, czego brakowalo: "12:34:34 - 12:40:22, connection
+    refused". Przerwa jeszcze trwajaca ma pusty ``koniec`` i zostaje domknieta
+    kolejnym raportem; rozpoznajemy ja po (monitor_id, poczatek), bo poczatek
+    przerwy jest jej tozsamoscia.
+    """
+
+    __tablename__ = "przerwy_dostepnosci"
+    __table_args__ = (
+        UniqueConstraint("monitor_id", "poczatek", name="uq_przerwa_monitor_poczatek"),
+        Index("ix_przerwa_monitor_czas", "monitor_id", "poczatek"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    monitor_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("monitory_uslug.id", ondelete="CASCADE"), nullable=False
+    )
+    poczatek: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Puste znaczy "trwa nadal" - nie "trwala zero sekund".
+    koniec: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     blad: Mapped[str | None] = mapped_column(String(500))
+    # Ile sond nie powiodlo sie w tej przerwie. Rozroznia jedno zgubione
+    # pakiety od godziny ciszy.
+    sond: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    monitor: Mapped["MonitorUslugi"] = relationship()
+
+    @property
+    def trwanie_sekund(self) -> int | None:
+        """Ile trwala. None, gdy trwa nadal - a nie zero."""
+        if self.koniec is None:
+            return None
+        return int((as_utc(self.koniec) - as_utc(self.poczatek)).total_seconds())

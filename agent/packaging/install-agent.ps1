@@ -40,6 +40,7 @@ param(
     [string] $PinSha256,
     [int]    $IntervalHours = 4,
     [string] $TaskName = "CMDB Agent",
+    [string] $MonitorTaskName = "CMDB Agent Monitor",
     [switch] $NoProcessList,
     [switch] $NoTray,
     # Tryb dla instalatora graficznego: bez interaktywnych komunikatow.
@@ -257,6 +258,31 @@ Register-ScheduledTask -TaskName $TaskName `
     -Action $action -Trigger @($atStartup, $periodic) `
     -Principal $principal -Settings $settings -Force | Out-Null
 
+# Monitorowanie uslug to OSOBNE zadanie, dlugo zyjace. Inwentaryzacja odpala
+# sie raz na kilka godzin i konczy; sonda dostepnosci ma chodzic co minute,
+# wiec musi zyc miedzy jej przebiegami - jedno w drugim zmiescic sie nie da.
+# Zadanie startuje przy uruchomieniu systemu i nie ma limitu czasu; harmonogram
+# odtwarza je, gdyby proces padl.
+$monitorAction = New-ScheduledTaskAction -Execute $targetExe `
+    -Argument "--config `"$configPath`" monitor" -WorkingDirectory $InstallDir
+$monitorTrigger = New-ScheduledTaskTrigger -AtStartup
+$monitorSettings = New-ScheduledTaskSettingsSet `
+    -StartWhenAvailable `
+    -DontStopIfGoingOnBatteries `
+    -AllowStartIfOnBatteries `
+    -MultipleInstances IgnoreNew `
+    -ExecutionTimeLimit ([TimeSpan]::Zero) `
+    -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
+
+Register-ScheduledTask -TaskName $MonitorTaskName `
+    -Description "Monitorowanie dostepnosci uslug CMDB - cele ustawia sie w panelu." `
+    -Action $monitorAction -Trigger $monitorTrigger `
+    -Principal $principal -Settings $monitorSettings -Force | Out-Null
+# Bez przypisanych celow zadanie tylko pyta serwer o polityke i spi, wiec
+# uruchamiamy je zawsze - cel dodany w panelu zaczyna byc sprawdzany bez
+# wchodzenia na maszyne.
+Start-ScheduledTask -TaskName $MonitorTaskName -ErrorAction SilentlyContinue
+
 # Pozwalamy zwyklym uzytkownikom uruchomic zadanie ("Synchronizuj teraz"
 # z ikony w zasobniku), ale nie zmieniac go. Bez tego kazde recznie wymuszone
 # odswiezenie prosiloby o haslo administratora.
@@ -274,6 +300,7 @@ catch {
 }
 
 Write-Step "  zadanie        : $TaskName (SYSTEM, przy starcie + co $IntervalHours h)"
+Write-Step "  monitorowanie  : $MonitorTaskName (SYSTEM, ciagle - cele z panelu CMDB)"
 
 # --- 5. ikona w zasobniku ---------------------------------------------------
 # Wpis zakladamy jawnie w widoku 64-bitowym. Przy uruchomieniu instalatora

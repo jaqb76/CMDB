@@ -55,17 +55,20 @@ services:
       CMDB_LOGIN_LOCKOUT_HOURS: ${CMDB_LOGIN_LOCKOUT_HOURS:-24}
       # Bez klucza pobieranie ocen CVSS dziala, tylko wolniej (5 zapytan / 30 s).
       CMDB_NVD_API_KEY: ${CMDB_NVD_API_KEY:-}
-      # Monitorowanie uslug: sprawdzenia wychodza Z TEGO kontenera, wiec musi
-      # on widziec monitorowane adresy. Wylaczenie zostawia konfiguracje
-      # w bazie - przydaje sie na instalacji zapasowej, ktora nie ma alarmowac
-      # rownolegle z produkcyjna.
+      # Monitorowanie uslug: sonduje AGENT na maszynie klienta, nie ten
+      # kontener. Serwer wydaje polityke, przyjmuje wyniki i powiadamia, wiec
+      # nie musi widziec monitorowanych adresow. Wylaczenie zostawia
+      # konfiguracje w bazie i przestaje wydawac polityke - agenci przestaja
+      # dostawac cele. Przydaje sie na instalacji zapasowej.
       CMDB_MONITORING_ENABLED: ${CMDB_MONITORING_ENABLED:-true}
-      CMDB_MONITORING_TICK_SECONDS: ${CMDB_MONITORING_TICK_SECONDS:-60}
-      CMDB_MONITORING_WORKERS: ${CMDB_MONITORING_WORKERS:-8}
+      # Co ile agent ma przysylac podsumowanie. Awarie ida osobno i od razu,
+      # wiec to odstep wylacznie dla potwierdzen, ze wszystko dziala.
+      CMDB_MONITORING_REPORT_SECONDS: ${CMDB_MONITORING_REPORT_SECONDS:-900}
       CMDB_MONITORING_MAX_TARGETS: ${CMDB_MONITORING_MAX_TARGETS:-200}
-      CMDB_MONITORING_HISTORY_DAYS: ${CMDB_MONITORING_HISTORY_DAYS:-30}
-      # Petla zwrotna kontenera to nie jest petla zwrotna maszyny - wlaczaj
-      # swiadomie i tylko wtedy, gdy monitorowana usluga stoi w tym kontenerze.
+      CMDB_MONITORING_MAX_PER_AGENT: ${CMDB_MONITORING_MAX_PER_AGENT:-50}
+      CMDB_MONITORING_HISTORY_DAYS: ${CMDB_MONITORING_HISTORY_DAYS:-90}
+      # Cel pod adresem petli zwrotnej znaczy "maszyna agenta". Bywa to
+      # sensowne (usluga na tej samej maszynie), ale nie domyslnie.
       CMDB_MONITORING_ALLOW_LOOPBACK: ${CMDB_MONITORING_ALLOW_LOOPBACK:-false}
       # Adres, pod ktorym klienci widza serwer - trafia do wydawanego skryptu
       # instalacyjnego. Za proxy nie da sie go wiarygodnie odgadnac z zadania.

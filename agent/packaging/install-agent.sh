@@ -188,9 +188,44 @@ RandomizedDelaySec=10min
 WantedBy=timers.target
 TIMER
 
+# Monitorowanie uslug to OSOBNA usluga, dlugo zyjaca. Inwentaryzacja odpala
+# sie z timera raz na kilka godzin i konczy; sonda dostepnosci ma chodzic co
+# minute, wiec musi zyc miedzy jej przebiegami. Jedno w drugim zmiescic sie
+# nie da, a wspolny proces oznaczalby, ze restart inwentaryzacji gubi pomiary.
+cat > "/etc/systemd/system/$NAZWA_USLUGI-monitor.service" <<UNIT
+[Unit]
+Description=Monitorowanie dostepnosci uslug CMDB
+Documentation=https://github.com/jaqb76/CMDB
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cmdb-agent --config $KONFIGURACJA monitor
+# Zatrzymanie ma dokonczyc raport, a nie uciac go w polowie: agent lapie
+# SIGTERM i wysyla ostatnie podsumowanie, zanim zakonczy prace.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=always
+RestartSec=30
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=$KATALOG_DANYCH
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 systemctl daemon-reload
 systemctl enable --now "$NAZWA_USLUGI.timer" >/dev/null
+# Usluga monitorowania startuje zawsze; bez przypisanych celow agent tylko
+# pyta serwer o polityke i spi, wiec nic to nie kosztuje.
+systemctl enable --now "$NAZWA_USLUGI-monitor.service" >/dev/null
 echo "    usluga         : $NAZWA_USLUGI.timer (co ${INTERWAL_GODZIN} h, przy starcie + 3 min)"
+echo "    monitorowanie  : $NAZWA_USLUGI-monitor.service (ciagle, cele z panelu CMDB)"
 
 # --- 5. pierwszy przebieg ---------------------------------------------------
 krok "Wysylam pierwszy raport..."

@@ -8,22 +8,26 @@
     <h1>{{ monitor.nazwa }} {{ stany.odznaka(monitor.stan) }}</h1>
     <p class="muted">
       {{ monitor.host }}:{{ monitor.port }} &middot; {{ protokoly.get(monitor.protokol, monitor.protokol) }}
+      {% if monitor.wykonawca %}&middot; sprawdza <a href="/assets/{{ monitor.wykonawca_id }}">{{ monitor.wykonawca.hostname }}</a>{% endif %}
       {% if monitor.ostatni_adres %}&middot; ostatnio pod adresem {{ monitor.ostatni_adres }}{% endif %}
     </p>
   </div>
   <div class="head-actions">
     <a class="btn btn-small" href="/monitoring">&larr; Wszystkie usługi</a>
     {% if ctx.can_write %}
+    {% if monitor.aktywny %}
     <form method="post" action="/monitoring/{{ monitor.id }}/sprawdz" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" class="btn btn-small btn-primary">Sprawdź teraz</button>
+      <button type="submit" class="btn btn-small btn-primary"
+              title="Zleca agentowi sprawdzenie poza kolejnością">Zleć sprawdzenie</button>
     </form>
+    {% endif %}
     <form method="post" action="/monitoring/{{ monitor.id }}/przelacz" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="btn btn-small">{{ 'Wyłącz' if monitor.aktywny else 'Włącz' }}</button>
     </form>
     <form method="post" action="/monitoring/{{ monitor.id }}/usun" class="inline-form"
-          data-confirm="Usunąć cel {{ monitor.nazwa }} razem z historią pomiarów?">
+          data-confirm="Usunąć cel {{ monitor.nazwa }} razem z historią przerw?">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="btn btn-small btn-danger">Usuń</button>
     </form>
@@ -37,15 +41,30 @@
 
 {% if not monitor.aktywny %}
 <div class="alert alert-warn">
-  Cel jest wyłączony — nie jest sprawdzany, a jego stan pozostaje nieznany.
-  Historia pomiarów zostaje nienaruszona.
+  Cel jest wyłączony — agent przestanie go sprawdzać przy najbliższym pobraniu
+  polityki, a jego stan pozostaje nieznany. Historia przerw zostaje nienaruszona.
+</div>
+{% elif oczekuje_sprawdzenia %}
+<div class="alert">
+  Zlecono sprawdzenie poza kolejnością — {{ monitor.wykonawca.hostname if monitor.wykonawca else 'agent' }}
+  wykona je przy najbliższym cyklu i przyśle wynik. Panel nie sonduje sam,
+  więc odświeżenie strony samo z siebie niczego nie zmieni.
+</div>
+{% elif milczy %}
+<div class="alert alert-warn">
+  <b>Agent przestał raportować.</b> Ostatni raport przyszedł
+  {{ monitor.ostatni_raport | ago }}, a spodziewamy się ich co
+  {{ (interwal_raportu // 60) }} min. Stan poniżej pochodzi sprzed jego
+  milczenia — to nie jest bieżąca wiedza o usłudze. Sprawdź, czy usługa
+  <code>cmdb-agent-monitor</code> działa na maszynie
+  {{ monitor.wykonawca.hostname if monitor.wykonawca else 'wykonawcy' }}.
 </div>
 {% endif %}
 
 {% if monitor.blad_powiadomienia %}
 <div class="alert alert-error">
   <b>Powiadomienie nie doszło:</b> {{ monitor.blad_powiadomienia }}
-  <div class="small">Zgłoszenie zostanie ponowione przy kolejnym sprawdzeniu — powiadomienie, które nie dotarło, nie jest powiadomieniem.</div>
+  <div class="small">Zgłoszenie zostanie ponowione przy kolejnym raporcie — powiadomienie, które nie dotarło, nie jest powiadomieniem.</div>
 </div>
 {% endif %}
 
@@ -57,8 +76,8 @@
     </div>
     <div class="kafelek-opis">
       dostępność w ostatnich {{ okno.godziny }} h
-      {% if okno.pomiary %}&middot; {{ okno.udane }} / {{ okno.pomiary }} sprawdzeń{% else %}&middot; brak pomiarów{% endif %}
-      {% if okno.sredni_czas_ms is not none %}<br>średnia odpowiedź {{ okno.sredni_czas_ms }} ms{% endif %}
+      {% if okno.sond %}&middot; {{ okno.udanych }} / {{ okno.sond }} sond{% else %}&middot; brak sond{% endif %}
+      {% if okno.przerw %}<br>{{ okno.przerw }} przerw{% endif %}
     </div>
   </div>
   {% endfor %}
@@ -70,11 +89,12 @@
   <table class="table">
     <tbody>
       <tr><th>Stan celu</th><td>{{ stany.odznaka(monitor.stan) }}</td></tr>
-      <tr><th>Dostępność</th><td>{{ stany.odznaka(monitor.stan_dostepnosci) }}
-        {% if monitor.kolejne_bledy %}<span class="muted small">{{ monitor.kolejne_bledy }} kolejnych błędów</span>{% endif %}</td></tr>
+      <tr><th>Dostępność</th><td>{{ stany.odznaka(monitor.stan_dostepnosci) }}</td></tr>
       <tr><th>Certyfikat</th><td>{{ stany.odznaka(monitor.stan_certyfikatu) }}</td></tr>
       <tr><th>Sprawdzono</th><td>{{ monitor.ostatnie_sprawdzenie | dt }}
         {% if monitor.ostatnie_sprawdzenie %}<span class="muted small">({{ monitor.ostatnie_sprawdzenie | ago }})</span>{% endif %}</td></tr>
+      <tr><th>Raport agenta</th><td>{{ monitor.ostatni_raport | dt }}
+        {% if milczy %}{{ stany.milczenie(monitor) }}{% endif %}</td></tr>
       <tr><th>Stan od</th><td>{{ monitor.ostatnia_zmiana_stanu | dt }}</td></tr>
       <tr><th>Czas odpowiedzi</th><td>{% if monitor.czas_odpowiedzi_ms is not none %}{{ monitor.czas_odpowiedzi_ms }} ms{% else %}—{% endif %}</td></tr>
       {% if monitor.protokol in protokoly_http %}
@@ -84,6 +104,9 @@
       {% if monitor.ostatni_blad %}
       <tr><th>Błąd</th><td class="wartosc-alarm">{{ monitor.ostatni_blad }}</td></tr>
       {% endif %}
+      <tr><th>Rytm</th><td class="small">sonda co {{ monitor.interwal_sekund }} s,
+        certyfikat co {{ (monitor.interwal_certyfikatu // 3600) }} h,
+        raport co {{ (interwal_raportu // 60) }} min</td></tr>
       <tr><th>Ostatnie powiadomienie</th><td>{{ monitor.ostatnie_powiadomienie | dt }}</td></tr>
       {% if monitor.asset %}
       <tr><th>Zasób</th><td><a href="/assets/{{ monitor.asset_id }}">{{ monitor.asset.hostname }}</a></td></tr>
@@ -118,35 +141,44 @@
       <tr><th>Progi</th><td class="small">ostrzeżenie {{ monitor.prog_ostrzezenia_dni }} dni, alarm {{ monitor.prog_alarmu_dni }} dni</td></tr>
     </tbody>
   </table>
+  <p class="muted small">
+    Agent przysyła sam odcisk; cały certyfikat jedzie przez sieć dopiero wtedy,
+    gdy odcisk się zmieni — czyli po odnowieniu.
+  </p>
   {% endif %}
 </section>
 </div>
 
 <section class="panel">
-  <h2>Ostatnie pomiary</h2>
-  {% if pomiary %}
+  <h2>Przerwy w działaniu</h2>
+  {% if przerwy %}
   <div class="tabela-przewijana">
   <table class="table">
-    <thead><tr><th>Kiedy</th><th>Wynik</th><th>Czas</th><th>Kod</th><th>Błąd</th></tr></thead>
+    <thead><tr><th>Od</th><th>Do</th><th>Trwała</th><th>Nieudanych sond</th><th>Przyczyna</th></tr></thead>
     <tbody>
-      {% for p in pomiary %}
-      <tr>
-        <td class="small">{{ p.sprawdzono | dt }}</td>
-        <td>{{ stany.odznaka(p.stan) }}</td>
-        <td class="small">{% if p.czas_odpowiedzi_ms is not none %}{{ p.czas_odpowiedzi_ms }} ms{% else %}—{% endif %}</td>
-        <td class="small">{{ p.kod or '—' }}</td>
-        <td class="small muted">{{ p.blad or '' }}</td>
+      {% for p in przerwy %}
+      <tr {% if p.koniec is none %}class="wartosc-alarm"{% endif %}>
+        <td class="small">{{ p.poczatek | dt }}</td>
+        <td class="small">{% if p.koniec %}{{ p.koniec | dt }}{% else %}<span class="muted">trwa</span>{% endif %}</td>
+        <td class="small strong">{{ stany.trwanie(p.trwanie_sekund) }}</td>
+        <td class="small">{{ p.sond }}</td>
+        <td class="small muted">{{ p.blad or '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
   <p class="muted small">
-    Historia pomiarów jest podstawą procentu dostępności — bez niej dałoby się
-    powiedzieć tylko „działa teraz”, a pytanie po awarii brzmi „jak długo nie działało”.
+    To jest cała treść raportu agenta: nie tysiąc potwierdzeń, że wszystko gra,
+    tylko to, czego brakowało. Procent dostępności powyżej liczy się
+    z podsumowań okresów, nie z tej listy.
   </p>
   {% else %}
-  <p class="muted">Brak pomiarów. Cel nie był jeszcze sprawdzany.</p>
+  <p class="muted">
+    Brak przerw w zapamiętanej historii.
+    {% if monitor.ostatni_raport %}Usługa odpowiadała za każdym razem, gdy agent pytał.
+    {% else %}Agent nie przysłał jeszcze żadnego raportu o tym celu.{% endif %}
+  </p>
   {% endif %}
 </section>
 
@@ -166,6 +198,17 @@
         <input id="host" name="host" required maxlength="255" value="{{ monitor.host }}">
       </div>
       <div>
+        <label for="wykonawca_id">Sprawdza z maszyny <span class="wymagane">*</span></label>
+        <select id="wykonawca_id" name="wykonawca_id" required>
+          {% for m in agenci %}
+            <option value="{{ m.id }}" {% if m.id == monitor.wykonawca_id %}selected{% endif %}>{{ m.hostname }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
         <label for="protokol">Co sprawdzamy</label>
         <select id="protokol" name="protokol" data-monitoring-protokol>
           {% for klucz, opis in protokoly.items() %}
@@ -177,6 +220,14 @@
       <div>
         <label for="port">Port</label>
         <input id="port" name="port" type="number" min="1" max="65535" value="{{ monitor.port }}" data-monitoring-port>
+      </div>
+      <div>
+        <label for="interwal_sekund">Sonda co (s)</label>
+        <input id="interwal_sekund" name="interwal_sekund" type="number" min="60" max="86400" value="{{ monitor.interwal_sekund }}">
+      </div>
+      <div>
+        <label for="interwal_certyfikatu">Certyfikat co (s)</label>
+        <input id="interwal_certyfikatu" name="interwal_certyfikatu" type="number" min="3600" max="604800" value="{{ monitor.interwal_certyfikatu }}">
       </div>
     </div>
 
@@ -207,10 +258,6 @@
 
     <div class="row-form">
       <div>
-        <label for="interwal_sekund">Odstęp sprawdzeń (s)</label>
-        <input id="interwal_sekund" name="interwal_sekund" type="number" min="60" max="86400" value="{{ monitor.interwal_sekund }}">
-      </div>
-      <div>
         <label for="limit_sekund">Limit czasu (s)</label>
         <input id="limit_sekund" name="limit_sekund" type="number" min="1" max="60" value="{{ monitor.limit_sekund }}">
       </div>
@@ -218,9 +265,6 @@
         <label for="liczba_prob">Prób przed alarmem</label>
         <input id="liczba_prob" name="liczba_prob" type="number" min="1" max="10" value="{{ monitor.liczba_prob }}">
       </div>
-    </div>
-
-    <div class="row-form">
       <div>
         <label for="prog_ostrzezenia_dni">Ostrzeżenie o certyfikacie (dni)</label>
         <input id="prog_ostrzezenia_dni" name="prog_ostrzezenia_dni" type="number" min="1" max="365" value="{{ monitor.prog_ostrzezenia_dni }}">
@@ -229,6 +273,9 @@
         <label for="prog_alarmu_dni">Alarm o certyfikacie (dni)</label>
         <input id="prog_alarmu_dni" name="prog_alarmu_dni" type="number" min="0" max="365" value="{{ monitor.prog_alarmu_dni }}">
       </div>
+    </div>
+
+    <div class="row-form">
       <div>
         <label for="asset_id">Powiąż z zasobem</label>
         <select id="asset_id" name="asset_id">
@@ -238,9 +285,6 @@
           {% endfor %}
         </select>
       </div>
-    </div>
-
-    <div class="row-form">
       <div>
         <label class="konto-wpis">
           <input type="checkbox" name="powiadamiaj" value="true" {% if monitor.powiadamiaj %}checked{% endif %}>
@@ -258,9 +302,10 @@
     </div>
 
     <p class="muted small">
-      Zmiana adresu, portu, protokołu albo ścieżki zeruje stan i historię
-      powiadomień: pod tą samą nazwą stoi wtedy inna usługa, a alarm o awarii
-      czegoś, czego już nie monitorujemy, byłby fałszywy.
+      Zmiana adresu, portu, protokołu, ścieżki albo maszyny sprawdzającej
+      <b>zeruje stan i historię powiadomień</b>: to wtedy inny pomiar, choć pod
+      tą samą nazwą, a alarm o awarii czegoś, czego już nie monitorujemy, byłby
+      fałszywy. Historia przerw zostaje — opisuje to, co było naprawdę.
     </p>
     <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
   </form>

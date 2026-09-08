@@ -147,6 +147,7 @@ def _dodaj_brakujace_kolumny() -> None:
     _usun_stare_pola_slownikow()
     _przenies_osoby_do_slownika()
     _popraw_unikalnosc_schematow()
+    _usun_pomiary_monitorow()
 
 
 def _popraw_unikalnosc_wydan() -> None:
@@ -402,3 +403,29 @@ def _popraw_unikalnosc_schematow() -> None:
                           "ADD CONSTRAINT uq_schemat_kategoria_rodzaj "
                           "UNIQUE (tenant_id, kategoria, rodzaj)"))
     log.info("schematy rozrozniane takze rodzajem sprzetu")
+
+
+def _usun_pomiary_monitorow() -> None:
+    """Kasuje tabele pojedynczych pomiarow monitorowania.
+
+    Pierwsza wersja monitorowania sondowala z serwera i zapisywala kazda
+    sonde osobnym wierszem. Sonduje teraz agent i przysyla podsumowania
+    okien wraz z samymi przerwami, wiec wiersz na sonde nie ma juz kogo
+    opisywac - a przy sondowaniu co minute rosl o 1440 wierszy dziennie
+    na kazdy cel.
+
+    Danych nie przenosimy: pochodzily z sondowania, ktorego juz nie ma,
+    i opisywaly widok z serwera, a nie z sieci uslugi. Zachowanie ich
+    zawyzaloby albo zanizalo dostepnosc liczona teraz z okien agenta.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "pomiary_monitorow" not in set(inspector.get_table_names()):
+        return
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE pomiary_monitorow CASCADE"))
+    log.warning(
+        "usunieto tabele pomiary_monitorow - dostepnosc liczy sie teraz "
+        "z okien raportowanych przez agenta"
+    )

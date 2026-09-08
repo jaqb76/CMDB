@@ -90,6 +90,31 @@ Parametry dodatkowe:
 | `-NoTray` | bez ikony w zasobniku (serwery bez pulpitu) |
 | `-Silent` | bez komunikatów interaktywnych (tryb dla instalatora) |
 
+## Monitorowanie usług
+
+Obok zadania inwentaryzacji instalator zakłada drugie: **„CMDB Agent Monitor”**
+(SYSTEM, przy starcie systemu, bez limitu czasu). Sprawdza ono dostępność usług
+i ważność certyfikatów wskazanych w panelu CMDB.
+
+Musi być osobne: inwentaryzacja odpala się raz na kilka godzin i kończy,
+a sonda dostępności ma chodzić co minutę — jedno w drugim zmieścić się nie da.
+
+```powershell
+Get-ScheduledTask -TaskName "CMDB Agent Monitor" | Get-ScheduledTaskInfo
+Get-Content "$env:ProgramData\CMDB\agent.log" -Tail 40 -Wait
+```
+
+Cele i ich odstępy przychodzą z serwera przy każdym pobraniu polityki, więc
+zmiana w panelu działa bez wchodzenia na maszynę. Bez przypisanych celów
+zadanie tylko pyta o politykę i śpi — dlatego zakładamy je zawsze.
+
+Otwarta przerwa i znane odciski certyfikatów przeżywają restart; leżą
+w `%ProgramData%\CMDB\monitoring-state.json`. Ręczne uruchomienie:
+`cmdb-agent monitor`.
+
+Opis samego monitorowania:
+[`monitorowanie-uslug.md`](monitorowanie-uslug.md).
+
 ## Ikona w zasobniku
 
 Ikona pokazuje stan kolorem, bez otwierania czegokolwiek:
@@ -354,9 +379,13 @@ Ikona w zasobniku jest zatrzymywana przed podmianą plików — inaczej trzymał
 otwarty plik `.exe` i aktualizacja by się nie powiodła.
 
 ```powershell
-.\uninstall-agent.ps1                # usuwa zadanie i program, zachowuje poświadczenie
+.\uninstall-agent.ps1                # usuwa oba zadania i program, zachowuje poświadczenie
 .\uninstall-agent.ps1 -RemoveData    # usuwa też poświadczenie i konfigurację
 ```
+
+Deinstalator usuwa **oba** zadania — inwentaryzację i „CMDB Agent Monitor”.
+Zostawienie drugiego oznaczałoby maszynę bez agenta, która nadal próbuje
+sondować cele.
 
 Deinstalacja agenta **nie usuwa maszyny z CMDB** — zasób zostaje w bazie
 z datą ostatniego kontaktu i po `CMDB_STALE_AFTER_HOURS` pojawia się na

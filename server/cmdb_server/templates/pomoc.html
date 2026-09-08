@@ -204,32 +204,48 @@ Cena: 5200 PLN</pre>
 <p>Audyt pomaga ustalić, kto się logował, kto utworzył lub wycofał token, kiedy zarejestrowano agenta albo kto zmienił opiekuna.</p>
 </div>
 </div>
-</section><section class="guide" data-search="monitorowanie usługi certyfikat ssl tls wygasa dostępność ping port awaria powiadomienie alarm https adres ip nazwa hosta uptime" id="monitorowanie">
-<div class="section-head"><div><h2>9a. Monitorowanie usług i certyfikatów SSL</h2><p class="muted">Serwer CMDB sam łączy się z podanym adresem i sprawdza, czy usługa odpowiada oraz do kiedy ważny jest jej certyfikat.</p></div><span class="badge">Reaguje natychmiast</span></div>
+</section><section class="guide" data-search="monitorowanie usługi certyfikat ssl tls wygasa dostępność ping port awaria powiadomienie alarm https adres ip nazwa hosta uptime agent przerwa" id="monitorowanie">
+<div class="section-head"><div><h2>9a. Monitorowanie usług i certyfikatów SSL</h2><p class="muted">Agent na wskazanej maszynie łączy się z podanym adresem i sprawdza, czy usługa odpowiada oraz do kiedy ważny jest jej certyfikat.</p></div><span class="badge">Reaguje natychmiast</span></div>
 <div class="grid2">
 <div class="card">
+<strong>Sprawdza agent, nie serwer</strong>
+<p>Usługa żyje w Twojej sieci, za NAT-em i firewallem — serwer CMDB zwykle jej nie widzi. Dlatego przy każdym celu wskazujesz <b>maszynę z agentem</b>, która ma go sprawdzać. Wybierz taką, która widzi usługę tak, jak widzą ją jej użytkownicy.</p>
+</div>
+<div class="card">
 <strong>Co podajesz</strong>
-<p>Adres IP albo nazwę hosta i port — nic więcej nie jest wymagane. Cel <b>nie musi mieć wpisu w ewidencji</b>: certyfikat domeny u zewnętrznego dostawcy albo adres na load balancerze też jest usługą, którą ktoś musi pilnować. Opcjonalnie powiążesz cel z zasobem, a wtedy jego stan widać też na karcie maszyny.</p>
+<p>Adres IP albo nazwę hosta i port. Cel <b>nie musi mieć wpisu w ewidencji</b>: certyfikat domeny u zewnętrznego dostawcy albo adres na load balancerze też jest usługą, którą ktoś musi pilnować. Opcjonalnie powiążesz cel z zasobem — wtedy jego stan widać też na karcie maszyny.</p>
 </div>
 <div class="card">
 <strong>Cztery sposoby sprawdzenia</strong>
 <p><b>TCP</b> — port przyjmuje połączenia. <b>TLS</b> — połączenie szyfrowane plus certyfikat, także dla usług, które nie mówią po HTTP (SMTPS, IMAPS, LDAPS). <b>HTTP</b> i <b>HTTPS</b> — dodatkowo kod odpowiedzi aplikacji. Otwarty port nie znaczy, że aplikacja za nim żyje.</p>
 </div>
 <div class="card">
+<strong>Dwa rytmy</strong>
+<p>Sonda idzie we własnym odstępie każdego celu — „czy odpowiada” ma sens co minutę, „do kiedy ważny certyfikat” raz na dobę. Raport agent wysyła co 15 minut i <b>nie zawiera sond</b>, tylko ich podsumowanie oraz to, czego brakowało: „12:34:34 – 12:40:22”.</p>
+</div>
+<div class="card">
+<strong>Awaria bez czekania</strong>
+<p>Początek i koniec potwierdzonej awarii agent zgłasza natychmiast. Oszczędzamy na potwierdzeniach, że wszystko działa — nie na alarmach. Wcześniej: jedna zgubiona odpowiedź zdarza się w każdej sieci, więc alarm idzie dopiero po ustawionej liczbie prób.</p>
+</div>
+<div class="card">
 <strong>Dostępność i certyfikat osobno</strong>
 <p>To dwie niezależne awarie: usługa potrafi odpowiadać z certyfikatem wygasającym jutro i potrafi milczeć z certyfikatem ważnym rok. Stan celu na liście to <b>gorsza</b> z dwóch ocen, ale powiadomienia o nich idą osobno.</p>
 </div>
 <div class="card">
-<strong>Kiedy przyjdzie wiadomość</strong>
-<p>Przy potwierdzonej awarii (po ustawionej liczbie prób — jedna zgubiona odpowiedź zdarza się w każdej sieci), przy powrocie usługi oraz przy każdym przekroczonym progu ważności certyfikatu: ostrzeżenie, alarm, po terminie. Awaria trwająca tydzień nie zamienia się w tysiąc wiadomości.</p>
+<strong>Certyfikat własnego urzędu firmy</strong>
+<p>Agent go nie zna, więc łańcuch będzie „niezaufany”. Wyłącz wtedy <i>Wymagaj zaufanego łańcucha</i> — data ważności jest sprawdzana zawsze, niezależnie od tego ustawienia. Progi ostrzeżenia i alarmu ustawiasz przy celu.</p>
 </div>
 <div class="card">
-<strong>Certyfikat własnego urzędu firmy</strong>
-<p>Serwer CMDB go nie zna, więc łańcuch będzie „niezaufany”. Wyłącz wtedy <i>Wymagaj zaufanego łańcucha</i> — data ważności jest sprawdzana zawsze, niezależnie od tego ustawienia.</p>
+<strong>„Brak raportów”</strong>
+<p>Gdy agent przestaje przysyłać wyniki, cel dostaje ten znacznik. To nie jest awaria usługi ani jej sprawność — to brak wiedzy, i naprawia się go przy agencie: sprawdź, czy usługa monitorowania działa na maszynie wykonawcy.</p>
+</div>
+<div class="card">
+<strong>„Zleć sprawdzenie”</strong>
+<p>To zlecenie, nie odpowiedź. Panel nie sonduje — wynik przyjdzie, gdy agent po niego sięgnie, zwykle w ciągu minuty. Odświeżenie strony samo z siebie niczego nie zmieni.</p>
 </div>
 <div class="card">
 <strong>Dostępność w procentach</strong>
-<p>Liczy się z zapisanej historii pomiarów, nie ze stanu „teraz”. Brak pomiarów pokazujemy jako „brak danych”, a nie 100% — zero sprawdzeń z wynikiem „wszystko działa” byłoby po prostu nieprawdą.</p>
+<p>Liczy się z podsumowań przysyłanych przez agenta, nie ze stanu „teraz”. Brak sond pokazujemy jako „brak danych”, a nie 100% — zero sprawdzeń z wynikiem „wszystko działa” byłoby po prostu nieprawdą.</p>
 </div>
 </div>
 <p class="muted">Powiadomienia idą pocztą tej firmy — najpierw uzupełnij <b>Pocztę wychodzącą</b> na stronie Raporty. Oprócz alarmów w chwili awarii możesz włączyć cykliczny raport <b>Dostępność usług i certyfikaty</b>: podsumowanie tygodnia dla kogoś, kto nie siedzi przy alarmach.</p>

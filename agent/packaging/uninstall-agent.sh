@@ -35,16 +35,19 @@ krok() { echo "==> $1"; }
 krok "Zatrzymuje usluge"
 # Timer przed usluga: zatrzymana usluga bez zatrzymanego timera wstaje
 # z powrotem przy najblizszym wyzwoleniu.
-for jednostka in "$NAZWA_USLUGI.timer" "$NAZWA_USLUGI.service"; do
+for jednostka in "$NAZWA_USLUGI.timer" "$NAZWA_USLUGI.service" \
+                 "$NAZWA_USLUGI-monitor.service"; do
     systemctl stop "$jednostka" 2>/dev/null || true
     systemctl disable "$jednostka" 2>/dev/null || true
 done
 
 krok "Usuwam jednostki systemd"
 rm -f "/etc/systemd/system/$NAZWA_USLUGI.timer" \
-      "/etc/systemd/system/$NAZWA_USLUGI.service"
+      "/etc/systemd/system/$NAZWA_USLUGI.service" \
+      "/etc/systemd/system/$NAZWA_USLUGI-monitor.service"
 systemctl daemon-reload
 systemctl reset-failed "$NAZWA_USLUGI.service" 2>/dev/null || true
+systemctl reset-failed "$NAZWA_USLUGI-monitor.service" 2>/dev/null || true
 
 krok "Usuwam program"
 rm -rf "${KATALOG_PROGRAMU:?}"
