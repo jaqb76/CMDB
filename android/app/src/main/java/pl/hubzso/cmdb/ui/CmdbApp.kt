@@ -3,6 +3,7 @@ package pl.hubzso.cmdb.ui
 import android.app.Application
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,17 +15,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -42,14 +45,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -57,41 +60,38 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import pl.hubzso.cmdb.data.AssetPage
-import pl.hubzso.cmdb.data.Tenant
-import androidx.compose.material3.FilterChip
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.ui.platform.LocalContext
 import pl.hubzso.cmdb.data.ApiFactory
+import pl.hubzso.cmdb.data.AssetDetail
+import pl.hubzso.cmdb.data.AssetPage
 import pl.hubzso.cmdb.data.AssetSummary
 import pl.hubzso.cmdb.data.AssignmentWrite
-import pl.hubzso.cmdb.data.AssetDetail
 import pl.hubzso.cmdb.data.ChangeEntry
 import pl.hubzso.cmdb.data.CmdbApi
 import pl.hubzso.cmdb.data.Dashboard
-import pl.hubzso.cmdb.data.DictionaryEntry
 import pl.hubzso.cmdb.data.DictionaryCategory
+import pl.hubzso.cmdb.data.DictionaryEntry
 import pl.hubzso.cmdb.data.DictionarySchema
 import pl.hubzso.cmdb.data.DictionaryWrite
 import pl.hubzso.cmdb.data.LoginRequest
-import pl.hubzso.cmdb.data.ReportDefinition
 import pl.hubzso.cmdb.data.ReportCatalog
+import pl.hubzso.cmdb.data.ReportDefinition
 import pl.hubzso.cmdb.data.ReportWrite
 import pl.hubzso.cmdb.data.SessionStore
+import pl.hubzso.cmdb.data.Tenant
 import pl.hubzso.cmdb.data.User
 import pl.hubzso.cmdb.data.userMessage
 
 private enum class Section(val label: String, val icon: ImageVector) {
     DASHBOARD("Pulpit", Icons.Outlined.Dashboard),
     ASSETS("Maszyny", Icons.Outlined.Computer),
-    PEOPLE("Słowniki", Icons.Outlined.MenuBook),
+    PEOPLE("Słowniki", Icons.AutoMirrored.Outlined.MenuBook),
     CHANGES("Zmiany", Icons.Outlined.History),
     REPORTS("Raporty", Icons.Outlined.Assessment),
 }

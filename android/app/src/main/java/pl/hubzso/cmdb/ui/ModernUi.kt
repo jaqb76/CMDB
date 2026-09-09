@@ -38,6 +38,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Business
@@ -52,8 +54,6 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Logout
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.NotificationsNone
@@ -134,6 +134,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -148,8 +150,6 @@ import pl.hubzso.cmdb.data.CountItem
 import pl.hubzso.cmdb.data.Dashboard
 import pl.hubzso.cmdb.data.DictionaryEntry
 import pl.hubzso.cmdb.data.ReportWrite
-import kotlin.math.cos
-import kotlin.math.sin
 
 // Granat jest kolorem marki i w motywie jasnym pelni role koloru wiodacego:
 // pasek gorny, przyciski, zaznaczone filtry. W motywie ciemnym granat zlewa
@@ -434,7 +434,7 @@ internal fun ModernTenantScreen(state: AppState, onSelect: (pl.hubzso.cmdb.data.
             }
             if (state.tenants.isEmpty()) item { Text("Brak dostępnych firm") }
             state.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
-            item { TextButton(onClick = onLogout) { Icon(Icons.Outlined.Logout, null); Spacer(Modifier.width(6.dp)); Text("Wyloguj") } }
+            item { TextButton(onClick = onLogout) { Icon(Icons.AutoMirrored.Outlined.Logout, null); Spacer(Modifier.width(6.dp)); Text("Wyloguj") } }
         }
     }
 }
@@ -448,7 +448,7 @@ private enum class ModernTab(val label: String, val icon: ImageVector) {
 }
 
 private enum class ModernPage(val label: String, val icon: ImageVector) {
-    PEOPLE("Słowniki", Icons.Outlined.MenuBook),
+    PEOPLE("Słowniki", Icons.AutoMirrored.Outlined.MenuBook),
     CHANGES("Historia zmian", Icons.Outlined.History),
     REPORTS("Raporty", Icons.Outlined.Assessment),
 }
@@ -1004,7 +1004,7 @@ private fun opisMotywu(theme: String) = when (theme) {
                     MoreRow(Icons.Outlined.Business, "Zmień firmę", state.user?.tenant?.name, onClick = onChooseTenant)
                 }
                 HorizontalDivider(color = kolory.cardBorder)
-                MoreRow(Icons.Outlined.Logout, "Wyloguj", null, barwa = kolory.danger, onClick = onLogout)
+                MoreRow(Icons.AutoMirrored.Outlined.Logout, "Wyloguj", null, barwa = kolory.danger, onClick = onLogout)
             }
         }
     }
