@@ -234,6 +234,49 @@ def _zaloz_windows(konfiguracja, katalog_programu, plik_programu) -> str:
     return f'zalozylem i uruchomilem zadanie "{ZADANIE_WINDOWS}"'
 
 
+def zrestartuj_monitor() -> str | None:
+    """Podnosi monitorowanie na swiezo zainstalowanej wersji programu.
+
+    Aktualizacja podmienia PLIK, ale dzialajacy proces zostaje przy obrazie,
+    z ktorego wystartowal. Monitorowanie chodzi ciagle, wiec bez tego kroku
+    pracowaloby na starym kodzie az do ponownego uruchomienia maszyny - a przy
+    okazji trzymaloby odlozona kopie, ktorej nie da sie wtedy skasowac.
+
+    Restartujemy TYLKO to, co faktycznie dziala. Usluge zatrzymana albo
+    wylaczona swiadomie zostawiamy w spokoju - aktualizacja programu nie jest
+    powodem, zeby cofac decyzje administratora.
+
+    Blad jest tu bez znaczenia dla wyniku aktualizacji: plik jest juz podmieniony
+    i sprawdzony, a monitorowanie wstanie samo - jednostka systemd ma
+    Restart=always, a zadanie Windows RestartCount.
+    """
+    if stan_uslugi_monitora()["stan"] != "dziala":
+        return None
+    try:
+        if sys.platform == "win32":
+            from .collectors.windows import powershell_executable
+
+            # Restart-ScheduledTask nie istnieje; Stop + Start to jedyna droga.
+            polecenie = [
+                powershell_executable(), "-NoProfile", "-NonInteractive", "-Command",
+                f"$ErrorActionPreference='Stop'; Stop-ScheduledTask -TaskName '{ZADANIE_WINDOWS}'; "
+                f"Start-ScheduledTask -TaskName '{ZADANIE_WINDOWS}'",
+            ]
+        else:
+            # try-restart, a nie restart: nie podnosimy czegos, co stoi.
+            polecenie = ["systemctl", "try-restart", USLUGA_LINUX]
+        wynik = proces.uruchom(polecenie, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("nie udalo sie zrestartowac monitorowania: %s", exc)
+        return None
+    if wynik.returncode != 0:
+        blad = wynik.stderr.decode("utf-8", errors="replace").strip()
+        log.warning("nie udalo sie zrestartowac monitorowania: %s", blad or wynik.returncode)
+        return None
+    log.info("monitorowanie wznowione na nowej wersji")
+    return "zrestartowalem monitorowanie"
+
+
 def zapewnij_usluge_monitora(config, sciezka_konfiguracji) -> str | None:
     """Zaklada brakujaca usluge monitorowania. Zwraca opis zmiany albo None.
 

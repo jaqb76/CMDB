@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__
@@ -98,14 +99,37 @@ def wlasny_plik() -> Path | None:
     return Path(sys.executable).resolve()
 
 
+def sciezka_starej(plik: Path) -> Path:
+    """Wolna nazwa dla odkladanej wersji programu.
+
+    Windows nie pozwala USUNAC pliku, z ktorego dziala proces, ale pozwala go
+    PRZEMIANOWAC. Stala nazwa wystarczala, dopoki poprzedniej kopii nikt nie
+    trzymal. Monitorowanie chodzi jednak ciagle i z tego samego pliku, wiec po
+    pierwszej aktualizacji trzyma ".stara" az do konca swojego procesu - a
+    kolejna aktualizacja probowala ten plik skasowac i konczyla sie odmowa
+    dostepu. Kazda podmiana bierze wiec wlasna nazwe i nie kasuje niczego.
+    """
+    znacznik = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    podstawa = plik.name + ROZSZERZENIE_STAREJ + "-" + znacznik
+    kandydat = plik.with_name(podstawa)
+    numer = 0
+    while kandydat.exists():
+        numer += 1
+        kandydat = plik.with_name(f"{podstawa}-{numer}")
+    return kandydat
+
+
 def posprzataj_poprzednia(plik: Path) -> None:
-    """Usuwa plik poprzedniej wersji.
+    """Usuwa odlozone kopie poprzednich wersji.
 
     Nie da sie tego zrobic zaraz po podmianie, bo wtedy proces dziala wlasnie
     z tego pliku. Robimy to przy nastepnym uruchomieniu, gdy blokady juz nie ma.
+
+    Kopia nadal zajeta zostaje na kolejny raz i NIE jest bledem - to normalny
+    stan miedzy podmiana a restartem procesu, ktory z niej dziala. Wzorzec lapie
+    tez stala nazwe sprzed tej zmiany, bo takie pliki leza juz na maszynach.
     """
-    stara = plik.with_suffix(plik.suffix + ROZSZERZENIE_STAREJ)
-    if stara.exists():
+    for stara in sorted(plik.parent.glob(plik.name + ROZSZERZENIE_STAREJ + "*")):
         try:
             stara.unlink()
             log.debug("usunieto plik poprzedniej wersji: %s", stara.name)
@@ -232,8 +256,7 @@ def _podmien(biezacy: Path, nowy: Path) -> Path:
     PRZEMIANOWAC - i z tego korzystamy. Proces dziala dalej z pliku pod nowa
     nazwa, a w jego miejsce wchodzi nowa wersja.
     """
-    stara = biezacy.with_suffix(biezacy.suffix + ROZSZERZENIE_STAREJ)
-    stara.unlink(missing_ok=True)
+    stara = sciezka_starej(biezacy)
     biezacy.rename(stara)
     try:
         nowy.rename(biezacy)

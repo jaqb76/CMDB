@@ -575,6 +575,12 @@ def main(argv: list[str] | None = None) -> int:
             if state.is_enrolled and not args.po_aktualizacji:
                 nowa = upgrade.zastosuj(config, state, client)
                 if nowa:
+                    # Ten proces zaraz sie przeladuje, ale monitorowanie chodzi
+                    # osobno i ciagle - zostaloby na starym pliku do restartu
+                    # maszyny, a przy okazji trzymaloby go przed skasowaniem.
+                    from . import uslugi
+
+                    uslugi.zrestartuj_monitor()
                     return upgrade.uruchom_ponownie(_argumenty_cyklu(args))
             return do_run(config, state, client)
         if args.command == "loop":

@@ -1,0 +1,5 @@
+{
+  "category": "fixed",
+  "systemy": ["windows"],
+  "text": "Aktualizacja kończyła się błędem „Odmowa dostępu: cmdb-agent.exe.stara”, bo próbowała skasować kopię poprzedniej wersji trzymaną przez działające monitorowanie. Maszyna, której raz się to zdarzyło, nie mogła już zaktualizować się nigdy. Każda podmiana odkłada teraz starą wersję pod własną nazwą."
+}

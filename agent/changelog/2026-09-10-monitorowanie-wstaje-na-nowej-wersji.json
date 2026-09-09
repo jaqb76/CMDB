@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Monitorowanie wstaje po aktualizacji na nowej wersji programu. Wcześniej podmieniany był tylko plik, a działający proces zostawał przy starym kodzie aż do ponownego uruchomienia maszyny. Usługi zatrzymanej świadomie aktualizacja nie podnosi."
+}
