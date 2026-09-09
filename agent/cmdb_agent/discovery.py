@@ -65,12 +65,27 @@ def _command(args, timeout=8):
     return result.stdout.decode("utf-8-sig", errors="replace")
 
 
+def wiersze(dane) -> list:
+    """PowerShell 5.1 gubi tablice jednoelementowa.
+
+    `@(cokolwiek) | ConvertTo-Json` rozpakowuje liste w potoku, wiec przy JEDNYM
+    wyniku oddaje pojedynczy obiekt zamiast tablicy, a przy zerowym - pusty
+    napis. Kod czytajacy `for r in rows: r.get(...)` dostawal wtedy klucze
+    slownika, czyli napisy, i wywracal sie na `'str' object has no attribute
+    'get'`. Kolektory maja na to `items_of`; tutaj tego zabraklo.
+    """
+    if dane is None:
+        return []
+    return dane if isinstance(dane, list) else [dane]
+
+
 def _powershell(script):
     script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $ErrorActionPreference='Stop'; " + script
     from .collectors.windows import powershell_executable
 
-    return json.loads(_command([powershell_executable(), "-NoProfile", "-NonInteractive",
-                                "-OutputFormat", "Text", "-Command", script]) or "[]")
+    tekst = _command([powershell_executable(), "-NoProfile", "-NonInteractive",
+                      "-OutputFormat", "Text", "-Command", script]).strip()
+    return wiersze(json.loads(tekst)) if tekst else []
 
 
 def local_subnets():
@@ -311,7 +326,11 @@ def scan(config):
                             "Aktywny wpis ARP (Reachable); brak odpowiedzi TCP w badanym zestawie.")
                 result["devices"].append({"ip": ip, "mac": entry["mac"], "hostname": "", "ports": [],
                     **classify([], [podstawa])})
-    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+    except Exception as exc:  # celowo szeroko - patrz komentarz nizej
+        # Adresy MAC sa dodatkiem do gotowej juz listy urzadzen. Kazdy wyjatek
+        # z tej sekcji kosztowal CALY skan: lecial wyzej, do ogolnej lapanki w
+        # run_discovery, ktora podmieniala wynik na pusty. Maszyna z jednym
+        # sasiadem ARP nie zwracala wiec zadnych urzadzen - tylko komunikat.
         result["errors"].append("Nie odczytano MAC: " + clean_text(str(exc), 400))
     result["complete"] = complete
     if not complete:
@@ -398,7 +417,11 @@ def attach_discovery(config, state, report, client=None):
     observation = limit_result(observation)
     report["network_discovery"] = observation
     for error in observation["errors"]:
-        report.setdefault("errors", []).append({"section": "network_discovery", "message": error})
+        # Klucz musi byc ten sam co w BaseCollector.record_error - panel czyta
+        # jedna liste i pokazuje "collector". Przy "section" wypisywal sam
+        # dwukropek i komunikat bez nazwy zrodla.
+        report.setdefault("errors", []).append(
+            {"collector": "network_discovery", "message": error})
     state.last_discovery_at = now.isoformat()
     state.discovery_status.update(state="completed" if observation.get("complete") else "partial",
                                   last_scan_at=state.last_discovery_at, ranges=observation.get("ranges", []))

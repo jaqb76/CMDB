@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "PowerShell przy jednym wyniku oddaje obiekt zamiast tablicy i agent kończył wtedy błędem „'str' object has no attribute 'get'”: maszyna z jednym adresem IP lub jednym sąsiadem ARP gubiła całe skanowanie sieci, a z jedną brakującą poprawką — listę aktualizacji."
+}

@@ -663,7 +663,10 @@ class WindowsCollector(BaseCollector):
             )
 
         braki = []
-        for pozycja in odpowiedz.get("items") or []:
+        # items_of, a nie .get("items"): przy JEDNEJ brakujacej aktualizacji
+        # ConvertTo-Json oddaje obiekt zamiast tablicy, a petla po slowniku
+        # chodzi po kluczach - czyli po napisach - i wywraca sie na .get().
+        for pozycja in items_of(odpowiedz):
             tytul = clean(pozycja.get("title"))
             if not tytul:
                 continue

@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Nieoczekiwany błąd przy odczycie adresów MAC nie kasuje już wyniku całego skanowania sieci. Lista znalezionych urządzeń jedzie do CMDB bez adresów sprzętowych, a powód braku ląduje w błędach kolektorów pod nazwą źródła, a nie bez niej."
+}

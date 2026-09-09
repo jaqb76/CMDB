@@ -228,3 +228,42 @@ def test_administratorzy_bez_grupy_daja_pusta_liste(monkeypatch):
     niosly by wartosc, ktorej serwer sie nie spodziewa."""
     k = _kolektor_windows(monkeypatch, {"istnieje": False, "group": None, "items": []})
     assert k.collect_administrators() == []
+
+
+# --- jedna brakujaca aktualizacja --------------------------------------------
+#
+# Ta sama pulapka co w wykrywaniu sieci: `@(...)` przy jednym elemencie wraca
+# z ConvertTo-Json jako obiekt. Petla po slowniku chodzi po kluczach, czyli po
+# napisach, i `.get()` konczy sie bledem "'str' object has no attribute 'get'".
+# Maszyna z DOKLADNIE jedna brakujaca poprawka gubila przez to caly krok.
+
+
+def _windows_collector(monkeypatch, odpowiedz):
+    from cmdb_agent.collectors import windows
+
+    monkeypatch.setattr(windows, "run_powershell", lambda *a, **k: odpowiedz)
+    return windows.WindowsCollector(AgentConfig())
+
+
+POZYCJA = {"id": "5031354", "title": "Aktualizacja zabezpieczen",
+           "severity": "Critical", "categories": "Security Updates"}
+
+
+def test_jedna_brakujaca_aktualizacja_nie_gubi_kroku(monkeypatch):
+    kolektor = _windows_collector(monkeypatch, {"status": "ok", "items": POZYCJA})
+    wynik = kolektor.collect_pending_updates()
+    assert wynik["status"] == "ok"
+    assert [p["id"] for p in wynik["entries"]] == ["KB5031354"]
+    assert wynik["entries"][0]["security"] is True
+
+
+def test_wiele_brakujacych_aktualizacji_dziala_jak_dotad(monkeypatch):
+    kolektor = _windows_collector(
+        monkeypatch, {"status": "ok", "items": [POZYCJA, dict(POZYCJA, id="5031355")]})
+    assert len(kolektor.collect_pending_updates()["entries"]) == 2
+
+
+def test_brak_brakujacych_aktualizacji_to_pusta_lista(monkeypatch):
+    kolektor = _windows_collector(monkeypatch, {"status": "ok", "items": None})
+    wynik = kolektor.collect_pending_updates()
+    assert wynik["status"] == "ok" and wynik["entries"] == []

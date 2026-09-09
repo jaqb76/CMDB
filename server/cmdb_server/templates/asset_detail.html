@@ -67,7 +67,13 @@
   <div class="alert alert-warn">
     <b>Kolektory zgłosiły błędy ({{ collector_errors | length }}):</b>
     <ul class="tight">
-      {% for e in collector_errors %}<li><code>{{ e.collector }}</code>: {{ e.message }}</li>{% endfor %}
+      {#
+        Nazwa zrodla bywa pusta: starsze raporty wykrywania sieci wysylaly ja
+        pod kluczem "section", a wpis bez nazwy renderowal sie jako sam
+        dwukropek z komunikatem. Awaryjne "agent" jest gorsze od prawdziwej
+        nazwy, ale duzo lepsze od zgadywania, co sie zepsulo.
+      #}
+      {% for e in collector_errors %}<li><code>{{ e.collector or e.section or 'agent' }}</code>: {{ e.message }}</li>{% endfor %}
     </ul>
   </div>
 {% endif %}

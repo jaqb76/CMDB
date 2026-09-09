@@ -30,7 +30,9 @@ def test_script_is_one_readable_argument(monkeypatch, target):
         monkeypatch.setattr(discovery, '_command', command)
         result = discovery._powershell(SCRIPT)
     args = calls[0][0]
-    assert result == EXPECTED
+    # Kolektor oddaje dokument taki, jaki przyszedl; discovery zawsze liste,
+    # bo ConvertTo-Json przy jednym wyniku gubi tablice - patrz test_discovery.
+    assert result == (EXPECTED if target == "collector" else [EXPECTED])
     assert args[0] == 'trusted-powershell.exe'
     assert args[-2] == '-Command'
     assert args[-1].endswith(SCRIPT)

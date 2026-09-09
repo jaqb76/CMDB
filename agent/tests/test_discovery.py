@@ -37,7 +37,11 @@ def test_scan_schedule_and_errors_are_in_report(monkeypatch, tmp_path):
     config, state, report = AgentConfig(discovery_enabled=True, data_dir=tmp_path), AgentState(), {}
     monkeypatch.setattr(discovery, "authorized_config", lambda *args: (config, "policy-1"))
     discovery.attach_discovery(config, state, report)
-    assert report["errors"][0]["section"] == "network_discovery"
+    # Klucz musi byc ten sam co w BaseCollector.record_error: panel czyta jedna
+    # liste bledow i wypisuje "collector". Przy "section" karta zasobu
+    # pokazywala sam dwukropek i komunikat bez nazwy zrodla.
+    assert report["errors"][0] == {"collector": "network_discovery",
+                                   "message": "limit czasu"}
     assert state.last_discovery_at
     discovery.attach_discovery(config, state, {})
     scan.assert_called_once()
@@ -214,3 +218,99 @@ def test_blad_odczytu_interfejsow_nie_przerywa_skanu(monkeypatch):
     wynik = discovery.scan(_config(cidrs=["192.168.1.160/29"], max_hosts=8))
     assert wynik["devices"][0]["ip"] == "192.168.1.165"
     assert wynik["devices"][0]["mac"] == ""
+
+
+# --- jednoelementowa odpowiedz PowerShella -----------------------------------
+#
+# Zgloszenie z maszyny CP-KRK3: karta zasobu pokazywala "Kolektory zglosily
+# bledy (1): 'str' object has no attribute 'get'" i ani jednego urzadzenia.
+#
+# `@(cokolwiek) | ConvertTo-Json` rozpakowuje liste w potoku, wiec przy JEDNYM
+# wyniku oddaje pojedynczy obiekt. `for r in rows` iterowalo wtedy po kluczach
+# slownika - czyli po napisach - i `r.get(...)` wybuchalo. Maszyna z jednym
+# adresem albo jednym sasiadem ARP nie miala jak wykonac skanu sieci.
+
+
+def test_wiersze_normalizuja_pojedynczy_obiekt():
+    from cmdb_agent import discovery
+
+    assert discovery.wiersze([{"a": 1}, {"a": 2}]) == [{"a": 1}, {"a": 2}]
+    assert discovery.wiersze({"a": 1}) == [{"a": 1}]   # jeden wynik
+    assert discovery.wiersze(None) == []               # zero wynikow
+    assert discovery.wiersze([]) == []
+
+
+@pytest.fixture
+def powershell(monkeypatch):
+    """Podstawiamy sie POD _powershell, nie za niego.
+
+    Sedno usterki siedzi w parsowaniu odpowiedzi, wiec test musi podac surowy
+    napis, ktory naprawde wychodzi z ConvertTo-Json - inaczej sprawdza kod,
+    ktorego nie ma na maszynie klienta.
+    """
+    from cmdb_agent import discovery
+    from cmdb_agent.collectors import windows
+
+    monkeypatch.setattr(discovery.sys, "platform", "win32")
+    monkeypatch.setattr(windows, "powershell_executable", lambda: "powershell.exe")
+
+    def podstaw(napis):
+        monkeypatch.setattr(discovery, "_command", lambda *a, **k: napis)
+
+    return podstaw
+
+
+def test_jeden_sasiad_arp_nie_wywraca_odczytu(powershell):
+    """Jeden sasiad w tablicy ARP - ConvertTo-Json oddaje obiekt, nie tablice."""
+    from cmdb_agent import discovery
+
+    powershell('{"IPAddress":"10.0.0.1","LinkLayerAddress":"AA-BB-CC-DD-EE-FF",'
+               '"Reachable":true}')
+    assert discovery.neighbors() == {"10.0.0.1": {"mac": "aa:bb:cc:dd:ee:ff", "reachable": True}}
+
+
+def test_jeden_wlasny_adres_nie_wywraca_odczytu(powershell):
+    from cmdb_agent import discovery
+
+    powershell('{"IPAddress":"10.0.0.5","Mac":"84-5C-F3-51-17-FB"}')
+    assert discovery.own_addresses() == {
+        "10.0.0.5": {"mac": "84:5c:f3:51:17:fb", "reachable": True, "self": True}}
+
+
+def test_jedna_podsiec_nie_wywraca_odczytu(powershell):
+    from cmdb_agent import discovery
+
+    powershell('{"IPAddress":"10.1.2.3","PrefixLength":23}')
+    assert discovery.local_subnets() == ["10.1.2.0/23"]
+
+
+def test_brak_wynikow_to_pusta_lista(powershell):
+    """Zero dopasowan to pusty wydruk, a nie "[]" - json.loads by sie wywrocil."""
+    from cmdb_agent import discovery
+
+    powershell("   \r\n")
+    assert discovery.neighbors() == {}
+
+
+def test_niespodziewany_blad_odczytu_mac_nie_zabiera_skanu(monkeypatch):
+    """Wariant tego, co zdarzylo sie u klienta.
+
+    Poprzedni test lapal tylko OSError, bo tyle wymienial `except`. Wyjatek
+    innego rodzaju - a taki wlasnie leci z rozjechanego JSON-a - przechodzil
+    wyzej i ogolna lapanka w run_discovery podmieniala CALY wynik na pusty.
+    Skan bez adresow MAC jest gorszy; skan bez urzadzen jest bezuzyteczny.
+    """
+    from cmdb_agent import discovery
+
+    def wybuch():
+        raise AttributeError("'str' object has no attribute 'get'")
+
+    monkeypatch.setattr(discovery, "neighbors", wybuch)
+    monkeypatch.setattr(discovery, "probe_host",
+                        lambda ip, limiter: ({"ip": ip, "hostname": "", "mac": "", "ports": [445],
+                                              **discovery.classify([445], [])}, True)
+                        if ip == "192.168.1.165" else (None, True))
+
+    wynik = discovery.scan(_config(cidrs=["192.168.1.160/29"], max_hosts=8))
+    assert [d["ip"] for d in wynik["devices"]] == ["192.168.1.165"]
+    assert "Nie odczytano MAC" in wynik["errors"][0]
