@@ -854,3 +854,28 @@ def test_pierwszy_raport_nie_kaze_czekac_kwadransa(tmp_path, monkeypatch):
     monitor.petla(odstep_petli=0)
     assert monitor.nastepny_raport == 1000.0 + monitoring.PIERWSZY_RAPORT
     assert monitoring.PIERWSZY_RAPORT < monitor.interwal_raportu
+
+
+def test_etykieta_mowi_o_sondach_a_nie_o_dlugosci_listy(tmp_path):
+    """Napis w oknie agenta byl twierdzeniem o pomiarze, a liczyl przydzial.
+
+    Agent, ktory pobral polityke i nie wykonal ani jednej sondy, mowil
+    dokladnie to samo co pracujacy poprawnie - i wlasnie na tym mozna sie
+    przejechac przy szukaniu przyczyny ciszy w panelu.
+    """
+    monitor = _monitor_z_celem(tmp_path, _KlientRaportu())
+    monitor.cele["c2"] = {**CEL_TESTOWY["c1"], "id": "c2", "nazwa": "Druga"}
+    monitor.stany["c2"] = monitoring.StanCelu(id="c2")
+
+    stan = monitor.status()
+    stan["stan"] = "dziala"
+    assert status_mod.sprawdzone_cele(stan) == 0
+    assert "jeszcze bez sondy" in status_mod.monitoring_label(stan)
+
+    monitor.stany["c1"].zapisz(monitoring.Wynik(dostepna=True, czas_ms=4), 2, monitoring._teraz())
+    stan = monitor.status(); stan["stan"] = "dziala"
+    assert status_mod.monitoring_label(stan).endswith("sprawdza 1 z 2 usł.")
+
+    monitor.stany["c2"].zapisz(monitoring.Wynik(dostepna=True, czas_ms=6), 2, monitoring._teraz())
+    stan = monitor.status(); stan["stan"] = "dziala"
+    assert status_mod.monitoring_label(stan).endswith("sprawdza 2 usł.")

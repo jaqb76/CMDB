@@ -198,13 +198,40 @@ MONITORING_LABELS = {
 }
 
 
+def sprawdzone_cele(monitoring: dict) -> int:
+    """Ile celow ma za soba CHOC JEDNA sonde - a nie ile ich przydzielono."""
+    lista = monitoring.get("lista") if isinstance(monitoring, dict) else None
+    if not isinstance(lista, list):
+        return 0
+    return sum(1 for wpis in lista
+               if isinstance(wpis, dict) and wpis.get("ostatnia_sonda"))
+
+
 def monitoring_label(monitoring: dict) -> str:
+    """Napis mowi o wykonanych sondach, a nie o dlugosci listy z polityki.
+
+    "Sprawdza 2 uslugi" bylo twierdzeniem o pomiarze, a liczylo cele przydzielone
+    przez panel - wiec agent, ktory pobral polityke i nie zdazyl (albo nie umial)
+    wykonac ani jednej sondy, mowil dokladnie to samo, co agent pracujacy
+    poprawnie. Taki status przecenia to, co wiadomo, i wlasnie na nim mozna sie
+    przejechac przy szukaniu przyczyny ciszy w panelu.
+    """
     data = monitoring if isinstance(monitoring, dict) else {}
     etykieta = MONITORING_LABELS.get(data.get("stan"), MONITORING_LABELS["brak"])
-    liczba = data.get("cele") or 0
-    if data.get("stan") in ("dziala", "blad") and liczba:
-        etykieta += f" · sprawdza {liczba} usł."
-    return etykieta
+    if data.get("stan") not in ("dziala", "blad"):
+        return etykieta
+
+    cele = data.get("cele") or 0
+    sprawdzone = sprawdzone_cele(data)
+    if not cele:
+        return etykieta
+    if not sprawdzone:
+        # Petla zyje i zna cele, ale zadnego jeszcze nie dotknela. Zaraz po
+        # starcie to normalne i mija w sekundy; utrzymujace sie znaczy klopot.
+        return f"{etykieta} · przydzielono {cele} usł., jeszcze bez sondy"
+    if sprawdzone < cele:
+        return f"{etykieta} · sprawdza {sprawdzone} z {cele} usł."
+    return f"{etykieta} · sprawdza {cele} usł."
 
 
 def publish(config, state: AgentState, spooled: int = 0) -> AgentStatus:

@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Napis „sprawdza N usług” w oknie agenta liczył cele przydzielone przez panel, a nie wykonane sondy — więc agent, który pobrał politykę i nic nie zmierzył, mówił to samo co pracujący poprawnie. Teraz rozróżnia „jeszcze bez sondy” i „sprawdza N z M”."
+}

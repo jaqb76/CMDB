@@ -352,7 +352,15 @@ Pięć stanów, które trzeba od siebie odróżnić, bo naprawia się je gdzie i
 | `Proces monitorowania nie odpowiada` | usługa stanęła albo się zawiesiła | dziennik agenta, restart usługi |
 | `Działa — panel CMDB nie przypisał…` | usługa żyje, ale nie ma czego sprawdzać | panel: wybór maszyny sprawdzającej |
 | `Działa, ale ostatnia wymiana…` | sonda chodzi, raport nie dochodzi do serwera | łączność agent → serwer |
+| `Działa · przydzielono N usł., jeszcze bez sondy` | pętla żyje i zna cele, ale żadnego jeszcze nie dotknęła | zaraz po starcie normalne; utrzymujące się → dziennik agenta |
+| `Działa · sprawdza N z M usł.` | część celów jeszcze bez wyniku | jw. |
 | `Działa · sprawdza N usł.` | wszystko na miejscu | — |
+
+Liczba w tym napisie mówi o **wykonanych sondach**, a nie o długości listy
+z panelu. To rozróżnienie kosztowało już jedną błędną diagnozę: „sprawdza
+2 usługi" brzmiało jak potwierdzenie pomiaru, a liczyło cele przydzielone przez
+panel — więc agent, który pobrał politykę i nie wykonał ani jednej sondy, mówił
+dokładnie to samo, co pracujący poprawnie.
 
 Pojedyncza nieudana sonda pokazuje się jako `nieudana sonda (czeka na
 potwierdzenie)`, a nie jako awaria: przerwa zaczyna się przy pierwszym błędzie,
