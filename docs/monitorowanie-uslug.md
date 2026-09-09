@@ -320,10 +320,20 @@ To samo widać w oknie ikony w zasobniku, w wierszu „Monitorowanie usług".
 
 ### Usługa monitorowania nie wystartowała
 
-Najczęstsza przyczyna: agent był **aktualizowany w miejscu**. Aktualizacja
-podmienia program, ale nie zakłada jednostek systemowych — maszyna z agentem
-sprzed wydania z monitorowaniem nie dostanie `cmdb-agent-monitor.service`
-z samej aktualizacji.
+Gdy pętla milczy, `cmdb-agent status` **pyta o to sam system** i dopisuje
+wiersz `usluga w systemie` wraz z poleceniem naprawiającym dokładnie ten
+przypadek. Rozróżnia trzy sytuacje, bo naprawia się je inaczej:
+
+| `usluga w systemie` | Co się stało | Naprawa |
+|---|---|---|
+| `nie istnieje` | agent aktualizowany w miejscu | instalator agenta |
+| `zarejestrowane, ale nie uruchomione` / `inactive` | usługa jest, nie chodzi | uruchomić ją |
+| `nie udało się zapytać systemu` | brak uprawnień lub systemd | sprawdzić ręcznie |
+
+Najczęstsza jest pierwsza. Aktualizacja podmienia plik programu, ale **nie
+zakłada jednostek systemowych** — maszyna z agentem sprzed wydania
+z monitorowaniem nigdy nie dostanie `cmdb-agent-monitor.service` ani zadania
+„CMDB Agent Monitor" z samej aktualizacji.
 
 ```bash
 # Linux
@@ -336,6 +346,15 @@ schtasks /Run /TN "CMDB Agent Monitor"
 
 Gdy jednostki nie ma w ogóle, uruchom ponownie instalator agenta — założy ją
 obok istniejącej inwentaryzacji i nie ruszy rejestracji maszyny.
+
+Na Windows zadanie ma wyzwalacz „przy starcie systemu". Instalator uruchamia je
+od razu, ale zadanie założone inaczej potrafi tkwić w stanie `Ready` aż do
+restartu i nic w tym czasie nie sprawdzać — dlatego status pokazuje ten stan
+osobno, zamiast mówić „nie zainstalowano".
+
+O stan usługi agent pyta **tylko na żądanie**, z wiersza poleceń. Okno statusu
+odświeża się co kilka sekund i uruchamianie tam procesu potomnego byłoby
+marnotrawstwem.
 
 Status jest publikowany w `public/monitoring.json` w katalogu danych agenta.
 Plik jest czytelny dla każdego zalogowanego użytkownika (czyta go ikona

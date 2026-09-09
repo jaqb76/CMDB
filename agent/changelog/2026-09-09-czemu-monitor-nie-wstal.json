@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Gdy monitorowanie usług milczy, \"cmdb-agent status\" pyta system o samą usługę i mówi, czy w ogóle jej nie ma (agent aktualizowany w miejscu nie dostaje nowych usług), czy jest zainstalowana, ale nie działa — wraz z poleceniem naprawiającym dokładnie ten przypadek."
+}

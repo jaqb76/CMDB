@@ -325,13 +325,17 @@ def _wypisz_monitorowanie(monitoring: dict) -> None:
     print()
     print(f"monitorowanie uslug  : {status.monitoring_label(monitoring)}")
     stan = monitoring.get("stan")
-    if stan == "brak":
-        print("                       uruchom usluge monitorowania:")
-        print("                       Linux  : systemctl enable --now cmdb-agent-monitor")
-        print('                       Windows: schtasks /Run /TN "CMDB Agent Monitor"')
-        print("                       Jesli jej nie ma, uruchom ponownie instalator agenta -")
-        print("                       aktualizacja w miejscu podmienia program, ale nie zaklada uslug.")
-        return
+    if stan in ("brak", "zatrzymane"):
+        # Petla milczy. Pytamy system, CZEMU - bo "nie zainstalowano" i
+        # "zainstalowano, ale nie chodzi" naprawia sie zupelnie inaczej.
+        from . import uslugi
+
+        usluga = uslugi.stan_uslugi_monitora()
+        print(f"usluga w systemie    : {usluga['szczegol']}")
+        for linia in uslugi.podpowiedz(usluga["stan"]):
+            print(f"                       {linia}")
+        if stan == "brak":
+            return
     if monitoring.get("ostatnia_sonda_o"):
         print(
             "ostatnia sonda       : "
