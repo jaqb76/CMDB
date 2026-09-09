@@ -117,14 +117,36 @@ z certyfikatem ważnym rok. Zlanie tych dwóch rzeczy w jeden stan kończy się
 tym, że jedna sprawa przykrywa drugą — a powiadomienia o nich trafiają do kogo
 innego i w innym czasie.
 
-* **Stan celu** widoczny na liście to *gorsza* z dwóch ocen.
+* **Dostępność** — czy usługa odpowiada: port przyjmuje połączenia (TCP) albo
+  aplikacja zwraca kod (HTTP).
+* **Certyfikat** — do kiedy ważny i czy łańcuch zaufany.
+* **Stan celu** widoczny na liście to *gorsza* z tych dwóch ocen.
 * **Procent dostępności** liczy się wyłącznie z dostępności — certyfikat,
   który kończy się za trzy tygodnie, nie obniża go ani o promil.
 * **Powiadomienia** idą osobno dla każdej ze spraw.
 
-Stan `nieznany` nie jest tym samym co `ok`. Cel dopiero dodany albo wyłączony
-nie został jeszcze zmierzony. Z tego samego powodu brak sond w oknie czasu
-pokazujemy jako „brak danych”, a nie 100%.
+### Trzy rzeczy, których nie wolno mylić
+
+Dwa ostatnie wyglądają podobnie, a znaczą zupełnie co innego:
+
+| Stan | Znaczenie | Czy psuje stan celu |
+|---|---|---|
+| `ok` | **zmierzone i dobrze** | nie |
+| `nieznany` | **nie wiem** — cel dopiero dodany, wyłączony albo jeszcze niezmierzony | tak |
+| `nie dotyczy` | **nie ma czego oceniać** — cel sprawdzany po TCP nie ma certyfikatu | nie |
+
+Rozróżnienie jest praktyczne, a nie akademickie. Cel TCP nigdy nie będzie miał
+certyfikatu, więc gdy brak oceny znaczył to samo co „nie wiem”, **działający
+router pokazywał stan `nieznany` obok dostępności `działa`** — i nie dało się
+tego wytłumaczyć nikomu, kto na to patrzył. Panel sam sobie przeczył: pisał
+„ten cel jest sprawdzany bez TLS”, a jednocześnie robił z tego powód, żeby
+stanu nie znać.
+
+Poprawka nie ucisza certyfikatu tam, gdzie on istnieje — cel HTTPS, który
+odpowiada, ale ma certyfikat wygasający za pięć dni, nadal świeci na czerwono.
+
+Z tego samego powodu brak sond w oknie czasu pokazujemy jako „brak danych”,
+a nie 100%.
 
 ## Cisza agenta
 
