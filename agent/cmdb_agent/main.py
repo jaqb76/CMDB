@@ -160,6 +160,14 @@ def do_run(config: AgentConfig, state: AgentState, client: CmdbClient) -> int:
         log.info("agent nie jest jeszcze zarejestrowany - rejestruje automatycznie")
         state = do_enroll(config, state, client)
 
+    # Aktualizacja agenta podmienia plik programu i nie zaklada jednostek
+    # systemowych, wiec maszyna, ktora dostala monitorowanie przez
+    # samoaktualizacje, nigdy nie dostala jego uslugi. Domykamy to tutaj:
+    # raz na przebieg inwentaryzacji, czyli maszyna naprawia sie sama w ciagu
+    # godziny, bez czekania na kolejna aktualizacje i bez wizyty administratora.
+    from . import uslugi
+    uslugi.zapewnij_usluge_monitora(config, default_config_path())
+
     collector = get_collector(config)
     report = build_report(collector)
 

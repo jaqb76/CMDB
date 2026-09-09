@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Aktualizacja agenta podmieniała plik programu, ale nie zakładała nowych usług systemowych — maszyna, która dostała monitorowanie przez samoaktualizację, nigdy nie dostawała jego usługi i nic nie sprawdzała. Agent dokłada ją teraz sam przy najbliższej inwentaryzacji."
+}

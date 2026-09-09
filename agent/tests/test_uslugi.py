@@ -113,3 +113,98 @@ def test_podpowiedz_zawsze_cos_mowi():
     """Kazdy stan ma konkretny nastepny krok - takze "nieznany"."""
     for stan in ("brak", "zatrzymana", "dziala", "nieznany"):
         assert uslugi.podpowiedz(stan), stan
+
+
+# --- naprawa po aktualizacji -------------------------------------------------
+#
+# Aktualizacja podmienia plik programu i nie zaklada jednostek systemowych.
+# Maszyna, ktora dostala monitorowanie przez samoaktualizacje, nigdy nie
+# dostala jego uslugi - i bez tej naprawy nie miala jak z tego wyjsc.
+
+import types
+from pathlib import Path
+
+
+def _config(tmp_path):
+    return types.SimpleNamespace(data_dir=tmp_path)
+
+
+@pytest.fixture
+def naprawa(monkeypatch, linux):
+    """Maszyna z instalacja, na ktorej brakuje samego monitorowania."""
+    monkeypatch.setattr(uslugi, "stan_uslugi_monitora", lambda: {"stan": "brak", "szczegol": ""})
+    monkeypatch.setattr(uslugi, "stan_inwentaryzacji", lambda: {"stan": "dziala", "szczegol": ""})
+    zalozone = {}
+
+    def zaloz(konfiguracja, katalog_danych):
+        zalozone["ok"] = (konfiguracja, katalog_danych)
+        return "zalozone"
+
+    monkeypatch.setattr(uslugi, "_zaloz_linux", zaloz)
+    return zalozone
+
+
+def test_zaklada_brakujaca_usluge(tmp_path, naprawa):
+    opis = uslugi.zapewnij_usluge_monitora(_config(tmp_path), "/etc/cmdb-agent/agent.conf")
+    assert opis and "ok" in naprawa
+    assert (tmp_path / uslugi.ZNACZNIK_ZALOZENIA).is_file()
+
+
+def test_zaklada_tylko_raz(tmp_path, naprawa):
+    """Administrator, ktory usunal usluge swiadomie, ma miec spokoj.
+
+    Agent doklada brakujaca usluge raz. Gdyby robil to co godzine, walczylby
+    z decyzja czlowieka, a status i tak powie, ze monitorowania nie ma.
+    """
+    uslugi.zapewnij_usluge_monitora(_config(tmp_path), "/etc/cmdb-agent/agent.conf")
+    naprawa.clear()
+    assert uslugi.zapewnij_usluge_monitora(_config(tmp_path), "/etc/cmdb-agent/agent.conf") is None
+    assert not naprawa
+
+
+def test_nie_stawia_uslug_na_maszynie_bez_instalatora(tmp_path, monkeypatch, linux):
+    """Dokladamy siostrzana usluge do INSTALACJI, nie stawiamy pierwszej.
+
+    Bez tego warunku agent uruchomiony z kopii repozytorium zakladalby
+    jednostki systemowe na maszynie programisty.
+    """
+    monkeypatch.setattr(uslugi, "stan_uslugi_monitora", lambda: {"stan": "brak", "szczegol": ""})
+    monkeypatch.setattr(uslugi, "stan_inwentaryzacji", lambda: {"stan": "brak", "szczegol": ""})
+    monkeypatch.setattr(uslugi, "_zaloz_linux", lambda *a: pytest.fail("nie wolno tu zakladac"))
+    assert uslugi.zapewnij_usluge_monitora(_config(tmp_path), "/x") is None
+
+
+def test_nie_rusza_dzialajacej_uslugi(tmp_path, monkeypatch, linux):
+    monkeypatch.setattr(uslugi, "stan_uslugi_monitora", lambda: {"stan": "dziala", "szczegol": ""})
+    monkeypatch.setattr(uslugi, "_zaloz_linux", lambda *a: pytest.fail("nie ma czego naprawiac"))
+    assert uslugi.zapewnij_usluge_monitora(_config(tmp_path), "/x") is None
+
+
+def test_blad_zakladania_nie_przerywa_inwentaryzacji(tmp_path, monkeypatch, linux):
+    """Naprawa jest poboczna. Raport o sprzecie ma pojsc mimo jej niepowodzenia."""
+    monkeypatch.setattr(uslugi, "stan_uslugi_monitora", lambda: {"stan": "brak", "szczegol": ""})
+    monkeypatch.setattr(uslugi, "stan_inwentaryzacji", lambda: {"stan": "dziala", "szczegol": ""})
+    monkeypatch.setattr(uslugi, "_zaloz_linux",
+                        lambda *a: (_ for _ in ()).throw(OSError("brak uprawnien")))
+    assert uslugi.zapewnij_usluge_monitora(_config(tmp_path), "/x") is None
+    # Znacznika nie ma, wiec przy nastepnym przebiegu sprobujemy ponownie.
+    assert not (tmp_path / uslugi.ZNACZNIK_ZALOZENIA).exists()
+
+
+def test_jednostka_nie_rozjechala_sie_z_instalatorem():
+    """Jedno zachowanie opisane w dwoch jezykach musi byc pilnowane.
+
+    Instalator pisze te jednostke w bashu, agent w Pythonie. Gdy ktos zmieni
+    jedno miejsce, drugie ma o tym uslyszec od testu, a nie od maszyny klienta.
+    """
+    instalator = (Path(__file__).resolve().parent.parent
+                  / "packaging" / "install-agent.sh").read_text(encoding="utf-8")
+    for dyrektywa in ("Type=simple", "KillSignal=SIGTERM", "TimeoutStopSec=30",
+                      "Restart=always", "RestartSec=30", "NoNewPrivileges=true",
+                      "ProtectSystem=strict", "ProtectHome=true", "PrivateTmp=true",
+                      "WantedBy=multi-user.target"):
+        assert dyrektywa in uslugi.JEDNOSTKA_LINUX, dyrektywa
+        assert dyrektywa in instalator, dyrektywa
+    assert "monitor" in uslugi.JEDNOSTKA_LINUX
+    # ReadWritePaths ma obejmowac katalog danych - tam laduje monitoring.json.
+    assert "ReadWritePaths={katalog_danych}" in uslugi.JEDNOSTKA_LINUX

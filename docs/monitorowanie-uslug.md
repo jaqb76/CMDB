@@ -344,8 +344,17 @@ systemctl status cmdb-agent-monitor
 schtasks /Run /TN "CMDB Agent Monitor"
 ```
 
-Gdy jednostki nie ma w ogóle, uruchom ponownie instalator agenta — założy ją
-obok istniejącej inwentaryzacji i nie ruszy rejestracji maszyny.
+Gdy jednostki nie ma w ogóle, agent **dokłada ją sam** przy najbliższym
+przebiegu inwentaryzacji, czyli w ciągu godziny — nie trzeba wracać na maszynę
+instalatorem. Warunki są celowo ostre: agent dokłada wyłącznie brakującą
+siostrzaną usługę **istniejącej instalacji** (usługa inwentaryzacji musi już być
+zarejestrowana), robi to **raz** i zapisuje ślad w katalogu danych. Kto usunie
+usługę świadomie po tym, jak agent ją założył, ma spokój — status i tak o tym
+powie. Na katalogu roboczym programisty nie stanie się nic.
+
+Gdy naprawa się nie powiedzie (brak uprawnień), inwentaryzacja idzie dalej bez
+zmian, a próba powtarza się przy następnym przebiegu. Instalator nadal działa
+i nie rusza rejestracji maszyny — pozostaje drogą na skróty.
 
 Na Windows zadanie ma wyzwalacz „przy starcie systemu". Instalator uruchamia je
 od razu, ale zadanie założone inaczej potrafi tkwić w stanie `Ready` aż do
