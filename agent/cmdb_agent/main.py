@@ -356,6 +356,9 @@ def _wypisz_monitorowanie(monitoring: dict) -> None:
             f"{status.format_local(monitoring['ostatni_raport_o'])}"
             f" ({status.format_relative(monitoring['ostatni_raport_o'])})"
         )
+    if monitoring.get("pominieto"):
+        print(f"wpisy w raporcie     : przyjete {monitoring.get('przyjeto', 0)}"
+              f", pominiete {monitoring['pominieto']}")
     if monitoring.get("ostatni_blad"):
         print(f"blad monitorowania   : {monitoring['ostatni_blad']}")
 

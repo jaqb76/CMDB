@@ -740,3 +740,117 @@ def test_starszy_serwer_bez_nazwy_celu_dziala_dalej(tmp_path):
 
     cel = monitoring.sprawdz_cel({**surowy, "nazwa": "x" * 500})
     assert len(cel["nazwa"]) == 200
+
+
+# --- droga wyniku do panelu --------------------------------------------------
+#
+# Agent moze poprawnie sondowac i mimo to nie dolozyc do panelu ani jednego
+# wiersza. Oba przypadki nizej wygladaly u niego identycznie jak sukces.
+
+class _KlientRaportu:
+    """Serwer, ktory odpowiada tak, jak kaze mu test."""
+
+    def __init__(self, odpowiedz=None):
+        self.odpowiedz = odpowiedz if odpowiedz is not None else {"przyjeto": 1, "pominieto": 0}
+        self.wyslane = []
+
+    def post(self, sciezka, token, dane):
+        self.wyslane.append(dane)
+        return self.odpowiedz
+
+
+def _monitor_z_celem(tmp_path, klient) -> monitoring.Monitor:
+    stan = types.SimpleNamespace(is_enrolled=True, agent_token="t",
+                                 asset_id="A1", machine_id="M1")
+    monitor = monitoring.Monitor(klient, stan, sciezka_stanu=tmp_path / "stan.json")
+    monitor.cele = dict(CEL_TESTOWY)
+    monitor.stany["c1"] = monitoring.StanCelu(id="c1")
+    return monitor
+
+
+def test_serwer_pominal_wszystko_a_agent_tego_nie_widzial(tmp_path):
+    """HTTP 200 nie znaczy, ze cokolwiek wyladowalo w panelu.
+
+    Serwer pomija cele, ktore dostaly innego wykonawce albo zostaly wylaczone.
+    Bez tego agent pokazywal "Dziala", a w panelu byla cisza nie do
+    wytlumaczenia z zadnej strony.
+    """
+    klient = _KlientRaportu({"przyjeto": 0, "pominieto": 1})
+    monitor = _monitor_z_celem(tmp_path, klient)
+    monitor.stany["c1"].zapisz(monitoring.Wynik(dostepna=True, czas_ms=5), 2, monitoring._teraz())
+
+    assert monitor.wyslij() is True          # serwer przyjal polaczenie...
+    assert monitor.ostatni_blad               # ...ale agent wie, ze nic nie wpisano
+    assert "pominal" in monitor.ostatni_blad
+    assert monitor.status()["pominieto"] == 1
+
+
+def test_czesciowe_pominiecie_nie_jest_bledem(tmp_path):
+    """Jeden cel przepisany innemu agentowi to nie awaria reszty raportu."""
+    klient = _KlientRaportu({"przyjeto": 3, "pominieto": 1})
+    monitor = _monitor_z_celem(tmp_path, klient)
+    monitor.stany["c1"].zapisz(monitoring.Wynik(dostepna=True, czas_ms=5), 2, monitoring._teraz())
+
+    monitor.wyslij()
+    assert monitor.ostatni_blad == ""
+    assert monitor.status()["przyjeto"] == 3
+
+
+def test_zlecone_sprawdzenie_wraca_bez_czekania_na_kwadrans(tmp_path, monkeypatch):
+    """Panel obiecuje wynik, a nie miejsce w kolejce.
+
+    Wymuszenie kazalo sondowac od razu, ale raport i tak czekal do konca
+    okresu - czyli "sprawdz teraz" na udanej usludze milczalo do 15 minut.
+    Natychmiastowe bylo TYLKO zle: awarie jada jako zdarzenie.
+    """
+    klient = _KlientRaportu()
+    monitor = _monitor_z_celem(tmp_path, klient)
+    monitor.pilne.add("c1")
+    monitor.stany["c1"].nastepna_sonda = 0
+    monkeypatch.setattr(monitoring, "sonduj",
+                        lambda cel, zdejmij_cert=False: monitoring.Wynik(dostepna=True, czas_ms=7))
+
+    zdarzenia = monitor.sonduj_zalegle()
+    assert zdarzenia == ["c1:na zadanie"]     # powod natychmiastowej wysylki
+    assert monitor.pilne == set()             # i tylko raz, nie w kolko
+
+
+def test_wymuszenie_z_polityki_trafia_na_liste_pilnych(tmp_path, monkeypatch):
+    """Przechodzimy prawdziwa odswiez_polityke - to ona laczy flage z lista."""
+    stan = types.SimpleNamespace(is_enrolled=True, agent_token="t",
+                                 asset_id="A1", machine_id="M1")
+    monitor = monitoring.Monitor(None, stan, sciezka_stanu=tmp_path / "stan.json")
+
+    def polityka(_client, _state, wymus):
+        return {"enabled": True, "interwal_raportu": 900,
+                "cele": [{**CEL_TESTOWY["c1"], "wymus": wymus}]}
+
+    monkeypatch.setattr(monitoring, "pobierz_polityke",
+                        lambda c, s: polityka(c, s, True))
+    assert monitor.odswiez_polityke() is True
+    assert monitor.pilne == {"c1"}
+
+    # Kolejne pobranie BEZ wymuszenia nie moze dokladac celu w kolko - inaczej
+    # kazda odswiezona polityka wysylalaby raport poza kolejnoscia.
+    monitor.pilne.clear()
+    monkeypatch.setattr(monitoring, "pobierz_polityke",
+                        lambda c, s: polityka(c, s, False))
+    monitor.odswiez_polityke()
+    assert monitor.pilne == set()
+
+
+def test_pierwszy_raport_nie_kaze_czekac_kwadransa(tmp_path, monkeypatch):
+    """Po starcie panel ma sie odezwac w minute, a nie po pelnym okresie.
+
+    Przez te 15 minut dzialajacy monitor wygladal w panelu dokladnie tak samo
+    jak martwy: zero sond i stan "nieznany".
+    """
+    klient = _KlientRaportu()
+    monitor = _monitor_z_celem(tmp_path, klient)
+    monitor.interwal_raportu = 900
+    monitor.zatrzymaj.set()          # jeden obrot i wyjscie
+    monkeypatch.setattr(monitoring.time, "monotonic", lambda: 1000.0)
+
+    monitor.petla(odstep_petli=0)
+    assert monitor.nastepny_raport == 1000.0 + monitoring.PIERWSZY_RAPORT
+    assert monitoring.PIERWSZY_RAPORT < monitor.interwal_raportu

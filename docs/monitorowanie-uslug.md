@@ -278,6 +278,27 @@ zapisuje je w `monitoring-state.json`.
 
 Ręcznie: `cmdb-agent monitor` (wymaga zarejestrowanego agenta).
 
+## Agent sonduje, a w panelu cisza
+
+Trzy rzeczy, przez które wynik sondy mógł nie dotrzeć do panelu — wszystkie
+wyglądały u agenta jak poprawna praca:
+
+- **pierwszy raport po starcie.** Szedł dopiero po pełnym okresie, więc przez
+  kwadrans po uruchomieniu usługi działający monitor był w panelu nie do
+  odróżnienia od martwego. Teraz pierwszy raport idzie po minucie.
+- **zlecone sprawdzenie.** „Sprawdź teraz" kazało sondować poza kolejnością, ale
+  sam wynik czekał do końca okresu — natychmiastowe były tylko awarie. Teraz
+  wymuszony wynik wraca od razu, tak jak obiecuje komunikat w panelu.
+- **raport pominięty przez serwer.** Serwer pomija cele, które w międzyczasie
+  dostały innego wykonawcę albo zostały wyłączone, i odpowiada `przyjeto` /
+  `pominieto`. Agent tych liczb nie czytał, więc raport odrzucony w całości
+  wyglądał u niego dokładnie tak samo jak przyjęty. Teraz mówi to wprost
+  w `cmdb-agent status`, w wierszu `wpisy w raporcie`.
+
+Jeśli panel milczy, rozstrzyga wiersz `ostatni raport` w `cmdb-agent status`.
+Kreska znaczy, że raport jeszcze nie poszedł; konkretna godzina znaczy, że
+poszedł — i wtedy szukać należy po stronie serwera, a nie maszyny.
+
 ## Sprawdzenie z poziomu maszyny
 
 Panel pokazuje, co przyszło od agenta. Nie odpowiada natomiast na pytanie

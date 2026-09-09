@@ -68,6 +68,12 @@ PROTOKOLY_Z_HTTP = ("http", "https")
 # w panelu zaczal byc sprawdzany w rozsadnym czasie, a cel odebrany przestal.
 ODSTEP_POLITYKI = 300
 
+# Pierwszy raport po starcie idzie szybko, a nie po pelnym kwadransie.
+# Przez te 15 minut dzialajacy monitor byl w panelu nie do odroznienia od
+# martwego: zero sond, stan "nieznany" i nic, co pozwoliloby stwierdzic, ze
+# maszyna w ogole zaczela pracowac. Kosztuje to jeden maly raport na restart.
+PIERWSZY_RAPORT = 60
+
 
 class BladCelu(RuntimeError):
     """Celu nie da sie sprawdzic - zly adres albo adres zabroniony."""
@@ -509,6 +515,10 @@ class Monitor:
         self.ostatnia_sonda_o = ""
         self.ostatni_raport_o = ""
         self.ostatni_raport_powod = ""
+        # Cele, ktorych wynik ma wrocic do panelu NATYCHMIAST po sondzie.
+        # Zlecenie "sprawdz teraz" obiecuje odpowiedz, a nie miejsce w kolejce.
+        self.pilne: set[str] = set()
+        self.przyjeto = self.pominieto = 0
         self.zatrzymaj = threading.Event()
         self._wczytaj_stan()
 
@@ -589,6 +599,12 @@ class Monitor:
                 stan.nastepna_sonda = teraz
                 if cel["protokol"] in PROTOKOLY_Z_TLS:
                     stan.nastepny_certyfikat = teraz
+            if cel["wymus"]:
+                # Sonda poza kolejnoscia to za malo: bez tego udany wynik
+                # lezalby do konca kwadransa, a panel obiecuje go "przy
+                # najblizszym cyklu". Awarie i tak jada od razu jako zdarzenie,
+                # wiec bez tego wpisu natychmiastowe bylo TYLKO zle.
+                self.pilne.add(identyfikator)
         self.cele = nowe
         return True
 
@@ -611,7 +627,10 @@ class Monitor:
             if zdejmij:
                 stan.nastepny_certyfikat = teraz + cel["interwal_certyfikatu"]
             self.ostatnia_sonda_o = _iso(chwila)
-            if zmiana:
+            if identyfikator in self.pilne:
+                self.pilne.discard(identyfikator)
+                zdarzenia.append(f"{identyfikator}:na zadanie")
+            elif zmiana:
                 zdarzenia.append(f"{identyfikator}:{zmiana}")
         return zdarzenia
 
@@ -646,13 +665,30 @@ class Monitor:
             log.warning("raport monitorowania nie poszedl: %s", exc)
             return False
 
-        self.ostatni_blad = ""
         self.ostatni_raport_o = _iso(teraz)
         self.ostatni_raport_powod = powod
         for stan, wpis in wpisy:
             stan.potwierdz_wyslanie(wpis)
         if isinstance(odpowiedz, dict) and odpowiedz.get("interwal_raportu"):
             self.interwal_raportu = max(60, min(3600, int(odpowiedz["interwal_raportu"])))
+
+        # HTTP 200 nie znaczy jeszcze, ze cokolwiek wyladowalo w panelu. Serwer
+        # pomija cele, ktore w miedzyczasie zniknely albo dostaly innego
+        # wykonawce - i az do tej pory agent tego NIE widzial: raport odrzucony
+        # w calosci wygladal u niego dokladnie tak samo jak przyjety, a w panelu
+        # zostawala cisza nie do wytlumaczenia z zadnej strony.
+        self.przyjeto = int((odpowiedz or {}).get("przyjeto") or 0)
+        self.pominieto = int((odpowiedz or {}).get("pominieto") or 0)
+        if self.pominieto and not self.przyjeto:
+            self.ostatni_blad = (
+                f"serwer pominal wszystkie cele ({self.pominieto}) - "
+                "nie jestem juz ich wykonawca albo zostaly wylaczone")
+            log.warning("raport monitorowania przyjety, ale %s", self.ostatni_blad)
+        else:
+            self.ostatni_blad = ""
+            if self.pominieto:
+                log.info("raport monitorowania: przyjeto %d, pominieto %d",
+                         self.przyjeto, self.pominieto)
         self._zapisz_stan()
         return True
 
@@ -682,7 +718,7 @@ class Monitor:
     def petla(self, odstep_petli: int = 5) -> None:
         """Chodzi do zatrzymania. Blad jednego obrotu nie konczy monitorowania."""
         log.info("monitorowanie wystartowalo")
-        self.nastepny_raport = time.monotonic() + self.interwal_raportu
+        self.nastepny_raport = time.monotonic() + PIERWSZY_RAPORT
         # Zaraz po starcie, zeby "cmdb-agent status" mial co pokazac jeszcze
         # przed pierwsza sonda.
         self.opublikuj_status()
@@ -750,6 +786,8 @@ class Monitor:
             "ostatnia_sonda_o": self.ostatnia_sonda_o,
             "ostatni_raport_o": self.ostatni_raport_o,
             "ostatni_raport_powod": self.ostatni_raport_powod,
+            "przyjeto": self.przyjeto,
+            "pominieto": self.pominieto,
             "ostatni_blad": self.ostatni_blad,
             "lista": lista,
         }

@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Agent sondował poprawnie, a w panelu była cisza: pierwszy raport szedł dopiero po kwadransie, wynik zleconego sprawdzenia czekał w kolejce, a raport odrzucony przez serwer w całości wyglądał u agenta jak przyjęty. Panel odzywa się teraz w minutę, zlecenie wraca od razu."
+}
