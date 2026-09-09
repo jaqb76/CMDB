@@ -278,6 +278,72 @@ zapisuje je w `monitoring-state.json`.
 
 Ręcznie: `cmdb-agent monitor` (wymaga zarejestrowanego agenta).
 
+## Sprawdzenie z poziomu maszyny
+
+Panel pokazuje, co przyszło od agenta. Nie odpowiada natomiast na pytanie
+„dlaczego nic nie przychodzi" — cel bez wyników wygląda tam tak samo, gdy
+usługa monitorowania nie wstała, gdy nikt nie przypisał tej maszynie celów
+i gdy sonda nie ma jak wyjść z sieci. Rozstrzyga to `cmdb-agent status`
+uruchomiony **na maszynie sprawdzającej**:
+
+```
+monitorowanie uslug  : Działa · sprawdza 2 usł.
+ostatnia sonda       : 2026-09-09 07:40:59 (przed chwilą)
+ostatni raport       : 2026-09-09 07:35:19 (6 min temu)
+
+  Portal firmowy
+      https intranet.firma.pl:443  co 60 s
+      odpowiada w 43 ms (HTTP 200)
+      sprawdzona przed chwilą, udanych 6/6 w bieżącym okresie
+  Baza danych
+      tcp 10.0.10.15:5432  co 60 s
+      NIE ODPOWIADA - connection refused
+      przerwa trwa od 2026-09-09 07:37:19
+```
+
+Pięć stanów, które trzeba od siebie odróżnić, bo naprawia się je gdzie indziej:
+
+| Co pokazuje status | Co to znaczy | Gdzie naprawiać |
+|---|---|---|
+| `Nie uruchomiono na tej maszynie` | usługa monitorowania nigdy nie wystartowała | na maszynie — patrz niżej |
+| `Proces monitorowania nie odpowiada` | usługa stanęła albo się zawiesiła | dziennik agenta, restart usługi |
+| `Działa — panel CMDB nie przypisał…` | usługa żyje, ale nie ma czego sprawdzać | panel: wybór maszyny sprawdzającej |
+| `Działa, ale ostatnia wymiana…` | sonda chodzi, raport nie dochodzi do serwera | łączność agent → serwer |
+| `Działa · sprawdza N usł.` | wszystko na miejscu | — |
+
+Pojedyncza nieudana sonda pokazuje się jako `nieudana sonda (czeka na
+potwierdzenie)`, a nie jako awaria: przerwa zaczyna się przy pierwszym błędzie,
+ale awarią staje się dopiero po `liczba_prob` próbach. Jedna zgubiona odpowiedź
+zdarza się w każdej sieci.
+
+To samo widać w oknie ikony w zasobniku, w wierszu „Monitorowanie usług".
+
+### Usługa monitorowania nie wystartowała
+
+Najczęstsza przyczyna: agent był **aktualizowany w miejscu**. Aktualizacja
+podmienia program, ale nie zakłada jednostek systemowych — maszyna z agentem
+sprzed wydania z monitorowaniem nie dostanie `cmdb-agent-monitor.service`
+z samej aktualizacji.
+
+```bash
+# Linux
+systemctl enable --now cmdb-agent-monitor
+systemctl status cmdb-agent-monitor
+
+# Windows (PowerShell jako administrator)
+schtasks /Run /TN "CMDB Agent Monitor"
+```
+
+Gdy jednostki nie ma w ogóle, uruchom ponownie instalator agenta — założy ją
+obok istniejącej inwentaryzacji i nie ruszy rejestracji maszyny.
+
+Status jest publikowany w `public/monitoring.json` w katalogu danych agenta.
+Plik jest czytelny dla każdego zalogowanego użytkownika (czyta go ikona
+w zasobniku), więc **nie trafiają tam certyfikaty ani token agenta** — tylko to,
+co jest sprawdzane i z jakim skutkiem. Świeżość tego pliku jest zarazem dowodem,
+że pętla żyje: status starszy niż dwie minuty agent czyta jako „proces nie
+odpowiada".
+
 ## Ustawienia serwera
 
 | Zmienna | Domyślnie | Znaczenie |

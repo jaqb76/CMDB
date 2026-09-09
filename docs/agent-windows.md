@@ -112,8 +112,20 @@ Otwarta przerwa i znane odciski certyfikatów przeżywają restart; leżą
 w `%ProgramData%\CMDB\monitoring-state.json`. Ręczne uruchomienie:
 `cmdb-agent monitor`.
 
-Opis samego monitorowania:
-[`monitorowanie-uslug.md`](monitorowanie-uslug.md).
+### Czy to w ogóle działa
+
+`cmdb-agent status` pokazuje osobną sekcję „monitorowanie uslug": co ta maszyna
+sprawdza, jak często i z jakim wynikiem ostatniej sondy. Gdy zadanie nie wstało,
+agent mówi to wprost — sam panel tego nie rozróżni, bo cel bez wyników wygląda
+tam tak samo jak cel nikomu nieprzypisany.
+
+Aktualizacja w miejscu podmienia program, ale **nie zakłada zadań
+harmonogramu**. Maszyna z agentem sprzed wydania z monitorowaniem nie dostanie
+zadania „CMDB Agent Monitor" z samej aktualizacji — trzeba uruchomić instalator
+ponownie.
+
+Opis samego monitorowania i tabela stanów statusu:
+[`monitorowanie-uslug.md`](monitorowanie-uslug.md#sprawdzenie-z-poziomu-maszyny).
 
 ## Ikona w zasobniku
 

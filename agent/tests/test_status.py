@@ -17,6 +17,16 @@ def _iso(**delta) -> str:
     return (datetime.now(timezone.utc) - timedelta(**delta)).isoformat()
 
 
+def _monitorowanie_dziala(tmp_path, cele: int = 2) -> None:
+    """Sprawna maszyna: usluga monitorowania chodzi i wlasnie sie odezwala."""
+    katalog = tmp_path / "public"
+    katalog.mkdir(parents=True, exist_ok=True)
+    (katalog / status.MONITORING_FILENAME).write_text(json.dumps({
+        "opublikowano": datetime.now(timezone.utc).isoformat(),
+        "cele": cele, "lista": [], "ostatni_blad": "",
+    }), encoding="utf-8")
+
+
 def test_status_of_fresh_agent(tmp_path):
     snapshot = status.build_status(AgentConfig(data_dir=tmp_path), AgentState())
     assert snapshot.configured is False
@@ -30,12 +40,32 @@ def test_status_after_successful_sync(tmp_path):
         agent_token="cmdb_agt_x", asset_id="a1", tenant_slug="firma",
         last_sync_at=_iso(minutes=5), last_attempt_at=_iso(minutes=5), last_status="ok",
     )
+    _monitorowanie_dziala(tmp_path)
     snapshot = status.build_status(_config(tmp_path), state)
     assert snapshot.last_status == "ok"
     assert snapshot.status_label == "synchronizacja poprawna"
     assert snapshot.enrolled is True
     assert snapshot.next_sync_estimate            # znamy przyblizony czas nastepnej
     assert snapshot.warnings == []
+
+
+def test_niedzialajace_monitorowanie_widac_w_statusie(tmp_path):
+    """Zarejestrowana maszyna bez uslugi monitorowania musi to powiedziec.
+
+    Bez tego "uslugi nie sa sprawdzane" nie ma zadnego objawu: panel pokazuje
+    cel bez wynikow, a maszyna wyglada na zdrowa.
+    """
+    state = AgentState(agent_token="cmdb_agt_x", asset_id="a1",
+                       last_sync_at=_iso(minutes=5), last_status="ok")
+    snapshot = status.build_status(_config(tmp_path), state)
+    assert snapshot.monitoring["stan"] == "brak"
+    assert any("cmdb-agent-monitor" in u for u in snapshot.warnings)
+
+
+def test_niezarejestrowany_agent_nie_marudzi_o_monitorowaniu(tmp_path):
+    """Na maszynie bez rejestracji brak monitorowania jest oczywisty."""
+    snapshot = status.build_status(_config(tmp_path), AgentState())
+    assert not any("monitorowani" in u for u in snapshot.warnings)
 
 
 def test_failed_sync_keeps_last_successful_date(tmp_path):

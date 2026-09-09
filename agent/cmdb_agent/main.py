@@ -236,7 +236,11 @@ def do_monitor(config: AgentConfig, state: AgentState, client: CmdbClient) -> in
         log.error("agent nie jest zarejestrowany - najpierw uruchom: cmdb-agent enroll")
         return 1
 
-    monitor = Monitor(client, state, sciezka_stanu=config.data_dir / "monitoring-state.json")
+    monitor = Monitor(
+        client, state,
+        sciezka_stanu=config.data_dir / "monitoring-state.json",
+        sciezka_statusu=status.monitoring_path(config),
+    )
 
     def zatrzymaj(_sygnal, _ramka):
         log.info("otrzymano sygnal zatrzymania - wysylam ostatnie podsumowanie")
@@ -304,9 +308,81 @@ def do_status(config: AgentConfig, state: AgentState, as_json: bool = False) -> 
         print(f"nastepna okolo       : {status.format_local(snapshot.next_sync_estimate)}")
     if spooled:
         print(f"raporty w buforze    : {spooled}")
+    _wypisz_monitorowanie(snapshot.monitoring)
     for warning in snapshot.warnings:
         print(f"uwaga                : {warning}")
     return 0
+
+
+def _wypisz_monitorowanie(monitoring: dict) -> None:
+    """Co ta maszyna sprawdza i czy w ogole sprawdza.
+
+    Wypisujemy to takze wtedy, gdy nie ma czego wypisywac. Pusta sekcja jest
+    tu odpowiedzia - bez niej "nic nie widac" znaczy naraz "nie przypisano
+    celow", "usluga nie wstala" i "funkcja nie istnieje", a to sa trzy rozne
+    awarie z trzema roznymi naprawami.
+    """
+    print()
+    print(f"monitorowanie uslug  : {status.monitoring_label(monitoring)}")
+    stan = monitoring.get("stan")
+    if stan == "brak":
+        print("                       uruchom usluge monitorowania:")
+        print("                       Linux  : systemctl enable --now cmdb-agent-monitor")
+        print('                       Windows: schtasks /Run /TN "CMDB Agent Monitor"')
+        print("                       Jesli jej nie ma, uruchom ponownie instalator agenta -")
+        print("                       aktualizacja w miejscu podmienia program, ale nie zaklada uslug.")
+        return
+    if monitoring.get("ostatnia_sonda_o"):
+        print(
+            "ostatnia sonda       : "
+            f"{status.format_local(monitoring['ostatnia_sonda_o'])}"
+            f" ({status.format_relative(monitoring['ostatnia_sonda_o'])})"
+        )
+    if monitoring.get("ostatni_raport_o"):
+        print(
+            "ostatni raport       : "
+            f"{status.format_local(monitoring['ostatni_raport_o'])}"
+            f" ({status.format_relative(monitoring['ostatni_raport_o'])})"
+        )
+    if monitoring.get("ostatni_blad"):
+        print(f"blad monitorowania   : {monitoring['ostatni_blad']}")
+
+    lista = monitoring.get("lista") or []
+    if not lista:
+        return
+    print()
+    for wpis in lista:
+        sonda = wpis.get("ostatnia_sonda") or {}
+        if not sonda:
+            opis = "jeszcze nie sprawdzana"
+        elif sonda.get("dostepna"):
+            opis = f"odpowiada w {sonda.get('czas_ms', 0)} ms"
+            if sonda.get("kod"):
+                opis += f" (HTTP {sonda['kod']})"
+        else:
+            # Przerwa potwierdzona i pojedyncza nieudana sonda to nie to samo:
+            # ta druga zdarza sie w kazdej sieci i nie jest jeszcze awaria.
+            # Rozstrzyga potwierdzenie, a nie sam fakt otwarcia przerwy - ta
+            # otwiera sie juz przy pierwszym bledzie, zeby nie zgubic poczatku.
+            opis = ("NIE ODPOWIADA" if sonda.get("potwierdzona_awaria")
+                    else "nieudana sonda (czeka na potwierdzenie)")
+            if sonda.get("blad"):
+                opis += f" - {sonda['blad']}"
+        nazwa = wpis.get("nazwa") or wpis.get("adres", "")
+        print(f"  {nazwa}")
+        print(f"      {wpis.get('protokol', '?')} {wpis.get('adres', '')}"
+              f"  co {wpis.get('interwal_sekund', 0)} s")
+        print(f"      {opis}")
+        if sonda.get("kiedy"):
+            wiersz = f"      sprawdzona {status.format_relative(sonda['kiedy'])}"
+            # Liczniki zeruje kazda wysylka raportu, wiec zaraz po niej "0/0"
+            # nie znaczy "nic nie sprawdzono" - lepiej nie pokazywac nic.
+            if wpis.get("sond_w_okresie"):
+                wiersz += (f", udanych {wpis.get('udanych_w_okresie', 0)}"
+                           f"/{wpis['sond_w_okresie']} w biezacym okresie")
+            print(wiersz)
+        if wpis.get("przerwa_od") and sonda.get("potwierdzona_awaria"):
+            print(f"      przerwa trwa od {status.format_local(wpis['przerwa_od'])}")
 
 
 def do_gui(config: AgentConfig) -> int:

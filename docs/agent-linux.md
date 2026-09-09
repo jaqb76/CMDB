@@ -105,6 +105,18 @@ certyfikatów przeżywają restart — leżą w
 Opis samego monitorowania:
 [`monitorowanie-uslug.md`](monitorowanie-uslug.md).
 
+## Czy monitorowanie usług działa
+
+`cmdb-agent status` pokazuje osobną sekcję „monitorowanie uslug": co ta maszyna
+sprawdza, jak często i z jakim wynikiem ostatniej sondy. Gdy usługa
+monitorowania nie wstała, agent mówi to wprost i podaje polecenie, które ją
+uruchamia — sam panel tego nie rozróżni, bo cel bez wyników wygląda tam tak
+samo jak cel nieprzypisany. Szczegóły: [monitorowanie usług](monitorowanie-uslug.md#sprawdzenie-z-poziomu-maszyny).
+
+Uwaga przy aktualizacji w miejscu: podmienia ona program, ale **nie zakłada
+jednostek systemowych**. Maszyna z agentem sprzed wydania z monitorowaniem
+potrzebuje ponownego uruchomienia instalatora.
+
 ## Aktualizacja
 
 Agent uruchomiony ze źródeł **świadomie pomija samoaktualizację** — nie ma

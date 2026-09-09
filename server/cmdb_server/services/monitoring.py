@@ -666,6 +666,11 @@ def polityka_dla_agenta(db: Session, asset: Asset) -> dict:
         "cele": [
             {
                 "id": cel.id,
+                # Nazwa jedzie po to, zeby "cmdb-agent status" na maszynie
+                # pokazal, CO jest sprawdzane, a nie sam adres z portem. To
+                # nadal wylacznie cele tej maszyny - zakres wyznacza
+                # wykonawca_id, nie to, o co agent poprosi.
+                "nazwa": cel.nazwa,
                 "host": cel.host,
                 "port": cel.port,
                 "protokol": cel.protokol,

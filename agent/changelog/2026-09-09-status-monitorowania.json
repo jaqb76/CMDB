@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Polecenie \"cmdb-agent status\" i okno stanu pokazują, jakie usługi ta maszyna sprawdza, jak często i z jakim wynikiem. Gdy usługa monitorowania nie działa, agent mówi to wprost — wcześniej jej brak wyglądał identycznie jak sprawne usługi."
+}

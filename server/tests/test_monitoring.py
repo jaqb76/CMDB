@@ -139,6 +139,24 @@ def test_agent_dostaje_tylko_swoje_cele(client, tenant_a, tenant_b):
     assert "Cudza" not in odpowiedz.text
 
 
+def test_polityka_niesie_nazwe_celu(client, tenant_a):
+    """Nazwa jedzie do agenta, zeby "cmdb-agent status" pokazal CO sprawdza.
+
+    Sam adres z portem nie odpowiada operatorowi stojacemu przy maszynie na
+    pytanie, ktora to usluga. Zakres nadal wyznacza wykonawca_id - patrz
+    test_agent_dostaje_tylko_swoje_cele, ktory pilnuje, ze cudza nazwa nie
+    pojawia sie nawet w tresci odpowiedzi.
+    """
+    enrolled = zarejestruj_agenta(client, tenant_a)
+    with SessionLocal() as db:
+        asset_id = db.execute(select(Asset.id).where(Asset.tenant_id == tenant_a["id"])).scalar_one()
+    dodaj_cel(tenant_a["id"], asset_id, nazwa="Portal firmowy")
+
+    dane = client.get("/api/v1/agent/monitoring-policy?nonce=" + "f" * 32,
+                      headers={"Authorization": "Bearer " + enrolled["agent_token"]}).json()
+    assert [c["nazwa"] for c in dane["policy"]["cele"]] == ["Portal firmowy"]
+
+
 def test_polityka_wymaga_swiezej_wartosci_jednorazowej(client, tenant_a):
     """Nonce wraca w odpowiedzi - to on wiaze ja z tym jednym pytaniem."""
     enrolled = zarejestruj_agenta(client, tenant_a)

@@ -12,8 +12,10 @@ def test_gui_version_independent_of_old_status(monkeypatch):
     monkeypatch.setattr(status, "read", lambda _: snapshot)
     window = status_window.StatusWindow(Mock(), AgentConfig(), Mock(), Mock(), Mock())
     window.window, window.state_var, window.state_label, window.problem_var = Mock(), Mock(), Mock(), Mock()
+    # Zestaw kluczy odwzorowuje wiersze budowane w _build(). Gdy dochodzi tam
+    # nowy wiersz, musi dojsc i tu - inaczej refresh() konczy sie KeyError.
     window.values = {key: Mock() for key in ("last_sync", "last_attempt", "next_sync", "machine", "tenant",
-                                            "server")}
+                                            "server", "monitoring")}
     window.refresh()
     assert not {"version", "report_version", "discovery"} & set(window.values)
     window.state_var.set.assert_called_once_with("Brak świeżej synchronizacji")

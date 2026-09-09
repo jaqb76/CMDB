@@ -28,6 +28,15 @@ from .state import AgentState, harden_public_directory
 log = logging.getLogger(__name__)
 
 STATUS_FILENAME = "status.json"
+# Monitorowanie uslug pisze wlasny plik, bo chodzi we WLASNYM procesie
+# (cmdb-agent monitor) rownolegle do inwentaryzacji. Oba procesy zapisuja caly
+# dokument, wiec wspolny plik znaczylby, ze kazdy zapis kasuje wpisy drugiego.
+MONITORING_FILENAME = "monitoring.json"
+
+# Po ilu odstepach petli monitorowania uznajemy plik za nieaktualny. Petla
+# publikuje status co obrot (kilka sekund), wiec minuta ciszy to juz nie
+# "chwila zwloki", tylko zatrzymany proces.
+MONITORING_STALE_SECONDS = 120
 
 # Opisy stanow pokazywane w oknie - jedno zrodlo prawdy dla GUI i wiersza polecen.
 STATUS_LABELS = {
@@ -63,6 +72,7 @@ class AgentStatus:
     published_at: str = ""
     warnings: list = field(default_factory=list)
     discovery: dict = field(default_factory=dict)
+    monitoring: dict = field(default_factory=dict)
 
     @property
     def status_label(self) -> str:
@@ -92,9 +102,22 @@ def build_status(config, state: AgentState, spooled: int = 0) -> AgentStatus:
             last_attempt + timedelta(seconds=config.report_interval_seconds)
         ).isoformat()
 
+    monitoring = read_monitoring(config)
+
     warnings = []
     if spooled:
         warnings.append(f"raporty oczekujace na wyslanie: {spooled}")
+    # Cisza monitorowania wyglada dokladnie tak samo jak sprawna usluga, wiec
+    # sama musi byc widoczna - inaczej nikt sie nie dowie, ze nic nie jest
+    # sprawdzane. Pytamy o to tylko agenta zarejestrowanego: na maszynie, ktora
+    # nie zglosila sie jeszcze do CMDB, brak monitorowania jest oczywisty i
+    # doniesienie o nim tylko zaglusza to, czego naprawde brakuje.
+    if state.is_enrolled and monitoring.get("stan") == "brak":
+        warnings.append(
+            "monitorowanie uslug nie bylo na tej maszynie uruchomione "
+            "(usluga cmdb-agent-monitor)")
+    elif state.is_enrolled and monitoring.get("stan") == "zatrzymane":
+        warnings.append("proces monitorowania uslug nie odpowiada")
     stale_after = timedelta(seconds=config.report_interval_seconds * 3)
     last_sync = _parse_iso(state.last_sync_at)
     if last_sync and datetime.now(timezone.utc) - last_sync > stale_after:
@@ -118,6 +141,7 @@ def build_status(config, state: AgentState, spooled: int = 0) -> AgentStatus:
         published_at=datetime.now(timezone.utc).isoformat(),
         warnings=warnings,
         discovery=state.discovery_status,
+        monitoring=monitoring,
     )
 
 
@@ -127,6 +151,60 @@ def public_dir(config) -> Path:
 
 def status_path(config) -> Path:
     return public_dir(config) / STATUS_FILENAME
+
+
+def monitoring_path(config) -> Path:
+    return public_dir(config) / MONITORING_FILENAME
+
+
+def read_monitoring(config) -> dict:
+    """Status monitorowania uslug zapisany przez proces "cmdb-agent monitor".
+
+    Brak pliku nie jest bledem odczytu tylko odpowiedzia: ten proces nigdy na
+    tej maszynie nie wystartowal. Rozroznienie jest wazne, bo "nie ma celow"
+    i "nie ma monitorowania" naprawia sie w dwoch zupelnie roznych miejscach.
+    """
+    path = monitoring_path(config)
+    if not path.is_file():
+        return {"stan": "brak"}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("nie moge odczytac statusu monitorowania (%s)", exc)
+        return {"stan": "brak"}
+    if not isinstance(raw, dict):
+        return {"stan": "brak"}
+    opublikowano = _parse_iso(raw.get("opublikowano", ""))
+    swiezy = bool(opublikowano) and (
+        datetime.now(timezone.utc) - opublikowano
+    ) < timedelta(seconds=MONITORING_STALE_SECONDS)
+    if not swiezy:
+        raw["stan"] = "zatrzymane"
+    elif not raw.get("cele"):
+        raw["stan"] = "bez_celow"
+    elif raw.get("ostatni_blad"):
+        raw["stan"] = "blad"
+    else:
+        raw["stan"] = "dziala"
+    return raw
+
+
+MONITORING_LABELS = {
+    "brak": "Nie uruchomiono na tej maszynie",
+    "zatrzymane": "Proces monitorowania nie odpowiada",
+    "bez_celow": "Działa — panel CMDB nie przypisał tej maszynie żadnej usługi",
+    "blad": "Działa, ale ostatnia wymiana z serwerem się nie udała",
+    "dziala": "Działa",
+}
+
+
+def monitoring_label(monitoring: dict) -> str:
+    data = monitoring if isinstance(monitoring, dict) else {}
+    etykieta = MONITORING_LABELS.get(data.get("stan"), MONITORING_LABELS["brak"])
+    liczba = data.get("cele") or 0
+    if data.get("stan") in ("dziala", "blad") and liczba:
+        etykieta += f" · sprawdza {liczba} usł."
+    return etykieta
 
 
 def publish(config, state: AgentState, spooled: int = 0) -> AgentStatus:
@@ -164,6 +242,11 @@ def read(config) -> AgentStatus:
     known = {name: raw[name] for name in AgentStatus.__dataclass_fields__ if name in raw}
     try:
         snapshot = AgentStatus(**known)
+        # Monitorowanie chodzi w innym procesie i publikuje sie co kilka sekund,
+        # a ten plik zapisuje inwentaryzacja raz na godzine. Zapisana tu migawka
+        # jest wiec z zalozenia przeterminowana - czytamy zywy plik monitora,
+        # inaczej ikona pokazywalaby "dziala" godzine po jego smierci.
+        snapshot.monitoring = read_monitoring(config)
         # Stored success is historical. Re-evaluate freshness in every GUI read.
         if is_stale(snapshot) and "Status jest nieaktualny — brak świeżej synchronizacji." not in snapshot.warnings:
             snapshot.warnings = [*snapshot.warnings, "Status jest nieaktualny — brak świeżej synchronizacji."]

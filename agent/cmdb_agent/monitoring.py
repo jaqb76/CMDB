@@ -403,6 +403,10 @@ def sprawdz_cel(surowy: dict) -> dict:
     """
     cel = {
         "id": str(surowy["id"])[:36],
+        # Nazwa sluzy wylacznie do pokazania na maszynie, co jest sprawdzane.
+        # Starszy serwer jej nie przysyla i to nie jest blad - wtedy w statusie
+        # zostaje sam adres.
+        "nazwa": str(surowy.get("nazwa") or "").strip()[:200],
         "host": str(surowy["host"]).strip()[:255],
         "port": int(surowy["port"]),
         "protokol": str(surowy["protokol"]),
@@ -486,16 +490,25 @@ class Monitor:
     jej przebiegami, bo inaczej nie ma mowy o sondzie co minute.
     """
 
-    def __init__(self, client, state, sciezka_stanu=None):
+    def __init__(self, client, state, sciezka_stanu=None, sciezka_statusu=None):
         self.client = client
         self.state = state
         self.sciezka_stanu = sciezka_stanu
+        # Plik czytany przez "cmdb-agent status" i ikone w zasobniku. Osobny od
+        # status.json, bo monitorowanie to inny proces niz inwentaryzacja -
+        # obie strony zapisuja caly dokument i pisanie do jednego pliku
+        # konczyloby sie kasowaniem swoich wpisow nawzajem.
+        self.sciezka_statusu = sciezka_statusu
         self.cele: dict[str, dict] = {}
         self.stany: dict[str, StanCelu] = {}
         self.interwal_raportu = 900
         self.nastepna_polityka = 0.0
         self.nastepny_raport = 0.0
         self.ostatni_blad = ""
+        self.polityka_pobrana_o = ""
+        self.ostatnia_sonda_o = ""
+        self.ostatni_raport_o = ""
+        self.ostatni_raport_powod = ""
         self.zatrzymaj = threading.Event()
         self._wczytaj_stan()
 
@@ -553,6 +566,7 @@ class Monitor:
             return False
 
         self.ostatni_blad = ""
+        self.polityka_pobrana_o = _iso(_teraz())
         self.interwal_raportu = polityka["interwal_raportu"]
         nowe = {cel["id"]: cel for cel in polityka["cele"]} if polityka["enabled"] else {}
 
@@ -596,6 +610,7 @@ class Monitor:
             stan.nastepna_sonda = teraz + cel["interwal_sekund"]
             if zdejmij:
                 stan.nastepny_certyfikat = teraz + cel["interwal_certyfikatu"]
+            self.ostatnia_sonda_o = _iso(chwila)
             if zmiana:
                 zdarzenia.append(f"{identyfikator}:{zmiana}")
         return zdarzenia
@@ -632,6 +647,8 @@ class Monitor:
             return False
 
         self.ostatni_blad = ""
+        self.ostatni_raport_o = _iso(teraz)
+        self.ostatni_raport_powod = powod
         for stan, wpis in wpisy:
             stan.potwierdz_wyslanie(wpis)
         if isinstance(odpowiedz, dict) and odpowiedz.get("interwal_raportu"):
@@ -658,11 +675,17 @@ class Monitor:
         elif time.monotonic() >= self.nastepny_raport:
             self.wyslij()
             self.nastepny_raport = time.monotonic() + self.interwal_raportu
+        # Na koncu obrotu, zeby swiezosc tego pliku byla dowodem, ze petla
+        # zyje. Status starszy niz kilka obrotow znaczy "monitor nie chodzi".
+        self.opublikuj_status()
 
     def petla(self, odstep_petli: int = 5) -> None:
         """Chodzi do zatrzymania. Blad jednego obrotu nie konczy monitorowania."""
         log.info("monitorowanie wystartowalo")
         self.nastepny_raport = time.monotonic() + self.interwal_raportu
+        # Zaraz po starcie, zeby "cmdb-agent status" mial co pokazac jeszcze
+        # przed pierwsza sonda.
+        self.opublikuj_status()
         while not self.zatrzymaj.is_set():
             try:
                 self.krok()
@@ -679,17 +702,78 @@ class Monitor:
         except Exception:
             pass
         self._zapisz_stan()
+        self.opublikuj_status()
         log.info("monitorowanie zatrzymane")
 
+    # --- co widac na maszynie ---
+
     def status(self) -> dict:
-        """Skrot dla okna statusu i polecenia diagnostycznego."""
+        """Pelny obraz monitorowania dla polecenia status i ikony w zasobniku.
+
+        Operator stojacy przy maszynie musi umiec odpowiedziec na dwa pytania
+        bez wchodzenia do panelu: CO ta maszyna sprawdza i czy to w ogole
+        chodzi. Sam brak wpisow w panelu tego nie rozstrzyga - wyglada tak samo,
+        gdy nikt nie przypisal celow i gdy usluga monitorowania nie wstala.
+
+        Nie publikujemy tu certyfikatow ani tokenow: plik jest czytelny dla
+        kazdego zalogowanego uzytkownika, bo czyta go ikona w zasobniku.
+        """
+        lista = []
+        for identyfikator, cel in self.cele.items():
+            stan = self.stany.get(identyfikator)
+            wpis = {
+                "id": identyfikator,
+                "nazwa": cel.get("nazwa") or "",
+                "adres": f"{cel['host']}:{cel['port']}",
+                "protokol": cel["protokol"],
+                "interwal_sekund": cel["interwal_sekund"],
+                "sond_w_okresie": stan.sond if stan else 0,
+                "udanych_w_okresie": stan.udanych if stan else 0,
+                "kolejne_bledy": stan.kolejne_bledy if stan else 0,
+                "ostatnia_sonda": stan.ostatnia_sonda if stan else None,
+                "przerwa_od": (stan.otwarta or {}).get("od", "") if stan else "",
+            }
+            lista.append(wpis)
+        lista.sort(key=lambda w: (w["nazwa"].lower(), w["adres"]))
         return {
+            "opublikowano": _iso(_teraz()),
             "cele": len(self.cele),
-            "sondowane": sum(1 for s in self.stany.values() if s.sond),
-            "otwarte_przerwy": sum(1 for s in self.stany.values() if s.otwarta),
+            # Liczymy przerwy POTWIERDZONE. Otwarta przerwa powstaje juz przy
+            # pierwszym bledzie (zeby nie zgubic jej poczatku), ale pojedyncza
+            # zgubiona odpowiedz zdarza sie w kazdej sieci i nie jest awaria.
+            "otwarte_przerwy": sum(
+                1 for s in self.stany.values()
+                if s.otwarta and (s.ostatnia_sonda or {}).get("potwierdzona_awaria")
+            ),
             "interwal_raportu": self.interwal_raportu,
+            "polityka_pobrana_o": self.polityka_pobrana_o,
+            "ostatnia_sonda_o": self.ostatnia_sonda_o,
+            "ostatni_raport_o": self.ostatni_raport_o,
+            "ostatni_raport_powod": self.ostatni_raport_powod,
             "ostatni_blad": self.ostatni_blad,
+            "lista": lista,
         }
+
+    def opublikuj_status(self) -> None:
+        """Zapisuje status atomowo. Blad zapisu nie moze zatrzymac sondowania."""
+        if self.sciezka_statusu is None:
+            return
+        try:
+            self.sciezka_statusu.parent.mkdir(parents=True, exist_ok=True)
+            tymczasowy = self.sciezka_statusu.with_suffix(".tmp")
+            tymczasowy.write_text(
+                json.dumps(self.status(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            try:
+                # Plik czyta ikona w zasobniku, czyli zalogowany uzytkownik,
+                # a monitor chodzi jako SYSTEM/root.
+                tymczasowy.chmod(0o644)
+            except OSError:
+                pass
+            tymczasowy.replace(self.sciezka_statusu)
+        except OSError as exc:
+            log.debug("nie moge opublikowac statusu monitorowania: %s", exc)
 
 
 def _rytm_zmieniony(poprzedni: dict, nowy: dict) -> bool:

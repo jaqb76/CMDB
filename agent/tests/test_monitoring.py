@@ -583,3 +583,160 @@ def test_kandydat_z_nowa_umiejetnoscia_przechodzi_sprawdzenie(monkeypatch, tmp_p
 
     monkeypatch.setattr(upgrade.subprocess, "run", podszywajacy_sie)
     assert upgrade._czy_dziala(tmp_path / "agent.exe", "0.9.9")[0] is False
+
+
+# --- co widac na maszynie ----------------------------------------------------
+#
+# Cisza monitorowania wyglada dokladnie tak samo jak sprawna usluga. Jedyna
+# rzecz, ktora je rozroznia, to status publikowany przez sama petle - wiec on
+# sam musi byc sprawdzony rownie dokladnie jak sonda.
+
+import json
+import types
+from datetime import timedelta
+from pathlib import Path
+
+from cmdb_agent import status as status_mod
+
+
+def _konfiguracja(tmp_path: Path):
+    return types.SimpleNamespace(
+        data_dir=tmp_path, server_url="https://cmdb.example",
+        report_interval_seconds=3600, spool_dir=tmp_path / "spool",
+    )
+
+
+def _monitor(tmp_path: Path, cele: dict | None = None) -> monitoring.Monitor:
+    stan = types.SimpleNamespace(is_enrolled=True, agent_token="t",
+                                 asset_id="A1", machine_id="M1")
+    monitor = monitoring.Monitor(
+        client=None, state=stan,
+        sciezka_stanu=tmp_path / "monitoring-state.json",
+        sciezka_statusu=status_mod.monitoring_path(_konfiguracja(tmp_path)),
+    )
+    if cele:
+        monitor.cele = cele
+        for identyfikator in cele:
+            monitor.stany[identyfikator] = monitoring.StanCelu(id=identyfikator)
+    return monitor
+
+
+CEL_TESTOWY = {
+    "c1": {"id": "c1", "nazwa": "Portal firmowy", "host": "10.0.0.5", "port": 443,
+           "protokol": "https", "sciezka": "/", "oczekiwany_kod": 0, "nazwa_tls": "",
+           "weryfikuj_lancuch": True, "interwal_sekund": 60, "interwal_certyfikatu": 86400,
+           "limit_sekund": 5, "liczba_prob": 2, "znany_odcisk": "", "wymus": False},
+}
+
+
+def test_status_wymienia_co_jest_sprawdzane(tmp_path):
+    """Operator przy maszynie ma zobaczyc CO ona sprawdza, a nie samo "dziala"."""
+    monitor = _monitor(tmp_path, CEL_TESTOWY)
+    monitor.opublikuj_status()
+
+    zapis = json.loads(status_mod.monitoring_path(_konfiguracja(tmp_path)).read_text())
+    assert zapis["cele"] == 1
+    wpis = zapis["lista"][0]
+    assert wpis["nazwa"] == "Portal firmowy"
+    assert wpis["adres"] == "10.0.0.5:443"
+    assert wpis["protokol"] == "https"
+    assert wpis["interwal_sekund"] == 60
+
+
+def test_status_nie_publikuje_certyfikatu(tmp_path):
+    """Plik czyta kazdy zalogowany uzytkownik - nie ma tam po co trafiac PEM."""
+    monitor = _monitor(tmp_path, CEL_TESTOWY)
+    monitor.stany["c1"].tls = {"odcisk": "ab", "zaufany": True, "pem": "-----BEGIN CERT..."}
+    monitor.opublikuj_status()
+
+    tresc = status_mod.monitoring_path(_konfiguracja(tmp_path)).read_text()
+    assert "BEGIN CERT" not in tresc
+    assert "agent_token" not in tresc
+
+
+def test_brak_pliku_to_nie_jest_to_samo_co_brak_celow(tmp_path):
+    """Dwie rozne awarie z dwoma roznymi naprawami - nie wolno ich zlac."""
+    config = _konfiguracja(tmp_path)
+    (tmp_path / "public").mkdir(parents=True, exist_ok=True)
+
+    assert status_mod.read_monitoring(config)["stan"] == "brak"
+
+    _monitor(tmp_path).opublikuj_status()          # zyje, ale panel nic nie przypisal
+    assert status_mod.read_monitoring(config)["stan"] == "bez_celow"
+
+    _monitor(tmp_path, CEL_TESTOWY).opublikuj_status()
+    assert status_mod.read_monitoring(config)["stan"] == "dziala"
+
+
+def test_zatrzymany_proces_nie_udaje_dzialajacego(tmp_path):
+    """Status sprzed godziny znaczy, ze petla nie zyje - a nie ze wszystko gra."""
+    config = _konfiguracja(tmp_path)
+    monitor = _monitor(tmp_path, CEL_TESTOWY)
+    monitor.opublikuj_status()
+
+    zapis = json.loads(status_mod.monitoring_path(config).read_text())
+    stary = monitoring._teraz() - timedelta(seconds=status_mod.MONITORING_STALE_SECONDS + 60)
+    zapis["opublikowano"] = stary.isoformat()
+    status_mod.monitoring_path(config).write_text(json.dumps(zapis), encoding="utf-8")
+
+    assert status_mod.read_monitoring(config)["stan"] == "zatrzymane"
+
+
+def test_cisza_monitorowania_trafia_do_ostrzezen(tmp_path):
+    """Bez ostrzezenia nikt sie nie dowie, ze nic nie jest sprawdzane."""
+    config = _konfiguracja(tmp_path)
+    (tmp_path / "public").mkdir(parents=True, exist_ok=True)
+    stan = types.SimpleNamespace(
+        last_status="ok", last_sync_at="", last_attempt_at="", last_error="",
+        last_sync_changed=False, tenant_slug="firma", asset_id="A1",
+        is_enrolled=True, discovery_status={},
+    )
+    migawka = status_mod.build_status(config, stan)
+    assert any("cmdb-agent-monitor" in u for u in migawka.warnings)
+
+    _monitor(tmp_path, CEL_TESTOWY).opublikuj_status()
+    migawka = status_mod.build_status(config, stan)
+    assert not any("monitorowani" in u for u in migawka.warnings)
+    assert migawka.monitoring["stan"] == "dziala"
+
+
+def test_odczyt_gui_bierze_zywy_plik_a_nie_migawke(tmp_path):
+    """status.json zapisuje inwentaryzacja raz na godzine.
+
+    Gdyby ikona ufala zapisanej tam migawce, pokazywalaby "dziala" godzine po
+    smierci monitora. Regresja: to bylo zle w pierwszym podejsciu.
+    """
+    config = _konfiguracja(tmp_path)
+    (tmp_path / "public").mkdir(parents=True, exist_ok=True)
+    status_mod.status_path(config).write_text(json.dumps({
+        "hostname": "maszyna", "last_status": "ok",
+        "monitoring": {"stan": "dziala", "cele": 7},
+    }), encoding="utf-8")
+
+    # Monitor nigdy nie wystartowal - mimo optymistycznej migawki w status.json.
+    assert status_mod.read(config).monitoring["stan"] == "brak"
+
+
+def test_pojedyncza_zgubiona_sonda_to_nie_awaria(tmp_path):
+    """Przerwa otwiera sie przy pierwszym bledzie, ale awaria wymaga potwierdzenia."""
+    monitor = _monitor(tmp_path, CEL_TESTOWY)
+    wynik = monitoring.Wynik(dostepna=False, blad="timed out")
+    monitor.stany["c1"].zapisz(wynik, liczba_prob=2, teraz=monitoring._teraz())
+
+    assert monitor.stany["c1"].otwarta is not None       # poczatek zapamietany
+    assert monitor.status()["otwarte_przerwy"] == 0      # ale to jeszcze nie awaria
+
+    monitor.stany["c1"].zapisz(wynik, liczba_prob=2, teraz=monitoring._teraz())
+    assert monitor.status()["otwarte_przerwy"] == 1
+
+
+def test_starszy_serwer_bez_nazwy_celu_dziala_dalej(tmp_path):
+    """Nazwa jest dodatkiem do wyswietlania - jej brak nie moze wywrocic sondy."""
+    surowy = dict(CEL_TESTOWY["c1"])
+    surowy.pop("nazwa")
+    cel = monitoring.sprawdz_cel(surowy)
+    assert cel["nazwa"] == ""
+    assert cel["host"] == "10.0.0.5"
+
+    cel = monitoring.sprawdz_cel({**surowy, "nazwa": "x" * 500})
+    assert len(cel["nazwa"]) == 200

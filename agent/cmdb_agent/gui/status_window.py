@@ -75,7 +75,8 @@ class StatusWindow:
         detail = ttk.Frame(frame, style="Card.TFrame", padding=18)
         detail.grid(row=2, column=0, sticky="ew", pady=(0, 12))
         rows = [("machine", "Komputer"), ("tenant", "Firma"), ("server", "Serwer CMDB"),
-                ("last_attempt", "Ostatnia próba"), ("next_sync", "Planowana synchronizacja")]
+                ("last_attempt", "Ostatnia próba"), ("next_sync", "Planowana synchronizacja"),
+                ("monitoring", "Monitorowanie usług")]
         for index, (key, label) in enumerate(rows):
             ttk.Label(detail, text=label, style="CardMuted.TLabel").grid(row=index, column=0, sticky="nw", pady=5, padx=(0, 22))
             self.values[key] = tk.StringVar(value="—")
@@ -139,6 +140,7 @@ class StatusWindow:
         self.values["machine"].set(snapshot.hostname or "-")
         self.values["tenant"].set(snapshot.tenant_slug or "-")
         self.values["server"].set(snapshot.server_url or "(nie ustawiono)")
+        self.values["monitoring"].set(status_module.monitoring_label(snapshot.monitoring))
 
         problems = list(snapshot.warnings)
         if snapshot.last_error:
