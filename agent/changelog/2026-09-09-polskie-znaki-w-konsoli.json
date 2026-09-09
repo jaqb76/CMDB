@@ -1,0 +1,5 @@
+{
+  "category": "fixed",
+  "systemy": ["windows"],
+  "text": "Polskie znaki w oknie konsoli rozsypywały się: agent wypisywał UTF-8 niezależnie od strony kodowej konsoli. Tekst idzie teraz w kodowaniu, którego konsola faktycznie używa, a znaki spoza niej dostają odpowiednik ASCII zamiast pytajnika."
+}

@@ -5,8 +5,64 @@ odziedziczone potoki/pliki; nigdy nie tworzymy ani nie pokazujemy konsoli.
 """
 from __future__ import annotations
 
+import codecs
 import os
 import sys
+
+# Znaki typograficzne, ktorych nie ma w stronach kodowych DOS. Zwykle "?" nie
+# niesie zadnej tresci, a mysnik zamiast kropki srodkowej czyta sie tak samo.
+ZAMIENNIKI = {"\u00b7": "-", "\u2013": "-", "\u2014": "-", "\u2026": "...",
+              "\u2192": "->", "\u201e": '"', "\u201d": '"', "\u2019": "'",
+              "\u00d7": "x", "\u00a0": " "}
+NAZWA_BLEDU = "cmdb-konsola"
+
+
+def _zastap_typografie(blad):
+    tekst = blad.object[blad.start:blad.end]
+    return "".join(ZAMIENNIKI.get(znak, "?") for znak in tekst), blad.end
+
+
+codecs.register_error(NAZWA_BLEDU, _zastap_typografie)
+
+
+def kodowanie_dla_strony(strona: int) -> str:
+    """Nazwa kodeka dla strony kodowej konsoli; nieznana oznacza UTF-8.
+
+    Zero dostajemy, gdy proces nie ma konsoli, a 65001 to UTF-8 pod inna
+    nazwa - oba przypadki lapie ten sam wyjatek.
+    """
+    try:
+        return codecs.lookup("cp%d" % strona).name
+    except (LookupError, ValueError):
+        return "utf-8"
+
+
+def _kodowanie_wyjscia(kernel, handle):
+    """Konsola Windows dekoduje BAJTY wedlug wlasnej strony kodowej.
+
+    Strumien odtworzony na surowym uchwycie omija WriteConsoleW, wiec nie ma
+    tu automatycznej konwersji Unicode - to, co wypiszemy, konsola przeczyta
+    przez GetConsoleOutputCP. Polski Windows stoi zwykle na stronie 852, a my
+    wysylalismy UTF-8; stad "Dziala" i "usluga" rozsypywaly sie w oknie
+    PowerShella, mimo ze sam tekst byl poprawny.
+
+    Przekierowanie do pliku albo potoku konsola nie jest i zostaje przy UTF-8:
+    tam bajty czyta nastepny program, a nie sterownik ekranu.
+    """
+    try:
+        # Import w srodku: ctypes.wintypes istnieje tylko na Windows, a ta
+        # funkcja ma zwrocic kodowanie, nie wysadzic startu agenta.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel.GetConsoleMode.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel.GetConsoleMode.restype = wintypes.BOOL
+        if not kernel.GetConsoleMode(handle, ctypes.byref(wintypes.DWORD())):
+            return "utf-8"
+        kernel.GetConsoleOutputCP.restype = wintypes.UINT
+        return kodowanie_dla_strony(kernel.GetConsoleOutputCP())
+    except (AttributeError, OSError, ValueError):
+        return "utf-8"
 
 
 def _inherited_output(number):
@@ -37,7 +93,8 @@ def _inherited_output(number):
     except OSError:
         kernel.CloseHandle(duplicate)
         return None
-    return os.fdopen(fd, "w", encoding="utf-8", errors="replace", buffering=1)
+    return os.fdopen(fd, "w", encoding=_kodowanie_wyjscia(kernel, handle),
+                     errors=NAZWA_BLEDU, buffering=1)
 
 
 def restore_output():

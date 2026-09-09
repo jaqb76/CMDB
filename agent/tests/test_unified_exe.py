@@ -64,3 +64,50 @@ def test_temporary_missing_binary_during_rename_does_not_restart(monkeypatch):
     app._refresh_icon()
     assert not app.restart_requested
     app.root.after.assert_called_once()
+
+
+# --- polskie znaki w oknie konsoli -------------------------------------------
+#
+# Windowed EXE dostaje stdout None i odtwarza go na surowym uchwycie, wiec
+# omija WriteConsoleW. Bajty czyta wtedy sama konsola, wedlug swojej strony
+# kodowej - a my wysylalismy UTF-8 niezaleznie od tego, co ona potrafi.
+
+
+def test_strona_kodowa_konsoli_wyznacza_kodek():
+    """Polski Windows stoi zwykle na stronie 852 i tam ma wszystkie ogonki."""
+    assert windows_entry.kodowanie_dla_strony(852) == "cp852"
+    assert windows_entry.kodowanie_dla_strony(1250) == "cp1250"
+
+
+def test_nieznana_strona_kodowa_to_utf8():
+    """Zero znaczy "proces bez konsoli", 65001 to UTF-8 pod inna nazwa.
+
+    Zadne z nich nie moze wywrocic startu agenta - bez stdout nie ma jak
+    zglosic bledu, wiec awaryjne UTF-8 jest jedynym sensownym wyjsciem.
+    """
+    assert windows_entry.kodowanie_dla_strony(0) == "utf-8"
+    assert windows_entry.kodowanie_dla_strony(65001) == "utf-8"
+    assert windows_entry.kodowanie_dla_strony(999999) == "utf-8"
+
+
+def test_ogonki_przezywaja_strone_852():
+    """Sedno zgloszenia: to sa znaki, ktore uzytkownik widzial rozsypane."""
+    tekst = "Działa · sprawdza 1 z 2 usł. · żółw"
+    wynik = tekst.encode("cp852", errors=windows_entry.NAZWA_BLEDU).decode("cp852")
+    assert "Działa" in wynik and "usł." in wynik and "żółw" in wynik
+
+
+def test_znak_spoza_strony_kodowej_dostaje_odpowiednik_ascii():
+    """Kropka srodkowa nie istnieje w 852. Domyslne "?" nie niesie niczego,
+    a mysnik oddziela czlony statusu dokladnie tak samo."""
+    assert "Dziala - dwa".encode("cp852").decode("cp852") == "Dziala - dwa"
+    wynik = "Dziala · dwa".encode("cp852", errors=windows_entry.NAZWA_BLEDU).decode("cp852")
+    assert wynik == "Dziala - dwa"
+    assert "?" not in wynik
+
+
+def test_nieznany_znak_nadal_nie_wywraca_wypisu():
+    """Tablica zamiennikow jest krotka i ma taka zostac. Wszystko spoza niej
+    ma zejsc do "?", bo wyjatek w trakcie wypisu status znaczy brak statusu."""
+    wynik = "próba 中".encode("cp852", errors=windows_entry.NAZWA_BLEDU).decode("cp852")
+    assert wynik == "próba ?"
