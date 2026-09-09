@@ -93,13 +93,13 @@ internal fun VisualReportManagementScreen(
             items(reports, key = { it.id }) { report ->
                 ElevatedCmdbCard(Modifier.clickable(enabled = canWrite) { edited = report }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        RoundIcon(Icons.Outlined.Assessment, if (report.active) BrandBlue else MaterialTheme.colorScheme.onSurfaceVariant)
+                        RoundIcon(Icons.Outlined.Assessment, if (report.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(report.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${report.type} • ${report.frequency}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        StatusPill(if (report.active) "Aktywny" else "Wyłączony", if (report.active) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+                        StatusPill(if (report.active) "Aktywny" else "Wyłączony", if (report.active) LocalCmdbColors.current.ok else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -213,7 +213,8 @@ internal fun VisualReportManagementScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onDismiss, enabled = !saving, modifier = Modifier.weight(1f)) { Text("ANULUJ") }
                 if (report != null) OutlinedButton(onClick = { confirmDelete = true }, enabled = !saving, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.Delete, null, tint = DangerRed); Spacer(Modifier.width(5.dp)); Text("USUŃ", color = DangerRed)
+                    val czerwien = LocalCmdbColors.current.danger
+                    Icon(Icons.Outlined.Delete, null, tint = czerwien); Spacer(Modifier.width(5.dp)); Text("USUŃ", color = czerwien)
                 }
             }
         }

@@ -148,7 +148,7 @@ internal fun VisualDictionariesScreen(
     val secondary = details.firstOrNull { it.second != email }?.let { "${it.first.label}: ${it.second}" }
     ElevatedCmdbCard(Modifier.clickable(enabled = clickable, onClick = onClick)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val colors = listOf(BrandBlue, Color(0xFF8B6CE5), SuccessGreen, WarningAmber, DangerRed)
+            val colors = LocalCmdbColors.current.chart
             val avatarColor = colors[kotlin.math.abs(entry.id.hashCode()) % colors.size]
             Box(Modifier.size(50.dp).clip(CircleShape).background(avatarColor.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
                 Text(initials(entry.value), color = avatarColor, fontWeight = FontWeight.ExtraBold)
@@ -234,7 +234,8 @@ private fun initials(value: String): String = value.split(' ').filter { it.isNot
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(enabled = !saving, onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("ANULUJ") }
                 if (entry != null) OutlinedButton(enabled = !saving, onClick = { confirmDelete = true }, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.Delete, null, tint = DangerRed); Spacer(Modifier.width(6.dp)); Text("USUŃ", color = DangerRed)
+                    val czerwien = LocalCmdbColors.current.danger
+                    Icon(Icons.Outlined.Delete, null, tint = czerwien); Spacer(Modifier.width(6.dp)); Text("USUŃ", color = czerwien)
                 }
             }
         }
