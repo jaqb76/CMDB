@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Pasek gorny aplikacji jest ciemny w obu motywach, wiec ikony paska
+         stanu maja byc jasne juz od pierwszej klatki. Motyw wybrany w aplikacji
+         dostraja pozniej WindowInsetsController w CmdbVisualTheme. -->
     <style name="Theme.Cmdb" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>

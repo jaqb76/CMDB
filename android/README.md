@@ -75,6 +75,29 @@ aktualizacji, odinstaluj poprzedni APK (usunie lokalną sesję) i zainstaluj now
 7. Przełącz każdy motyw, zamknij aplikację i uruchom ponownie.
 
 
+## Wydanie 0.4.0 — wygląd według makiet
+
+Aplikacja została przerysowana tak, żeby odpowiadała projektowi graficznemu.
+Zakres API i uprawnienia się nie zmieniły — to jest zmiana wyglądu, nie funkcji.
+
+- Logowanie: wyśrodkowany znak firmowy, etykiety nad polami, pełnej szerokości
+  przycisk „Zaloguj”. Formularz da się przewinąć, gdy klawiatura zasłoni ekran.
+- Pulpit: kafelki liczbowe na jasnym tle z ikoną i podpisem, pierścień
+  „Dystrybucja systemów operacyjnych” z udziałem procentowym wpisanym w wycinek
+  i legendą „62% (154)”, a „Ostatni kontakt” jako jedna karta z wierszami.
+- Maszyny: karty z logo systemu (Windows, pingwin, malina, przełącznik),
+  adresem IP, opiekunem i czasem ostatniego kontaktu w kolorze świeżości.
+- Dolny pasek ma trzy pozycje — Pulpit, Maszyny, Więcej. Słowniki, historia
+  zmian, raporty, zmiana firmy, motyw i wylogowanie są pod „Więcej”.
+- Czasy są pokazywane względnie („18 min temu”, „3 dni temu”) zamiast surowym
+  znacznikiem ISO z serwera.
+- Motyw jasny prowadzi granatem, ciemny jasnym błękitem; ikony pasków systemowych
+  dostrajają się do wybranego motywu.
+
+Kropka i kolor przy „Ostatni kontakt” mówią o świeżości danych (do godziny,
+do doby, powyżej doby). Kafelek „Bez kontaktu” liczy serwer według ustawień
+firmy — te dwie liczby nie muszą się zgadzać i nie są tym samym.
+
 ## Błąd 429 podczas logowania
 
 Po przekroczeniu limitu błędnych haseł portal blokuje konto i adres źródłowy.

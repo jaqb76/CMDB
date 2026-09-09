@@ -1,21 +1,28 @@
 package pl.hubzso.cmdb.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,24 +30,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Computer
-import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -48,21 +53,20 @@ import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Logout
-import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.SyncProblem
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,6 +75,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,8 +88,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -94,36 +97,49 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import pl.hubzso.cmdb.R
 import pl.hubzso.cmdb.data.AssetDetail
 import pl.hubzso.cmdb.data.AssetSummary
 import pl.hubzso.cmdb.data.AssignmentWrite
@@ -132,63 +148,126 @@ import pl.hubzso.cmdb.data.CountItem
 import pl.hubzso.cmdb.data.Dashboard
 import pl.hubzso.cmdb.data.DictionaryEntry
 import pl.hubzso.cmdb.data.ReportWrite
+import kotlin.math.cos
+import kotlin.math.sin
 
-internal val BrandNavy = Color(0xFF073B78)
-internal val BrandBlue = Color(0xFF0877E1)
-internal val BrandCyan = Color(0xFF17A6FF)
-internal val SuccessGreen = Color(0xFF20B15A)
-internal val WarningAmber = Color(0xFFF5A623)
-internal val DangerRed = Color(0xFFE84C4F)
-private val LightBackground = Color(0xFFF4F7FB)
-private val DarkBackground = Color(0xFF071725)
-private val DarkSurface = Color(0xFF102438)
+// Granat jest kolorem marki i w motywie jasnym pelni role koloru wiodacego:
+// pasek gorny, przyciski, zaznaczone filtry. W motywie ciemnym granat zlewa
+// sie z tlem, wiec role wiodaca przejmuje jasny blekit.
+internal val BrandNavy = Color(0xFF0B3C6E)
+internal val BrandBlue = Color(0xFF2E9BF5)
+internal val BrandCyan = Color(0xFF29A0F0)
+internal val SuccessGreen = Color(0xFF23A455)
+internal val WarningAmber = Color(0xFFEE9F1B)
+internal val DangerRed = Color(0xFFDE3B40)
+
+private val LightBackground = Color(0xFFF2F4F7)
+private val DarkBackground = Color(0xFF0A1A2B)
+private val DarkSurface = Color(0xFF12263C)
+
+/**
+ * Barwy, ktorych Material nie ma w swoim schemacie, a ktore musza byc inne w
+ * kazdym z motywow. Trzymamy je obok schematu zamiast liczyc jasnosc tla w
+ * miejscu uzycia - inaczej ta sama kropka statusu wyszlaby raz zielona, raz
+ * ledwo widoczna.
+ */
+internal data class CmdbColors(
+    val ok: Color,
+    val warn: Color,
+    val danger: Color,
+    val bar: Color,
+    val cardBorder: Color,
+    val loginBackground: Color,
+    val chart: List<Color>,
+)
+
+private val LightExtras = CmdbColors(
+    ok = SuccessGreen,
+    warn = WarningAmber,
+    danger = DangerRed,
+    bar = BrandNavy,
+    cardBorder = Color(0xFFE1E6EE),
+    loginBackground = Color.White,
+    chart = listOf(BrandNavy, BrandCyan, Color(0xFFC3CBD6), Color(0xFF7E6BE0), SuccessGreen, WarningAmber),
+)
+
+private val DarkExtras = CmdbColors(
+    ok = Color(0xFF2ECC71),
+    warn = Color(0xFFF5A623),
+    danger = Color(0xFFE8595E),
+    bar = DarkBackground,
+    cardBorder = Color(0xFF1E3A52),
+    loginBackground = DarkBackground,
+    chart = listOf(Color(0xFF1D6FC4), BrandBlue, Color(0xFF8A99AB), Color(0xFF8B7BE8), Color(0xFF2ECC71), Color(0xFFF5A623)),
+)
+
+internal val LocalCmdbColors = staticCompositionLocalOf { LightExtras }
 
 private val CmdbLightColors = lightColorScheme(
-    primary = BrandBlue,
+    primary = BrandNavy,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE5F1FF),
+    primaryContainer = Color(0xFFE3EDF9),
     onPrimaryContainer = BrandNavy,
     secondary = BrandCyan,
     background = LightBackground,
     surface = Color.White,
-    surfaceVariant = Color(0xFFEAF0F7),
-    onSurface = Color(0xFF17212D),
-    onSurfaceVariant = Color(0xFF667487),
-    outline = Color(0xFFB8C3D0),
+    surfaceVariant = Color(0xFFEAEFF5),
+    onSurface = Color(0xFF15202C),
+    onSurfaceVariant = Color(0xFF66748A),
+    outline = Color(0xFFC6CFDA),
     error = DangerRed,
 )
 
 private val CmdbDarkColors = darkColorScheme(
-    primary = Color(0xFF4AA3FF),
+    primary = BrandBlue,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF123D68),
+    primaryContainer = Color(0xFF10365C),
     onPrimaryContainer = Color(0xFFD9EAFF),
-    secondary = Color(0xFF5BC0FF),
+    secondary = BrandCyan,
     background = DarkBackground,
     surface = DarkSurface,
-    surfaceVariant = Color(0xFF173047),
-    onSurface = Color(0xFFF3F7FC),
-    onSurfaceVariant = Color(0xFFAAB8C8),
-    outline = Color(0xFF53677C),
-    error = Color(0xFFFF7478),
+    surfaceVariant = Color(0xFF17304A),
+    onSurface = Color(0xFFF2F6FB),
+    onSurfaceVariant = Color(0xFF9BAABC),
+    outline = Color(0xFF4A5F76),
+    error = Color(0xFFE8595E),
 )
+
+private fun Context.aktywnosc(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.aktywnosc()
+    else -> null
+}
 
 @Composable
 internal fun CmdbVisualTheme(darkMode: Boolean, content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (darkMode) CmdbDarkColors else CmdbLightColors,
-        typography = MaterialTheme.typography.copy(
-            headlineMedium = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            titleLarge = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-            titleMedium = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-        ),
-        shapes = MaterialTheme.shapes.copy(
-            small = RoundedCornerShape(8.dp),
-            medium = RoundedCornerShape(14.dp),
-            large = RoundedCornerShape(20.dp),
-        ),
-        content = content,
-    )
+    val view = LocalView.current
+    if (!view.isInEditMode) SideEffect {
+        val window = view.context.aktywnosc()?.window ?: return@SideEffect
+        val kontroler = WindowCompat.getInsetsController(window, view)
+        // Pasek gorny aplikacji jest ciemny w obu motywach, wiec ikony stanu
+        // zawsze jasne. Pasek nawigacji siedzi juz na tle strony.
+        kontroler.isAppearanceLightStatusBars = false
+        kontroler.isAppearanceLightNavigationBars = !darkMode
+    }
+    CompositionLocalProvider(
+        LocalCmdbColors provides if (darkMode) DarkExtras else LightExtras,
+    ) {
+        MaterialTheme(
+            colorScheme = if (darkMode) CmdbDarkColors else CmdbLightColors,
+            typography = MaterialTheme.typography.copy(
+                headlineMedium = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                titleLarge = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                titleMedium = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            ),
+            shapes = MaterialTheme.shapes.copy(
+                small = RoundedCornerShape(8.dp),
+                medium = RoundedCornerShape(12.dp),
+                large = RoundedCornerShape(16.dp),
+            ),
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -213,46 +292,61 @@ internal fun ModernLoginScreen(
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(error) { error?.let { snackbar.showSnackbar(it); onErrorShown() } }
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = LocalCmdbColors.current.loginBackground,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+        // Formularz ma byc na srodku ekranu, ale musi dac sie przewinac, gdy
+        // klawiatura zabierze pol wysokosci. Samo verticalScroll odbiera
+        // kolumnie ograniczenie wysokosci i Arrangement.Center przestaje cokolwiek
+        // znaczyc - stad wymuszona wysokosc minimalna rowna widocznemu obszarowi.
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+            val widok = maxHeight
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 28.dp).verticalScroll(rememberScrollState()),
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .heightIn(min = widok)
+                    .fillMaxWidth()
+                    .padding(horizontal = 26.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
                     "CMDB",
+                    Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.primary,
-                    fontSize = 48.sp,
-                    lineHeight = 52.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 58.sp,
+                    lineHeight = 62.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    textAlign = TextAlign.Center,
                 )
+                Spacer(Modifier.height(6.dp))
                 Text(
                     "Bezpieczny dostęp do infrastruktury",
-                    style = MaterialTheme.typography.titleMedium,
+                    Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.height(34.dp))
-                LoginLabel("ADRES PORTALU")
+                Spacer(Modifier.height(44.dp))
+                LoginLabel("Adres portalu (HTTPS)")
                 ModernInput(
                     value = server,
                     onValueChange = { server = it },
-                    placeholder = "https://cmdb.twojadomena.pl",
-                    icon = Icons.Outlined.Business,
+                    placeholder = "https://cmdb.twojafirma.pl",
+                    icon = Icons.Outlined.Lock,
                     keyboardType = KeyboardType.Uri,
                 )
                 Spacer(Modifier.height(16.dp))
-                LoginLabel("E-MAIL")
+                LoginLabel("E-mail")
                 ModernInput(
                     value = email,
                     onValueChange = { email = it },
-                    placeholder = "twoj@email.pl",
+                    placeholder = "użytkownik@twojafirma.pl",
                     icon = Icons.Outlined.Email,
                     keyboardType = KeyboardType.Email,
                 )
                 Spacer(Modifier.height(16.dp))
-                LoginLabel("HASŁO")
+                LoginLabel("Hasło")
                 ModernInput(
                     value = password,
                     onValueChange = { password = it },
@@ -264,21 +358,20 @@ internal fun ModernLoginScreen(
                             Icon(
                                 if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                                 contentDescription = if (passwordVisible) "Ukryj hasło" else "Pokaż hasło",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     },
                 )
-                Spacer(Modifier.height(28.dp))
-                GradientActionButton(
-                    text = "ZALOGUJ SIĘ",
-                    loading = loading,
+                Spacer(Modifier.height(30.dp))
+                Button(
+                    onClick = { onLogin(server, email, password) },
                     enabled = !loading && server.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
-                ) { onLogin(server, email, password) }
-                Spacer(Modifier.height(18.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Lock, null, Modifier.size(14.dp), MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Połączenie szyfrowane przez HTTPS", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Text("Zaloguj", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -286,8 +379,8 @@ internal fun ModernLoginScreen(
 }
 
 @Composable private fun LoginLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(Modifier.height(6.dp))
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(7.dp))
 }
 
 @Composable private fun ModernInput(
@@ -303,32 +396,20 @@ internal fun ModernLoginScreen(
         value = value,
         onValueChange = onValueChange,
         modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text(placeholder) },
-        leadingIcon = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
+        placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        leadingIcon = { Icon(icon, null, Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant) },
         trailingIcon = trailing,
         singleLine = true,
         shape = RoundedCornerShape(10.dp),
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         visualTransformation = visualTransformation,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            unfocusedBorderColor = LocalCmdbColors.current.cardBorder,
         ),
     )
-}
-
-@Composable private fun GradientActionButton(text: String, loading: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val gradient = if (enabled) Brush.horizontalGradient(listOf(BrandBlue, BrandCyan))
-        else Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.outline, MaterialTheme.colorScheme.outline))
-    Box(
-        Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(10.dp)).background(gradient).clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
-        else Text(text, color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
-    }
 }
 
 @Composable
@@ -358,11 +439,17 @@ internal fun ModernTenantScreen(state: AppState, onSelect: (pl.hubzso.cmdb.data.
     }
 }
 
-private enum class ModernSection(val label: String, val icon: ImageVector) {
-    DASHBOARD("Pulpit", Icons.Outlined.Dashboard),
-    ASSETS("Maszyny", Icons.Outlined.Computer),
-    PEOPLE("Osoby", Icons.Outlined.Person),
-    CHANGES("Zmiany", Icons.Outlined.History),
+// Dolny pasek ma trzy pozycje, bo tyle miesci sie bez scinania podpisow.
+// Reszta ekranow wchodzi przez "Więcej".
+private enum class ModernTab(val label: String, val icon: ImageVector) {
+    DASHBOARD("Pulpit", Icons.Outlined.Home),
+    ASSETS("Maszyny", Icons.Outlined.Storage),
+    MORE("Więcej", Icons.Outlined.MoreHoriz),
+}
+
+private enum class ModernPage(val label: String, val icon: ImageVector) {
+    PEOPLE("Słowniki", Icons.Outlined.MenuBook),
+    CHANGES("Historia zmian", Icons.Outlined.History),
     REPORTS("Raporty", Icons.Outlined.Assessment),
 }
 
@@ -387,55 +474,108 @@ internal fun ModernMainScreen(
     onChooseTenant: () -> Unit,
     onErrorShown: () -> Unit,
 ) {
-    var section by rememberSaveable { mutableStateOf(ModernSection.DASHBOARD) }
+    var tab by rememberSaveable { mutableStateOf(ModernTab.DASHBOARD) }
+    var page by rememberSaveable { mutableStateOf<ModernPage?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var alertsOpen by remember { mutableStateOf(false) }
+    var focusSearch by remember { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
-    if (state.selectedAsset != null) BackHandler(enabled = !state.saving, onBack = onCloseAsset)
+    val kolory = LocalCmdbColors.current
+    val detail = state.selectedAsset
+    if (detail != null) BackHandler(enabled = !state.saving, onBack = onCloseAsset)
+    else if (page != null) BackHandler(enabled = !state.saving) { page = null }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); onErrorShown() } }
+
+    val przejdzDoMaszyn = { bezOpiekuna: Boolean ->
+        page = null
+        tab = ModernTab.ASSETS
+        onSearchAssets(state.assetQuery, state.assetOs, bezOpiekuna)
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(state.selectedAsset?.asset?.hostname ?: section.label, fontWeight = FontWeight.Bold)
-                        if (state.selectedAsset == null && section == ModernSection.DASHBOARD) {
-                            Text(state.user?.tenant?.name.orEmpty(), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = .78f))
-                        }
-                    }
+                    Text(
+                        detail?.asset?.hostname ?: page?.label ?: tab.label,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 },
                 navigationIcon = {
-                    if (state.selectedAsset != null) IconButton(enabled = !state.saving, onClick = onCloseAsset) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Wstecz")
-                    }
+                    if (detail != null || page != null) IconButton(
+                        enabled = !state.saving,
+                        onClick = { if (detail != null) onCloseAsset() else page = null },
+                    ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Wstecz") }
                 },
                 actions = {
-                    if (state.selectedAsset == null) {
-                        IconButton(onClick = onRefresh, enabled = !state.loading && !state.saving) { Icon(Icons.Outlined.Refresh, "Odśwież") }
-                        Box {
-                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "Więcej") }
-                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                if (state.tenants.size > 1) DropdownMenuItem(
-                                    text = { Text("Zmień firmę") },
-                                    leadingIcon = { Icon(Icons.Outlined.Business, null) },
-                                    onClick = { menuOpen = false; onChooseTenant() },
+                    // Pasek ma akcje tylko dla zakladek. Karta maszyny i ekrany
+                    // z "Więcej" maja strzalke wstecz i nic wiecej.
+                    val zakladka = if (detail != null || page != null) null else tab
+                    when (zakladka) {
+                        // Dzwonek zbiera to, co na pulpicie jest na czerwono i
+                        // bursztynowo. Nie jest ozdoba: prowadzi do listy.
+                        ModernTab.DASHBOARD -> Box {
+                            IconButton(onClick = { alertsOpen = true }) {
+                                Box {
+                                    Icon(Icons.Outlined.NotificationsNone, "Powiadomienia")
+                                    val alerty = (state.dashboard?.stale ?: 0) + (state.dashboard?.unassigned ?: 0)
+                                    if (alerty > 0) Box(
+                                        Modifier.size(8.dp).align(Alignment.TopEnd).clip(CircleShape).background(kolory.danger),
+                                    )
+                                }
+                            }
+                            DropdownMenu(expanded = alertsOpen, onDismissRequest = { alertsOpen = false }) {
+                                val bezKontaktu = state.dashboard?.stale ?: 0
+                                val bezOpiekuna = state.dashboard?.unassigned ?: 0
+                                if (bezKontaktu == 0 && bezOpiekuna == 0) DropdownMenuItem(
+                                    text = { Text("Brak alertów") },
+                                    onClick = { alertsOpen = false },
+                                    enabled = false,
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("Motyw: ${when (theme) { "dark" -> "ciemny"; "light" -> "jasny"; else -> "systemowy" }}") },
-                                    leadingIcon = { Icon(if (theme == "dark") Icons.Outlined.DarkMode else Icons.Outlined.LightMode, null) },
-                                    onClick = { menuOpen = false; onToggleTheme() },
+                                if (bezKontaktu > 0) DropdownMenuItem(
+                                    text = { Text("Bez kontaktu: $bezKontaktu") },
+                                    leadingIcon = { Icon(Icons.Outlined.SyncProblem, null, tint = kolory.warn) },
+                                    onClick = { alertsOpen = false; przejdzDoMaszyn(state.assetUnassigned) },
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("Wyloguj") },
-                                    leadingIcon = { Icon(Icons.Outlined.Logout, null) },
-                                    onClick = { menuOpen = false; onLogout() },
+                                if (bezOpiekuna > 0) DropdownMenuItem(
+                                    text = { Text("Bez opiekuna: $bezOpiekuna") },
+                                    leadingIcon = { Icon(Icons.Outlined.PersonOff, null, tint = kolory.danger) },
+                                    onClick = { alertsOpen = false; przejdzDoMaszyn(true) },
                                 )
                             }
                         }
+                        ModernTab.ASSETS -> {
+                            IconButton(onClick = { focusSearch++ }) { Icon(Icons.Outlined.Search, "Szukaj") }
+                            Box {
+                                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "Więcej") }
+                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Odśwież") },
+                                        leadingIcon = { Icon(Icons.Outlined.Refresh, null) },
+                                        onClick = { menuOpen = false; onRefresh() },
+                                    )
+                                    if (state.tenants.size > 1) DropdownMenuItem(
+                                        text = { Text("Zmień firmę") },
+                                        leadingIcon = { Icon(Icons.Outlined.Business, null) },
+                                        onClick = { menuOpen = false; onChooseTenant() },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Motyw: ${opisMotywu(theme)}") },
+                                        leadingIcon = { Icon(if (theme == "dark") Icons.Outlined.DarkMode else Icons.Outlined.LightMode, null) },
+                                        onClick = { menuOpen = false; onToggleTheme() },
+                                    )
+                                }
+                            }
+                        }
+                        ModernTab.MORE, null -> Unit
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BrandNavy,
+                    containerColor = kolory.bar,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
                     actionIconContentColor = Color.White,
@@ -443,148 +583,283 @@ internal fun ModernMainScreen(
             )
         },
         bottomBar = {
-            if (state.selectedAsset == null) NavigationBar(
-                modifier = Modifier.shadow(10.dp),
-                containerColor = MaterialTheme.colorScheme.surface,
-            ) {
-                ModernSection.entries.forEach { item ->
-                    NavigationBarItem(
-                        selected = section == item,
-                        enabled = !state.saving,
-                        onClick = { section = item },
-                        icon = { Icon(item.icon, item.label) },
-                        label = { Text(item.label, fontSize = 10.sp, maxLines = 1) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                        ),
-                    )
+            if (detail == null) Column {
+                HorizontalDivider(color = LocalCmdbColors.current.cardBorder)
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                ) {
+                    ModernTab.entries.forEach { item ->
+                        NavigationBarItem(
+                            selected = tab == item && page == null,
+                            enabled = !state.saving,
+                            onClick = { tab = item; page = null },
+                            icon = { Icon(item.icon, item.label, Modifier.size(24.dp)) },
+                            label = { Text(item.label, fontSize = 11.sp, maxLines = 1) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                indicatorColor = Color.Transparent,
+                            ),
+                        )
+                    }
                 }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         if (state.loading && state.dashboard == null) ModernLoadingScreen()
-        else if (state.selectedAsset != null) ModernAssetDetailScreen(
-            state.selectedAsset, state.dictionaries, state.user?.canWrite == true,
+        else if (detail != null) ModernAssetDetailScreen(
+            detail, state.dictionaries, state.user?.canWrite == true,
             padding, state.saving, state.mutationVersion, onUpdateAssignment,
         )
-        else when (section) {
-            ModernSection.DASHBOARD -> ModernDashboardScreen(state.dashboard, padding, onOpenAsset)
-            ModernSection.ASSETS -> ModernAssetList(state, padding, onOpenAsset, onSearchAssets, onMoreAssets)
-            ModernSection.PEOPLE -> VisualDictionariesScreen(
+        else when (page) {
+            ModernPage.PEOPLE -> VisualDictionariesScreen(
                 state.dictionaryCategories, state.dictionarySchemas, state.dictionaries,
                 state.user?.canWrite == true, padding, state.saving, state.mutationVersion,
                 state.error, onSaveDictionary, onDeleteDictionary,
             )
-            ModernSection.CHANGES -> ModernChangesScreen(state.changes, padding)
-            ModernSection.REPORTS -> VisualReportManagementScreen(
+            ModernPage.CHANGES -> ModernChangesScreen(state.changes, padding)
+            ModernPage.REPORTS -> VisualReportManagementScreen(
                 state.reports, state.reportCatalog, padding, state.user?.canWrite == true,
                 state.saving, state.mutationVersion, state.error, onSendReport, onSaveReport, onDeleteReport,
+            )
+            null -> when (tab) {
+                ModernTab.DASHBOARD -> ModernDashboardScreen(state.dashboard, padding, onOpenAsset)
+                ModernTab.ASSETS -> ModernAssetList(state, padding, focusSearch, onOpenAsset, onSearchAssets, onMoreAssets)
+                ModernTab.MORE -> ModernMoreScreen(
+                    state, theme, padding,
+                    onOpenPage = { page = it },
+                    onRefresh = onRefresh,
+                    onToggleTheme = onToggleTheme,
+                    onChooseTenant = onChooseTenant,
+                    onLogout = onLogout,
+                )
+            }
+        }
+    }
+}
+
+private fun opisMotywu(theme: String) = when (theme) {
+    "dark" -> "ciemny"
+    "light" -> "jasny"
+    else -> "systemowy"
+}
+
+@Composable private fun ModernDashboardScreen(data: Dashboard?, padding: PaddingValues, onOpen: (String) -> Unit) {
+    val kolory = LocalCmdbColors.current
+    LazyColumn(
+        Modifier.fillMaxSize().padding(padding),
+        contentPadding = PaddingValues(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                KpiCard("Maszyny", data?.total ?: 0, Icons.Outlined.Storage, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                KpiCard("Bez kontaktu", data?.stale ?: 0, Icons.Outlined.SyncProblem, kolory.warn, Modifier.weight(1f))
+                KpiCard("Bez opiekuna", data?.unassigned ?: 0, Icons.Outlined.PersonOff, kolory.danger, Modifier.weight(1f))
+            }
+        }
+        val systemy = data?.byOs.orEmpty()
+        if (systemy.isNotEmpty()) item {
+            ElevatedCmdbCard {
+                Text("Dystrybucja systemów operacyjnych", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    OsDonut(systemy, Modifier.size(146.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val suma = systemy.sumOf { it.count }.coerceAtLeast(1)
+                        systemy.take(4).forEachIndexed { index, item ->
+                            LegendRow(item, kolory.chart[index % kolory.chart.size], suma)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            ElevatedCmdbCard(padding = 0.dp) {
+                Text(
+                    "Ostatni kontakt",
+                    Modifier.padding(start = 15.dp, end = 15.dp, top = 15.dp, bottom = 4.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                val recent = data?.recent.orEmpty()
+                if (recent.isEmpty()) Text(
+                    "Brak ostatnio widzianych urządzeń",
+                    Modifier.padding(15.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                recent.forEachIndexed { index, asset ->
+                    if (index > 0) HorizontalDivider(color = kolory.cardBorder)
+                    RecentRow(asset) { onOpen(asset.id) }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun KpiCard(label: String, value: Int, icon: ImageVector, color: Color, modifier: Modifier) {
+    val kolory = LocalCmdbColors.current
+    Card(
+        modifier,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, kolory.cardBorder),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(26.dp))
+            Spacer(Modifier.height(9.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(value.toString(), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+/**
+ * Pierscien z udzialem procentowym wpisanym w wycinek. Podpisy ponizej progu
+ * pomijamy - na 40 dp luku i tak by sie nie zmiescily.
+ */
+@Composable private fun OsDonut(items: List<CountItem>, modifier: Modifier) {
+    val total = items.sumOf { it.count }.coerceAtLeast(1)
+    val chart = LocalCmdbColors.current.chart
+    val miara = rememberTextMeasurer()
+    val widoczne = items.take(chart.size)
+    Canvas(modifier) {
+        val grubosc = size.minDimension * 0.27f
+        val bok = size.minDimension - grubosc
+        val lewy = Offset((size.width - bok) / 2f, (size.height - bok) / 2f)
+        val promien = bok / 2f
+        val srodek = Offset(size.width / 2f, size.height / 2f)
+        var kat = -90f
+        // Wlosowa przerwa miedzy wycinkami. Przy jednym systemie odpuszczamy,
+        // zeby pelny pierscien nie mial wyszczerbienia bez powodu.
+        val przerwa = if (widoczne.size > 1) 1.5f else 0f
+        widoczne.forEachIndexed { index, item ->
+            val udzial = item.count.toFloat() / total
+            val wycinek = 360f * udzial
+            val color = chart[index % chart.size]
+            drawArc(
+                color = color,
+                startAngle = kat,
+                sweepAngle = (wycinek - przerwa).coerceAtLeast(0.8f),
+                useCenter = false,
+                topLeft = lewy,
+                size = Size(bok, bok),
+                style = Stroke(grubosc),
+            )
+            if (udzial >= 0.07f) {
+                val srodkowy = Math.toRadians((kat + wycinek / 2f).toDouble())
+                val podpis = "${Math.round(udzial * 100)}%"
+                val uklad = miara.measure(
+                    AnnotatedString(podpis),
+                    TextStyle(
+                        color = if (color.luminance() > 0.5f) Color(0xFF15202C) else Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                )
+                drawText(
+                    uklad,
+                    topLeft = Offset(
+                        srodek.x + (promien * cos(srodkowy)).toFloat() - uklad.size.width / 2f,
+                        srodek.y + (promien * sin(srodkowy)).toFloat() - uklad.size.height / 2f,
+                    ),
+                )
+            }
+            kat += wycinek
+        }
+    }
+}
+
+@Composable private fun LegendRow(item: CountItem, color: Color, total: Int) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(Modifier.padding(top = 5.dp).size(10.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(9.dp))
+        Column {
+            Text(item.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "${Math.round(item.count * 100f / total)}% (${item.count})",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
 
-@Composable private fun ModernDashboardScreen(data: Dashboard?, padding: PaddingValues, onOpen: (String) -> Unit) {
-    LazyColumn(
-        Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+/** Wiersz na pulpicie: bez opiekuna i bez strzalki, bo pulpit ma byc skrotem. */
+@Composable private fun RecentRow(asset: AssetSummary, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 15.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                KpiCard("Maszyny", data?.total ?: 0, Icons.Outlined.Computer, BrandBlue, Modifier.weight(1f))
-                KpiCard("Bez kontaktu", data?.stale ?: 0, Icons.Outlined.SyncProblem, WarningAmber, Modifier.weight(1f))
-                KpiCard("Bez opiekuna", data?.unassigned ?: 0, Icons.Outlined.PersonOff, DangerRed, Modifier.weight(1f))
-            }
+        Image(painterResource(osIkona(asset.osFamily, asset.type)), null, Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(asset.hostname, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(asset.primaryIp ?: "Brak adresu IP", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (!data?.byOs.isNullOrEmpty()) item {
-            SectionHeading("Rozkład systemów")
-            Spacer(Modifier.height(8.dp))
-            ElevatedCmdbCard {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    OsDonut(data!!.byOs, Modifier.size(138.dp))
-                    Spacer(Modifier.width(20.dp))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        data.byOs.take(5).forEachIndexed { index, item -> LegendRow(item, chartColors[index % chartColors.size]) }
-                    }
-                }
-            }
-        }
-        item { SectionHeading("Ostatni kontakt") }
-        items(data?.recent.orEmpty(), key = { it.id }) { asset -> ModernAssetCard(asset) { onOpen(asset.id) } }
-        if (data?.recent.isNullOrEmpty()) item { EmptyState("Brak ostatnio widzianych urządzeń") }
-    }
-}
-
-@Composable private fun KpiCard(label: String, value: Int, icon: ImageVector, color: Color, modifier: Modifier) {
-    Card(modifier, shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = color)) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.height(8.dp))
-            Text(value.toString(), color = Color.White, style = MaterialTheme.typography.headlineMedium)
-            Text(label, color = Color.White.copy(alpha = .88f), style = MaterialTheme.typography.labelSmall, maxLines = 1)
-        }
-    }
-}
-
-private val chartColors = listOf(BrandBlue, BrandCyan, SuccessGreen, WarningAmber, DangerRed, Color(0xFF8B6CE5))
-
-@Composable private fun OsDonut(items: List<CountItem>, modifier: Modifier) {
-    val total = items.sumOf { it.count }.coerceAtLeast(1)
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize().padding(8.dp)) {
-            var start = -90f
-            items.forEachIndexed { index, item ->
-                val sweep = 360f * item.count / total
-                drawArc(chartColors[index % chartColors.size], start, (sweep - 3f).coerceAtLeast(1f), false, style = Stroke(17.dp.toPx(), cap = StrokeCap.Round))
-                start += sweep
-            }
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(total.toString(), style = MaterialTheme.typography.headlineMedium)
-            Text("urządzeń", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable private fun LegendRow(item: CountItem, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(9.dp).clip(CircleShape).background(color))
         Spacer(Modifier.width(8.dp))
-        Text(item.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(item.count.toString(), fontWeight = FontWeight.Bold)
+        Text(wzglednyCzas(asset.lastSeen), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Spacer(Modifier.width(9.dp))
+        Box(Modifier.size(9.dp).clip(CircleShape).background(kolorStanu(asset)))
     }
 }
 
 @Composable private fun ModernAssetList(
     state: AppState,
     padding: PaddingValues,
+    focusSearch: Int,
     onOpen: (String) -> Unit,
     onSearch: (String, String, Boolean) -> Unit,
     onMore: () -> Unit,
 ) {
+    val kolory = LocalCmdbColors.current
+    val lista = rememberLazyListState()
+    val fokus = remember { FocusRequester() }
+    // Lupa w pasku gornym nie otwiera osobnego ekranu - pole jest juz na liscie,
+    // wiec przewijamy je na wierzch i ustawiamy kursor. Licznik zapamietany przy
+    // wejsciu na zakladke sprawia, ze samo wrocenie na nia nie wyrzuca klawiatury.
+    var obsluzone by remember { mutableIntStateOf(focusSearch) }
+    LaunchedEffect(focusSearch) {
+        if (focusSearch != obsluzone) {
+            obsluzone = focusSearch
+            lista.scrollToItem(0)
+            runCatching { fokus.requestFocus() }
+        }
+    }
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(14.dp),
+        state = lista,
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             OutlinedTextField(
                 value = state.assetQuery,
                 onValueChange = { onSearch(it, state.assetOs, state.assetUnassigned) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Szukaj maszyny, IP lub numeru seryjnego") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                trailingIcon = { Icon(Icons.Outlined.FilterList, null, tint = MaterialTheme.colorScheme.primary) },
+                modifier = Modifier.fillMaxWidth().focusRequester(fokus),
+                placeholder = { Text("Szukaj maszyny, IP lub numeru seryjnego", fontSize = 14.sp) },
+                leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant) },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surface,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedBorderColor = Color.Transparent,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = kolory.cardBorder,
                 ),
             )
         }
@@ -597,12 +872,13 @@ private val chartColors = listOf(BrandBlue, BrandCyan, SuccessGreen, WarningAmbe
                 item { CmdbFilterChip("Bez opiekuna", state.assetUnassigned) { onSearch(state.assetQuery, state.assetOs, !state.assetUnassigned) } }
             }
         }
-        item { Text("${state.assetTotal} urządzeń", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(state.assets, key = { it.id }) { asset -> ModernAssetCard(asset) { onOpen(asset.id) } }
         if (state.assetLoading) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
         else if (state.assets.isEmpty()) item { EmptyState("Brak maszyn spełniających kryteria") }
         if (state.assets.size < state.assetTotal) item {
-            OutlinedButton(onClick = onMore, enabled = !state.assetLoading, modifier = Modifier.fillMaxWidth()) { Text("Załaduj kolejne") }
+            OutlinedButton(onClick = onMore, enabled = !state.assetLoading, modifier = Modifier.fillMaxWidth()) {
+                Text("Załaduj kolejne (${state.assets.size} z ${state.assetTotal})")
+            }
         }
     }
 }
@@ -611,9 +887,12 @@ private val chartColors = listOf(BrandBlue, BrandCyan, SuccessGreen, WarningAmbe
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
+        label = { Text(label, fontSize = 13.sp) },
         shape = RoundedCornerShape(18.dp),
+        border = if (selected) null else BorderStroke(1.dp, LocalCmdbColors.current.cardBorder),
         colors = FilterChipDefaults.filterChipColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            labelColor = MaterialTheme.colorScheme.onSurface,
             selectedContainerColor = MaterialTheme.colorScheme.primary,
             selectedLabelColor = Color.White,
         ),
@@ -621,37 +900,181 @@ private val chartColors = listOf(BrandBlue, BrandCyan, SuccessGreen, WarningAmbe
 }
 
 @Composable private fun ModernAssetCard(asset: AssetSummary, onClick: () -> Unit) {
-    ElevatedCmdbCard(Modifier.clickable(onClick = onClick)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(48.dp).clip(CircleShape).background(osColor(asset.osFamily).copy(alpha = .14f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Computer, null, tint = osColor(asset.osFamily), modifier = Modifier.size(25.dp))
-            }
+    val kolory = LocalCmdbColors.current
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, kolory.cardBorder),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(14.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Image(painterResource(osIkona(asset.osFamily, asset.type)), null, Modifier.padding(top = 2.dp).size(34.dp))
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(asset.hostname, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(assetStatusColor(asset)))
+                Text(asset.hostname, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOfNotNull(asset.primaryIp, asset.osFamily).joinToString(" • ").ifBlank { "Brak danych sieciowych" },
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Opiekun: ${asset.owner?.value ?: "brak"}",
+                    fontSize = 12.sp,
+                    color = if (asset.owner == null) kolory.danger else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row {
+                    Text("Ostatni kontakt: ", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(wzglednyCzas(asset.lastSeen), fontSize = 12.sp, color = kolorStanu(asset), fontWeight = FontWeight.Medium)
                 }
-                Text(listOfNotNull(asset.primaryIp, asset.osFamily).joinToString(" • "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val owner = asset.owner?.value ?: "Brak opiekuna"
-                Text(owner, style = MaterialTheme.typography.bodySmall, color = if (asset.owner == null) DangerRed else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(6.dp))
+            Box(Modifier.fillMaxHeight().width(22.dp)) {
+                Box(Modifier.align(Alignment.TopEnd).size(9.dp).clip(CircleShape).background(kolorStanu(asset)))
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    null,
+                    Modifier.align(Alignment.CenterEnd).size(22.dp),
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
 
-private fun osColor(os: String?): Color = when {
-    os?.contains("windows", true) == true -> Color(0xFF1689E8)
-    os?.contains("linux", true) == true -> Color(0xFFF0A020)
-    os?.contains("mac", true) == true -> Color(0xFF8793A1)
-    else -> BrandBlue
+@Composable private fun ModernMoreScreen(
+    state: AppState,
+    theme: String,
+    padding: PaddingValues,
+    onOpenPage: (ModernPage) -> Unit,
+    onRefresh: () -> Unit,
+    onToggleTheme: () -> Unit,
+    onChooseTenant: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    val kolory = LocalCmdbColors.current
+    LazyColumn(
+        Modifier.fillMaxSize().padding(padding),
+        contentPadding = PaddingValues(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            ElevatedCmdbCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RoundIcon(Icons.Outlined.Person, MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(13.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(state.user?.fullName ?: state.user?.email.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            listOfNotNull(state.user?.tenant?.name, state.user?.role).joinToString(" • "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            ElevatedCmdbCard(padding = 0.dp) {
+                ModernPage.entries.forEachIndexed { index, entry ->
+                    if (index > 0) HorizontalDivider(color = kolory.cardBorder)
+                    MoreRow(entry.icon, entry.label, null) { onOpenPage(entry) }
+                }
+            }
+        }
+        item {
+            ElevatedCmdbCard(padding = 0.dp) {
+                MoreRow(Icons.Outlined.Refresh, "Odśwież dane", null, onClick = onRefresh)
+                HorizontalDivider(color = kolory.cardBorder)
+                MoreRow(
+                    if (theme == "dark") Icons.Outlined.DarkMode else Icons.Outlined.LightMode,
+                    "Motyw",
+                    opisMotywu(theme),
+                    onClick = onToggleTheme,
+                )
+                if (state.tenants.size > 1) {
+                    HorizontalDivider(color = kolory.cardBorder)
+                    MoreRow(Icons.Outlined.Business, "Zmień firmę", state.user?.tenant?.name, onClick = onChooseTenant)
+                }
+                HorizontalDivider(color = kolory.cardBorder)
+                MoreRow(Icons.Outlined.Logout, "Wyloguj", null, barwa = kolory.danger, onClick = onLogout)
+            }
+        }
+    }
 }
 
-private fun assetStatusColor(asset: AssetSummary): Color = when {
-    asset.lifecycle.contains("wycof", true) || asset.lifecycle.contains("retir", true) -> DangerRed
-    asset.lastSeen.isNullOrBlank() -> WarningAmber
-    else -> SuccessGreen
+@Composable private fun MoreRow(
+    icon: ImageVector,
+    label: String,
+    value: String?,
+    barwa: Color? = null,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 15.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(22.dp), barwa ?: MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(14.dp))
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = barwa ?: MaterialTheme.colorScheme.onSurface)
+        if (value != null) Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Outlined.ChevronRight, null, Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * Kropka i kolor czasu mowia o swiezosci danych, a nie o polityce firmy.
+ * Prog "bez kontaktu" liczy serwer wedlug ustawien najemcy i pokazujemy go
+ * osobno na kafelku - te dwie liczby nie musza sie zgadzac i nie udajemy, ze sa
+ * tym samym.
+ */
+@Composable private fun kolorStanu(asset: AssetSummary): Color {
+    val kolory = LocalCmdbColors.current
+    if (asset.lifecycle.contains("wycof", true) || asset.lifecycle.contains("retir", true)) return kolory.danger
+    val minuty = minutOd(asset.lastSeen) ?: return kolory.danger
+    return when {
+        minuty < 60 -> kolory.ok
+        minuty < 24 * 60 -> kolory.warn
+        else -> kolory.danger
+    }
+}
+
+/**
+ * Ikona po rodzinie systemu, a w razie potrzeby po typie zasobu. Kolejnosc jest
+ * istotna: "Cisco IOS 15.2" to przelacznik, a nie iPhone, wiec sprzet sieciowy
+ * musi byc sprawdzony przed Apple. Z tego samego powodu nie szukamy golego
+ * "mac" ani "ios" - za latwo trafiaja w cudze nazwy.
+ */
+private fun osIkona(os: String?, typ: String?): Int {
+    val tekst = "${os.orEmpty()} ${typ.orEmpty()}".lowercase()
+    return when {
+        tekst.contains("windows") -> R.drawable.ic_os_windows
+        tekst.contains("raspberry") || tekst.contains("raspbian") -> R.drawable.ic_os_raspberry
+        tekst.contains("cisco") || tekst.contains("junos") || tekst.contains("mikrotik") ||
+            tekst.contains("routeros") || tekst.contains("switch") || tekst.contains("router") ||
+            tekst.contains("przelacznik") || tekst.contains("przełącznik") -> R.drawable.ic_os_switch
+        tekst.contains("macos") || tekst.contains("mac os") || tekst.contains("os x") ||
+            tekst.contains("osx") || tekst.contains("darwin") -> R.drawable.ic_os_apple
+        tekst.contains("linux") || tekst.contains("ubuntu") || tekst.contains("debian") ||
+            tekst.contains("centos") || tekst.contains("fedora") || tekst.contains("rhel") ||
+            tekst.contains("suse") || tekst.contains("alpine") -> R.drawable.ic_os_linux
+        else -> R.drawable.ic_os_server
+    }
+}
+
+private fun osColor(os: String?): Color = when {
+    os?.contains("windows", true) == true -> BrandBlue
+    os?.contains("linux", true) == true -> Color(0xFFF0A020)
+    os?.contains("mac", true) == true -> Color(0xFF8793A1)
+    else -> BrandCyan
 }
 
 @Composable private fun ModernAssetDetailScreen(
@@ -665,6 +1088,7 @@ private fun assetStatusColor(asset: AssetSummary): Color = when {
 ) {
     var editAssignment by remember(data.asset.id) { mutableStateOf(false) }
     var tab by rememberSaveable(data.asset.id) { mutableIntStateOf(0) }
+    val kolory = LocalCmdbColors.current
     LaunchedEffect(mutationVersion) { editAssignment = false }
     if (editAssignment) {
         ModernAssignmentEditor(data.asset, dictionaries, padding, saving, { editAssignment = false }) {
@@ -678,23 +1102,21 @@ private fun assetStatusColor(asset: AssetSummary): Color = when {
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         item {
-            Column(Modifier.fillMaxWidth().background(BrandNavy).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Column(Modifier.fillMaxWidth().background(kolory.bar).padding(horizontal = 16.dp, vertical = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusPill(if (data.asset.lastSeen.isNullOrBlank()) "Brak kontaktu" else "Online", assetStatusColor(data.asset))
+                    StatusPill(wzglednyCzas(data.asset.lastSeen), kolorStanu(data.asset))
                     Spacer(Modifier.weight(1f))
                     if (canWrite) TextButton(onClick = { editAssignment = true }) { Text("EDYTUJ", color = Color.White, fontWeight = FontWeight.Bold) }
                 }
             }
         }
         item {
-            ElevatedCmdbCard(Modifier.padding(16.dp)) {
+            ElevatedCmdbCard(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(72.dp).clip(RoundedCornerShape(14.dp)).background(osColor(data.asset.osFamily).copy(alpha = .14f)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.Computer, null, tint = osColor(data.asset.osFamily), modifier = Modifier.size(40.dp))
-                    }
+                    Image(painterResource(osIkona(data.asset.osFamily, data.asset.type)), null, Modifier.size(58.dp))
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(data.asset.hostname, style = MaterialTheme.typography.headlineMedium)
+                        Text(data.asset.hostname, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                         Text(data.asset.osFamily ?: "Nieznany system", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(data.asset.primaryIp ?: "Brak adresu IP", fontWeight = FontWeight.Medium)
                     }
@@ -717,14 +1139,15 @@ private fun assetStatusColor(asset: AssetSummary): Color = when {
 }
 
 @Composable private fun AssetOverview(data: AssetDetail) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    val kolory = LocalCmdbColors.current
+    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            DetailMetric("System", data.asset.osFamily ?: "—", Icons.Outlined.Dns, BrandBlue, Modifier.weight(1f))
-            DetailMetric("Typ", data.asset.type, Icons.Outlined.Computer, Color(0xFF8B6CE5), Modifier.weight(1f))
+            DetailMetric("System", data.asset.osFamily ?: "—", Icons.Outlined.Dns, osColor(data.asset.osFamily), Modifier.weight(1f))
+            DetailMetric("Typ", data.asset.type, Icons.Outlined.Computer, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            DetailMetric("Opiekun", data.asset.owner?.value ?: "Brak", Icons.Outlined.Person, if (data.asset.owner == null) DangerRed else SuccessGreen, Modifier.weight(1f))
-            DetailMetric("Lokalizacja", data.asset.location?.value ?: "Brak", Icons.Outlined.LocationOn, WarningAmber, Modifier.weight(1f))
+            DetailMetric("Opiekun", data.asset.owner?.value ?: "Brak", Icons.Outlined.Person, if (data.asset.owner == null) kolory.danger else kolory.ok, Modifier.weight(1f))
+            DetailMetric("Lokalizacja", data.asset.location?.value ?: "Brak", Icons.Outlined.LocationOn, kolory.warn, Modifier.weight(1f))
         }
         SectionHeading("Informacje")
         ElevatedCmdbCard {
@@ -732,7 +1155,7 @@ private fun assetStatusColor(asset: AssetSummary): Color = when {
             InfoLine("Rola", data.asset.roleLabel)
             InfoLine("Miejsce", data.asset.place)
             InfoLine("Źródło", data.asset.source)
-            InfoLine("Ostatni kontakt", data.asset.lastSeen)
+            InfoLine("Ostatni kontakt", wzglednyCzas(data.asset.lastSeen))
         }
     }
 }
@@ -747,7 +1170,7 @@ private fun assetStatusColor(asset: AssetSummary): Color = when {
 }
 
 @Composable private fun JsonSection(title: String, values: Map<String, JsonElement>) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeading(title)
         if (values.isEmpty()) EmptyState("Brak danych w tej sekcji")
         values.forEach { (key, value) ->
@@ -825,27 +1248,27 @@ private fun jsonDisplay(value: JsonElement): String = when (value) {
 @Composable private fun ModernChangesScreen(data: List<ChangeEntry>, padding: PaddingValues) {
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(14.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        item { Text("Historia zmian", style = MaterialTheme.typography.headlineMedium); Spacer(Modifier.height(14.dp)) }
         itemsIndexed(data, key = { _, item -> item.id }) { index, change -> TimelineChange(change, index != data.lastIndex) }
         if (data.isEmpty()) item { EmptyState("Brak zarejestrowanych zmian") }
     }
 }
 
 @Composable private fun TimelineChange(change: ChangeEntry, showLine: Boolean) {
+    val kolory = LocalCmdbColors.current
     val color = when (change.action.lowercase()) {
-        "created", "utworzono", "added" -> SuccessGreen
-        "deleted", "usunięto" -> DangerRed
-        else -> BrandBlue
+        "created", "utworzono", "added" -> kolory.ok
+        "deleted", "usunięto" -> kolory.danger
+        else -> MaterialTheme.colorScheme.primary
     }
     Row(Modifier.fillMaxWidth()) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(34.dp).clip(CircleShape).background(color.copy(alpha = .14f)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Outlined.History, null, tint = color, modifier = Modifier.size(18.dp))
             }
-            if (showLine) Canvas(Modifier.width(2.dp).height(94.dp)) { drawLine(color.copy(alpha = .28f), Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), strokeWidth = size.width) }
+            if (showLine) Canvas(Modifier.width(2.dp).height(94.dp)) { drawLine(color.copy(alpha = .28f), Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), strokeWidth = size.width, cap = StrokeCap.Round) }
         }
         Spacer(Modifier.width(12.dp))
         ElevatedCmdbCard(Modifier.weight(1f).padding(bottom = 12.dp)) {
@@ -856,18 +1279,23 @@ private fun jsonDisplay(value: JsonElement): String = when (value) {
                 Text("${change.oldValue ?: "—"}  →  ${change.newValue ?: "—"}", color = color, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(6.dp))
-            Text(change.occurredAt, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(wzglednyCzas(change.occurredAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-@Composable internal fun ElevatedCmdbCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun ElevatedCmdbCard(
+    modifier: Modifier = Modifier,
+    padding: androidx.compose.ui.unit.Dp = 15.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(15.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-    ) { Column(Modifier.fillMaxWidth().padding(15.dp), content = content) }
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, LocalCmdbColors.current.cardBorder),
+    ) { Column(Modifier.fillMaxWidth().padding(padding), content = content) }
 }
 
 @Composable internal fun RoundIcon(icon: ImageVector, color: Color) {
@@ -879,7 +1307,7 @@ private fun jsonDisplay(value: JsonElement): String = when (value) {
 @Composable internal fun SectionHeading(text: String) = Text(text, style = MaterialTheme.typography.titleLarge)
 
 @Composable internal fun StatusPill(text: String, color: Color) {
-    Row(Modifier.clip(RoundedCornerShape(20.dp)).background(color.copy(alpha = .17f)).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.clip(RoundedCornerShape(20.dp)).background(color.copy(alpha = .20f)).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(7.dp).clip(CircleShape).background(color)); Spacer(Modifier.width(6.dp)); Text(text, color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
 }

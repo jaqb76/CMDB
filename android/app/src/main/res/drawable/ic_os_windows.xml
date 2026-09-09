@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cztery szyby okna. Rysowane recznie, bo Material Icons nie ma logotypow
+     systemow, a to po nich uzytkownik rozpoznaje maszyne na liscie. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#2E9BF5" android:pathData="M2.6,5.5 L11.1,4.3 L11.1,11.4 L2.6,11.4 Z" />
+    <path android:fillColor="#2E9BF5" android:pathData="M12.3,4.1 L21.4,2.8 L21.4,11.4 L12.3,11.4 Z" />
+    <path android:fillColor="#2E9BF5" android:pathData="M2.6,12.6 L11.1,12.6 L11.1,19.7 L2.6,18.5 Z" />
+    <path android:fillColor="#2E9BF5" android:pathData="M12.3,12.6 L21.4,12.6 L21.4,21.2 L12.3,19.9 Z" />
+</vector>

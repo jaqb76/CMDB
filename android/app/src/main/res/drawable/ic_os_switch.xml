@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Przelacznik sieciowy: obudowa, porty i dwie diody. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#8494A6" android:pathData="M3.4,7.6 h17.2 a1.8,1.8 0 0 1 1.8,1.8 v5.2 a1.8,1.8 0 0 1 -1.8,1.8 H3.4 a1.8,1.8 0 0 1 -1.8,-1.8 V9.4 a1.8,1.8 0 0 1 1.8,-1.8 Z" />
+    <path android:fillColor="#39485A" android:pathData="M4.4,13.1 h2 v2.1 h-2 Z" />
+    <path android:fillColor="#39485A" android:pathData="M7.4,13.1 h2 v2.1 h-2 Z" />
+    <path android:fillColor="#39485A" android:pathData="M10.4,13.1 h2 v2.1 h-2 Z" />
+    <path android:fillColor="#39485A" android:pathData="M13.4,13.1 h2 v2.1 h-2 Z" />
+    <path android:fillColor="#39485A" android:pathData="M16.4,13.1 h2 v2.1 h-2 Z" />
+    <path android:fillColor="#3DD07A" android:pathData="M4.2,9.5 a0.75,0.75 0 1 0 1.5,0 a0.75,0.75 0 1 0 -1.5,0 Z" />
+    <path android:fillColor="#3DD07A" android:pathData="M6.6,9.5 a0.75,0.75 0 1 0 1.5,0 a0.75,0.75 0 1 0 -1.5,0 Z" />
+</vector>
