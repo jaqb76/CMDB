@@ -42,6 +42,7 @@ from ..models import (
     PROTOKOLY_Z_HTTP,
     PROTOKOLY_Z_TLS,
     STAN_AWARIA,
+    STAN_NIE_DOTYCZY,
     STAN_NIEZNANY,
     STAN_OK,
     STAN_OSTRZEZENIE,
@@ -186,7 +187,10 @@ def dni_do_konca(monitor: MonitorUslugi, teraz: datetime | None = None) -> int |
 def stan_certyfikatu(monitor: MonitorUslugi, teraz: datetime | None = None) -> str:
     """Ocena samego certyfikatu, niezalezna od tego, czy usluga odpowiada."""
     if monitor.protokol not in PROTOKOLY_Z_TLS:
-        return STAN_NIEZNANY
+        # Nie "nie wiem", tylko "nie ma czego oceniac". Rozroznienie jest
+        # istotne: gdy oba znaczyly to samo, sprawny cel TCP pokazywal stan
+        # "nieznany" obok dostepnosci "dziala" i nie dalo sie tego wytlumaczyc.
+        return STAN_NIE_DOTYCZY
     if monitor.weryfikuj_lancuch and monitor.cert_zaufany is False:
         return STAN_AWARIA
     dni = dni_do_konca(monitor, teraz)
@@ -503,7 +507,8 @@ def powiadom(db: Session, monitor: MonitorUslugi) -> list[str]:
     #    (sam stan by tego nie zlapal - w "ostrzezeniu" certyfikat stoi
     #    tygodniami) oraz zmiana stanu, czyli niezaufany lancuch i powrot
     #    do porzadku po odnowieniu.
-    if monitor.stan_certyfikatu != STAN_NIEZNANY:
+    # Cel bez TLS nie ma certyfikatu, wiec nie ma tez o czym powiadamiac.
+    if monitor.stan_certyfikatu not in (STAN_NIEZNANY, STAN_NIE_DOTYCZY):
         dni = dni_do_konca(monitor)
         prog = _prog_certyfikatu(monitor, dni)
         nowy_prog = prog is not None and (

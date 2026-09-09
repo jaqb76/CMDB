@@ -5,6 +5,7 @@
   {%- if stan == 'ok' -%}<span class="badge badge-ok">działa</span>
   {%- elif stan == 'ostrzezenie' -%}<span class="badge badge-warn">ostrzeżenie</span>
   {%- elif stan == 'awaria' -%}<span class="badge badge-danger">awaria</span>
+  {%- elif stan == 'nie_dotyczy' -%}<span class="muted small" title="Ten cel nie jest sprawdzany po TLS — nie ma certyfikatu do oceny">nie dotyczy</span>
   {%- else -%}<span class="badge" title="Cel nie został jeszcze sprawdzony">nieznany</span>
   {%- endif -%}
 {% endmacro %}

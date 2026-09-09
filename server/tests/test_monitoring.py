@@ -1043,3 +1043,60 @@ def test_wylaczony_cel_nie_liczy_sie_jako_osierocony(client, tenant_a):
         db.commit()
         assert monitoring.bez_wykonawcy(db.get(MonitorUslugi, monitor_id)) is None
         assert monitoring.podsumowanie(db, tenant_a["id"])["bez_wykonawcy"] == 0
+
+
+# --- "nie wiem" to nie to samo co "nie ma czego oceniac" --------------------
+
+from datetime import timedelta
+from types import SimpleNamespace
+
+from cmdb_server.models import STAN_AWARIA, STAN_NIEZNANY, STAN_OK
+
+
+def test_sprawny_cel_tcp_nie_swieci_nieznany():
+    """Cel bez TLS nie ma certyfikatu i miec go nie bedzie.
+
+    Gdy brak oceny certyfikatu znaczyl to samo co "nie wiem", dzialajacy cel
+    TCP pokazywal w panelu stan "nieznany" obok dostepnosci "dziala" - czego
+    nie dalo sie wytlumaczyc nikomu, kto na to patrzyl.
+    """
+    from cmdb_server.models import STAN_NIE_DOTYCZY
+    from cmdb_server.services.monitoring import stan_celu, stan_certyfikatu
+
+    cel = SimpleNamespace(protokol="tcp", cert_do=None, cert_zaufany=None,
+                          weryfikuj_lancuch=True, prog_ostrzezenia_dni=30,
+                          prog_alarmu_dni=7)
+    certyfikat = stan_certyfikatu(cel)
+    assert certyfikat == STAN_NIE_DOTYCZY
+    assert stan_celu(STAN_OK, certyfikat) == STAN_OK
+    # Brak sondy nadal musi byc widoczny - to JEST luka w wiedzy.
+    assert stan_celu(STAN_NIEZNANY, certyfikat) == STAN_NIEZNANY
+
+
+def test_certyfikat_nadal_psuje_stan_celu_tam_gdzie_istnieje():
+    """Poprawka nie moze uciszyc certyfikatu na celach, ktore go maja."""
+    from cmdb_server.services.monitoring import stan_celu, stan_certyfikatu
+
+    blisko = SimpleNamespace(
+        protokol="https", cert_do=utcnow() + timedelta(days=5, hours=12),
+        cert_zaufany=True, weryfikuj_lancuch=True,
+        prog_ostrzezenia_dni=30, prog_alarmu_dni=7)
+    assert stan_celu(STAN_OK, stan_certyfikatu(blisko)) == STAN_AWARIA
+
+
+def test_cel_bez_tls_nie_generuje_powiadomien_o_certyfikacie(client, tenant_a):
+    """Bez tego cel TCP zaczalby slac wiadomosci o certyfikacie, ktorego nie ma."""
+    from cmdb_server.models import STAN_NIE_DOTYCZY
+    from cmdb_server.services.monitoring import powiadom
+
+    zarejestruj_agenta(client, tenant_a)
+    with SessionLocal() as db:
+        asset_id = db.execute(select(Asset.id).where(Asset.tenant_id == tenant_a["id"])).scalar_one()
+        cel = dodaj_cel(tenant_a["id"], asset_id, nazwa="Router",
+                        protokol="tcp", port=443, powiadamiaj=True)
+        monitor = db.get(MonitorUslugi, cel)
+        monitor.stan_certyfikatu = STAN_NIE_DOTYCZY
+        monitor.stan_dostepnosci = STAN_OK
+        monitor.stan = STAN_OK
+        db.commit()
+        assert powiadom(db, monitor) == []

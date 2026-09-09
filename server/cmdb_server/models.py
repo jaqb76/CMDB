@@ -897,12 +897,22 @@ STAN_OK = "ok"
 STAN_OSTRZEZENIE = "ostrzezenie"
 STAN_AWARIA = "awaria"
 STAN_NIEZNANY = "nieznany"
-STANY_MONITORA = (STAN_OK, STAN_OSTRZEZENIE, STAN_AWARIA, STAN_NIEZNANY)
+# "Nie dotyczy" to co innego niz "nie wiem". Cel sprawdzany po TCP nie ma
+# certyfikatu i miec go nie bedzie - wiec brak oceny certyfikatu nie jest tu
+# luka w wiedzy i nie moze psuc stanu calego celu.
+STAN_NIE_DOTYCZY = "nie_dotyczy"
+STANY_MONITORA = (STAN_OK, STAN_OSTRZEZENIE, STAN_AWARIA, STAN_NIEZNANY,
+                  STAN_NIE_DOTYCZY)
 
 # Kolejnosc wagi stanow - stan celu to najgorszy ze skladowych (dostepnosc,
 # certyfikat). Dzieki temu dzialajaca usluga z certyfikatem wygasajacym za
 # tydzien nie swieci na zielono.
-WAGA_STANU = {STAN_OK: 0, STAN_NIEZNANY: 1, STAN_OSTRZEZENIE: 2, STAN_AWARIA: 3}
+# "Nie dotyczy" wazy tyle co "ok", czyli nic: przy rownej wadze max() zwraca
+# pierwszy skladnik, a pierwsza jest dostepnosc - dzialajacy cel TCP swieci
+# wiec na zielono, zamiast na zawsze zostawac "nieznany" przez certyfikat,
+# ktorego nigdy nie bedzie mial.
+WAGA_STANU = {STAN_OK: 0, STAN_NIE_DOTYCZY: 0, STAN_NIEZNANY: 1,
+              STAN_OSTRZEZENIE: 2, STAN_AWARIA: 3}
 
 # Co sprawdzamy pod adresem. TCP odpowiada na pytanie "czy port przyjmuje
 # polaczenia", TLS dodatkowo zdejmuje certyfikat - takze z uslug, ktore nie
