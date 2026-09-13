@@ -804,6 +804,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
           </div>
           <div class="head-actions">
             <button type="button" class="btn btn-ghost">Zignorowane (12)</button>
+            <button type="button" class="btn btn-ghost">Ignorowane domeny (3)</button>
           </div>
         </div>
 
@@ -820,7 +821,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
             <thead>
               <tr><th>Otrzymano</th><th>Nadawca</th><th>Temat</th><th>Domena nadawcy</th><th class="tresc-etap2">Ocena AI</th><th style="width: 320px;">Decyzja</th></tr>
             </thead>
-            <tbody>
+            <tbody id="lista-nierozpoznanych">
               <tr>
                 <td class="lp">dziś 09:58</td>
                 <td>anna.kowalska@gmail.com</td>
@@ -859,7 +860,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
                 <td>
                   <div class="rzad-akcji" style="margin: 0;">
                     <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
-                    <button type="button" class="btn btn-small btn-ghost">Zignoruj całą domenę</button>
+                    <button type="button" class="btn btn-small btn-ghost" title="Założy regułę: kolejne wiadomości z tej domeny pójdą od razu do zignorowanych. Regułę widać w tabeli poniżej.">Zignoruj całą domenę</button>
                   </div>
                 </td>
               </tr>
@@ -872,7 +873,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
                 <td>
                   <div class="rzad-akcji" style="margin: 0;">
                     <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
-                    <button type="button" class="btn btn-small btn-ghost">Zignoruj całą domenę</button>
+                    <button type="button" class="btn btn-small btn-ghost" title="Założy regułę: kolejne wiadomości z tej domeny pójdą od razu do zignorowanych. Regułę widać w tabeli poniżej.">Zignoruj całą domenę</button>
                   </div>
                 </td>
               </tr>
@@ -884,6 +885,39 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
           Wiadomość przypisana do firmy dokłada jej domenę do listy dozwolonych dopiero wtedy, gdy operator to potwierdzi — jednorazowa decyzja nie otwiera helpdesku dla całej domeny.
           Ten widok ma tylko operator: dopóki nie znamy firmy, nie ma czym mierzyć dostępu technika.
         </div>
+
+        <section class="panel panel-scroll">
+          <h2>Ignorowane domeny</h2>
+          <p class="muted small" style="max-width: 82ch; margin-bottom: 12px;">
+            Przycisk <b>„Zignoruj całą domenę”</b> zakłada regułę widoczną tutaj. Kolejne wiadomości z tej domeny omijają listę do przejrzenia
+            i od razu trafiają do zignorowanych — <b>nie są kasowane</b>, tylko przestają zajmować uwagę operatora. Licznik pokazuje, ile poczty
+            każda reguła już przechwyciła, więc pomyłkę widać i da się ją cofnąć jednym kliknięciem.
+          </p>
+          <table class="table">
+            <thead><tr><th>Domena</th><th>Reguła założona</th><th>Przez</th><th class="lp">Przechwycone</th><th>Ostatnia wiadomość</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="nr">sklep-online.pl</td><td class="lp">12 wrz</td><td>Marta Zych</td>
+                <td class="lp">14</td><td class="lp">dziś 07:12</td>
+                <td class="lp"><button type="button" class="btn btn-small btn-ghost">Pokaż</button> <button type="button" class="btn btn-small">Przywróć</button></td>
+              </tr>
+              <tr>
+                <td class="nr">mailing.hurtownia-it.pl</td><td class="lp">3 wrz</td><td>Marta Zych</td>
+                <td class="lp">26</td><td class="lp">wczoraj 06:40</td>
+                <td class="lp"><button type="button" class="btn btn-small btn-ghost">Pokaż</button> <button type="button" class="btn btn-small">Przywróć</button></td>
+              </tr>
+              <tr>
+                <td class="nr">konferencje-it.eu</td><td class="lp">28 sie</td><td>Marta Zych</td>
+                <td class="lp">3</td><td class="lp">9 wrz 11:05</td>
+                <td class="lp"><button type="button" class="btn btn-small btn-ghost">Pokaż</button> <button type="button" class="btn btn-small">Przywróć</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted small" style="margin: 12px 0 0;">
+            Przywrócenie domeny nie odzyskuje pojedynczych wiadomości — te i tak leżą w „Zignorowanych” — tylko sprawia, że kolejne
+            znów trafią na listę do przejrzenia. Reguła nigdy nie obejmie domeny należącej do firmy: taka poczta zakłada zgłoszenie.
+          </p>
+        </section>
 
         <div class="etap2">
           <span class="etap2-znacznik">Etap 2 · po podłączeniu AI</span>
@@ -1278,6 +1312,25 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
           </section>
 
           <section class="panel">
+            <h2>Przechowywanie poczty</h2>
+            <div class="pole-boczne">
+              <label for="prz-zign">Usuwaj zignorowane wiadomości</label>
+              <select id="prz-zign"><option selected>nigdy — zostają do wglądu</option><option>po 90 dniach</option><option>po 180 dniach</option><option>po roku</option></select>
+            </div>
+            <div class="pole-boczne">
+              <label for="prz-spam">Usuwaj oznaczone jako spam</label>
+              <select id="prz-spam"><option selected>nigdy — zostają do wglądu</option><option>po 30 dniach</option><option>po 90 dniach</option><option>po roku</option></select>
+            </div>
+            <p class="muted small" style="margin: 0 0 10px;">
+              Domyślnie helpdesk nie kasuje niczego. Termin ustawia się tu ręcznie i dotyczy wyłącznie poczty nierozpoznanej —
+              zgłoszeń i ich historii nie usuwa nigdy.
+            </p>
+            <p class="muted small" style="margin: 0;">
+              Wiadomości zostają też w samej skrzynce pocztowej: helpdesk ich stamtąd nie kasuje, cokolwiek tu ustawisz.
+            </p>
+          </section>
+
+          <section class="panel">
             <h2>Numery i rozpoznawanie odpowiedzi</h2>
             <div class="pole-boczne"><label for="p-temat">Znacznik w temacie</label><input id="p-temat" value="[{SKRÓT}-{numer}]"></div>
             <p class="small muted" style="margin-bottom: 10px;">Numeracja idzie <b>osobno dla każdej firmy</b>, a skrót firmy trzyma numery rozdzielone: <b>BON-123</b>, <b>KLE-88</b>, <b>LKS-14</b>. Przykład tematu: <b>Re: [BON-123] Nie działa drukarka w biurze</b></p>
@@ -1352,12 +1405,12 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
               <li>Czas pracy <b>tylko się dopisuje</b> — bez edycji i kasowania.</li>
               <li>Skrzynka jest wyłącznie helpdeskowa: poczta z domeny spoza firm — także własnej — ląduje w nierozpoznanych jako prawdopodobny spam.</li>
               <li>Domena należy do jednej firmy, ale firma może mieć kilka domen (np. po konsolidacji).</li>
+              <li>Nic nie jest kasowane automatycznie — termin usuwania zignorowanych i spamu ustawia się ręcznie, domyślnie „nigdy”.</li>
+              <li>„Zignoruj całą domenę” zakłada regułę widoczną na liście ignorowanych domen — z licznikiem przechwyconej poczty i cofnięciem.</li>
             </ul>
 
             <h2>Zostało do rozstrzygnięcia</h2>
             <ol class="small" style="padding-left: 18px; margin: 0;">
-              <li style="margin-bottom: 6px;">Jak długo trzymamy zignorowane i spam — kasować po X dniach, czy zostają na zawsze do wglądu?</li>
-              <li style="margin-bottom: 6px;">„Zignoruj całą domenę” — stała reguła (kolejne maile znikają same), czy tylko podpowiedź przy następnym mailu z tej domeny?</li>
               <li style="margin-bottom: 6px;">Skrót firmy w numerze — operator wpisuje ręcznie czy system proponuje z nazwy? Co przy zmianie firmy: nowy numer i odsyłacz ze starego (tak w makiecie)?</li>
               <li style="margin-bottom: 6px;">Czy technik może przekazać zgłoszenie komuś bez dostępu do tej firmy — i czy przekazanie ma ten dostęp nadawać?</li>
               <li style="margin-bottom: 6px;">Czy technik widzi raport „firma → technik" dla swoich firm (czyli czasy kolegów), czy tylko własny czas?</li>
@@ -1513,7 +1566,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
     });
     document.getElementById('licznik-zgloszen').textContent = String(otwarte);
     var maile = Array.prototype.filter.call(
-      document.querySelectorAll('#ekran-nierozpoznane tbody tr'), function (w) { return !w.hidden; }).length;
+      document.querySelectorAll('#lista-nierozpoznanych tr'), function (w) { return !w.hidden; }).length;
     document.getElementById('licznik-nierozpoznane').textContent = String(maile);
   }
   function ustawRole(rola) {
