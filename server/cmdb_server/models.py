@@ -1161,3 +1161,387 @@ class PrzerwaDostepnosci(Base):
         if self.koniec is None:
             return None
         return int((as_utc(self.koniec) - as_utc(self.poczatek)).total_seconds())
+
+
+# ============================================================================
+# HELPDESK
+# ============================================================================
+#
+# Zgloszenia klientow obslugiwane z jednej skrzynki pocztowej. Firma nie jest
+# tu nowym bytem - to ten sam Tenant, co w reszcie CMDB, bo technik obslugujacy
+# zgloszenia firmy ma widziec takze jej kartoteke sprzetu. Drugi rejestr firm
+# rozjechalby sie z pierwszym w tygodniu.
+
+# Statusy zgloszenia. Kolejnosc jest kolejnoscia kolumn na tablicy.
+STATUS_NOWE = "nowe"
+STATUS_W_TRAKCIE = "w_trakcie"
+STATUS_OCZEKUJE = "oczekuje"
+STATUS_ZAMKNIETE = "zamkniete"
+STATUSY_ZGLOSZENIA: dict[str, str] = {
+    STATUS_NOWE: "Nowe",
+    STATUS_W_TRAKCIE: "W trakcie",
+    STATUS_OCZEKUJE: "Oczekuje",
+    STATUS_ZAMKNIETE: "Zamkniete",
+}
+STATUSY_OTWARTE = (STATUS_NOWE, STATUS_W_TRAKCIE, STATUS_OCZEKUJE)
+
+# Typ zgloszenia jest pomocniczy i moze zostac pusty - projekt zaklada, ze
+# helpdesk ma dzialac bez kategoryzowania niczego.
+TYPY_ZGLOSZENIA: dict[str, str] = {
+    "incydent": "Incydent",
+    "prosba": "Prosba / zmiana",
+    "inne": "Inne",
+}
+
+# Rodzaje wpisow w watku. Wszystkie leza w jednej tabeli, bo zgloszenie ma byc
+# jedna chronologiczna rozmowa - trzy osobne listy trzeba by scalac przy
+# kazdym wyswietleniu i przy kazdym scalaniu mozna sie pomylic o kolejnosc.
+WPIS_OD_KLIENTA = "od_klienta"
+WPIS_DO_KLIENTA = "do_klienta"
+WPIS_WEWNETRZNY = "wewnetrzny"
+WPIS_SYSTEM = "system"
+RODZAJE_WPISOW = (WPIS_OD_KLIENTA, WPIS_DO_KLIENTA, WPIS_WEWNETRZNY, WPIS_SYSTEM)
+
+# Stan wiadomosci, ktorej nadawcy nie dalo sie przypisac do firmy.
+NIEROZPOZNANA_CZEKA = "czeka"
+NIEROZPOZNANA_ZIGNOROWANA = "zignorowana"
+NIEROZPOZNANA_PRZYPISANA = "przypisana"
+
+
+class HelpdeskUstawienia(Base):
+    """Jedna skrzynka helpdesku dla calego systemu.
+
+    Klienci wszystkich firm pisza pod jeden adres, wiec ustawien jest dokladnie
+    jeden komplet - stad sztywny klucz glowny. Tabela z jednym wierszem jest
+    brzydsza od pliku konfiguracyjnego, ale haslo skrzynki musi dac sie zmienic
+    z panelu bez restartu procesu, a plik tego nie da.
+
+    Hasla sa szyfrowane kluczem serwera (services/sekrety.py): IMAP i SMTP
+    wymagaja ich w postaci jawnej przy kazdym polaczeniu, wiec skrot nie
+    wystarczy.
+    """
+
+    __tablename__ = "helpdesk_ustawienia"
+    __table_args__ = (
+        CheckConstraint("klucz = 'helpdesk'", name="ck_helpdesk_ustawienia_jeden_wiersz"),
+    )
+
+    klucz: Mapped[str] = mapped_column(String(16), primary_key=True, default="helpdesk")
+
+    # --- odbior ---
+    imap_host: Mapped[str | None] = mapped_column(String(255))
+    imap_port: Mapped[int] = mapped_column(Integer, nullable=False, default=993)
+    imap_szyfrowanie: Mapped[str] = mapped_column(String(16), nullable=False, default="ssl")
+    imap_uzytkownik: Mapped[str | None] = mapped_column(String(255))
+    imap_haslo_szyfr: Mapped[str | None] = mapped_column(Text)
+    imap_folder: Mapped[str] = mapped_column(String(120), nullable=False, default="INBOX")
+    # Co robimy z wiadomoscia po pobraniu: "przeczytana" (domyslnie),
+    # "przenies" do folderu albo "nic". Kasowania nie ma i nie bedzie -
+    # helpdesk czyta cudza skrzynke i nie jest od sprzatania w niej.
+    imap_po_pobraniu: Mapped[str] = mapped_column(String(16), nullable=False, default="przeczytana")
+    imap_folder_docelowy: Mapped[str | None] = mapped_column(String(120))
+    imap_interwal_sekund: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
+
+    # --- wysylka ---
+    smtp_host: Mapped[str | None] = mapped_column(String(255))
+    smtp_port: Mapped[int] = mapped_column(Integer, nullable=False, default=587)
+    smtp_szyfrowanie: Mapped[str] = mapped_column(String(16), nullable=False, default="starttls")
+    smtp_uzytkownik: Mapped[str | None] = mapped_column(String(255))
+    smtp_haslo_szyfr: Mapped[str | None] = mapped_column(Text)
+    nadawca: Mapped[str | None] = mapped_column(String(320))
+    nazwa_nadawcy: Mapped[str | None] = mapped_column(String(200))
+    stopka: Mapped[str | None] = mapped_column(Text)
+
+    # --- zachowanie ---
+    potwierdzenie_wlaczone: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    potwierdzenie_tresc: Mapped[str | None] = mapped_column(Text)
+    # Puste znaczy "nie usuwaj nigdy" i taka jest wartosc domyslna: nierozpoznana
+    # poczta bywa jedynym sladem po zgubionym zgloszeniu.
+    usun_zignorowane_po_dniach: Mapped[int | None] = mapped_column(Integer)
+    usun_spam_po_dniach: Mapped[int | None] = mapped_column(Integer)
+
+    aktywne: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ostatnie_pobranie: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ostatni_blad: Mapped[str | None] = mapped_column(Text)
+    zaktualizowano: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+class HelpdeskFirma(Base):
+    """Ustawienia helpdeskowe firmy: skrot numeru i licznik zgloszen.
+
+    Numeracja idzie osobno dla kazdej firmy, wiec skrot jest czescia numeru -
+    bez niego "123" dwoch firm byloby tym samym napisem w temacie maila
+    i odpowiedz klienta trafialaby do cudzego zgloszenia.
+    """
+
+    __tablename__ = "helpdesk_firmy"
+
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    skrot: Mapped[str] = mapped_column(String(8), nullable=False, unique=True, index=True)
+    # Ostatni nadany numer. Nie liczba zgloszen: skasowanie zgloszenia nie moze
+    # spowodowac, ze nastepne dostanie numer juz uzyty w korespondencji.
+    licznik: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    aktywna: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    tenant: Mapped[Tenant] = relationship()
+
+
+class HelpdeskDomena(Base):
+    """Domena nadawcy wskazujaca firme.
+
+    Domena nalezy do jednej firmy - stad unikalnosc. Odwrotnie wolno: firma
+    moze miec ich kilka, bo po konsolidacji poczta przychodzi z dwoch adresow
+    i obie drogi maja prowadzic do tej samej numeracji.
+    """
+
+    __tablename__ = "helpdesk_domeny"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Zawsze malymi literami - porownanie domen jest bez wzgledu na wielkosc,
+    # a normalizacja przy zapisie jest tansza niz lower() w kazdym zapytaniu.
+    domena: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    dodal: Mapped[str | None] = mapped_column(String(255))
+    utworzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    tenant: Mapped[Tenant] = relationship()
+
+
+class HelpdeskDostep(Base):
+    """Technik dopuszczony do firmy.
+
+    Jeden wpis otwiera i zgloszenia firmy, i jej kartoteke w CMDB: kto obsluguje
+    zgloszenie o niedzialajacej drukarce, ten musi zobaczyc te drukarke.
+    Rozdzielenie tych dwoch praw dawaloby technika, ktory czyta zgloszenie
+    o sprzecie, ktorego nie moze otworzyc.
+    """
+
+    __tablename__ = "helpdesk_dostepy"
+    __table_args__ = (
+        UniqueConstraint("user_id", "tenant_id", name="uq_helpdesk_dostep"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nadal: Mapped[str | None] = mapped_column(String(255))
+    utworzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    user: Mapped[PortalUser] = relationship()
+    tenant: Mapped[Tenant] = relationship()
+
+
+class Zgloszenie(Base):
+    """Jedno zgloszenie klienta."""
+
+    __tablename__ = "helpdesk_zgloszenia"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "numer", name="uq_zgloszenie_numer_firmy"),
+        CheckConstraint(
+            "status IN ('nowe', 'w_trakcie', 'oczekuje', 'zamkniete')",
+            name="ck_zgloszenie_status",
+        ),
+        Index("ix_zgloszenie_firma_status", "tenant_id", "status"),
+        Index("ix_zgloszenie_aktywnosc", "ostatnia_aktywnosc"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Numer w obrebie firmy i ten sam numer w postaci, ktora idzie w temacie
+    # maila. Trzymamy oba, bo po napisie z tematu ("BON-123") szukamy przy
+    # kazdej przychodzacej odpowiedzi - rozkladanie go na czesci w zapytaniu
+    # kosztowaloby indeks.
+    numer: Mapped[int] = mapped_column(Integer, nullable=False)
+    numer_pelny: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+
+    temat: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=STATUS_NOWE)
+    typ: Mapped[str | None] = mapped_column(String(20))
+
+    zglaszajacy_email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    zglaszajacy_nazwa: Mapped[str | None] = mapped_column(String(200))
+
+    technik_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="SET NULL"), index=True
+    )
+    # Powiazanie z CMDB jest nieobowiazkowe - wiekszosc zgloszen dotyczy
+    # czlowieka i jego problemu, nie konkretnego urzadzenia.
+    asset_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="SET NULL")
+    )
+
+    utworzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    ostatnia_aktywnosc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    zamkniete_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    tenant: Mapped[Tenant] = relationship()
+    technik: Mapped[PortalUser | None] = relationship()
+    asset: Mapped["Asset | None"] = relationship()
+
+
+class WpisZgloszenia(Base):
+    """Wpis w watku: mail od klienta, odpowiedz, komentarz albo zdarzenie.
+
+    Komentarz wewnetrzny lezy w tej samej tabeli co odpowiedz do klienta, ale
+    rozni sie jednym polem - i to pole decyduje, czy tresc wyjdzie na zewnatrz.
+    Dlatego wysylka pyta o rodzaj wpisu w jednym miejscu (services/helpdesk),
+    zamiast ufac, ze kazdy widok pamieta o filtrze.
+    """
+
+    __tablename__ = "helpdesk_wpisy"
+    __table_args__ = (
+        CheckConstraint(
+            "rodzaj IN ('od_klienta', 'do_klienta', 'wewnetrzny', 'system')",
+            name="ck_wpis_rodzaj",
+        ),
+        Index("ix_wpis_zgloszenie_czas", "zgloszenie_id", "utworzono"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    zgloszenie_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("helpdesk_zgloszenia.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    rodzaj: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Autor jest technikiem (konto panelu) albo klientem (sam adres e-mail).
+    autor_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="SET NULL")
+    )
+    autor_email: Mapped[str | None] = mapped_column(String(320))
+    autor_nazwa: Mapped[str | None] = mapped_column(String(200))
+    tresc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    # Naglowki potrzebne do watkowania. Message-ID wiadomosci wychodzacych
+    # zapisujemy, bo klient odpowie na nia i przysle je w In-Reply-To.
+    message_id: Mapped[str | None] = mapped_column(String(500), index=True)
+    in_reply_to: Mapped[str | None] = mapped_column(String(500))
+
+    utworzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+    wyslano_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    blad_wysylki: Mapped[str | None] = mapped_column(Text)
+
+    zgloszenie: Mapped[Zgloszenie] = relationship()
+    autor: Mapped[PortalUser | None] = relationship()
+
+
+class CzasPracy(Base):
+    """Minuty dopisane do zgloszenia przez jednego technika.
+
+    Wpisu nie da sie zmienic ani skasowac - pomylke prostuje kolejny wpis.
+    Czas pracy trafia na faktury klientow, wiec musi byc rejestrem zdarzen,
+    a nie polem, ktore ktos poprawi przed koncem miesiaca.
+
+    tenant_id jest tu powtorzony za zgloszeniem swiadomie: raport za miesiac
+    sumuje setki tysiecy wierszy per firma i nie ma powodu, zeby robil to
+    zlaczeniem.
+    """
+
+    __tablename__ = "helpdesk_czas"
+    __table_args__ = (
+        CheckConstraint("minuty > 0", name="ck_czas_dodatni"),
+        Index("ix_czas_firma_data", "tenant_id", "utworzono"),
+        Index("ix_czas_technik_data", "technik_id", "utworzono"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    zgloszenie_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("helpdesk_zgloszenia.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    technik_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    minuty: Mapped[int] = mapped_column(Integer, nullable=False)
+    opis: Mapped[str | None] = mapped_column(String(500))
+    utworzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    zgloszenie: Mapped[Zgloszenie] = relationship()
+    technik: Mapped[PortalUser] = relationship()
+
+
+class NierozpoznanaWiadomosc(Base):
+    """Poczta, ktorej domena nadawcy nie wskazuje zadnej firmy.
+
+    Nie kasujemy jej i nie odpowiadamy na nia: skrzynka sluzy wylacznie
+    helpdeskowi, wiec obca domena to zwykle spam - ale "zwykle" nie znaczy
+    "zawsze", a skasowane zgloszenie klienta nie zostawia po sobie sladu.
+    """
+
+    __tablename__ = "helpdesk_nierozpoznane"
+    __table_args__ = (
+        CheckConstraint(
+            "stan IN ('czeka', 'zignorowana', 'przypisana')", name="ck_nierozpoznana_stan"
+        ),
+        Index("ix_nierozpoznana_stan_czas", "stan", "otrzymano"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    nadawca_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    nadawca_nazwa: Mapped[str | None] = mapped_column(String(200))
+    domena: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    temat: Mapped[str | None] = mapped_column(String(500))
+    tresc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    message_id: Mapped[str | None] = mapped_column(String(500), index=True)
+    naglowki: Mapped[dict | None] = mapped_column(JSONType)
+    otrzymano: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    stan: Mapped[str] = mapped_column(String(20), nullable=False, default=NIEROZPOZNANA_CZEKA)
+    decyzje_podjal: Mapped[str | None] = mapped_column(String(255))
+    decyzja_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    zgloszenie_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("helpdesk_zgloszenia.id", ondelete="SET NULL")
+    )
+
+    # Miejsce na ocene AI (etap 2). Puste pola nie zmieniaja niczego w dzialaniu
+    # helpdesku - lista bez ocen jest zwykla skrzynka do przejrzenia.
+    ocena_ai: Mapped[str | None] = mapped_column(String(32))
+    ocena_pewnosc: Mapped[float | None] = mapped_column(Float)
+
+
+class IgnorowanaDomena(Base):
+    """Regula: poczta z tej domeny nie trafia na liste do przejrzenia.
+
+    Regula odsuwa wiadomosci od oczu operatora, ale ich nie kasuje - leza
+    w nierozpoznanych ze stanem "zignorowana". Licznik pokazuje, ile poczty
+    regula przechwycila, zeby pomylke dalo sie zauwazyc i cofnac.
+    """
+
+    __tablename__ = "helpdesk_ignorowane_domeny"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    domena: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    zalozyl: Mapped[str | None] = mapped_column(String(255))
+    utworzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    przechwycone: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ostatnia_wiadomosc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
