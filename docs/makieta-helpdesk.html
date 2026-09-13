@@ -1,0 +1,1610 @@
+<title>Makieta Helpdesku CMDB</title>
+<style>
+/* ---------------------------------------------------------------------------
+   Makieta modulu Helpdesk. Barwy, promienie i nazwy klas sa przepisane
+   z server/cmdb_server/static/app.css, zeby modul wygladal jak reszta panelu,
+   a nie jak doklejona obca aplikacja. Klasy hd-* to jedyne nowe elementy.
+
+   W panelu motyw wybiera uzytkownik (ciasteczko -> data-theme="jasny|ciemny").
+   Makieta dziala w podgladzie artefaktu, wiec rozpoznaje light|dark.
+--------------------------------------------------------------------------- */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --border: #dcdfe4;
+  --text: #1c2024;
+  --muted: #6b7280;
+  --accent: #2f6fd0;
+  --accent-contrast: #ffffff;
+  --ok-bg: #e6f4ea;   --ok-fg: #1c6b34;
+  --warn-bg: #fdf3d8; --warn-fg: #8a6100;
+  --danger-bg: #fbe6e6; --danger-fg: #a52222;
+  --hold-bg: #ece9f7; --hold-fg: #55499a;
+  --wewn-bg: #fdf6e3; --wewn-fg: #7a5c00; --wewn-line: #d9b64a;
+  --sidebar: #102641;
+  --sidebar-text: #c1cee0;
+  --radius: 7px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171c; --surface: #1c2028; --surface-2: #232833; --border: #2e343e;
+    --text: #e6e8ec; --muted: #97a0af; --accent: #5b9bf5; --accent-contrast: #0d1117;
+    --ok-bg: #17331f; --ok-fg: #7fd39a;
+    --warn-bg: #37300f; --warn-fg: #e2c464;
+    --danger-bg: #3a1a1a; --danger-fg: #f08a8a;
+    --hold-bg: #262040; --hold-fg: #b5a8f0;
+    --wewn-bg: #2e2711; --wewn-fg: #e2c464; --wewn-line: #8a6f22;
+    --sidebar: #080f1c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171c; --surface: #1c2028; --surface-2: #232833; --border: #2e343e;
+  --text: #e6e8ec; --muted: #97a0af; --accent: #5b9bf5; --accent-contrast: #0d1117;
+  --ok-bg: #17331f; --ok-fg: #7fd39a;
+  --warn-bg: #37300f; --warn-fg: #e2c464;
+  --danger-bg: #3a1a1a; --danger-fg: #f08a8a;
+  --hold-bg: #262040; --hold-fg: #b5a8f0;
+  --wewn-bg: #2e2711; --wewn-fg: #e2c464; --wewn-line: #8a6f22;
+  --sidebar: #080f1c;
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* --- szkielet aplikacji --- */
+.app-shell { display: grid; grid-template-columns: 238px minmax(0, 1fr); min-height: 100vh; }
+.app-sidebar {
+  position: sticky; top: 0; height: 100vh; min-width: 0; display: flex; flex-direction: column;
+  overflow-y: auto; padding: 10px 8px 12px; background: var(--sidebar); color: #d8e3f2;
+}
+.sidebar-brand { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 8px; margin-bottom: 8px; }
+.sidebar-logo {
+  width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 9px;
+  background: var(--accent); color: var(--accent-contrast); font-size: 17px; font-weight: 800;
+}
+.sidebar-brand-name { color: #f5f8ff; font-size: 14px; font-weight: 700; line-height: 1.15; }
+.sidebar-brand-name span { display: block; color: #8ca0bd; font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.nav-group-label { margin: 12px 9px 2px; color: #8196b4; font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.app-nav { display: flex; flex-direction: column; gap: 1px; }
+.app-nav-link {
+  min-height: 36px; display: flex; align-items: center; gap: 11px; padding: 7px 12px; border: 0;
+  border-radius: 8px; background: none; color: var(--sidebar-text); font-size: 12px; font-weight: 500;
+  text-align: left; width: 100%; cursor: pointer;
+}
+.app-nav-link:hover { background: rgb(255 255 255 / .07); color: #fff; text-decoration: none; }
+.app-nav-link.is-active { background: var(--accent); color: var(--accent-contrast); }
+.app-nav-link.przygaszony { color: #7d8ea6; }
+.nav-icon { width: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+.nav-licznik {
+  margin-left: auto; background: rgb(255 255 255 / .16); border-radius: 999px;
+  padding: 0 7px; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.app-nav-link.is-active .nav-licznik { background: rgb(0 0 0 / .18); }
+.sidebar-bottom { margin-top: auto; padding-top: 9px; border-top: 1px solid rgb(255 255 255 / .09); }
+
+.app-workspace { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 20; min-height: 58px; display: flex; align-items: center;
+  justify-content: space-between; gap: 16px; padding: 9px 18px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-scope { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.topbar-context strong { font-size: 13px; }
+.userbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.content { padding: 20px 22px 8px; flex: 1; }
+.footer { padding: 14px 22px 28px; color: var(--muted); font-size: 12px; }
+
+/* --- elementy wspolne panelu --- */
+h1 { font-size: 22px; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 13px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+h3 { font-size: 14px; margin: 0 0 8px; }
+p { margin: 0 0 8px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.page-head p { max-width: 68ch; }
+.head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 16px;
+}
+.panel-scroll { overflow-x: auto; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; font-weight: 500; cursor: pointer;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: 7px 14px;
+}
+.btn:hover { border-color: var(--accent); text-decoration: none; }
+.btn-small { padding: 4px 10px; font-size: 13px; }
+.btn-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.btn-ghost { background: transparent; }
+.btn-wewn { background: var(--wewn-bg); color: var(--wewn-fg); border-color: var(--wewn-line); }
+
+input, select, textarea {
+  font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 7px 9px; width: 100%;
+}
+textarea { resize: vertical; }
+label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; font-weight: 600; }
+.filtry { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+.filtry > div { min-width: 150px; }
+.filtry input, .filtry select { width: auto; min-width: 150px; }
+.filtry .szukajka { min-width: 260px; }
+
+.badge {
+  display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: var(--bg); border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+}
+.badge-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: transparent; }
+.badge-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: transparent; }
+.badge-danger { background: var(--danger-bg); color: var(--danger-fg); border-color: transparent; }
+.badge-nowy { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); border-color: transparent; }
+.badge-hold { background: var(--hold-bg); color: var(--hold-fg); border-color: transparent; }
+
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+  border-bottom: 1px solid var(--border); padding: 8px 10px; font-weight: 600; white-space: nowrap;
+}
+.table td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.lp { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nr { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+
+.alert { padding: 11px 14px; border-radius: var(--radius); margin-bottom: 16px; border: 1px solid transparent; font-size: 14px; }
+.alert-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.alert-warn { background: var(--warn-bg); color: var(--warn-fg); }
+
+.kafelki { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.kafelek { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: var(--surface); }
+.kafelek-wartosc { font-size: 28px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.kafelek-opis { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+.pasek { display: inline-block; width: 120px; height: 8px; border-radius: 4px; background: var(--border); vertical-align: middle; overflow: hidden; }
+.pasek-wypelnienie { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+
+/* --- pasek makiety --- */
+.makieta-pasek {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px dashed var(--accent); border-radius: var(--radius); padding: 9px 14px; margin-bottom: 18px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent); font-size: 13px;
+}
+.makieta-pasek strong { color: var(--accent); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
+.przelacznik-etapu { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.przelacznik-etapu input { width: auto; }
+
+/* --- ekrany --- */
+.ekran { display: none; }
+.ekran.is-active { display: block; }
+
+/* --- kanban --- */
+.przelacznik-widoku { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.przelacznik-widoku button { border: 0; background: var(--surface); color: var(--muted); padding: 6px 13px; cursor: pointer; font-size: 13px; }
+.przelacznik-widoku button.is-active { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+
+.kanban { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; align-items: start; }
+.kolumna { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; min-width: 0; }
+.kolumna-glowa { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; }
+.kropka { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.kropka-nowe { background: var(--accent); }
+.kropka-trakcie { background: var(--warn-fg); }
+.kropka-oczekuje { background: var(--hold-fg); }
+.kropka-zamkniete { background: var(--ok-fg); }
+.kolumna-tytul { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.kolumna-licznik { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.kolumna-lista { display: flex; flex-direction: column; gap: 9px; }
+
+.ticket-karta {
+  display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--border); border-radius: 6px; padding: 10px 11px; cursor: pointer; color: var(--text);
+}
+.ticket-karta:hover { border-color: var(--accent); border-left-color: var(--accent); text-decoration: none; }
+.ticket-karta.pas-nowe { border-left-color: var(--accent); }
+.ticket-karta.pas-trakcie { border-left-color: var(--warn-fg); }
+.ticket-karta.pas-oczekuje { border-left-color: var(--hold-fg); }
+.ticket-karta.pas-zamkniete { border-left-color: var(--ok-fg); }
+.karta-glowa { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.karta-nr { font-family: var(--mono); font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.karta-temat { font-size: 13.5px; font-weight: 600; line-height: 1.35; margin-bottom: 7px; }
+.karta-firma { font-size: 12px; color: var(--muted); margin-bottom: 9px; }
+.karta-stopka { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+.karta-czas { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.osoba { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.inicjaly {
+  width: 21px; height: 21px; flex: none; border-radius: 999px; display: grid; place-items: center;
+  font-size: 10px; font-weight: 700; color: #fff; letter-spacing: .02em;
+}
+.in-wl { background: #2f6fd0; }
+.in-lu { background: #1c7f6b; }
+.in-ew { background: #9a4f8e; }
+.in-op { background: #b06a1e; }
+.in-brak { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
+.osoba-nazwa { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- karta zgloszenia --- */
+.ticket-uklad { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.ticket-naglowek { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.ticket-naglowek h1 { margin: 0; }
+.powrot { font-size: 13px; color: var(--muted); display: inline-block; margin-bottom: 10px; }
+
+.watek { display: flex; flex-direction: column; gap: 12px; }
+.wpis { border: 1px solid var(--border); border-radius: 6px; padding: 11px 13px; background: var(--surface); }
+.wpis-glowa { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.wpis-godzina { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 11.5px; }
+.wpis-autor { font-weight: 700; color: var(--text); font-size: 13px; }
+.wpis-tresc { font-size: 14px; }
+.wpis-tresc p:last-child { margin-bottom: 0; }
+.wpis-klient { border-left: 3px solid var(--border); }
+.wpis-wychodzacy { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+.wpis-wewnetrzny {
+  border: 1px dashed var(--wewn-line); border-left: 3px solid var(--wewn-line);
+  background: var(--wewn-bg); color: var(--wewn-fg);
+}
+.wpis-wewnetrzny .wpis-autor { color: var(--wewn-fg); }
+.znacznik-wewn {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--wewn-fg);
+  border: 1px solid var(--wewn-line); border-radius: 3px; padding: 1px 6px;
+}
+.wpis-system {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted);
+  padding: 3px 4px 3px 13px; border-left: 3px solid transparent;
+}
+.wpis-system .wpis-godzina { color: var(--muted); }
+.kierunek { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.kierunek-in { color: var(--muted); }
+.kierunek-out { color: var(--accent); }
+
+.komponuj { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.komponuj.tryb-wewnetrzny { border-color: var(--wewn-line); }
+.komponuj-zakladki { display: flex; gap: 0; border-bottom: 1px solid var(--border); }
+.komponuj-zakladki button {
+  border: 0; background: none; color: var(--muted); padding: 10px 16px; cursor: pointer;
+  border-bottom: 2px solid transparent; font-size: 13.5px; font-weight: 500;
+}
+.komponuj-zakladki button.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.komponuj.tryb-wewnetrzny .komponuj-zakladki button.is-active { color: var(--wewn-fg); border-bottom-color: var(--wewn-line); }
+.komponuj-cialo { padding: 12px 14px 14px; }
+.komponuj.tryb-wewnetrzny .komponuj-cialo { background: var(--wewn-bg); }
+.komponuj textarea { min-height: 96px; background: var(--bg); }
+.komponuj.tryb-wewnetrzny textarea { background: var(--surface); border-color: var(--wewn-line); }
+.komponuj-stopka { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.komponuj-info { font-size: 12px; color: var(--muted); flex: 1; min-width: 200px; }
+.komponuj.tryb-wewnetrzny .komponuj-info { color: var(--wewn-fg); }
+
+.kv { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 7px 12px; margin: 0; font-size: 13.5px; }
+.kv dt { color: var(--muted); font-size: 12.5px; }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.pole-boczne { margin-bottom: 12px; }
+.pole-boczne:last-child { margin-bottom: 0; }
+.rzad-akcji { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+
+.czas-suma { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.czas-suma-wartosc { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.czas-rozbicie { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.czas-rozbicie li { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; font-size: 13px; }
+.czas-rozbicie .pasek { width: 100%; grid-column: 1 / -1; }
+.czas-wartosc { font-variant-numeric: tabular-nums; font-weight: 600; }
+.czas-wpisy { list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 5px; }
+.czas-wpisy li { display: flex; gap: 8px; }
+.czas-wpisy .czas-min { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); white-space: nowrap; }
+.dodaj-czas { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; align-items: end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+.historia { list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+.historia .wpis-godzina { color: var(--muted); margin-right: 6px; }
+
+/* --- etap 2 (AI) --- */
+.etap2 { border: 1px dashed var(--hold-fg); border-radius: var(--radius); background: color-mix(in srgb, var(--hold-fg) 7%, transparent); padding: 13px 15px; }
+.etap2-znacznik {
+  display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--hold-fg); border: 1px solid var(--hold-fg); border-radius: 3px; padding: 1px 6px; margin-bottom: 8px;
+}
+.etap2-lista { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.etap2-kafel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 11px 12px; font-size: 13px; }
+.etap2-kafel h4 { margin: 0 0 5px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.pewnosc { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+
+/* --- droga wiadomosci --- */
+.tor { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.tor-drugi { margin-top: 10px; }
+.krok {
+  flex: 1 1 170px; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; background: var(--bg); font-size: 13px;
+}
+.krok b { overflow-wrap: anywhere; }
+.krok-etykieta { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.krok-wynik { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.krok-czeka { border-color: var(--warn-fg); background: var(--warn-bg); }
+.krok-czeka b, .krok-czeka .muted { color: var(--warn-fg); }
+.strzalka { align-self: center; color: var(--muted); font-size: 15px; flex: none; }
+@media (max-width: 780px) { .strzalka { display: none; } }
+
+/* --- domeny --- */
+.domeny { display: flex; flex-wrap: wrap; gap: 5px; }
+.domena { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; font-size: 12.5px; font-family: var(--mono); }
+.domena button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+.domena-dodaj { border-style: dashed; color: var(--accent); cursor: pointer; background: none; font-family: var(--font); }
+
+/* --- raporty: rozwijane wiersze --- */
+.drill { border-bottom: 1px solid var(--border); }
+.drill > summary { display: flex; align-items: center; gap: 10px; padding: 10px 6px; cursor: pointer; list-style: none; font-size: 14px; }
+.drill > summary::-webkit-details-marker { display: none; }
+.drill > summary::before { content: "▸"; color: var(--muted); font-size: 11px; width: 12px; flex: none; }
+.drill[open] > summary::before { content: "▾"; }
+.drill > summary:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.drill-suma { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.drill-cialo { padding: 0 6px 12px 28px; }
+.drill .table { font-size: 13px; }
+
+/* --- komunikat makiety --- */
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px;
+  font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / .25); z-index: 60;
+}
+.toast[hidden] { display: none; }
+
+/* --- zwezenie --- */
+@media (max-width: 1180px) { .kanban { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1050px) { .ticket-uklad { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .app-shell { display: block; }
+  .app-sidebar { position: static; height: auto; }
+  .app-nav, .sidebar-bottom { flex-direction: row; overflow-x: auto; gap: 4px; }
+  .app-nav-link { width: auto; white-space: nowrap; }
+  .nav-group-label { display: none; }
+  .sidebar-bottom { border-top: 0; }
+  .content { padding: 16px 14px 8px; }
+}
+@media (max-width: 700px) {
+  .kanban { grid-template-columns: 1fr; }
+  .dodaj-czas { grid-template-columns: 1fr; }
+  .kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .kv dd { margin-bottom: 6px; }
+}
+</style>
+
+<div class="app-shell">
+  <aside class="app-sidebar">
+    <div class="sidebar-brand">
+      <span class="sidebar-logo">C</span>
+      <span class="sidebar-brand-name">CMDB Portal<span>Helpdesk</span></span>
+    </div>
+
+    <div class="nav-group-label">Helpdesk</div>
+    <nav class="app-nav">
+      <button type="button" class="app-nav-link is-active" data-ekran="kanban"><span class="nav-icon">▤</span>Zgłoszenia<span class="nav-licznik" id="licznik-zgloszen">7</span></button>
+      <button type="button" class="app-nav-link" data-ekran="ticket"><span class="nav-icon">✉</span>Karta zgłoszenia</button>
+      <button type="button" class="app-nav-link" data-ekran="nierozpoznane" data-tylko-operator><span class="nav-icon">◐</span>Nierozpoznane<span class="nav-licznik" id="licznik-nierozpoznane">4</span></button>
+      <button type="button" class="app-nav-link" data-ekran="firmy" data-tylko-operator><span class="nav-icon">☷</span>Firmy i dostępy</button>
+    </nav>
+
+    <div class="nav-group-label">Czas i raporty</div>
+    <nav class="app-nav">
+      <button type="button" class="app-nav-link" data-ekran="raport-firma"><span class="nav-icon">▦</span>Firma → technik</button>
+      <button type="button" class="app-nav-link" data-ekran="raport-technik"><span class="nav-icon">◔</span>Technik → firmy</button>
+    </nav>
+
+    <div class="nav-group-label">Konfiguracja</div>
+    <nav class="app-nav">
+      <button type="button" class="app-nav-link" data-ekran="skrzynka" data-tylko-operator><span class="nav-icon">⚙</span>Skrzynka helpdesku</button>
+      <button type="button" class="app-nav-link" data-ekran="zakres"><span class="nav-icon">✓</span>Zakres makiety</button>
+    </nav>
+
+    <nav class="app-nav sidebar-bottom">
+      <span class="app-nav-link przygaszony"><span class="nav-icon">▣</span>Zasoby (CMDB)</span>
+      <span class="app-nav-link przygaszony"><span class="nav-icon">◉</span>Monitorowanie usług</span>
+    </nav>
+  </aside>
+
+  <div class="app-workspace">
+    <header class="topbar">
+      <div class="topbar-context">
+        <span class="topbar-scope" id="pasek-rola">Helpdesk · operator</span>
+        <strong id="pasek-zakres">Wszystkie firmy klienckie</strong>
+      </div>
+      <div class="userbox">
+        <button type="button" class="btn btn-small" id="motyw">motyw</button>
+        <span id="pasek-konto">operator@mojadomena.pl</span>
+        <button type="button" class="btn btn-small btn-ghost">Wyloguj</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="makieta-pasek">
+        <strong>Makieta</strong>
+        <span>Sam wygląd, bez działającego serwera. Dane są przykładowe. Klikalne: menu, karty zgłoszeń, przełącznik odpowiedzi, dodawanie czasu, rozwijanie raportów.</span>
+        <label class="przelacznik-etapu" for="rola">Podgląd jako
+          <select id="rola" style="width: auto; padding: 3px 7px; font-size: 12.5px;">
+            <option value="operator" selected>operator — wszystkie firmy</option>
+            <option value="technik">technik Ewa Kruk — Bongo, ŁKS</option>
+          </select>
+        </label>
+        <label class="przelacznik-etapu" for="etap2" style="margin-left: 0;"><input type="checkbox" id="etap2" checked> etap 2 (AI)</label>
+      </div>
+
+      <!-- ================= EKRAN: KANBAN / LISTA ================= -->
+      <section class="ekran is-active" id="ekran-kanban">
+        <div class="page-head">
+          <div>
+            <h1>Zgłoszenia</h1>
+            <p class="muted">Wszystko, co przyszło na <b>helpdesk@mojadomena.pl</b>. Domena nadawcy wskazuje firmę, firma nadaje numer: <span class="nr">BON-123</span>, <span class="nr">KLE-88</span>, <span class="nr">LKS-14</span>. Poczta z nieznanej domeny czeka w „Nierozpoznanych”.</p>
+          </div>
+          <div class="head-actions">
+            <div class="przelacznik-widoku">
+              <button type="button" class="is-active" data-widok="kanban">Kanban</button>
+              <button type="button" data-widok="lista">Lista</button>
+            </div>
+            <button type="button" class="btn">Nowe zgłoszenie</button>
+          </div>
+        </div>
+
+        <div class="filtry">
+          <div class="szukajka">
+            <label for="szukaj">Szukaj</label>
+            <input id="szukaj" class="szukajka" type="search" placeholder="numer, temat, firma, adres e-mail" value="">
+          </div>
+          <div>
+            <label for="f-firma">Firma</label>
+            <select id="f-firma"><option>wszystkie</option><option>Bongo</option><option>Klepsydra</option><option>ŁKS</option><option>Gloria</option></select>
+          </div>
+          <div>
+            <label for="f-technik">Technik</label>
+            <select id="f-technik"><option>wszyscy</option><option>Władek Nowak</option><option>Łukasz Mazur</option><option>Ewa Kruk</option><option>nieprzypisane</option></select>
+          </div>
+          <div>
+            <label for="f-status">Status</label>
+            <select id="f-status"><option>wszystkie</option><option>Nowe</option><option>W trakcie</option><option>Oczekuje</option><option>Zamknięte</option></select>
+          </div>
+          <div>
+            <label for="f-okres">Okres</label>
+            <select id="f-okres"><option>wrzesień 2026</option><option>ostatnie 7 dni</option><option>sierpień 2026</option><option>zakres własny…</option></select>
+          </div>
+        </div>
+
+        <div id="widok-kanban">
+          <div class="kanban">
+            <div class="kolumna">
+              <div class="kolumna-glowa"><span class="kropka kropka-nowe"></span><span class="kolumna-tytul">Nowe</span><span class="kolumna-licznik">2</span></div>
+              <div class="kolumna-lista">
+                <button type="button" class="ticket-karta pas-nowe" data-otworz data-firma="Klepsydra">
+                  <div class="karta-glowa"><span class="karta-nr">KLE-88</span><span class="badge badge-nowy">Nowe</span></div>
+                  <div class="karta-temat">Outlook prosi o hasło co kilka minut</div>
+                  <div class="karta-firma">Klepsydra · anna@klepsydra.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-brak">?</span><span class="osoba-nazwa">nieprzypisany</span></span>
+                    <span class="karta-czas">10:12</span>
+                  </div>
+                </button>
+                <button type="button" class="ticket-karta pas-nowe" data-otworz data-firma="Bongo">
+                  <div class="karta-glowa"><span class="karta-nr">BON-127</span><span class="badge badge-nowy">Nowe</span><span class="badge">Prośba</span></div>
+                  <div class="karta-temat">Nowy pracownik — konto i laptop od poniedziałku</div>
+                  <div class="karta-firma">Bongo · kadry@bongo.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-brak">?</span><span class="osoba-nazwa">nieprzypisany</span></span>
+                    <span class="karta-czas">08:41</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div class="kolumna">
+              <div class="kolumna-glowa"><span class="kropka kropka-trakcie"></span><span class="kolumna-tytul">W trakcie</span><span class="kolumna-licznik">3</span></div>
+              <div class="kolumna-lista">
+                <button type="button" class="ticket-karta pas-trakcie" data-otworz data-firma="Bongo">
+                  <div class="karta-glowa"><span class="karta-nr">BON-123</span><span class="badge badge-warn">W trakcie</span><span class="badge">Incydent</span></div>
+                  <div class="karta-temat">Nie działa drukarka w biurze</div>
+                  <div class="karta-firma">Bongo · jan@bongo.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-lu">ŁM</span><span class="osoba-nazwa">Łukasz</span></span>
+                    <span class="karta-czas">1 h 35 min · 10:35</span>
+                  </div>
+                </button>
+                <button type="button" class="ticket-karta pas-trakcie" data-otworz data-firma="Klepsydra">
+                  <div class="karta-glowa"><span class="karta-nr">KLE-86</span><span class="badge badge-warn">W trakcie</span></div>
+                  <div class="karta-temat">Brak dostępu do dysku sieciowego</div>
+                  <div class="karta-firma">Klepsydra · biuro@klepsydra.com.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-lu">ŁM</span><span class="osoba-nazwa">Łukasz</span></span>
+                    <span class="karta-czas">45 min · 09:58</span>
+                  </div>
+                </button>
+                <button type="button" class="ticket-karta pas-trakcie" data-otworz data-firma="ŁKS">
+                  <div class="karta-glowa"><span class="karta-nr">LKS-14</span><span class="badge badge-warn">W trakcie</span></div>
+                  <div class="karta-temat">Skaner nie wysyła plików na maila</div>
+                  <div class="karta-firma">ŁKS · sekretariat@lks.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-ew">EK</span><span class="osoba-nazwa">Ewa</span></span>
+                    <span class="karta-czas">25 min · wczoraj</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div class="kolumna">
+              <div class="kolumna-glowa"><span class="kropka kropka-oczekuje"></span><span class="kolumna-tytul">Oczekuje</span><span class="kolumna-licznik">2</span></div>
+              <div class="kolumna-lista">
+                <button type="button" class="ticket-karta pas-oczekuje" data-otworz data-firma="ŁKS">
+                  <div class="karta-glowa"><span class="karta-nr">LKS-13</span><span class="badge badge-hold">Oczekuje</span></div>
+                  <div class="karta-temat">Wymiana tonera — czekamy na dostawę</div>
+                  <div class="karta-firma">ŁKS · biuro@lks.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-wl">WN</span><span class="osoba-nazwa">Władek</span></span>
+                    <span class="karta-czas">20 min · wczoraj</span>
+                  </div>
+                </button>
+                <button type="button" class="ticket-karta pas-oczekuje" data-otworz data-firma="Gloria">
+                  <div class="karta-glowa"><span class="karta-nr">GLO-3</span><span class="badge badge-hold">Oczekuje</span><span class="badge">Incydent</span></div>
+                  <div class="karta-temat">VPN zrywa połączenie po kilku minutach</div>
+                  <div class="karta-firma">Gloria · prezes@bongo.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-lu">ŁM</span><span class="osoba-nazwa">Łukasz</span></span>
+                    <span class="karta-czas">1 h 05 min · wczoraj</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div class="kolumna">
+              <div class="kolumna-glowa"><span class="kropka kropka-zamkniete"></span><span class="kolumna-tytul">Zamknięte</span><span class="kolumna-licznik">7</span></div>
+              <div class="kolumna-lista">
+                <button type="button" class="ticket-karta pas-zamkniete" data-otworz data-firma="Bongo">
+                  <div class="karta-glowa"><span class="karta-nr">BON-120</span><span class="badge badge-ok">Zamknięte</span></div>
+                  <div class="karta-temat">Wolno działa komputer księgowej</div>
+                  <div class="karta-firma">Bongo · ksiegowosc@bongo.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-wl">WN</span><span class="osoba-nazwa">Władek</span></span>
+                    <span class="karta-czas">2 h 10 min · 5 wrz</span>
+                  </div>
+                </button>
+                <button type="button" class="ticket-karta pas-zamkniete" data-otworz data-firma="Klepsydra">
+                  <div class="karta-glowa"><span class="karta-nr">KLE-84</span><span class="badge badge-ok">Zamknięte</span></div>
+                  <div class="karta-temat">Konfiguracja drukarki sieciowej</div>
+                  <div class="karta-firma">Klepsydra · it@klepsydra.pl</div>
+                  <div class="karta-stopka">
+                    <span class="osoba"><span class="inicjaly in-lu">ŁM</span><span class="osoba-nazwa">Łukasz</span></span>
+                    <span class="karta-czas">40 min · 4 wrz</span>
+                  </div>
+                </button>
+                <p class="muted small" style="margin: 4px 2px 0;">+ starsze zgłoszenia</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="widok-lista" hidden>
+          <section class="panel panel-scroll">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Numer</th><th>Temat</th><th>Firma</th><th>Technik</th><th>Status</th>
+                  <th class="lp">Czas pracy</th><th>Ostatnia aktywność</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-firma="Klepsydra"><td class="nr"><a href="#" data-otworz>KLE-88</a></td><td>Outlook prosi o hasło co kilka minut</td><td>Klepsydra</td><td><span class="osoba"><span class="inicjaly in-brak">?</span>nieprzypisany</span></td><td><span class="badge badge-nowy">Nowe</span></td><td class="lp">—</td><td>dziś 10:12</td></tr>
+                <tr data-firma="Bongo"><td class="nr"><a href="#" data-otworz>BON-127</a></td><td>Nowy pracownik — konto i laptop od poniedziałku</td><td>Bongo</td><td><span class="osoba"><span class="inicjaly in-brak">?</span>nieprzypisany</span></td><td><span class="badge badge-nowy">Nowe</span></td><td class="lp">—</td><td>dziś 08:41</td></tr>
+                <tr data-firma="Bongo"><td class="nr"><a href="#" data-otworz>BON-123</a></td><td>Nie działa drukarka w biurze</td><td>Bongo</td><td><span class="osoba"><span class="inicjaly in-lu">ŁM</span>Łukasz Mazur</span></td><td><span class="badge badge-warn">W trakcie</span></td><td class="lp">1 h 35 min</td><td>dziś 10:35</td></tr>
+                <tr data-firma="Klepsydra"><td class="nr"><a href="#" data-otworz>KLE-86</a></td><td>Brak dostępu do dysku sieciowego</td><td>Klepsydra</td><td><span class="osoba"><span class="inicjaly in-lu">ŁM</span>Łukasz Mazur</span></td><td><span class="badge badge-warn">W trakcie</span></td><td class="lp">45 min</td><td>dziś 09:58</td></tr>
+                <tr data-firma="ŁKS"><td class="nr"><a href="#" data-otworz>LKS-14</a></td><td>Skaner nie wysyła plików na maila</td><td>ŁKS</td><td><span class="osoba"><span class="inicjaly in-ew">EK</span>Ewa Kruk</span></td><td><span class="badge badge-warn">W trakcie</span></td><td class="lp">25 min</td><td>wczoraj 16:40</td></tr>
+                <tr data-firma="ŁKS"><td class="nr"><a href="#" data-otworz>LKS-13</a></td><td>Wymiana tonera — czekamy na dostawę</td><td>ŁKS</td><td><span class="osoba"><span class="inicjaly in-wl">WN</span>Władek Nowak</span></td><td><span class="badge badge-hold">Oczekuje</span></td><td class="lp">20 min</td><td>wczoraj 15:05</td></tr>
+                <tr data-firma="Gloria"><td class="nr"><a href="#" data-otworz>GLO-3</a></td><td>VPN zrywa połączenie po kilku minutach</td><td>Gloria</td><td><span class="osoba"><span class="inicjaly in-lu">ŁM</span>Łukasz Mazur</span></td><td><span class="badge badge-hold">Oczekuje</span></td><td class="lp">1 h 05 min</td><td>wczoraj 12:22</td></tr>
+                <tr data-firma="Bongo"><td class="nr"><a href="#" data-otworz>BON-120</a></td><td>Wolno działa komputer księgowej</td><td>Bongo</td><td><span class="osoba"><span class="inicjaly in-wl">WN</span>Władek Nowak</span></td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">2 h 10 min</td><td>5 wrz 11:30</td></tr>
+                <tr data-firma="Klepsydra"><td class="nr"><a href="#" data-otworz>KLE-84</a></td><td>Konfiguracja drukarki sieciowej</td><td>Klepsydra</td><td><span class="osoba"><span class="inicjaly in-lu">ŁM</span>Łukasz Mazur</span></td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">40 min</td><td>4 wrz 09:15</td></tr>
+              </tbody>
+            </table>
+          </section>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: KARTA ZGŁOSZENIA ================= -->
+      <section class="ekran" id="ekran-ticket">
+        <a href="#" class="powrot" data-ekran-link="kanban">← Wróć do zgłoszeń</a>
+        <div class="ticket-naglowek">
+          <h1><span class="nr" style="font-size: 20px;">BON-123</span> Nie działa drukarka w biurze</h1>
+          <span class="badge badge-warn" id="odznaka-status">W trakcie</span>
+          <span class="badge">Incydent</span>
+        </div>
+        <p class="muted small" style="margin-bottom: 16px;">Bongo · zgłosił <a href="#">jan@bongo.pl</a> · utworzone z wiadomości e-mail dziś 09:10</p>
+
+        <div class="ticket-uklad">
+          <div>
+            <section class="panel">
+              <h2>Historia zgłoszenia</h2>
+              <div class="watek" id="watek">
+                <div class="wpis wpis-klient">
+                  <div class="wpis-glowa"><span class="wpis-godzina">09:10</span><span class="wpis-autor">Jan Kowalski</span><span class="kierunek kierunek-in">e-mail od klienta</span><span>jan@bongo.pl</span></div>
+                  <div class="wpis-tresc"><p>Dzień dobry, od rana nie działa drukarka w biurze na parterze. Nikt nie może nic wydrukować. Proszę o pomoc.</p></div>
+                </div>
+
+                <div class="wpis-system"><span class="wpis-godzina">09:11</span><span>Wiadomość na <b>helpdesk@mojadomena.pl</b> · domena nadawcy <b>bongo.pl</b> → firma <b>Bongo</b> · numer <b>BON-123</b></span></div>
+
+                <div class="wpis wpis-wychodzacy">
+                  <div class="wpis-glowa"><span class="wpis-godzina">09:11</span><span class="wpis-autor">Helpdesk</span><span class="kierunek kierunek-out">potwierdzenie automatyczne</span><span>z helpdesk@mojadomena.pl</span></div>
+                  <div class="wpis-tresc"><p>Dzień dobry, przyjęliśmy zgłoszenie <b>BON-123</b> — „Nie działa drukarka w biurze”. Odpowiadając na tego maila, dopisze Pan wiadomość do tego samego zgłoszenia.</p></div>
+                </div>
+
+                <div class="wpis-system"><span class="wpis-godzina">09:12</span><span>Zgłoszenie przypisane do <b>Władka Nowaka</b></span></div>
+
+                <div class="wpis wpis-wewnetrzny">
+                  <div class="wpis-glowa"><span class="wpis-godzina">09:15</span><span class="wpis-autor">Władek Nowak</span><span class="znacznik-wewn">Tylko dla techników</span></div>
+                  <div class="wpis-tresc"><p>Sprawdzę sterownik — u nich to zwykle kolejka wydruku po aktualizacji.</p></div>
+                </div>
+
+                <div class="wpis wpis-wychodzacy">
+                  <div class="wpis-glowa"><span class="wpis-godzina">09:30</span><span class="wpis-autor">Władek Nowak</span><span class="kierunek kierunek-out">odpowiedź do klienta</span><span>wysłane na jan@bongo.pl</span></div>
+                  <div class="wpis-tresc"><p>Dzień dobry, proszę zrestartować drukarkę przyciskiem z tyłu obudowy i spróbować wydrukować ponownie. Proszę dać znać, czy pomogło.</p></div>
+                </div>
+
+                <div class="wpis wpis-klient">
+                  <div class="wpis-glowa"><span class="wpis-godzina">09:42</span><span class="wpis-autor">Jan Kowalski</span><span class="kierunek kierunek-in">odpowiedź na maila</span><span>Re: [BON-123] Nie działa drukarka w biurze</span></div>
+                  <div class="wpis-tresc"><p>Po restarcie nadal nie działa. Drukarka świeci na zielono, ale nic nie wychodzi.</p></div>
+                </div>
+
+                <div class="wpis-system"><span class="wpis-godzina">09:50</span><span>Władek Nowak dodał <b>30 min</b> — „Diagnostyka drukarki”</span></div>
+
+                <div class="wpis wpis-wewnetrzny">
+                  <div class="wpis-glowa"><span class="wpis-godzina">10:05</span><span class="wpis-autor">Łukasz Mazur</span><span class="znacznik-wewn">Tylko dla techników</span></div>
+                  <div class="wpis-tresc"><p>Wygląda na problem sieciowy — drukarka ma adres z innej podsieci niż komputery w biurze. Wezmę to na siebie.</p></div>
+                </div>
+
+                <div class="wpis-system"><span class="wpis-godzina">10:35</span><span>Władek Nowak przekazał zgłoszenie <b>Łukaszowi Mazurowi</b></span></div>
+              </div>
+            </section>
+
+            <section class="komponuj" id="komponuj">
+              <div class="komponuj-zakladki">
+                <button type="button" class="is-active" data-tryb="klient">Odpowiedź do klienta</button>
+                <button type="button" data-tryb="wewnetrzny">Komentarz wewnętrzny</button>
+              </div>
+              <div class="komponuj-cialo">
+                <label for="tresc" id="etykieta-tresci">Wiadomość — wyjdzie do klienta</label>
+                <textarea id="tresc" placeholder="Napisz wiadomość…"></textarea>
+                <div class="komponuj-stopka">
+                  <span class="komponuj-info" id="info-komponuj">Wyjdzie z <b>helpdesk@mojadomena.pl</b> na <b>jan@bongo.pl</b>, temat <b>Re: [BON-123] Nie działa drukarka w biurze</b>. Odpowiedź klienta wróci do tego zgłoszenia.</span>
+                  <button type="button" class="btn btn-primary" id="przycisk-wyslij">Wyślij do klienta</button>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside>
+            <section class="panel">
+              <h2>Zgłoszenie</h2>
+              <div class="pole-boczne">
+                <label for="p-status">Status</label>
+                <select id="p-status"><option>Nowe</option><option selected>W trakcie</option><option>Oczekuje</option><option>Zamknięte</option></select>
+              </div>
+              <div class="pole-boczne">
+                <label for="p-technik">Przypisany technik</label>
+                <select id="p-technik"><option>nieprzypisany</option><option>Władek Nowak</option><option selected>Łukasz Mazur</option><option>Ewa Kruk</option></select>
+                <div class="rzad-akcji">
+                  <button type="button" class="btn btn-small" id="do-mnie">Przypisz do mnie</button>
+                  <button type="button" class="btn btn-small btn-ghost">Przekaż…</button>
+                </div>
+              </div>
+              <div class="pole-boczne">
+                <label for="p-typ">Typ zgłoszenia</label>
+                <select id="p-typ"><option selected>Incydent</option><option>Prośba / zmiana</option><option>Inne</option></select>
+              </div>
+              <dl class="kv" style="margin-top: 14px;">
+                <dt>Firma</dt><dd>Bongo <a href="#" class="small">zmień</a></dd>
+                <dt>Zgłaszający</dt><dd>jan@bongo.pl</dd>
+                <dt>Utworzone</dt><dd>dziś 09:10</dd>
+                <dt>Aktywność</dt><dd>dziś 10:35</dd>
+              </dl>
+            </section>
+
+            <section class="panel">
+              <h2>Czas pracy</h2>
+              <div class="czas-suma">
+                <span class="czas-suma-wartosc" id="czas-suma">1 h 35 min</span>
+                <span class="muted small">łącznie, <span id="czas-osob">2</span> techników</span>
+              </div>
+              <ul class="czas-rozbicie" id="czas-rozbicie">
+                <li data-technik="Władek Nowak" data-minuty="50">
+                  <span class="osoba"><span class="inicjaly in-wl">WN</span>Władek Nowak</span>
+                  <span class="czas-wartosc">50 min</span>
+                  <span class="pasek"><span class="pasek-wypelnienie" style="width: 53%;"></span></span>
+                </li>
+                <li data-technik="Łukasz Mazur" data-minuty="45">
+                  <span class="osoba"><span class="inicjaly in-lu">ŁM</span>Łukasz Mazur</span>
+                  <span class="czas-wartosc">45 min</span>
+                  <span class="pasek"><span class="pasek-wypelnienie" style="width: 47%;"></span></span>
+                </li>
+              </ul>
+              <ul class="czas-wpisy" id="czas-wpisy">
+                <li><span class="czas-min">30 min</span><span>Władek · 09:50 · Diagnostyka drukarki</span></li>
+                <li><span class="czas-min">45 min</span><span>Łukasz · 10:30 · Sprawdzenie sieci w biurze</span></li>
+                <li><span class="czas-min">20 min</span><span>Władek · 10:34 · Wymiana sterownika</span></li>
+              </ul>
+              <div class="dodaj-czas">
+                <div>
+                  <label for="c-ile">Czas</label>
+                  <input id="c-ile" type="text" placeholder="30 min" inputmode="numeric">
+                </div>
+                <div>
+                  <label for="c-opis">Opis (opcjonalnie)</label>
+                  <input id="c-opis" type="text" placeholder="Diagnostyka VPN">
+                </div>
+                <button type="button" class="btn" id="dodaj-czas" style="grid-column: 1 / -1; justify-self: start;">Dodaj czas</button>
+              </div>
+              <p class="muted small" style="margin: 10px 0 0;">Wpisu nie da się zmienić ani usunąć — widnieje z autorem i godziną. Pomyłkę prostuje się kolejnym wpisem. Timer start/stop dopiero w etapie 2.</p>
+            </section>
+
+            <section class="panel">
+              <h2>Powiązany zasób CMDB</h2>
+              <p class="small" style="margin-bottom: 8px;"><a href="#">LAPTOP-023</a> <span class="muted">· Bongo · Dell Latitude 5540</span></p>
+              <button type="button" class="btn btn-small btn-ghost">Powiąż kolejny zasób</button>
+              <p class="muted small" style="margin: 10px 0 0;">Nieobowiązkowe. Podpowiadane są tylko zasoby firmy Bongo — technik z dostępem do tej firmy wchodzi z zgłoszenia prosto w jej kartotekę CMDB.</p>
+            </section>
+
+            <section class="panel">
+              <h2>Historia zmian</h2>
+              <ul class="historia">
+                <li><span class="wpis-godzina">09:12</span>zgłoszenie utworzone z e-maila</li>
+                <li><span class="wpis-godzina">09:12</span>przypisane do Władka Nowaka</li>
+                <li><span class="wpis-godzina">09:14</span>status: Nowe → W trakcie (Władek)</li>
+                <li><span class="wpis-godzina">10:35</span>Władek przekazał zgłoszenie Łukaszowi</li>
+              </ul>
+            </section>
+          </aside>
+        </div>
+
+        <section class="etap2 tresc-etap2" style="margin-top: 4px;">
+          <span class="etap2-znacznik">Etap 2 · po podłączeniu AI</span>
+          <p class="small" style="max-width: 70ch;">Tak wyglądałyby podpowiedzi AI w karcie zgłoszenia. Każda jest <b>propozycją do zatwierdzenia</b> — helpdesk działa bez nich, a technik zawsze widzi, co AI chce zmienić.</p>
+          <div class="etap2-lista">
+            <div class="etap2-kafel">
+              <h4>Firma z treści wiadomości</h4>
+              <p style="margin-bottom: 6px;">Zgłoszenie <b>BON-129</b> od <b>prezes@bongo.pl</b>: „W Gloria nie działa dziś Internet w biurze…”</p>
+              <p style="margin-bottom: 6px;">Sugerowana zmiana firmy: <b>Bongo → Gloria</b> <span class="pewnosc">(pewność 0,86)</span></p>
+              <p class="muted small" style="margin-bottom: 8px;">Numery są liczone per firma, więc zgłoszenie dostanie numer <b>GLO-4</b>; <b>BON-129</b> zostanie jako odsyłacz, żeby stary temat maila nadal trafiał tutaj.</p>
+              <button type="button" class="btn btn-small">Zmień na Gloria</button>
+              <button type="button" class="btn btn-small btn-ghost">Zostaw Bongo</button>
+            </div>
+            <div class="etap2-kafel">
+              <h4>Sugerowany technik</h4>
+              <p style="margin-bottom: 8px;"><b>Łukasz Mazur</b> — obsłużył 7 zgłoszeń sieciowych w Bongo <span class="pewnosc">(0,71)</span></p>
+              <button type="button" class="btn btn-small">Przypisz</button>
+              <button type="button" class="btn btn-small btn-ghost">Odrzuć</button>
+            </div>
+            <div class="etap2-kafel">
+              <h4>Streszczenie wątku</h4>
+              <p>Drukarka w biurze Bongo nie drukuje mimo restartu. Władek wykluczył sterownik, Łukasz podejrzewa złą podsieć drukarki. Klient czeka na kontakt.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- ================= EKRAN: NIEROZPOZNANE ================= -->
+      <section class="ekran" id="ekran-nierozpoznane">
+        <div class="page-head">
+          <div>
+            <h1>Nierozpoznane wiadomości</h1>
+            <p class="muted">
+              Wszystko ze skrzynki helpdesku, czego domena nadawcy nie wskazuje na żadną firmę — także poczta z własnej domeny.
+              To skrzynka wyłącznie helpdeskowa, więc większość takich wiadomości to spam. Nic nie jest kasowane ani odrzucane
+              i nic nie wychodzi do nadawcy: wiadomość czeka, aż operator zdecyduje.
+            </p>
+          </div>
+          <div class="head-actions">
+            <button type="button" class="btn btn-ghost">Zignorowane (12)</button>
+            <button type="button" class="btn btn-ghost">Ignorowane domeny (3)</button>
+          </div>
+        </div>
+
+        <div class="filtry tresc-etap2">
+          <div>
+            <label for="n-ocena">Ocena AI</label>
+            <select id="n-ocena"><option selected>wszystkie (4)</option><option>prawdopodobne zgłoszenia (2)</option><option>spam i reszta (2)</option></select>
+          </div>
+          <div><button type="button" class="btn">Zignoruj wszystkie oznaczone jako spam</button></div>
+        </div>
+
+        <section class="panel panel-scroll">
+          <table class="table">
+            <thead>
+              <tr><th>Otrzymano</th><th>Nadawca</th><th>Temat</th><th>Domena nadawcy</th><th class="tresc-etap2">Ocena AI</th><th style="width: 320px;">Decyzja</th></tr>
+            </thead>
+            <tbody id="lista-nierozpoznanych">
+              <tr>
+                <td class="lp">dziś 09:58</td>
+                <td>anna.kowalska@gmail.com</td>
+                <td>Prośba o pomoc z pocztą <span class="muted small">— „Piszę z prywatnego, bo firmowa nie działa…”</span></td>
+                <td><span class="badge">gmail.com</span></td>
+                <td class="tresc-etap2"><span class="badge badge-nowy">zgłoszenie</span> <span class="pewnosc">0,79</span><br><span class="muted small">firma: <b>Klepsydra</b> <span class="pewnosc">0,64</span></span></td>
+                <td>
+                  <div class="rzad-akcji" style="margin: 0;">
+                    <select style="width: auto; min-width: 130px;"><option>wskaż firmę…</option><option>Bongo</option><option>Klepsydra</option><option>ŁKS</option><option>Gloria</option></select>
+                    <button type="button" class="btn btn-small btn-primary">Utwórz zgłoszenie</button>
+                    <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
+                  </div>
+                  <p class="muted small tresc-etap2" style="margin: 6px 0 0;">AI czyta podpis „Klepsydra sp. z o.o.”, ale firmy nie ustawia — robi to operator.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="lp">wczoraj 16:20</td>
+                <td>biuro@nowa-firma.pl</td>
+                <td>Zapytanie o wsparcie IT</td>
+                <td><span class="badge">nowa-firma.pl</span></td>
+                <td class="tresc-etap2"><span class="badge badge-nowy">zgłoszenie</span> <span class="pewnosc">0,71</span><br><span class="muted small">firma: <b>—</b></span></td>
+                <td>
+                  <div class="rzad-akcji" style="margin: 0;">
+                    <select style="width: auto; min-width: 130px;"><option>wskaż firmę…</option><option>Bongo</option><option>Klepsydra</option><option>ŁKS</option><option>Gloria</option><option>+ nowa firma…</option></select>
+                    <button type="button" class="btn btn-small btn-primary">Utwórz zgłoszenie</button>
+                    <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="lp">dziś 08:03</td>
+                <td>ksiegowosc@mojadomena.pl <span class="badge">własna domena</span></td>
+                <td>Faktura za wrzesień do podpisu</td>
+                <td><span class="badge">mojadomena.pl</span></td>
+                <td class="tresc-etap2"><span class="badge badge-warn">nie zgłoszenie</span> <span class="pewnosc">0,88</span></td>
+                <td>
+                  <div class="rzad-akcji" style="margin: 0;">
+                    <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
+                    <button type="button" class="btn btn-small btn-ghost" title="Założy regułę: kolejne wiadomości z tej domeny pójdą od razu do zignorowanych. Regułę widać w tabeli poniżej.">Zignoruj całą domenę</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="lp">dziś 07:12</td>
+                <td>noreply@sklep-online.pl</td>
+                <td>Twoja przesyłka jest w drodze</td>
+                <td><span class="badge">sklep-online.pl</span></td>
+                <td class="tresc-etap2"><span class="badge badge-danger">spam</span> <span class="pewnosc">0,93</span></td>
+                <td>
+                  <div class="rzad-akcji" style="margin: 0;">
+                    <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
+                    <button type="button" class="btn btn-small btn-ghost" title="Założy regułę: kolejne wiadomości z tej domeny pójdą od razu do zignorowanych. Regułę widać w tabeli poniżej.">Zignoruj całą domenę</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <div class="alert alert-warn">
+          Wiadomość przypisana do firmy dokłada jej domenę do listy dozwolonych dopiero wtedy, gdy operator to potwierdzi — jednorazowa decyzja nie otwiera helpdesku dla całej domeny.
+          Ten widok ma tylko operator: dopóki nie znamy firmy, nie ma czym mierzyć dostępu technika.
+        </div>
+
+        <section class="panel panel-scroll">
+          <h2>Ignorowane domeny</h2>
+          <p class="muted small" style="max-width: 82ch; margin-bottom: 12px;">
+            Przycisk <b>„Zignoruj całą domenę”</b> zakłada regułę widoczną tutaj. Kolejne wiadomości z tej domeny omijają listę do przejrzenia
+            i od razu trafiają do zignorowanych — <b>nie są kasowane</b>, tylko przestają zajmować uwagę operatora. Licznik pokazuje, ile poczty
+            każda reguła już przechwyciła, więc pomyłkę widać i da się ją cofnąć jednym kliknięciem.
+          </p>
+          <table class="table">
+            <thead><tr><th>Domena</th><th>Reguła założona</th><th>Przez</th><th class="lp">Przechwycone</th><th>Ostatnia wiadomość</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="nr">sklep-online.pl</td><td class="lp">12 wrz</td><td>Marta Zych</td>
+                <td class="lp">14</td><td class="lp">dziś 07:12</td>
+                <td class="lp"><button type="button" class="btn btn-small btn-ghost">Pokaż</button> <button type="button" class="btn btn-small">Przywróć</button></td>
+              </tr>
+              <tr>
+                <td class="nr">mailing.hurtownia-it.pl</td><td class="lp">3 wrz</td><td>Marta Zych</td>
+                <td class="lp">26</td><td class="lp">wczoraj 06:40</td>
+                <td class="lp"><button type="button" class="btn btn-small btn-ghost">Pokaż</button> <button type="button" class="btn btn-small">Przywróć</button></td>
+              </tr>
+              <tr>
+                <td class="nr">konferencje-it.eu</td><td class="lp">28 sie</td><td>Marta Zych</td>
+                <td class="lp">3</td><td class="lp">9 wrz 11:05</td>
+                <td class="lp"><button type="button" class="btn btn-small btn-ghost">Pokaż</button> <button type="button" class="btn btn-small">Przywróć</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted small" style="margin: 12px 0 0;">
+            Przywrócenie domeny nie odzyskuje pojedynczych wiadomości — te i tak leżą w „Zignorowanych” — tylko sprawia, że kolejne
+            znów trafią na listę do przejrzenia. Reguła nigdy nie obejmie domeny należącej do firmy: taka poczta zakłada zgłoszenie.
+          </p>
+        </section>
+
+        <div class="etap2">
+          <span class="etap2-znacznik">Etap 2 · po podłączeniu AI</span>
+          <p class="small" style="max-width: 78ch; margin: 0;">
+            Bez AI ta lista jest zwykłą skrzynką do przejrzenia — kolumna „Ocena AI” po prostu jej nie ma i operator czyta wszystko po kolei.
+            Po podłączeniu AI wiadomości dostają etykietę <b>zgłoszenie</b> / <b>nie zgłoszenie</b> / <b>spam</b>, dzięki czemu spam da się odsiać
+            jednym filtrem. <b>Etykieta niczego nie kasuje i nie zakłada zgłoszenia</b> — decyzja zostaje po stronie operatora.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: FIRMY I DOMENY ================= -->
+      <section class="ekran" id="ekran-firmy">
+        <div class="page-head">
+          <div>
+            <h1>Firmy i dostępy</h1>
+            <p class="muted">Domena decyduje, czyje zgłoszenie powstaje z maila, a skrót firmy jest prefiksem numeru. <b>Domena należy tylko do jednej firmy</b> — przy próbie dodania zajętej system pokaże, kto ją ma. Odwrotnie wolno: firma może mieć kilka domen, jak Klepsydra po konsolidacji.</p>
+          </div>
+          <div class="head-actions"><button type="button" class="btn btn-primary">Dodaj firmę</button></div>
+        </div>
+
+        <section class="panel panel-scroll">
+          <table class="table">
+            <thead>
+              <tr><th>Firma</th><th>Numery</th><th>Dozwolone domeny</th><th class="lp">Otwarte zgłoszenia</th><th class="lp">Czas we wrześniu</th><th class="lp">Zasoby w CMDB</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>Bongo</b></td>
+                <td class="small"><span class="nr">BON-</span> <span class="muted">następny BON-129</span></td>
+                <td><div class="domeny"><span class="domena">bongo.pl<button type="button" title="Usuń">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj domenę</button></div></td>
+                <td class="lp">3</td>
+                <td class="lp">18 h 20 min</td>
+                <td class="lp">42</td>
+              </tr>
+              <tr>
+                <td><b>Klepsydra</b></td>
+                <td class="small"><span class="nr">KLE-</span> <span class="muted">następny KLE-89</span></td>
+                <td><div class="domeny"><span class="domena">klepsydra.pl<button type="button" title="Usuń">×</button></span><span class="domena" title="Domena z przejętej spółki — obie prowadzą do Klepsydry">klepsydra.com.pl<button type="button" title="Usuń">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj domenę</button></div></td>
+                <td class="lp">4</td>
+                <td class="lp">21 h 05 min</td>
+                <td class="lp">67</td>
+              </tr>
+              <tr>
+                <td><b>ŁKS</b></td>
+                <td class="small"><span class="nr">LKS-</span> <span class="muted">następny LKS-15</span></td>
+                <td><div class="domeny"><span class="domena">lks.pl<button type="button" title="Usuń">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj domenę</button></div></td>
+                <td class="lp">2</td>
+                <td class="lp">16 h 10 min</td>
+                <td class="lp">15</td>
+              </tr>
+              <tr>
+                <td><b>Gloria</b></td>
+                <td class="small"><span class="nr">GLO-</span> <span class="muted">następny GLO-4</span></td>
+                <td><div class="domeny"><span class="domena">gloria.com.pl<button type="button" title="Usuń">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj domenę</button></div></td>
+                <td class="lp">1</td>
+                <td class="lp">3 h 30 min</td>
+                <td class="lp">9</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <p class="muted small" style="margin: -6px 0 16px; max-width: 82ch;">
+          Klepsydra ma dwie domeny, bo w trakcie konsolidacji przejęła spółkę — poczta z obu trafia do tej samej firmy i tej samej numeracji
+          (<span class="nr">KLE-…</span>). Usunięcie domeny nie rusza starych zgłoszeń, tylko zamyka drogę nowym.
+        </p>
+
+        <section class="panel panel-scroll">
+          <h2>Ludzie i dostęp do firm</h2>
+          <p class="muted small" style="max-width: 78ch; margin-bottom: 12px;">
+            Operator widzi wszystkie firmy i konfigurację. Technik widzi <b>tylko firmy, które dostał</b> — ich zgłoszenia,
+            ich pocztę i <b>ich kartotekę w CMDB</b>. Dostęp jest jeden: kto obsługuje zgłoszenia firmy, ten wchodzi też w jej zasoby.
+          </p>
+          <table class="table">
+            <thead><tr><th>Osoba</th><th>Konto</th><th>Rola</th><th>Firmy — zgłoszenia i CMDB</th><th class="lp">Otwarte</th><th class="lp">Czas we wrześniu</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="osoba"><span class="inicjaly in-op">MZ</span>Marta Zych</span></td>
+                <td class="small">operator@mojadomena.pl</td>
+                <td><span class="badge badge-nowy">operator</span></td>
+                <td><span class="badge">wszystkie firmy</span> <span class="muted small">+ skrzynki, domeny, konta</span></td>
+                <td class="lp">—</td><td class="lp">4 h 05 min</td>
+              </tr>
+              <tr>
+                <td><span class="osoba"><span class="inicjaly in-wl">WN</span>Władek Nowak</span></td>
+                <td class="small">wladek@mojadomena.pl</td>
+                <td><span class="badge">technik</span></td>
+                <td><div class="domeny"><span class="domena">Bongo<button type="button" title="Odbierz dostęp">×</button></span><span class="domena">Klepsydra<button type="button" title="Odbierz dostęp">×</button></span><span class="domena">ŁKS<button type="button" title="Odbierz dostęp">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj firmę</button></div></td>
+                <td class="lp">2</td><td class="lp">26 h 30 min</td>
+              </tr>
+              <tr>
+                <td><span class="osoba"><span class="inicjaly in-lu">ŁM</span>Łukasz Mazur</span></td>
+                <td class="small">lukasz@mojadomena.pl</td>
+                <td><span class="badge">technik</span></td>
+                <td><div class="domeny"><span class="domena">Bongo<button type="button" title="Odbierz dostęp">×</button></span><span class="domena">Klepsydra<button type="button" title="Odbierz dostęp">×</button></span><span class="domena">Gloria<button type="button" title="Odbierz dostęp">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj firmę</button></div></td>
+                <td class="lp">4</td><td class="lp">19 h 15 min</td>
+              </tr>
+              <tr>
+                <td><span class="osoba"><span class="inicjaly in-ew">EK</span>Ewa Kruk</span></td>
+                <td class="small">ewa@mojadomena.pl</td>
+                <td><span class="badge">technik</span></td>
+                <td><div class="domeny"><span class="domena">Bongo<button type="button" title="Odbierz dostęp">×</button></span><span class="domena">ŁKS<button type="button" title="Odbierz dostęp">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj firmę</button></div></td>
+                <td class="lp">1</td><td class="lp">11 h 40 min</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted small" style="margin: 12px 0 0;">
+            Odebranie firmy nie kasuje historii: zgłoszenia i czas pracy zostają, technik po prostu przestaje je widzieć.
+          </p>
+        </section>
+      </section>
+
+      <!-- ================= EKRAN: RAPORT FIRMA -> TECHNIK ================= -->
+      <section class="ekran" id="ekran-raport-firma">
+        <div class="page-head">
+          <div>
+            <h1>Czas pracy — firma</h1>
+            <p class="muted">Wybierz firmę i okres, rozwiń technika, żeby zobaczyć jego zgłoszenia. Jedno zgłoszenie może pojawić się u dwóch techników — każdy ma tam swoje minuty.</p>
+          </div>
+          <div class="head-actions">
+            <button type="button" class="btn" data-eksport="CSV">Eksport CSV</button>
+            <button type="button" class="btn" data-eksport="XLSX">Eksport XLSX</button>
+          </div>
+        </div>
+
+        <div class="alert alert-warn tylko-technik" hidden>
+          Podgląd technika: do wyboru są tylko <b>Bongo</b> i <b>ŁKS</b>. Czy technik ma tu widzieć czas kolegów z tych firm, czy wyłącznie swój — zostało do rozstrzygnięcia.
+        </div>
+
+        <div class="filtry">
+          <div>
+            <label for="r-firma">Firma</label>
+            <select id="r-firma"><option selected>Bongo</option><option>Klepsydra</option><option>ŁKS</option><option>Gloria</option></select>
+          </div>
+          <div>
+            <label for="r-okres">Okres</label>
+            <select id="r-okres"><option selected>wrzesień 2026</option><option>sierpień 2026</option><option>III kwartał 2026</option><option>zakres własny…</option></select>
+          </div>
+          <div><button type="button" class="btn btn-primary">Pokaż</button></div>
+        </div>
+
+        <div class="kafelki">
+          <div class="kafelek"><div class="kafelek-wartosc">18 h 20 min</div><div class="kafelek-opis">łączny czas — Bongo, wrzesień 2026</div></div>
+          <div class="kafelek"><div class="kafelek-wartosc">3</div><div class="kafelek-opis">technicy pracujący dla firmy</div></div>
+          <div class="kafelek"><div class="kafelek-wartosc">9</div><div class="kafelek-opis">zgłoszenia z czasem pracy</div></div>
+        </div>
+
+        <section class="panel">
+          <h2>Bongo → technik → zgłoszenie</h2>
+
+          <details class="drill" open>
+            <summary>
+              <span class="osoba"><span class="inicjaly in-wl">WN</span>Władek Nowak</span>
+              <span class="pasek" style="margin-left: 14px;"><span class="pasek-wypelnienie" style="width: 50%;"></span></span>
+              <span class="drill-suma">9 h 10 min</span>
+            </summary>
+            <div class="drill-cialo">
+              <table class="table">
+                <thead><tr><th>Zgłoszenie</th><th>Temat</th><th>Status</th><th class="lp">Czas Władka</th></tr></thead>
+                <tbody>
+                  <tr><td class="nr">BON-123</td><td>Nie działa drukarka w biurze</td><td><span class="badge badge-warn">W trakcie</span></td><td class="lp">50 min</td></tr>
+                  <tr><td class="nr">BON-120</td><td>Wolno działa komputer księgowej</td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">2 h 10 min</td></tr>
+                  <tr><td class="nr">BON-114</td><td>Migracja poczty na nowy serwer</td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">3 h 05 min</td></tr>
+                  <tr><td class="nr">BON-108</td><td>Awaria zasilacza w serwerowni</td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">3 h 05 min</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <details class="drill">
+            <summary>
+              <span class="osoba"><span class="inicjaly in-lu">ŁM</span>Łukasz Mazur</span>
+              <span class="pasek" style="margin-left: 14px;"><span class="pasek-wypelnienie" style="width: 36%;"></span></span>
+              <span class="drill-suma">6 h 40 min</span>
+            </summary>
+            <div class="drill-cialo">
+              <table class="table">
+                <thead><tr><th>Zgłoszenie</th><th>Temat</th><th>Status</th><th class="lp">Czas Łukasza</th></tr></thead>
+                <tbody>
+                  <tr><td class="nr">BON-123</td><td>Nie działa drukarka w biurze</td><td><span class="badge badge-warn">W trakcie</span></td><td class="lp">45 min</td></tr>
+                  <tr><td class="nr">BON-117</td><td>Poczta nie wysyła załączników</td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">1 h 05 min</td></tr>
+                  <tr><td class="nr">BON-118</td><td>Konfiguracja nowego switcha</td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">2 h 15 min</td></tr>
+                  <tr><td class="nr">BON-111</td><td>Przenosiny stanowisk na piętro</td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">2 h 35 min</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <details class="drill">
+            <summary>
+              <span class="osoba"><span class="inicjaly in-ew">EK</span>Ewa Kruk</span>
+              <span class="pasek" style="margin-left: 14px;"><span class="pasek-wypelnienie" style="width: 14%;"></span></span>
+              <span class="drill-suma">2 h 30 min</span>
+            </summary>
+            <div class="drill-cialo">
+              <table class="table">
+                <thead><tr><th>Zgłoszenie</th><th>Temat</th><th>Status</th><th class="lp">Czas Ewy</th></tr></thead>
+                <tbody>
+                  <tr><td class="nr">BON-121</td><td>Prośba o dostęp do CRM</td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">50 min</td></tr>
+                  <tr><td class="nr">BON-113</td><td>Szkolenie z nowego systemu</td><td><span class="badge badge-ok">Zamknięte</span></td><td class="lp">1 h 40 min</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; padding: 12px 6px 0; font-size: 14px;">
+            <span class="muted">Razem, wrzesień 2026</span><b class="lp" style="min-width: 90px;">18 h 20 min</b>
+          </div>
+        </section>
+      </section>
+
+      <!-- ================= EKRAN: RAPORT TECHNIK -> FIRMY ================= -->
+      <section class="ekran" id="ekran-raport-technik">
+        <div class="page-head">
+          <div>
+            <h1>Czas pracy — technik</h1>
+            <p class="muted">To samo od drugiej strony: ile czasu jeden technik oddał każdej firmie w wybranym okresie.</p>
+          </div>
+          <div class="head-actions">
+            <button type="button" class="btn" data-eksport="CSV">Eksport CSV</button>
+            <button type="button" class="btn" data-eksport="XLSX">Eksport XLSX</button>
+          </div>
+        </div>
+
+        <div class="alert alert-warn tylko-technik" hidden>
+          Podgląd technika: raport pokazuje wyłącznie własny czas, rozbity na firmy, do których technik ma dostęp.
+        </div>
+
+        <div class="filtry">
+          <div>
+            <label for="t-technik">Technik</label>
+            <select id="t-technik"><option selected>Władek Nowak</option><option>Łukasz Mazur</option><option>Ewa Kruk</option></select>
+          </div>
+          <div>
+            <label for="t-okres">Okres</label>
+            <select id="t-okres"><option selected>wrzesień 2026</option><option>sierpień 2026</option><option>III kwartał 2026</option><option>zakres własny…</option></select>
+          </div>
+          <div><button type="button" class="btn btn-primary">Pokaż</button></div>
+        </div>
+
+        <div class="kafelki">
+          <div class="kafelek"><div class="kafelek-wartosc">26 h 30 min</div><div class="kafelek-opis">Władek Nowak — wrzesień 2026</div></div>
+          <div class="kafelek"><div class="kafelek-wartosc">3</div><div class="kafelek-opis">firmy, dla których pracował</div></div>
+          <div class="kafelek"><div class="kafelek-wartosc">14</div><div class="kafelek-opis">zgłoszenia z jego czasem</div></div>
+        </div>
+
+        <section class="panel">
+          <h2>Władek Nowak → firma → zgłoszenie</h2>
+
+          <details class="drill">
+            <summary>Klepsydra<span class="pasek" style="margin-left: 14px;"><span class="pasek-wypelnienie" style="width: 46%;"></span></span><span class="drill-suma">12 h 20 min</span></summary>
+            <div class="drill-cialo">
+              <table class="table">
+                <thead><tr><th>Zgłoszenie</th><th>Temat</th><th class="lp">Czas</th></tr></thead>
+                <tbody>
+                  <tr><td class="nr">KLE-86</td><td>Brak dostępu do dysku sieciowego</td><td class="lp">1 h 20 min</td></tr>
+                  <tr><td class="nr">KLE-80</td><td>Wymiana serwera plików</td><td class="lp">6 h 40 min</td></tr>
+                  <tr><td class="nr">KLE-78</td><td>Backup nie kończy się w nocy</td><td class="lp">4 h 20 min</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <details class="drill">
+            <summary>Bongo<span class="pasek" style="margin-left: 14px;"><span class="pasek-wypelnienie" style="width: 35%;"></span></span><span class="drill-suma">9 h 10 min</span></summary>
+            <div class="drill-cialo">
+              <table class="table">
+                <thead><tr><th>Zgłoszenie</th><th>Temat</th><th class="lp">Czas</th></tr></thead>
+                <tbody>
+                  <tr><td class="nr">BON-123</td><td>Nie działa drukarka w biurze</td><td class="lp">50 min</td></tr>
+                  <tr><td class="nr">BON-120</td><td>Wolno działa komputer księgowej</td><td class="lp">2 h 10 min</td></tr>
+                  <tr><td class="nr">BON-114</td><td>Migracja poczty na nowy serwer</td><td class="lp">3 h 05 min</td></tr>
+                  <tr><td class="nr">BON-108</td><td>Awaria zasilacza w serwerowni</td><td class="lp">3 h 05 min</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <details class="drill">
+            <summary>ŁKS<span class="pasek" style="margin-left: 14px;"><span class="pasek-wypelnienie" style="width: 19%;"></span></span><span class="drill-suma">5 h 00 min</span></summary>
+            <div class="drill-cialo">
+              <table class="table">
+                <thead><tr><th>Zgłoszenie</th><th>Temat</th><th class="lp">Czas</th></tr></thead>
+                <tbody>
+                  <tr><td class="nr">LKS-13</td><td>Wymiana tonera — czekamy na dostawę</td><td class="lp">20 min</td></tr>
+                  <tr><td class="nr">LKS-11</td><td>Instalacja monitoringu w hali</td><td class="lp">4 h 40 min</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; padding: 12px 6px 0; font-size: 14px;">
+            <span class="muted">Razem, wrzesień 2026</span><b class="lp" style="min-width: 90px;">26 h 30 min</b>
+          </div>
+        </section>
+      </section>
+
+      <!-- ================= EKRAN: SKRZYNKA ================= -->
+      <section class="ekran" id="ekran-skrzynka">
+        <div class="page-head">
+          <div>
+            <h1>Skrzynka helpdesku</h1>
+            <p class="muted">Wszyscy klienci piszą pod jeden adres: <b>helpdesk@mojadomena.pl</b>. Tą samą skrzynką odbieramy i wysyłamy, więc odpowiedzi wracają tam, skąd wyszły. O tym, czyje jest zgłoszenie i jaki dostanie numer, decyduje <b>domena nadawcy</b>.</p>
+          </div>
+          <div class="head-actions"><button type="button" class="btn">Sprawdź połączenie</button></div>
+        </div>
+
+        <div class="alert alert-ok">Ostatnie pobranie: dziś 10:42 — 4 nowe wiadomości: 2 dopisane do istniejących zgłoszeń, 2 do nierozpoznanych.</div>
+
+        <section class="panel">
+          <h2>Droga wiadomości</h2>
+          <div class="tor">
+            <div class="krok"><span class="krok-etykieta">wiadomość</span><b>jan@bongo.pl</b><span class="muted small">na helpdesk@mojadomena.pl</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok"><span class="krok-etykieta">domena nadawcy</span><b class="nr">bongo.pl</b><span class="muted small">na liście firmy Bongo</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok"><span class="krok-etykieta">firma</span><b>Bongo</b><span class="muted small">skrót BON</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok krok-wynik"><span class="krok-etykieta">nowe zgłoszenie</span><b class="nr">BON-124</b><span class="muted small">+ potwierdzenie do klienta</span></div>
+          </div>
+          <div class="tor tor-drugi">
+            <div class="krok"><span class="krok-etykieta">wiadomość</span><b>anna.kowalska@gmail.com</b><span class="muted small">na helpdesk@mojadomena.pl</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok"><span class="krok-etykieta">domena nadawcy</span><b class="nr">gmail.com</b><span class="muted small">nie należy do żadnej firmy</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok"><span class="krok-etykieta">firma</span><b>—</b><span class="muted small">nie da się wskazać</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok krok-czeka"><span class="krok-etykieta">nierozpoznane</span><b>czeka na operatora</b><span class="muted small">nic nie wychodzi do nadawcy</span></div>
+          </div>
+          <p class="muted small" style="margin: 14px 0 0;">
+            Numer bierze się z firmy, więc przed jego nadaniem trzeba znać domenę. Odpowiedź na istniejący wątek omija całą tę drogę —
+            rozpoznaje się ją po znaczniku w temacie i nagłówkach, nawet gdy klient napisze z innego adresu.
+            Skrzynka służy wyłącznie helpdeskowi, więc poczta z własnej domeny idzie tą samą ścieżką co obca — do nierozpoznanych.
+          </p>
+          <p class="muted small tresc-etap2" style="margin: 8px 0 0;">
+            <span class="etap2-znacznik" style="margin: 0 6px 0 0;">Etap 2</span>AI oznacza wiadomości w nierozpoznanych jako <b>zgłoszenie</b>, <b>nie zgłoszenie</b> albo <b>spam</b> — sortuje listę, nie podejmuje decyzji.
+          </p>
+        </section>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start;">
+          <section class="panel">
+            <h2>Odbieranie — IMAP</h2>
+            <div class="pole-boczne"><label for="i-adres">Adres helpdesku</label><input id="i-adres" value="helpdesk@mojadomena.pl"></div>
+            <div class="pole-boczne"><label for="i-host">Serwer IMAP</label><input id="i-host" value="imap.mojadomena.pl"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="pole-boczne"><label for="i-port">Port</label><input id="i-port" value="993"></div>
+              <div class="pole-boczne"><label for="i-szyfr">Szyfrowanie</label><select id="i-szyfr"><option selected>SSL/TLS</option><option>STARTTLS</option><option>bez szyfrowania</option></select></div>
+            </div>
+            <div class="pole-boczne"><label for="i-haslo">Hasło</label><input id="i-haslo" type="password" value="••••••••••••"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="pole-boczne"><label for="i-folder">Folder</label><input id="i-folder" value="INBOX"></div>
+              <div class="pole-boczne"><label for="i-co">Co ile sprawdzać</label><select id="i-co"><option selected>co 2 minuty</option><option>co 5 minut</option><option>co 15 minut</option></select></div>
+            </div>
+            <div class="pole-boczne"><label for="i-po">Po pobraniu</label><select id="i-po"><option selected>oznacz jako przeczytaną</option><option>przenieś do folderu „Helpdesk”</option><option>zostaw bez zmian</option></select></div>
+            <p class="muted small" style="margin: 0;">Wiadomości nie są kasowane ze skrzynki — helpdesk tylko je czyta.</p>
+          </section>
+
+          <section class="panel">
+            <h2>Wysyłanie — SMTP</h2>
+            <div class="pole-boczne"><label for="s-host">Serwer SMTP</label><input id="s-host" value="smtp.mojadomena.pl"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="pole-boczne"><label for="s-port">Port</label><input id="s-port" value="587"></div>
+              <div class="pole-boczne"><label for="s-szyfr">Szyfrowanie</label><select id="s-szyfr"><option selected>STARTTLS</option><option>SSL/TLS</option><option>bez szyfrowania</option></select></div>
+            </div>
+            <div class="pole-boczne"><label for="s-nadawca">Adres nadawcy</label><input id="s-nadawca" value="helpdesk@mojadomena.pl"></div>
+            <div class="pole-boczne"><label for="s-nazwa">Nazwa nadawcy</label><input id="s-nazwa" value="Helpdesk"></div>
+            <div class="pole-boczne"><label for="s-stopka">Stopka doklejana do odpowiedzi</label><textarea id="s-stopka" style="min-height: 66px;">Pozdrawiamy, Helpdesk · tel. 42 000 00 00</textarea></div>
+            <p class="muted small" style="margin: 0;">Ten sam adres w nadawcy i w odbiorze, więc odpowiedź klienta wraca do tej samej skrzynki i trafia do swojego zgłoszenia.</p>
+          </section>
+
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start;">
+          <section class="panel">
+            <h2>Automatyczne potwierdzenie</h2>
+            <label class="kolumna-wybor" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;"><input type="checkbox" checked style="width: auto;"> Wysyłaj potwierdzenie przyjęcia zgłoszenia</label>
+            <p class="small" style="margin-bottom: 4px;"><b>Wysyłamy</b>, gdy wszystko naraz:</p>
+            <ul class="small muted" style="margin: 0 0 10px; padding-left: 18px;">
+              <li>domena nadawcy wskazuje firmę,</li>
+              <li>wiadomość zakłada <b>nowe</b> zgłoszenie,</li>
+              <li>ma treść — to jest zgłoszenie, a nie „dziękuję” czy pusty mail z załącznikiem.</li>
+            </ul>
+            <p class="small" style="margin-bottom: 4px;"><b>Nie wysyłamy</b>:</p>
+            <ul class="small muted" style="margin: 0 0 12px; padding-left: 18px;">
+              <li>na odpowiedź w istniejącym wątku,</li>
+              <li>na autoodpowiedź (<code>Auto-Submitted</code>, „Out of office”) — inaczej dwa systemy piszą do siebie w kółko,</li>
+              <li>na wiadomość z nierozpoznanej domeny — ta czeka na decyzję operatora i nie dostaje żadnej odpowiedzi.</li>
+            </ul>
+            <div class="pole-boczne"><label for="a-tresc">Treść potwierdzenia</label><textarea id="a-tresc" style="min-height: 78px;">Dzień dobry, przyjęliśmy zgłoszenie {numer} — „{temat}”. Odpowiadając na tego maila, dopisze Pan/Pani wiadomość do tego samego zgłoszenia.</textarea></div>
+            <p class="muted small tresc-etap2" style="margin: 0;"><span class="etap2-znacznik" style="margin: 0 6px 0 0;">Etap 2</span>AI ocenia, czy mail w ogóle jest zgłoszeniem — faktura albo newsletter z domeny klienta nie założy wtedy zgłoszenia ani nie dostanie potwierdzenia.</p>
+          </section>
+
+          <section class="panel">
+            <h2>Przechowywanie poczty</h2>
+            <div class="pole-boczne">
+              <label for="prz-zign">Usuwaj zignorowane wiadomości</label>
+              <select id="prz-zign"><option selected>nigdy — zostają do wglądu</option><option>po 90 dniach</option><option>po 180 dniach</option><option>po roku</option></select>
+            </div>
+            <div class="pole-boczne">
+              <label for="prz-spam">Usuwaj oznaczone jako spam</label>
+              <select id="prz-spam"><option selected>nigdy — zostają do wglądu</option><option>po 30 dniach</option><option>po 90 dniach</option><option>po roku</option></select>
+            </div>
+            <p class="muted small" style="margin: 0 0 10px;">
+              Domyślnie helpdesk nie kasuje niczego. Termin ustawia się tu ręcznie i dotyczy wyłącznie poczty nierozpoznanej —
+              zgłoszeń i ich historii nie usuwa nigdy.
+            </p>
+            <p class="muted small" style="margin: 0;">
+              Wiadomości zostają też w samej skrzynce pocztowej: helpdesk ich stamtąd nie kasuje, cokolwiek tu ustawisz.
+            </p>
+          </section>
+
+          <section class="panel">
+            <h2>Numery i rozpoznawanie odpowiedzi</h2>
+            <div class="pole-boczne"><label for="p-temat">Znacznik w temacie</label><input id="p-temat" value="[{SKRÓT}-{numer}]"></div>
+            <p class="small muted" style="margin-bottom: 10px;">Numeracja idzie <b>osobno dla każdej firmy</b>, a skrót firmy trzyma numery rozdzielone: <b>BON-123</b>, <b>KLE-88</b>, <b>LKS-14</b>. Przykład tematu: <b>Re: [BON-123] Nie działa drukarka w biurze</b></p>
+            <p class="small" style="margin-bottom: 6px;">Wiadomość trafia do istniejącego zgłoszenia, gdy zgadza się choć jedno:</p>
+            <ul class="small muted" style="margin: 0 0 12px; padding-left: 18px;">
+              <li><code>In-Reply-To</code> / <code>References</code> wskazuje wiadomość z tego zgłoszenia,</li>
+              <li>temat zawiera znacznik <code>[BON-123]</code>,</li>
+              <li>nadawca i temat pasują do zgłoszenia otwartego w ostatnich 7 dniach.</li>
+            </ul>
+            <p class="small muted" style="margin: 0;">Jeśli nic nie pasuje — decyduje domena nadawcy: znana zakłada nowe zgłoszenie, nieznana trafia do „Nierozpoznanych”.</p>
+          </section>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: ZAKRES ================= -->
+      <section class="ekran" id="ekran-zakres">
+        <div class="page-head">
+          <div>
+            <h1>Zakres makiety</h1>
+            <p class="muted">Co z listy MVP widać na którym ekranie i co świadomie zostawiamy na później.</p>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start;">
+          <section class="panel">
+            <h2>MVP — pokazane w makiecie</h2>
+            <table class="table">
+              <tbody>
+                <tr><td>Firmy, dozwolone domeny, skróty numerów</td><td class="lp"><a href="#" data-ekran-link="firmy">Firmy i dostępy</a></td></tr>
+                <tr><td>Technicy i ich dostęp do firm (także w CMDB)</td><td class="lp"><a href="#" data-ekran-link="firmy">Firmy i dostępy</a></td></tr>
+                <tr><td>Jedna skrzynka: IMAP + SMTP, firma z domeny nadawcy</td><td class="lp"><a href="#" data-ekran-link="skrzynka">Skrzynka</a></td></tr>
+                <tr><td>Automatyczne potwierdzenie przyjęcia</td><td class="lp"><a href="#" data-ekran-link="skrzynka">Skrzynka</a></td></tr>
+                <tr><td>Zgłoszenie z maila + dopisywanie odpowiedzi</td><td class="lp"><a href="#" data-ekran-link="ticket">Karta zgłoszenia</a></td></tr>
+                <tr><td>Kanban / lista, status, filtry, szukanie</td><td class="lp"><a href="#" data-ekran-link="kanban">Zgłoszenia</a></td></tr>
+                <tr><td>Przypisanie i przekazanie technika</td><td class="lp"><a href="#" data-ekran-link="ticket">Karta zgłoszenia</a></td></tr>
+                <tr><td>Odpowiedź do klienta i komentarz wewnętrzny</td><td class="lp"><a href="#" data-ekran-link="ticket">Karta zgłoszenia</a></td></tr>
+                <tr><td>Czas wielu techników i sumowanie</td><td class="lp"><a href="#" data-ekran-link="ticket">Karta zgłoszenia</a></td></tr>
+                <tr><td>Raport firma → technik → zgłoszenie</td><td class="lp"><a href="#" data-ekran-link="raport-firma">Firma → technik</a></td></tr>
+                <tr><td>Raport technik → firmy</td><td class="lp"><a href="#" data-ekran-link="raport-technik">Technik → firmy</a></td></tr>
+                <tr><td>Eksport CSV / XLSX</td><td class="lp">przyciski w obu raportach</td></tr>
+                <tr><td>Historia zmian</td><td class="lp"><a href="#" data-ekran-link="ticket">Karta zgłoszenia</a></td></tr>
+                <tr><td>Nierozpoznane wiadomości</td><td class="lp"><a href="#" data-ekran-link="nierozpoznane">Nierozpoznane</a></td></tr>
+                <tr><td>Opcjonalne powiązanie z CMDB</td><td class="lp"><a href="#" data-ekran-link="ticket">Karta zgłoszenia</a></td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel">
+            <h2>Etap 2 — zaznaczone, ale nie budowane teraz</h2>
+            <ul class="tight small" style="padding-left: 18px; margin: 0 0 14px;">
+              <li>Kategoryzacja nierozpoznanej poczty: zgłoszenie / nie zgłoszenie / spam</li>
+              <li>Rozpoznawanie firmy z treści maila (sugestia, nie automat)</li>
+              <li>Sugerowany technik i rodzaj problemu</li>
+              <li>Streszczenie długiego wątku</li>
+              <li>Podpowiadana odpowiedź</li>
+              <li>Timer start/stop zamiast wpisywania minut</li>
+              <li>Załączniki z maili w wątku</li>
+              <li>SLA, priorytety, terminy reakcji</li>
+            </ul>
+            <p class="small muted">Wszystkie elementy etapu 2 w makiecie mają fioletową kropkowaną ramkę i znacznik „Etap 2”. Helpdesk ma działać bez nich w całości.</p>
+          </section>
+
+          <section class="panel">
+            <h2>Ustalone</h2>
+            <ul class="tight small" style="padding-left: 18px; margin: 0 0 16px;">
+              <li>Dwie role: <b>operator</b> (wszystko) i <b>technik</b> (tylko przypisane firmy).</li>
+              <li>Dostęp technika do firmy obejmuje też jej <b>kartotekę CMDB</b>.</li>
+              <li>Jedna skrzynka <b>helpdesk@mojadomena.pl</b> — tam piszą wszyscy, stamtąd wychodzą odpowiedzi.</li>
+              <li>Firmę wskazuje <b>domena nadawcy</b>, a firma nadaje numer zgłoszenia.</li>
+              <li>Numeracja <b>per firma</b>, ze skrótem firmy w numerze i w temacie maila.</li>
+              <li>Potwierdzenie automatyczne tylko dla <b>nowego</b> zgłoszenia z dozwolonej domeny, które jest zgłoszeniem.</li>
+              <li>Czas pracy <b>tylko się dopisuje</b> — bez edycji i kasowania.</li>
+              <li>Skrzynka jest wyłącznie helpdeskowa: poczta z domeny spoza firm — także własnej — ląduje w nierozpoznanych jako prawdopodobny spam.</li>
+              <li>Domena należy do jednej firmy, ale firma może mieć kilka domen (np. po konsolidacji).</li>
+              <li>Nic nie jest kasowane automatycznie — termin usuwania zignorowanych i spamu ustawia się ręcznie, domyślnie „nigdy”.</li>
+              <li>„Zignoruj całą domenę” zakłada regułę widoczną na liście ignorowanych domen — z licznikiem przechwyconej poczty i cofnięciem.</li>
+            </ul>
+
+            <h2>Zostało do rozstrzygnięcia</h2>
+            <ol class="small" style="padding-left: 18px; margin: 0;">
+              <li style="margin-bottom: 6px;">Skrót firmy w numerze — operator wpisuje ręcznie czy system proponuje z nazwy? Co przy zmianie firmy: nowy numer i odsyłacz ze starego (tak w makiecie)?</li>
+              <li style="margin-bottom: 6px;">Czy technik może przekazać zgłoszenie komuś bez dostępu do tej firmy — i czy przekazanie ma ten dostęp nadawać?</li>
+              <li style="margin-bottom: 6px;">Czy technik widzi raport „firma → technik" dla swoich firm (czyli czasy kolegów), czy tylko własny czas?</li>
+              <li>Czy operator też rejestruje swój czas pracy i wchodzi do raportów jak technik?</li>
+            </ol>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">Makieta modułu Helpdesk · CMDB Portal · wszystkie dane przykładowe</footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  var ekrany = document.querySelectorAll('.ekran');
+  var przyciski = document.querySelectorAll('[data-ekran]');
+
+  function pokaz(nazwa) {
+    ekrany.forEach(function (e) { e.classList.toggle('is-active', e.id === 'ekran-' + nazwa); });
+    przyciski.forEach(function (b) { b.classList.toggle('is-active', b.dataset.ekran === nazwa); });
+    window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
+  }
+
+  przyciski.forEach(function (b) {
+    b.addEventListener('click', function () { pokaz(b.dataset.ekran); });
+  });
+  document.querySelectorAll('[data-ekran-link]').forEach(function (a) {
+    a.addEventListener('click', function (ev) { ev.preventDefault(); pokaz(a.dataset.ekranLink); });
+  });
+  document.querySelectorAll('[data-otworz]').forEach(function (el) {
+    el.addEventListener('click', function (ev) { ev.preventDefault(); pokaz('ticket'); });
+  });
+
+  // Kanban <-> lista
+  document.querySelectorAll('[data-widok]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var lista = b.dataset.widok === 'lista';
+      document.querySelectorAll('[data-widok]').forEach(function (x) { x.classList.toggle('is-active', x === b); });
+      document.getElementById('widok-kanban').hidden = lista;
+      document.getElementById('widok-lista').hidden = !lista;
+    });
+  });
+
+  // Odpowiedz do klienta <-> komentarz wewnetrzny
+  var komponuj = document.getElementById('komponuj');
+  var etykieta = document.getElementById('etykieta-tresci');
+  var info = document.getElementById('info-komponuj');
+  var wyslij = document.getElementById('przycisk-wyslij');
+  document.querySelectorAll('[data-tryb]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var wewn = b.dataset.tryb === 'wewnetrzny';
+      document.querySelectorAll('[data-tryb]').forEach(function (x) { x.classList.toggle('is-active', x === b); });
+      komponuj.classList.toggle('tryb-wewnetrzny', wewn);
+      etykieta.textContent = wewn ? 'Notatka — zostaje w zgłoszeniu' : 'Wiadomość — wyjdzie do klienta';
+      info.innerHTML = wewn
+        ? 'Widzą tylko technicy. <b>Nie wychodzi</b> na żaden adres i nie pojawi się w mailu do klienta.'
+        : 'Wyjdzie z <b>helpdesk@mojadomena.pl</b> na <b>jan@bongo.pl</b>, temat <b>Re: [BON-123] Nie działa drukarka w biurze</b>. Odpowiedź klienta wróci do tego zgłoszenia.';
+      wyslij.textContent = wewn ? 'Zapisz komentarz' : 'Wyślij do klienta';
+      wyslij.className = wewn ? 'btn btn-wewn' : 'btn btn-primary';
+    });
+  });
+
+  // Dodawanie czasu - liczy sume i rozbicie, zeby bylo widac zasade dzialania
+  var JA = { nazwa: 'Władek Nowak', skrot: 'Władek', inicjaly: 'WN', klasa: 'in-wl' };
+  function format(minuty) {
+    var g = Math.floor(minuty / 60), m = minuty % 60;
+    if (!g) { return m + ' min'; }
+    return g + ' h ' + (m < 10 ? '0' + m : m) + ' min';
+  }
+  function przelicz() {
+    var pozycje = Array.prototype.slice.call(document.querySelectorAll('#czas-rozbicie li'));
+    var suma = pozycje.reduce(function (s, li) { return s + Number(li.dataset.minuty); }, 0);
+    pozycje.forEach(function (li) {
+      var minuty = Number(li.dataset.minuty);
+      li.querySelector('.czas-wartosc').textContent = format(minuty);
+      li.querySelector('.pasek-wypelnienie').style.width = (suma ? Math.round(minuty / suma * 100) : 0) + '%';
+    });
+    document.getElementById('czas-suma').textContent = format(suma);
+    document.getElementById('czas-osob').textContent = String(pozycje.length);
+  }
+  document.getElementById('dodaj-czas').addEventListener('click', function () {
+    var pole = document.getElementById('c-ile');
+    var minuty = parseInt(String(pole.value).replace(/\D/g, ''), 10);
+    if (!minuty) { pole.focus(); komunikat('Wpisz liczbę minut, np. 30'); return; }
+    var opis = document.getElementById('c-opis').value.trim();
+    var li = document.querySelector('#czas-rozbicie li[data-technik="' + JA.nazwa + '"]');
+    if (li) {
+      li.dataset.minuty = String(Number(li.dataset.minuty) + minuty);
+    } else {
+      li = document.createElement('li');
+      li.dataset.technik = JA.nazwa;
+      li.dataset.minuty = String(minuty);
+      li.innerHTML = '<span class="osoba"><span class="inicjaly ' + JA.klasa + '">' + JA.inicjaly + '</span>' + JA.nazwa +
+        '</span><span class="czas-wartosc"></span><span class="pasek"><span class="pasek-wypelnienie"></span></span>';
+      document.getElementById('czas-rozbicie').appendChild(li);
+    }
+    var wpis = document.createElement('li');
+    wpis.innerHTML = '<span class="czas-min">' + format(minuty) + '</span><span>' + JA.skrot + ' · teraz' + (opis ? ' · ' + opis : '') + '</span>';
+    document.getElementById('czas-wpisy').appendChild(wpis);
+
+    var zdarzenie = document.createElement('div');
+    zdarzenie.className = 'wpis-system';
+    zdarzenie.innerHTML = '<span class="wpis-godzina">teraz</span><span>' + JA.nazwa + ' dodał <b>' + format(minuty) + '</b>' + (opis ? ' — „' + opis + '”' : '') + '</span>';
+    document.getElementById('watek').appendChild(zdarzenie);
+
+    pole.value = '';
+    document.getElementById('c-opis').value = '';
+    przelicz();
+  });
+
+  // Status i przypisanie zostawiaja slad w historii - to jest sedno wymagania
+  var odznaka = document.getElementById('odznaka-status');
+  var klasyStatusu = { 'Nowe': 'badge badge-nowy', 'W trakcie': 'badge badge-warn', 'Oczekuje': 'badge badge-hold', 'Zamknięte': 'badge badge-ok' };
+  document.getElementById('p-status').addEventListener('change', function (ev) {
+    odznaka.textContent = ev.target.value;
+    odznaka.className = klasyStatusu[ev.target.value];
+    dopiszHistorie('status: ' + ev.target.value);
+  });
+  document.getElementById('p-technik').addEventListener('change', function (ev) {
+    dopiszHistorie('zgłoszenie przypisane: ' + ev.target.value);
+  });
+  document.getElementById('do-mnie').addEventListener('click', function () {
+    document.getElementById('p-technik').value = JA.nazwa;
+    dopiszHistorie('zgłoszenie przypisane: ' + JA.nazwa);
+  });
+  function dopiszHistorie(tekst) {
+    var li = document.createElement('li');
+    li.innerHTML = '<span class="wpis-godzina">teraz</span>' + tekst;
+    document.querySelector('.historia').appendChild(li);
+    var zdarzenie = document.createElement('div');
+    zdarzenie.className = 'wpis-system';
+    zdarzenie.innerHTML = '<span class="wpis-godzina">teraz</span><span>' + tekst + '</span>';
+    document.getElementById('watek').appendChild(zdarzenie);
+  }
+
+  // Etap 2 - da sie schowac, zeby zobaczyc czysty MVP
+  document.getElementById('etap2').addEventListener('change', function (ev) {
+    document.querySelectorAll('.etap2, .tresc-etap2').forEach(function (el) { el.hidden = !ev.target.checked; });
+  });
+
+  // Role: operator widzi wszystko, technik tylko przypisane firmy
+  var FIRMY_TECHNIKA = ['Bongo', 'ŁKS'];
+  function policz() {
+    var otwarte = 0;
+    document.querySelectorAll('#widok-kanban .kolumna').forEach(function (kol, i) {
+      var widoczne = Array.prototype.filter.call(kol.querySelectorAll('.ticket-karta'), function (k) { return !k.hidden; }).length;
+      kol.querySelector('.kolumna-licznik').textContent = String(widoczne);
+      if (i < 3) { otwarte += widoczne; }
+    });
+    document.getElementById('licznik-zgloszen').textContent = String(otwarte);
+    var maile = Array.prototype.filter.call(
+      document.querySelectorAll('#lista-nierozpoznanych tr'), function (w) { return !w.hidden; }).length;
+    document.getElementById('licznik-nierozpoznane').textContent = String(maile);
+  }
+  function ustawRole(rola) {
+    var technik = rola === 'technik';
+    document.querySelectorAll('[data-firma]').forEach(function (el) {
+      el.hidden = technik && FIRMY_TECHNIKA.indexOf(el.dataset.firma) === -1;
+    });
+    document.querySelectorAll('[data-tylko-operator]').forEach(function (el) { el.hidden = technik; });
+    document.querySelectorAll('.tylko-technik').forEach(function (el) { el.hidden = !technik; });
+    document.getElementById('pasek-rola').textContent = technik ? 'Helpdesk · technik' : 'Helpdesk · operator';
+    document.getElementById('pasek-zakres').textContent = technik ? 'Bongo, ŁKS' : 'Wszystkie firmy klienckie';
+    document.getElementById('pasek-konto').textContent = technik ? 'ewa@mojadomena.pl' : 'operator@mojadomena.pl';
+    var czynny = document.querySelector('.ekran.is-active');
+    if (technik && czynny && (czynny.id === 'ekran-firmy' || czynny.id === 'ekran-skrzynka')) { pokaz('kanban'); }
+    policz();
+  }
+  document.getElementById('rola').addEventListener('change', function (ev) { ustawRole(ev.target.value); });
+
+  // Motyw
+  document.getElementById('motyw').addEventListener('click', function () {
+    var teraz = document.documentElement.getAttribute('data-theme');
+    var ciemny = teraz === 'dark' || (!teraz && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', ciemny ? 'light' : 'dark');
+  });
+
+  document.querySelectorAll('[data-eksport]').forEach(function (b) {
+    b.addEventListener('click', function () { komunikat('Makieta — plik ' + b.dataset.eksport + ' powstanie w wersji działającej.'); });
+  });
+
+  var toast = document.getElementById('toast'), licznik;
+  function komunikat(tekst) {
+    toast.textContent = tekst;
+    toast.hidden = false;
+    clearTimeout(licznik);
+    licznik = setTimeout(function () { toast.hidden = true; }, 2600);
+  }
+
+  przelicz();
+  policz();
+})();
+</script>
