@@ -389,7 +389,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
     <nav class="app-nav">
       <button type="button" class="app-nav-link is-active" data-ekran="kanban"><span class="nav-icon">▤</span>Zgłoszenia<span class="nav-licznik" id="licznik-zgloszen">7</span></button>
       <button type="button" class="app-nav-link" data-ekran="ticket"><span class="nav-icon">✉</span>Karta zgłoszenia</button>
-      <button type="button" class="app-nav-link" data-ekran="nierozpoznane" data-tylko-operator><span class="nav-icon">◐</span>Nierozpoznane<span class="nav-licznik" id="licznik-nierozpoznane">3</span></button>
+      <button type="button" class="app-nav-link" data-ekran="nierozpoznane" data-tylko-operator><span class="nav-icon">◐</span>Nierozpoznane<span class="nav-licznik" id="licznik-nierozpoznane">4</span></button>
       <button type="button" class="app-nav-link" data-ekran="firmy" data-tylko-operator><span class="nav-icon">☷</span>Firmy i dostępy</button>
     </nav>
 
@@ -796,17 +796,29 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
         <div class="page-head">
           <div>
             <h1>Nierozpoznane wiadomości</h1>
-            <p class="muted">Poczta ze skrzynki helpdesku, której domena nadawcy nie należy do żadnej firmy. Nic nie jest kasowane ani odrzucane i nic nie wychodzi do nadawcy — wiadomość czeka, aż operator zdecyduje.</p>
+            <p class="muted">
+              Wszystko ze skrzynki helpdesku, czego domena nadawcy nie wskazuje na żadną firmę — także poczta z własnej domeny.
+              To skrzynka wyłącznie helpdeskowa, więc większość takich wiadomości to spam. Nic nie jest kasowane ani odrzucane
+              i nic nie wychodzi do nadawcy: wiadomość czeka, aż operator zdecyduje.
+            </p>
           </div>
           <div class="head-actions">
             <button type="button" class="btn btn-ghost">Zignorowane (12)</button>
           </div>
         </div>
 
+        <div class="filtry tresc-etap2">
+          <div>
+            <label for="n-ocena">Ocena AI</label>
+            <select id="n-ocena"><option selected>wszystkie (4)</option><option>prawdopodobne zgłoszenia (2)</option><option>spam i reszta (2)</option></select>
+          </div>
+          <div><button type="button" class="btn">Zignoruj wszystkie oznaczone jako spam</button></div>
+        </div>
+
         <section class="panel panel-scroll">
           <table class="table">
             <thead>
-              <tr><th>Otrzymano</th><th>Nadawca</th><th>Temat</th><th>Domena nadawcy</th><th style="width: 340px;">Decyzja</th></tr>
+              <tr><th>Otrzymano</th><th>Nadawca</th><th>Temat</th><th>Domena nadawcy</th><th class="tresc-etap2">Ocena AI</th><th style="width: 320px;">Decyzja</th></tr>
             </thead>
             <tbody>
               <tr>
@@ -814,13 +826,14 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
                 <td>anna.kowalska@gmail.com</td>
                 <td>Prośba o pomoc z pocztą <span class="muted small">— „Piszę z prywatnego, bo firmowa nie działa…”</span></td>
                 <td><span class="badge">gmail.com</span></td>
+                <td class="tresc-etap2"><span class="badge badge-nowy">zgłoszenie</span> <span class="pewnosc">0,79</span><br><span class="muted small">firma: <b>Klepsydra</b> <span class="pewnosc">0,64</span></span></td>
                 <td>
                   <div class="rzad-akcji" style="margin: 0;">
                     <select style="width: auto; min-width: 130px;"><option>wskaż firmę…</option><option>Bongo</option><option>Klepsydra</option><option>ŁKS</option><option>Gloria</option></select>
                     <button type="button" class="btn btn-small btn-primary">Utwórz zgłoszenie</button>
                     <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
                   </div>
-                  <p class="muted small tresc-etap2" style="margin: 6px 0 0;">AI: prawdopodobnie <b>Klepsydra</b> — w podpisie „Klepsydra sp. z o.o.” <span class="pewnosc">(0,64)</span></p>
+                  <p class="muted small tresc-etap2" style="margin: 6px 0 0;">AI czyta podpis „Klepsydra sp. z o.o.”, ale firmy nie ustawia — robi to operator.</p>
                 </td>
               </tr>
               <tr>
@@ -828,6 +841,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
                 <td>biuro@nowa-firma.pl</td>
                 <td>Zapytanie o wsparcie IT</td>
                 <td><span class="badge">nowa-firma.pl</span></td>
+                <td class="tresc-etap2"><span class="badge badge-nowy">zgłoszenie</span> <span class="pewnosc">0,71</span><br><span class="muted small">firma: <b>—</b></span></td>
                 <td>
                   <div class="rzad-akcji" style="margin: 0;">
                     <select style="width: auto; min-width: 130px;"><option>wskaż firmę…</option><option>Bongo</option><option>Klepsydra</option><option>ŁKS</option><option>Gloria</option><option>+ nowa firma…</option></select>
@@ -837,10 +851,24 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
                 </td>
               </tr>
               <tr>
+                <td class="lp">dziś 08:03</td>
+                <td>ksiegowosc@mojadomena.pl <span class="badge">własna domena</span></td>
+                <td>Faktura za wrzesień do podpisu</td>
+                <td><span class="badge">mojadomena.pl</span></td>
+                <td class="tresc-etap2"><span class="badge badge-warn">nie zgłoszenie</span> <span class="pewnosc">0,88</span></td>
+                <td>
+                  <div class="rzad-akcji" style="margin: 0;">
+                    <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
+                    <button type="button" class="btn btn-small btn-ghost">Zignoruj całą domenę</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
                 <td class="lp">dziś 07:12</td>
                 <td>noreply@sklep-online.pl</td>
                 <td>Twoja przesyłka jest w drodze</td>
                 <td><span class="badge">sklep-online.pl</span></td>
+                <td class="tresc-etap2"><span class="badge badge-danger">spam</span> <span class="pewnosc">0,93</span></td>
                 <td>
                   <div class="rzad-akcji" style="margin: 0;">
                     <button type="button" class="btn btn-small btn-ghost">Zignoruj</button>
@@ -856,6 +884,15 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
           Wiadomość przypisana do firmy dokłada jej domenę do listy dozwolonych dopiero wtedy, gdy operator to potwierdzi — jednorazowa decyzja nie otwiera helpdesku dla całej domeny.
           Ten widok ma tylko operator: dopóki nie znamy firmy, nie ma czym mierzyć dostępu technika.
         </div>
+
+        <div class="etap2">
+          <span class="etap2-znacznik">Etap 2 · po podłączeniu AI</span>
+          <p class="small" style="max-width: 78ch; margin: 0;">
+            Bez AI ta lista jest zwykłą skrzynką do przejrzenia — kolumna „Ocena AI” po prostu jej nie ma i operator czyta wszystko po kolei.
+            Po podłączeniu AI wiadomości dostają etykietę <b>zgłoszenie</b> / <b>nie zgłoszenie</b> / <b>spam</b>, dzięki czemu spam da się odsiać
+            jednym filtrem. <b>Etykieta niczego nie kasuje i nie zakłada zgłoszenia</b> — decyzja zostaje po stronie operatora.
+          </p>
+        </div>
       </section>
 
       <!-- ================= EKRAN: FIRMY I DOMENY ================= -->
@@ -863,7 +900,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
         <div class="page-head">
           <div>
             <h1>Firmy i dostępy</h1>
-            <p class="muted">Domena decyduje, czyje zgłoszenie powstaje z maila. Jedna firma może mieć kilka domen; ta sama domena nie może należeć do dwóch firm. Skrót firmy jest jednocześnie prefiksem numeru zgłoszenia.</p>
+            <p class="muted">Domena decyduje, czyje zgłoszenie powstaje z maila, a skrót firmy jest prefiksem numeru. <b>Domena należy tylko do jednej firmy</b> — przy próbie dodania zajętej system pokaże, kto ją ma. Odwrotnie wolno: firma może mieć kilka domen, jak Klepsydra po konsolidacji.</p>
           </div>
           <div class="head-actions"><button type="button" class="btn btn-primary">Dodaj firmę</button></div>
         </div>
@@ -885,7 +922,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
               <tr>
                 <td><b>Klepsydra</b></td>
                 <td class="small"><span class="nr">KLE-</span> <span class="muted">następny KLE-89</span></td>
-                <td><div class="domeny"><span class="domena">klepsydra.pl<button type="button" title="Usuń">×</button></span><span class="domena">klepsydra.com.pl<button type="button" title="Usuń">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj domenę</button></div></td>
+                <td><div class="domeny"><span class="domena">klepsydra.pl<button type="button" title="Usuń">×</button></span><span class="domena" title="Domena z przejętej spółki — obie prowadzą do Klepsydry">klepsydra.com.pl<button type="button" title="Usuń">×</button></span><button type="button" class="domena domena-dodaj">+ dodaj domenę</button></div></td>
                 <td class="lp">4</td>
                 <td class="lp">21 h 05 min</td>
                 <td class="lp">67</td>
@@ -909,6 +946,11 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
             </tbody>
           </table>
         </section>
+
+        <p class="muted small" style="margin: -6px 0 16px; max-width: 82ch;">
+          Klepsydra ma dwie domeny, bo w trakcie konsolidacji przejęła spółkę — poczta z obu trafia do tej samej firmy i tej samej numeracji
+          (<span class="nr">KLE-…</span>). Usunięcie domeny nie rusza starych zgłoszeń, tylko zamyka drogę nowym.
+        </p>
 
         <section class="panel panel-scroll">
           <h2>Ludzie i dostęp do firm</h2>
@@ -1150,7 +1192,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
           <div class="head-actions"><button type="button" class="btn">Sprawdź połączenie</button></div>
         </div>
 
-        <div class="alert alert-ok">Ostatnie pobranie: dziś 10:42 — 3 nowe wiadomości: 2 dopisane do istniejących zgłoszeń, 1 do nierozpoznanych.</div>
+        <div class="alert alert-ok">Ostatnie pobranie: dziś 10:42 — 4 nowe wiadomości: 2 dopisane do istniejących zgłoszeń, 2 do nierozpoznanych.</div>
 
         <section class="panel">
           <h2>Droga wiadomości</h2>
@@ -1175,6 +1217,10 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
           <p class="muted small" style="margin: 14px 0 0;">
             Numer bierze się z firmy, więc przed jego nadaniem trzeba znać domenę. Odpowiedź na istniejący wątek omija całą tę drogę —
             rozpoznaje się ją po znaczniku w temacie i nagłówkach, nawet gdy klient napisze z innego adresu.
+            Skrzynka służy wyłącznie helpdeskowi, więc poczta z własnej domeny idzie tą samą ścieżką co obca — do nierozpoznanych.
+          </p>
+          <p class="muted small tresc-etap2" style="margin: 8px 0 0;">
+            <span class="etap2-znacznik" style="margin: 0 6px 0 0;">Etap 2</span>AI oznacza wiadomości w nierozpoznanych jako <b>zgłoszenie</b>, <b>nie zgłoszenie</b> albo <b>spam</b> — sortuje listę, nie podejmuje decyzji.
           </p>
         </section>
 
@@ -1282,6 +1328,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
           <section class="panel">
             <h2>Etap 2 — zaznaczone, ale nie budowane teraz</h2>
             <ul class="tight small" style="padding-left: 18px; margin: 0 0 14px;">
+              <li>Kategoryzacja nierozpoznanej poczty: zgłoszenie / nie zgłoszenie / spam</li>
               <li>Rozpoznawanie firmy z treści maila (sugestia, nie automat)</li>
               <li>Sugerowany technik i rodzaj problemu</li>
               <li>Streszczenie długiego wątku</li>
@@ -1303,12 +1350,14 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
               <li>Numeracja <b>per firma</b>, ze skrótem firmy w numerze i w temacie maila.</li>
               <li>Potwierdzenie automatyczne tylko dla <b>nowego</b> zgłoszenia z dozwolonej domeny, które jest zgłoszeniem.</li>
               <li>Czas pracy <b>tylko się dopisuje</b> — bez edycji i kasowania.</li>
+              <li>Skrzynka jest wyłącznie helpdeskowa: poczta z domeny spoza firm — także własnej — ląduje w nierozpoznanych jako prawdopodobny spam.</li>
+              <li>Domena należy do jednej firmy, ale firma może mieć kilka domen (np. po konsolidacji).</li>
             </ul>
 
             <h2>Zostało do rozstrzygnięcia</h2>
             <ol class="small" style="padding-left: 18px; margin: 0;">
-              <li style="margin-bottom: 6px;">Mail od kogoś z <b>własnej</b> domeny (technik, księgowość) — nierozpoznany jak każdy inny, czy zgłoszenie wewnętrzne na osobną „firmę”?</li>
-              <li style="margin-bottom: 6px;">Jedna domena = jedna firma. Co z klientem, który ma kilka spółek na jednej domenie — rozstrzyga wtedy operator ręcznie, czy dokładamy regułę (np. po adresie nadawcy)?</li>
+              <li style="margin-bottom: 6px;">Jak długo trzymamy zignorowane i spam — kasować po X dniach, czy zostają na zawsze do wglądu?</li>
+              <li style="margin-bottom: 6px;">„Zignoruj całą domenę” — stała reguła (kolejne maile znikają same), czy tylko podpowiedź przy następnym mailu z tej domeny?</li>
               <li style="margin-bottom: 6px;">Skrót firmy w numerze — operator wpisuje ręcznie czy system proponuje z nazwy? Co przy zmianie firmy: nowy numer i odsyłacz ze starego (tak w makiecie)?</li>
               <li style="margin-bottom: 6px;">Czy technik może przekazać zgłoszenie komuś bez dostępu do tej firmy — i czy przekazanie ma ten dostęp nadawać?</li>
               <li style="margin-bottom: 6px;">Czy technik widzi raport „firma → technik" dla swoich firm (czyli czasy kolegów), czy tylko własny czas?</li>
