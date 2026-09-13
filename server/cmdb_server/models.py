@@ -1380,12 +1380,6 @@ class Zgloszenie(Base):
     technik_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("portal_users.id", ondelete="SET NULL"), index=True
     )
-    # Powiazanie z CMDB jest nieobowiazkowe - wiekszosc zgloszen dotyczy
-    # czlowieka i jego problemu, nie konkretnego urzadzenia.
-    asset_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("assets.id", ondelete="SET NULL")
-    )
-
     utworzono: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
@@ -1396,7 +1390,42 @@ class Zgloszenie(Base):
 
     tenant: Mapped[Tenant] = relationship()
     technik: Mapped[PortalUser | None] = relationship()
-    asset: Mapped["Asset | None"] = relationship()
+
+
+class ZgloszenieSprzet(Base):
+    """Sprzet, ktorego dotyczy zgloszenie.
+
+    Tabela laczaca, a nie pole przy zgloszeniu: jedna awaria potrafi dotyczyc
+    kilku urzadzen (drukarka i przelacznik, do ktorego jest wpieta), a jedno
+    urzadzenie zbiera zgloszenia przez cale zycie - i to jest jego karta
+    napraw. Pole w zgloszeniu dawaloby pierwsze, ale nie drugie.
+
+    ``zrodlo`` mowi, skad wzielo sie powiazanie: "automat" to sprzet
+    zglaszajacego rozpoznany po jego adresie, "reczne" to wybor technika.
+    Bez tego rozroznienia nie da sie pozniej ocenic, czy automat trafia.
+    """
+
+    __tablename__ = "helpdesk_zgloszenie_sprzet"
+    __table_args__ = (
+        UniqueConstraint("zgloszenie_id", "asset_id", name="uq_zgloszenie_sprzet"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    zgloszenie_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("helpdesk_zgloszenia.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    zrodlo: Mapped[str] = mapped_column(String(16), nullable=False, default="reczne")
+    dodal: Mapped[str | None] = mapped_column(String(255))
+    utworzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    zgloszenie: Mapped[Zgloszenie] = relationship()
+    asset: Mapped["Asset"] = relationship()
 
 
 class WpisZgloszenia(Base):

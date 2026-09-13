@@ -322,7 +322,7 @@ def test_technik_widzi_tylko_przypisane_firmy(tenant_a, tenant_b):
         assert helpdesk.ma_dostep(db, ewa, tenant_b["id"]) is False
 
 
-def test_operator_widzi_wszystkie_firmy(tenant_a, tenant_b, make_user):
+def test_superadmin_widzi_wszystkie_firmy(tenant_a, tenant_b, make_user):
     with SessionLocal() as db:
         _firma(db, tenant_a["id"], "BON")
         _firma(db, tenant_b["id"], "KLE")
@@ -333,7 +333,7 @@ def test_operator_widzi_wszystkie_firmy(tenant_a, tenant_b, make_user):
         operator = db.execute(
             select(PortalUser).where(PortalUser.email == "operator@mojadomena.pl")
         ).scalar_one()
-        assert helpdesk.operator(operator) is True
+        assert helpdesk.prowadzi_helpdesk(operator) is True
         assert set(helpdesk.firmy_technika(db, operator)) == {tenant_a["id"], tenant_b["id"]}
 
 
@@ -368,3 +368,143 @@ def test_odebranie_dostepu_nie_kasuje_historii(tenant_a):
         suma, udzialy = helpdesk.czas_zgloszenia(db, zgloszenie.id)
         assert suma == 30 and udzialy[0].nazwa == "Wladek Nowak"
         assert db.get(Zgloszenie, zgloszenie.id) is not None
+
+
+# --- sprzet zgloszenia i karta napraw ---------------------------------------
+
+def _osoba(db, tenant_id, imie, email):
+    from cmdb_server.models import WpisSlownika
+
+    wpis = WpisSlownika(
+        tenant_id=tenant_id, kategoria="osoba", wartosc=imie, klucz=imie.lower(),
+        atrybuty={"imie_nazwisko": imie, "email": email},
+    )
+    db.add(wpis)
+    db.flush()
+    return wpis
+
+
+def _sprzet(db, tenant_id, hostname, uzytkownik_id=None, typ="komputer"):
+    from cmdb_server.models import Asset
+
+    asset = Asset(
+        tenant_id=tenant_id, machine_id=f"machine-{hostname}", hostname=hostname,
+        typ=typ, uzytkownik_id=uzytkownik_id,
+    )
+    db.add(asset)
+    db.flush()
+    return asset
+
+
+def test_sprzet_zglaszajacego_podpina_sie_sam(tenant_a):
+    """Domyslne powiazanie idzie po uzytkowniku sprzetu, nie po opiekunie:
+    laptop prezesa ma opiekuna w IT, a awarie zglasza prezes."""
+    with SessionLocal() as db:
+        _firma(db, tenant_a["id"], "BON", ["bongo.pl"])
+        jan = _osoba(db, tenant_a["id"], "Jan Kowalski", "jan@bongo.pl")
+        laptop = _sprzet(db, tenant_a["id"], "LAPTOP-023", jan.id)
+        # Sprzet innej osoby nie moze sie doczepic.
+        _sprzet(db, tenant_a["id"], "LAPTOP-999", _osoba(db, tenant_a["id"], "Ewa Nowak", "ewa@bongo.pl").id)
+
+        zgloszenie = helpdesk.utworz_zgloszenie(
+            db, tenant_id=tenant_a["id"], temat="Nie dziala drukarka", tresc="",
+            zglaszajacy_email="Jan@Bongo.pl",
+        )
+        db.commit()
+
+        podpiety = helpdesk.sprzet_zgloszenia(db, zgloszenie.id)
+        assert [(a.hostname, w.zrodlo) for a, w in podpiety] == [("LAPTOP-023", "automat")]
+
+
+def test_kilka_sprzetow_uzytkownika_zostaje_do_decyzji_technika(tenant_a):
+    """Dopisanie monitora i telefonu do zgloszenia o VPN zasmiecilo by ich karty
+    napraw - przy kilku kandydatach wybiera czlowiek."""
+    with SessionLocal() as db:
+        _firma(db, tenant_a["id"], "BON", ["bongo.pl"])
+        jan = _osoba(db, tenant_a["id"], "Jan Kowalski", "jan@bongo.pl")
+        _sprzet(db, tenant_a["id"], "LAPTOP-023", jan.id)
+        _sprzet(db, tenant_a["id"], "MONITOR-11", jan.id, typ="monitor")
+
+        zgloszenie = helpdesk.utworz_zgloszenie(
+            db, tenant_id=tenant_a["id"], temat="VPN zrywa", tresc="",
+            zglaszajacy_email="jan@bongo.pl",
+        )
+        db.commit()
+
+        assert helpdesk.sprzet_zgloszenia(db, zgloszenie.id) == []
+        kandydaci = helpdesk.sprzet_zglaszajacego(db, tenant_a["id"], "jan@bongo.pl")
+        assert [a.hostname for a in kandydaci] == ["LAPTOP-023", "MONITOR-11"]
+
+
+def test_nieznany_nadawca_nie_dostaje_zadnego_sprzetu(tenant_a):
+    with SessionLocal() as db:
+        _firma(db, tenant_a["id"], "BON", ["bongo.pl"])
+        _sprzet(db, tenant_a["id"], "LAPTOP-023")
+        zgloszenie = helpdesk.utworz_zgloszenie(
+            db, tenant_id=tenant_a["id"], temat="Drukarka", tresc="",
+            zglaszajacy_email="ktos@bongo.pl",
+        )
+        db.commit()
+        assert helpdesk.sprzet_zgloszenia(db, zgloszenie.id) == []
+
+
+def test_technik_podpina_i_odpina_sprzet_recznie(tenant_a):
+    with SessionLocal() as db:
+        _firma(db, tenant_a["id"], "BON", ["bongo.pl"])
+        wladek = _technik(db, tenant_a["id"], "wladek@mojadomena.pl", "Wladek Nowak")
+        drukarka = _sprzet(db, tenant_a["id"], "DRUKARKA-01", typ="drukarka")
+        zgloszenie = helpdesk.utworz_zgloszenie(
+            db, tenant_id=tenant_a["id"], temat="Drukarka", tresc="",
+            zglaszajacy_email="jan@bongo.pl",
+        )
+        helpdesk.podepnij_sprzet(db, zgloszenie, drukarka, dodal=helpdesk.opis_osoby(wladek))
+        db.commit()
+
+        assert [a.hostname for a, _ in helpdesk.sprzet_zgloszenia(db, zgloszenie.id)] == ["DRUKARKA-01"]
+        slady = [w.tresc for w in db.execute(
+            select(WpisZgloszenia).where(
+                WpisZgloszenia.zgloszenie_id == zgloszenie.id,
+                WpisZgloszenia.rodzaj == WPIS_SYSTEM,
+            )
+        ).scalars()]
+        assert any("podpiety sprzet: DRUKARKA-01" in s for s in slady)
+
+        assert helpdesk.odepnij_sprzet(db, zgloszenie, drukarka.id, autor="Wladek Nowak") is True
+        db.commit()
+        assert helpdesk.sprzet_zgloszenia(db, zgloszenie.id) == []
+
+
+def test_sprzet_innej_firmy_nie_da_sie_podpiac(tenant_a, tenant_b):
+    with SessionLocal() as db:
+        _firma(db, tenant_a["id"], "BON", ["bongo.pl"])
+        _firma(db, tenant_b["id"], "KLE")
+        obcy = _sprzet(db, tenant_b["id"], "OBCY-01")
+        zgloszenie = helpdesk.utworz_zgloszenie(
+            db, tenant_id=tenant_a["id"], temat="Drukarka", tresc="",
+            zglaszajacy_email="jan@bongo.pl",
+        )
+        with pytest.raises(helpdesk.BladHelpdesku, match="innej firmy"):
+            helpdesk.podepnij_sprzet(db, zgloszenie, obcy)
+
+
+def test_karta_napraw_sprzetu_zbiera_jego_zgloszenia_i_czas(tenant_a):
+    """Pytanie, ktorego dzis w CMDB nie da sie zadac: ile razy ta drukarka
+    sie psula i ile czasu na nia poszlo."""
+    with SessionLocal() as db:
+        _firma(db, tenant_a["id"], "BON", ["bongo.pl"])
+        wladek = _technik(db, tenant_a["id"], "wladek@mojadomena.pl", "Wladek Nowak")
+        drukarka = _sprzet(db, tenant_a["id"], "DRUKARKA-01", typ="drukarka")
+
+        for temat, minuty in (("Nie drukuje", 30), ("Zacina papier", 45), ("Brak tonera", 15)):
+            zgloszenie = helpdesk.utworz_zgloszenie(
+                db, tenant_id=tenant_a["id"], temat=temat, tresc="",
+                zglaszajacy_email="jan@bongo.pl",
+            )
+            helpdesk.podepnij_sprzet(db, zgloszenie, drukarka)
+            helpdesk.dodaj_czas(db, zgloszenie, wladek, minuty)
+        db.commit()
+
+        historia = helpdesk.zgloszenia_sprzetu(db, drukarka.id)
+        assert [z.temat for z in historia] == ["Brak tonera", "Zacina papier", "Nie drukuje"]
+        assert helpdesk.czas_sprzetu(db, drukarka.id) == 90
+        assert helpdesk.formatuj_czas(helpdesk.czas_sprzetu(db, drukarka.id)) == "1 h 30 min"

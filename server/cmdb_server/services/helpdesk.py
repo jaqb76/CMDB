@@ -26,14 +26,17 @@ from ..models import (
     WPIS_OD_KLIENTA,
     WPIS_SYSTEM,
     WPIS_WEWNETRZNY,
+    Asset,
     CzasPracy,
     HelpdeskDomena,
     HelpdeskDostep,
     HelpdeskFirma,
     PortalUser,
     Tenant,
+    WpisSlownika,
     WpisZgloszenia,
     Zgloszenie,
+    ZgloszenieSprzet,
     utcnow,
 )
 
@@ -203,11 +206,13 @@ def znajdz_po_numerze(db: Session, numer: str | None) -> Zgloszenie | None:
 
 # --- dostep technikow -------------------------------------------------------
 
-def operator(user: PortalUser) -> bool:
-    """Operator widzi wszystkie firmy i konfiguracje helpdesku.
+def prowadzi_helpdesk(user: PortalUser) -> bool:
+    """Czy konto zarzadza helpdeskiem: domenami, skrzynka i dostepami technikow.
 
-    To ta sama osoba, ktora zarzadza CMDB globalnie - nie mnozymy rol, bo
-    druga lista uprawnien rozjezdza sie z pierwsza.
+    Robi to superadmin i tylko on. Nadanie technikowi firmy jest jednoczesnie
+    otwarciem mu kartoteki tej firmy w CMDB, wiec nie moze tego zrobic nikt,
+    kto sam nie ma prawa przekraczac granicy firm - a administrator firmy
+    ("operator" w slowniku CMDB) go nie ma.
     """
     return bool(user.is_superadmin)
 
@@ -215,12 +220,12 @@ def operator(user: PortalUser) -> bool:
 def firmy_technika(db: Session, user: PortalUser) -> list[str]:
     """Identyfikatory firm, ktore technik obsluguje.
 
-    Operator dostaje wszystkie firmy, bo prowadzi caly helpdesk. Zwykle konto
+    Superadmin dostaje wszystkie firmy, bo prowadzi caly helpdesk. Zwykle konto
     portalu bez zadnego dostepu helpdeskowego dostaje pusta liste - a nie
     swoja wlasna firme: dostep do panelu firmy nie jest tym samym co prawo do
     czytania jej zgloszen.
     """
-    if operator(user):
+    if prowadzi_helpdesk(user):
         return list(db.execute(select(Tenant.id).where(Tenant.is_active.is_(True))).scalars())
     return list(db.execute(
         select(HelpdeskDostep.tenant_id).where(HelpdeskDostep.user_id == user.id)
@@ -228,7 +233,7 @@ def firmy_technika(db: Session, user: PortalUser) -> list[str]:
 
 
 def ma_dostep(db: Session, user: PortalUser, tenant_id: str) -> bool:
-    if operator(user):
+    if prowadzi_helpdesk(user):
         return True
     return db.execute(
         select(HelpdeskDostep.id).where(
@@ -310,6 +315,7 @@ def utworz_zgloszenie(
         utworzono=teraz,
     ))
     zdarzenie(db, zgloszenie, f"zgloszenie utworzone ({zrodlo}) jako {pelny}", autor=autor)
+    podepnij_sprzet_zglaszajacego(db, zgloszenie)
     return zgloszenie
 
 
@@ -496,3 +502,140 @@ def czas_okresu(
     if do is not None:
         stmt = stmt.where(CzasPracy.utworzono < do)
     return stmt
+
+
+# --- sprzet, ktorego dotyczy zgloszenie -------------------------------------
+
+def osoba_o_adresie(db: Session, tenant_id: str, email: str) -> WpisSlownika | None:
+    """Osoba z kartoteki firmy o tym adresie e-mail.
+
+    Adres jest w slowniku osob polem wymaganym, wiec nadawca maila da sie
+    zwykle rozpoznac dokladnie - bez zgadywania po imieniu i nazwisku, ktore
+    przy dwoch Kowalskich konczy sie podpieciem cudzego laptopa.
+    """
+    czysty = (email or "").strip().lower()
+    if not czysty:
+        return None
+    return db.execute(
+        select(WpisSlownika).where(
+            WpisSlownika.tenant_id == tenant_id,
+            WpisSlownika.kategoria == "osoba",
+            func.lower(WpisSlownika.atrybuty["email"].astext) == czysty,
+        )
+    ).scalars().first()
+
+
+def sprzet_zglaszajacego(db: Session, tenant_id: str, email: str) -> list[Asset]:
+    """Sprzet przypisany zglaszajacemu jako uzytkownikowi.
+
+    Opiekun to nie to samo co uzytkownik: opiekunem laptopa prezesa jest ktos
+    z IT, a zglasza awarie prezes. Szukamy wiec po tym, kto przy sprzecie
+    siedzi.
+    """
+    osoba = osoba_o_adresie(db, tenant_id, email)
+    if osoba is None:
+        return []
+    return list(db.execute(
+        select(Asset)
+        .where(Asset.tenant_id == tenant_id, Asset.uzytkownik_id == osoba.id)
+        .order_by(Asset.hostname)
+    ).scalars())
+
+
+def podepnij_sprzet(
+    db: Session, zgloszenie: Zgloszenie, asset: Asset, *,
+    zrodlo: str = "reczne", dodal: str | None = None,
+) -> ZgloszenieSprzet:
+    """Wiaze zgloszenie ze sprzetem. Sprzet musi nalezec do firmy zgloszenia."""
+    if asset.tenant_id != zgloszenie.tenant_id:
+        raise BladHelpdesku("sprzet nalezy do innej firmy niz zgloszenie")
+
+    istniejace = db.execute(
+        select(ZgloszenieSprzet).where(
+            ZgloszenieSprzet.zgloszenie_id == zgloszenie.id,
+            ZgloszenieSprzet.asset_id == asset.id,
+        )
+    ).scalar_one_or_none()
+    if istniejace is not None:
+        return istniejace
+
+    wiazanie = ZgloszenieSprzet(
+        zgloszenie_id=zgloszenie.id, asset_id=asset.id, zrodlo=zrodlo, dodal=dodal
+    )
+    db.add(wiazanie)
+    db.flush()
+    if zrodlo == "reczne":
+        zdarzenie(db, zgloszenie, f"podpiety sprzet: {asset.hostname}", autor=dodal)
+    return wiazanie
+
+
+def odepnij_sprzet(db: Session, zgloszenie: Zgloszenie, asset_id: str, autor: str | None = None) -> bool:
+    wiazanie = db.execute(
+        select(ZgloszenieSprzet).where(
+            ZgloszenieSprzet.zgloszenie_id == zgloszenie.id,
+            ZgloszenieSprzet.asset_id == asset_id,
+        )
+    ).scalar_one_or_none()
+    if wiazanie is None:
+        return False
+    asset = db.get(Asset, asset_id)
+    db.delete(wiazanie)
+    zdarzenie(
+        db, zgloszenie,
+        f"odpiety sprzet: {asset.hostname if asset else asset_id}", autor=autor,
+    )
+    return True
+
+
+def podepnij_sprzet_zglaszajacego(db: Session, zgloszenie: Zgloszenie) -> Asset | None:
+    """Podpina sprzet nadawcy, gdy da sie go wskazac jednoznacznie.
+
+    Jeden sprzet uzytkownika - podpinamy sam, bo tego dotyczy zgloszenie
+    w zdecydowanej wiekszosci przypadkow. Kilka - zostawiamy technikowi:
+    dopisanie monitora i telefonu do zgloszenia o VPN zasmiecilo by ich karty
+    napraw, a to wlasnie te karty maja pozniej odpowiadac, ile razy dany
+    sprzet sie psul.
+    """
+    kandydaci = sprzet_zglaszajacego(db, zgloszenie.tenant_id, zgloszenie.zglaszajacy_email)
+    if len(kandydaci) != 1:
+        return None
+    podepnij_sprzet(db, zgloszenie, kandydaci[0], zrodlo="automat")
+    return kandydaci[0]
+
+
+def sprzet_zgloszenia(db: Session, zgloszenie_id: str) -> list[tuple[Asset, ZgloszenieSprzet]]:
+    return [
+        (asset, wiazanie)
+        for asset, wiazanie in db.execute(
+            select(Asset, ZgloszenieSprzet)
+            .join(ZgloszenieSprzet, ZgloszenieSprzet.asset_id == Asset.id)
+            .where(ZgloszenieSprzet.zgloszenie_id == zgloszenie_id)
+            .order_by(ZgloszenieSprzet.utworzono)
+        ).all()
+    ]
+
+
+def zgloszenia_sprzetu(db: Session, asset_id: str, limit: int | None = None) -> list[Zgloszenie]:
+    """Karta napraw sprzetu: jego zgloszenia od najnowszego.
+
+    Odpowiada na pytanie, ktorego dzis w CMDB nie da sie zadac - ile razy ta
+    drukarka juz sie psula i czy nie taniej ja wymienic niz naprawiac.
+    """
+    stmt = (
+        select(Zgloszenie)
+        .join(ZgloszenieSprzet, ZgloszenieSprzet.zgloszenie_id == Zgloszenie.id)
+        .where(ZgloszenieSprzet.asset_id == asset_id)
+        .order_by(Zgloszenie.utworzono.desc())
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return list(db.execute(stmt).scalars())
+
+
+def czas_sprzetu(db: Session, asset_id: str) -> int:
+    """Ile minut lacznie poszlo na zgloszenia tego sprzetu."""
+    return int(db.execute(
+        select(func.coalesce(func.sum(CzasPracy.minuty), 0))
+        .join(ZgloszenieSprzet, ZgloszenieSprzet.zgloszenie_id == CzasPracy.zgloszenie_id)
+        .where(ZgloszenieSprzet.asset_id == asset_id)
+    ).scalar_one())
