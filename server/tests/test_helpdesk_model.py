@@ -402,7 +402,7 @@ def test_sprzet_zglaszajacego_podpina_sie_sam(tenant_a):
     with SessionLocal() as db:
         _firma(db, tenant_a["id"], "BON", ["bongo.pl"])
         jan = _osoba(db, tenant_a["id"], "Jan Kowalski", "jan@bongo.pl")
-        laptop = _sprzet(db, tenant_a["id"], "LAPTOP-023", jan.id)
+        _sprzet(db, tenant_a["id"], "LAPTOP-023", jan.id)
         # Sprzet innej osoby nie moze sie doczepic.
         _sprzet(db, tenant_a["id"], "LAPTOP-999", _osoba(db, tenant_a["id"], "Ewa Nowak", "ewa@bongo.pl").id)
 
