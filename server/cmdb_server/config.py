@@ -45,6 +45,13 @@ class Settings(BaseSettings):
 
     # Katalog z wgranymi wersjami agenta (pliki .exe rozsylane na maszyny).
     release_dir: str = "./releases"
+    # Zalaczniki zgloszen helpdesku. Osobny katalog od wydan agenta: te pliki
+    # przysyla klient, wiec nie moga lezec obok plikow, ktore serwer wydaje
+    # jako zaufane.
+    helpdesk_dir: str = "./helpdesk"
+    # Gorna granica jednego zalacznika. Skrzynka i tak odrzuci wieksze, ale
+    # serwer nie moze polegac na cudzych limitach.
+    helpdesk_zalacznik_mb: int = 25
     # Independent trust root, deployed by server operations, NEVER populated
     # from an upload/footer. SHA-256 -> {version, arch} of tested Windows workers.
     # Empty by default: no Windows worker can be activated/distributed.

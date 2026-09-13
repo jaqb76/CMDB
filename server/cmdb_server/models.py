@@ -1464,6 +1464,9 @@ class WpisZgloszenia(Base):
     # zapisujemy, bo klient odpowie na nia i przysle je w In-Reply-To.
     message_id: Mapped[str | None] = mapped_column(String(500), index=True)
     in_reply_to: Mapped[str | None] = mapped_column(String(500))
+    # Adresy z kopii. Klient czesto pisze z przelozonym w DW i odpowiedz ma
+    # trafic do tych samych osob - inaczej polowa rozmowy dzieje sie bez nich.
+    dw: Mapped[list | None] = mapped_column(JSONType)
 
     utworzono: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
@@ -1473,6 +1476,43 @@ class WpisZgloszenia(Base):
 
     zgloszenie: Mapped[Zgloszenie] = relationship()
     autor: Mapped[PortalUser | None] = relationship()
+
+
+class ZalacznikWpisu(Base):
+    """Plik przyslany przez klienta albo doklejony do odpowiedzi.
+
+    Sama tresc pliku lezy na dysku, w bazie zostaje opis i sciezka wzgledna.
+    Zrzut ekranu bywa calym zgloszeniem ("nie dziala, zalaczam") i bez niego
+    technik pyta o to, co juz dostal.
+
+    Nazwe pliku na dysku nadajemy sami z identyfikatora wpisu i licznika -
+    nazwa z maila trafia wylacznie do kolumny ``nazwa``. Klient moze przyslac
+    "..\..\etc\passwd" i taka nazwa nie ma prawa dotknac systemu plikow.
+    """
+
+    __tablename__ = "helpdesk_zalaczniki"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    wpis_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("helpdesk_wpisy.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    zgloszenie_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("helpdesk_zgloszenia.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    nazwa: Mapped[str] = mapped_column(String(255), nullable=False)
+    typ_mime: Mapped[str | None] = mapped_column(String(120))
+    rozmiar: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Sciezka WZGLEDEM katalogu zalacznikow z konfiguracji. Katalog bywa
+    # przenoszony miedzy wdrozeniami, a sciezka bezwzgledna w bazie zamienia
+    # przenosiny w reczna migracje.
+    sciezka: Mapped[str] = mapped_column(String(500), nullable=False)
+    utworzono: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    wpis: Mapped["WpisZgloszenia"] = relationship()
 
 
 class CzasPracy(Base):

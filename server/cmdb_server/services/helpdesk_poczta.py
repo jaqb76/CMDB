@@ -18,8 +18,10 @@ odpowiedzi klienta w ogole byl mozliwy.
 from __future__ import annotations
 
 import logging
+import mimetypes
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from datetime import datetime, timezone
 from email import message_from_bytes, policy
 from email.header import decode_header, make_header
@@ -29,12 +31,16 @@ from email.utils import getaddresses, parsedate_to_datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import (
     NIEROZPOZNANA_CZEKA,
     NIEROZPOZNANA_ZIGNOROWANA,
+    STATUS_W_TRAKCIE,
+    STATUS_ZAMKNIETE,
     IgnorowanaDomena,
     Tenant,
     WpisZgloszenia,
+    ZalacznikWpisu,
     Zgloszenie,
     utcnow,
 )
@@ -80,8 +86,8 @@ def _tresc(wiadomosc: EmailMessage) -> str:
     """Tresc jako czysty tekst.
 
     Bierzemy czesc text/plain, a gdy jej nie ma - html odarty ze znacznikow.
-    Zalacznikow na tym etapie nie ruszamy (etap 2), ale ich obecnosc nie moze
-    przeszkodzic w odczytaniu tresci.
+    Zalaczniki zbiera osobna funkcja; tu chodzi o to, zeby ich obecnosc nie
+    przeszkodzila w odczytaniu tresci.
     """
     czesc = None
     if wiadomosc.is_multipart():
@@ -109,6 +115,19 @@ def _bez_prefiksow(temat: str) -> str:
 
 
 @dataclass(frozen=True)
+class Zalacznik:
+    """Plik z wiadomosci. Nazwa pochodzi od klienta, wiec jest tylko opisem."""
+
+    nazwa: str
+    typ_mime: str | None
+    dane: bytes
+
+    @property
+    def rozmiar(self) -> int:
+        return len(self.dane)
+
+
+@dataclass(frozen=True)
 class Wiadomosc:
     """Fakty wyjete z surowego maila. Bez ocen i bez decyzji."""
 
@@ -119,6 +138,8 @@ class Wiadomosc:
     message_id: str | None
     in_reply_to: str | None
     references: tuple[str, ...] = ()
+    dw: tuple[str, ...] = ()
+    zalaczniki: tuple[Zalacznik, ...] = ()
     data: datetime | None = None
     automat: bool = False
     naglowki: dict[str, str] = field(default_factory=dict)
@@ -147,6 +168,12 @@ def przeczytaj(surowa: bytes) -> Wiadomosc:
     if data is not None and data.tzinfo is None:
         data = data.replace(tzinfo=timezone.utc)
 
+    kopia = tuple(
+        adres_dw.strip().lower()
+        for _, adres_dw in getaddresses([str(wiadomosc.get("Cc", ""))])
+        if adres_dw and "@" in adres_dw
+    )
+
     return Wiadomosc(
         nadawca=adres.strip().lower(),
         nadawca_nazwa=_tekst_naglowka(nazwa) or None,
@@ -155,14 +182,46 @@ def przeczytaj(surowa: bytes) -> Wiadomosc:
         message_id=(str(wiadomosc["Message-ID"]).strip() if wiadomosc.get("Message-ID") else None),
         in_reply_to=(str(wiadomosc["In-Reply-To"]).strip() if wiadomosc.get("In-Reply-To") else None),
         references=referencje,
+        dw=kopia,
+        zalaczniki=_zalaczniki(wiadomosc),
         data=data,
         automat=_czy_automat(wiadomosc, adres),
         naglowki={
             klucz: str(wartosc) for klucz, wartosc in wiadomosc.items()
-            if klucz.lower() in ("from", "to", "subject", "date", "message-id",
+            if klucz.lower() in ("from", "to", "cc", "subject", "date", "message-id",
                                  "in-reply-to", "references", "auto-submitted")
         },
     )
+
+
+def _zalaczniki(wiadomosc: EmailMessage) -> tuple[Zalacznik, ...]:
+    """Pliki z wiadomosci, bez czesci tekstowych skladajacych sie na tresc.
+
+    Zbyt duzy plik pomijamy z ostrzezeniem w dzienniku, ale reszty wiadomosci
+    nie odrzucamy: zgloszenie z trescia i bez jednego zalacznika jest lepsze
+    niz brak zgloszenia.
+    """
+    if not wiadomosc.is_multipart():
+        return ()
+
+    limit = get_settings().helpdesk_zalacznik_mb * 1024 * 1024
+    zebrane: list[Zalacznik] = []
+    for czesc in wiadomosc.iter_attachments():
+        dane = czesc.get_payload(decode=True)
+        if not dane:
+            continue
+        if len(dane) > limit:
+            log.warning(
+                "pomijam zalacznik %s (%d B) - powyzej limitu %d B",
+                czesc.get_filename(), len(dane), limit,
+            )
+            continue
+        zebrane.append(Zalacznik(
+            nazwa=_tekst_naglowka(czesc.get_filename()) or "zalacznik",
+            typ_mime=czesc.get_content_type(),
+            dane=dane,
+        ))
+    return tuple(zebrane)
 
 
 def _czy_automat(wiadomosc, nadawca: str) -> bool:
@@ -379,6 +438,81 @@ def zapisz_nierozpoznana(
     return wpis
 
 
+def _otworz_ponownie(db: Session, zgloszenie: Zgloszenie) -> None:
+    """Odpowiedz klienta na zamknieta sprawe otwiera ja z powrotem.
+
+    Zamkniete zgloszenia sa poza tablica, wiec wiadomosc doklejona do takiego
+    watku nie trafilaby nikomu na oczy - sprawa wygladalaby na zalatwiona,
+    a klient czekalby na odpowiedz, ktorej nikt nie pisze.
+    """
+    if zgloszenie.status != STATUS_ZAMKNIETE:
+        return
+    helpdesk.zdarzenie(
+        db, zgloszenie, "zgloszenie otwarte ponownie odpowiedzia klienta", autor="system"
+    )
+    helpdesk.zmien_status(db, zgloszenie, STATUS_W_TRAKCIE, autor="system")
+
+
+# --- zalaczniki na dysku ----------------------------------------------------
+
+def katalog_zalacznikow() -> Path:
+    return Path(get_settings().helpdesk_dir) / "zalaczniki"
+
+
+_DOZWOLONE_ROZSZERZENIE = re.compile(r"^[a-z0-9]{1,8}$")
+
+
+def _rozszerzenie(zalacznik: Zalacznik) -> str:
+    """Rozszerzenie pliku na dysku. Bierzemy je z typu MIME albo z nazwy.
+
+    Nazwa od klienta nie dotyka systemu plikow - moze zawierac sciezke,
+    dwukropek albo sto znakow. Rozszerzenie przepuszczamy tylko wtedy, gdy
+    sklada sie z liter i cyfr.
+    """
+    z_typu = mimetypes.guess_extension(zalacznik.typ_mime or "") or ""
+    kandydat = (z_typu or Path(zalacznik.nazwa).suffix).lstrip(".").lower()
+    return f".{kandydat}" if _DOZWOLONE_ROZSZERZENIE.fullmatch(kandydat) else ".bin"
+
+
+def zapisz_zalaczniki(
+    db: Session, wpis: WpisZgloszenia, zalaczniki: tuple[Zalacznik, ...]
+) -> list[ZalacznikWpisu]:
+    """Zapisuje pliki na dysk i opisuje je w bazie.
+
+    Nazwa pliku na dysku powstaje z identyfikatora wpisu i licznika - nazwa
+    z maila zostaje wylacznie jako opis. Blad zapisu jednego pliku nie moze
+    przewrocic calego odbioru poczty: wiadomosc jest juz w bazie i wazniejsza
+    od zalacznika.
+    """
+    if not zalaczniki:
+        return []
+
+    katalog = katalog_zalacznikow() / wpis.zgloszenie_id
+    zapisane: list[ZalacznikWpisu] = []
+    for numer, zalacznik in enumerate(zalaczniki, start=1):
+        wzgledna = f"{wpis.zgloszenie_id}/{wpis.id}-{numer}{_rozszerzenie(zalacznik)}"
+        try:
+            katalog.mkdir(parents=True, exist_ok=True)
+            (katalog_zalacznikow() / wzgledna).write_bytes(zalacznik.dane)
+        except OSError as blad:
+            log.error("nie zapisalem zalacznika %s: %s", zalacznik.nazwa, blad)
+            continue
+
+        wpis_zalacznika = ZalacznikWpisu(
+            wpis_id=wpis.id,
+            zgloszenie_id=wpis.zgloszenie_id,
+            nazwa=zalacznik.nazwa[:255],
+            typ_mime=zalacznik.typ_mime,
+            rozmiar=zalacznik.rozmiar,
+            sciezka=wzgledna,
+        )
+        db.add(wpis_zalacznika)
+        zapisane.append(wpis_zalacznika)
+
+    db.flush()
+    return zapisane
+
+
 def przyjmij(db: Session, wiadomosc: Wiadomosc) -> Kwalifikacja:
     """Kwalifikuje wiadomosc i zapisuje jej skutek. Nic nie wysyla.
 
@@ -388,7 +522,7 @@ def przyjmij(db: Session, wiadomosc: Wiadomosc) -> Kwalifikacja:
     wynik = zakwalifikuj(db, wiadomosc)
 
     if wynik.decyzja == DECYZJA_DOPISZ and wynik.zgloszenie is not None:
-        helpdesk.dopisz_wiadomosc(
+        wpis = helpdesk.dopisz_wiadomosc(
             db, wynik.zgloszenie,
             rodzaj="od_klienta",
             tresc=wiadomosc.tresc,
@@ -396,7 +530,10 @@ def przyjmij(db: Session, wiadomosc: Wiadomosc) -> Kwalifikacja:
             autor_nazwa=wiadomosc.nadawca_nazwa,
             message_id=wiadomosc.message_id,
             in_reply_to=wiadomosc.in_reply_to,
+            dw=list(wiadomosc.dw),
         )
+        zapisz_zalaczniki(db, wpis, wiadomosc.zalaczniki)
+        _otworz_ponownie(db, wynik.zgloszenie)
         return wynik
 
     if wynik.decyzja == DECYZJA_NOWE and wynik.firma is not None:
@@ -408,7 +545,11 @@ def przyjmij(db: Session, wiadomosc: Wiadomosc) -> Kwalifikacja:
             zglaszajacy_email=wiadomosc.nadawca,
             zglaszajacy_nazwa=wiadomosc.nadawca_nazwa,
             message_id=wiadomosc.message_id,
+            dw=list(wiadomosc.dw),
         )
+        pierwszy = helpdesk.pierwszy_wpis(db, zgloszenie.id)
+        if pierwszy is not None:
+            zapisz_zalaczniki(db, pierwszy, wiadomosc.zalaczniki)
         return Kwalifikacja(wynik.decyzja, wynik.powod, zgloszenie=zgloszenie, firma=wynik.firma)
 
     if wynik.decyzja == DECYZJA_ZIGNORUJ:

@@ -283,6 +283,7 @@ def utworz_zgloszenie(
     typ: str | None = None,
     technik_id: str | None = None,
     message_id: str | None = None,
+    dw: list[str] | None = None,
     zrodlo: str = "e-mail",
     autor: str = "system",
 ) -> Zgloszenie:
@@ -312,8 +313,12 @@ def utworz_zgloszenie(
         autor_nazwa=zglaszajacy_nazwa,
         tresc=tresc or "",
         message_id=message_id,
+        dw=dw or None,
         utworzono=teraz,
     ))
+    # Sesja nie ma autoflush, wiec bez tego pierwszy wpis nie istnieje jeszcze
+    # dla zapytan - a to do niego dopina sie zalaczniki z tej samej wiadomosci.
+    db.flush()
     zdarzenie(db, zgloszenie, f"zgloszenie utworzone ({zrodlo}) jako {pelny}", autor=autor)
     podepnij_sprzet_zglaszajacego(db, zgloszenie)
     return zgloszenie
@@ -351,6 +356,7 @@ def dopisz_wiadomosc(
     autor_nazwa: str | None = None,
     message_id: str | None = None,
     in_reply_to: str | None = None,
+    dw: list[str] | None = None,
 ) -> WpisZgloszenia:
     """Dokleja wpis do watku i odswieza date ostatniej aktywnosci."""
     if rodzaj not in (WPIS_OD_KLIENTA, WPIS_DO_KLIENTA, WPIS_WEWNETRZNY):
@@ -365,9 +371,11 @@ def dopisz_wiadomosc(
         tresc=tresc or "",
         message_id=message_id,
         in_reply_to=in_reply_to,
+        dw=dw or None,
         utworzono=utcnow(),
     )
     db.add(wpis)
+    db.flush()
     zgloszenie.ostatnia_aktywnosc = wpis.utworzono
     return wpis
 
@@ -412,6 +420,36 @@ def zmien_status(db: Session, zgloszenie: Zgloszenie, status: str, autor: str) -
 
 def opis_osoby(user: PortalUser) -> str:
     return user.full_name or user.email
+
+
+def pierwszy_wpis(db: Session, zgloszenie_id: str) -> WpisZgloszenia | None:
+    """Pierwsza wiadomosc klienta - ta, ktora zalozyla zgloszenie."""
+    return db.execute(
+        select(WpisZgloszenia)
+        .where(
+            WpisZgloszenia.zgloszenie_id == zgloszenie_id,
+            WpisZgloszenia.rodzaj == WPIS_OD_KLIENTA,
+        )
+        .order_by(WpisZgloszenia.utworzono)
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def ostatnia_od_klienta(db: Session, zgloszenie_id: str) -> WpisZgloszenia | None:
+    """Ostatnia wiadomosc klienta w watku.
+
+    Z niej biora sie naglowki odpowiedzi i lista DW: rozmowa ma wrocic do tych
+    samych osob, ktore w niej sa, a nie do zestawu sprzed tygodnia.
+    """
+    return db.execute(
+        select(WpisZgloszenia)
+        .where(
+            WpisZgloszenia.zgloszenie_id == zgloszenie_id,
+            WpisZgloszenia.rodzaj == WPIS_OD_KLIENTA,
+        )
+        .order_by(WpisZgloszenia.utworzono.desc())
+        .limit(1)
+    ).scalar_one_or_none()
 
 
 # --- czas pracy -------------------------------------------------------------

@@ -80,10 +80,15 @@ async def lifespan(app: FastAPI):
     zadanie = asyncio.create_task(petla())
     from .services.release_import import loop as release_loop
     import_job = asyncio.create_task(release_loop())
+    # Poczta helpdesku ma wlasna petle, bo chodzi w innym rytmie: skrzynke
+    # sprawdza sie co dwie minuty, a raporty ida raz na dobe. Doklejenie jej
+    # do harmonogramu raportow znaczyloby zgloszenia zauwazane co kwadrans.
+    from .services.helpdesk_imap import petla as petla_helpdesku
+    poczta_job = asyncio.create_task(petla_helpdesku())
     # Monitorowanie NIE ma tu wlasnej petli: sonduje agent, a serwer tylko
     # przyjmuje wyniki. Sprzatanie starych okien i przerw jedzie z istniejacym
     # harmonogramem raportow - to jedyna praca w tle, jaka po nim zostaje.
-    zadania = (zadanie, import_job)
+    zadania = (zadanie, import_job, poczta_job)
     try:
         yield
     finally:
