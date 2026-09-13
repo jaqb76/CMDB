@@ -318,6 +318,21 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
 .etap2-kafel h4 { margin: 0 0 5px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .pewnosc { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 
+/* --- droga wiadomosci --- */
+.tor { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.tor-drugi { margin-top: 10px; }
+.krok {
+  flex: 1 1 170px; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; background: var(--bg); font-size: 13px;
+}
+.krok b { overflow-wrap: anywhere; }
+.krok-etykieta { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.krok-wynik { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.krok-czeka { border-color: var(--warn-fg); background: var(--warn-bg); }
+.krok-czeka b, .krok-czeka .muted { color: var(--warn-fg); }
+.strzalka { align-self: center; color: var(--muted); font-size: 15px; flex: none; }
+@media (max-width: 780px) { .strzalka { display: none; } }
+
 /* --- domeny --- */
 .domeny { display: flex; flex-wrap: wrap; gap: 5px; }
 .domena { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; font-size: 12.5px; font-family: var(--mono); }
@@ -374,7 +389,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
     <nav class="app-nav">
       <button type="button" class="app-nav-link is-active" data-ekran="kanban"><span class="nav-icon">▤</span>Zgłoszenia<span class="nav-licznik" id="licznik-zgloszen">7</span></button>
       <button type="button" class="app-nav-link" data-ekran="ticket"><span class="nav-icon">✉</span>Karta zgłoszenia</button>
-      <button type="button" class="app-nav-link" data-ekran="nierozpoznane"><span class="nav-icon">◐</span>Nierozpoznane<span class="nav-licznik" id="licznik-nierozpoznane">3</span></button>
+      <button type="button" class="app-nav-link" data-ekran="nierozpoznane" data-tylko-operator><span class="nav-icon">◐</span>Nierozpoznane<span class="nav-licznik" id="licznik-nierozpoznane">3</span></button>
       <button type="button" class="app-nav-link" data-ekran="firmy" data-tylko-operator><span class="nav-icon">☷</span>Firmy i dostępy</button>
     </nav>
 
@@ -386,7 +401,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
 
     <div class="nav-group-label">Konfiguracja</div>
     <nav class="app-nav">
-      <button type="button" class="app-nav-link" data-ekran="skrzynka" data-tylko-operator><span class="nav-icon">⚙</span>Skrzynki pocztowe</button>
+      <button type="button" class="app-nav-link" data-ekran="skrzynka" data-tylko-operator><span class="nav-icon">⚙</span>Skrzynka helpdesku</button>
       <button type="button" class="app-nav-link" data-ekran="zakres"><span class="nav-icon">✓</span>Zakres makiety</button>
     </nav>
 
@@ -427,7 +442,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
         <div class="page-head">
           <div>
             <h1>Zgłoszenia</h1>
-            <p class="muted">Wszystko, co przyszło na skrzynki firm. Mail z dozwolonej domeny zakłada zgłoszenie sam, reszta czeka w „Nierozpoznanych”. Numer nadaje firma: <span class="nr">BON-123</span>, <span class="nr">KLE-88</span>, <span class="nr">LKS-14</span>.</p>
+            <p class="muted">Wszystko, co przyszło na <b>helpdesk@mojadomena.pl</b>. Domena nadawcy wskazuje firmę, firma nadaje numer: <span class="nr">BON-123</span>, <span class="nr">KLE-88</span>, <span class="nr">LKS-14</span>. Poczta z nieznanej domeny czeka w „Nierozpoznanych”.</p>
           </div>
           <div class="head-actions">
             <div class="przelacznik-widoku">
@@ -616,7 +631,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
                   <div class="wpis-tresc"><p>Dzień dobry, od rana nie działa drukarka w biurze na parterze. Nikt nie może nic wydrukować. Proszę o pomoc.</p></div>
                 </div>
 
-                <div class="wpis-system"><span class="wpis-godzina">09:11</span><span>Zgłoszenie utworzone ze skrzynki <b>bongo@mojadomena.pl</b> · domena <b>bongo.pl</b> → firma <b>Bongo</b> · numer <b>BON-123</b></span></div>
+                <div class="wpis-system"><span class="wpis-godzina">09:11</span><span>Wiadomość na <b>helpdesk@mojadomena.pl</b> · domena nadawcy <b>bongo.pl</b> → firma <b>Bongo</b> · numer <b>BON-123</b></span></div>
 
                 <div class="wpis wpis-wychodzacy">
                   <div class="wpis-glowa"><span class="wpis-godzina">09:11</span><span class="wpis-autor">Helpdesk</span><span class="kierunek kierunek-out">potwierdzenie automatyczne</span><span>z helpdesk@mojadomena.pl</span></div>
@@ -781,7 +796,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
         <div class="page-head">
           <div>
             <h1>Nierozpoznane wiadomości</h1>
-            <p class="muted">Poczta z domen, których nie ma na liście żadnej firmy. Nic nie jest kasowane ani odrzucane — wiadomość czeka tutaj, dopóki ktoś nie zdecyduje, co z nią zrobić.</p>
+            <p class="muted">Poczta ze skrzynki helpdesku, której domena nadawcy nie należy do żadnej firmy. Nic nie jest kasowane ani odrzucane i nic nie wychodzi do nadawcy — wiadomość czeka, aż operator zdecyduje.</p>
           </div>
           <div class="head-actions">
             <button type="button" class="btn btn-ghost">Zignorowane (12)</button>
@@ -791,12 +806,11 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
         <section class="panel panel-scroll">
           <table class="table">
             <thead>
-              <tr><th>Otrzymano</th><th>Skrzynka</th><th>Nadawca</th><th>Temat</th><th>Domena</th><th style="width: 330px;">Decyzja</th></tr>
+              <tr><th>Otrzymano</th><th>Nadawca</th><th>Temat</th><th>Domena nadawcy</th><th style="width: 340px;">Decyzja</th></tr>
             </thead>
             <tbody>
-              <tr data-firma="Klepsydra">
+              <tr>
                 <td class="lp">dziś 09:58</td>
-                <td class="small">klepsydra@mojadomena.pl</td>
                 <td>anna.kowalska@gmail.com</td>
                 <td>Prośba o pomoc z pocztą <span class="muted small">— „Piszę z prywatnego, bo firmowa nie działa…”</span></td>
                 <td><span class="badge">gmail.com</span></td>
@@ -809,9 +823,8 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
                   <p class="muted small tresc-etap2" style="margin: 6px 0 0;">AI: prawdopodobnie <b>Klepsydra</b> — w podpisie „Klepsydra sp. z o.o.” <span class="pewnosc">(0,64)</span></p>
                 </td>
               </tr>
-              <tr data-firma="—">
+              <tr>
                 <td class="lp">wczoraj 16:20</td>
-                <td class="small">helpdesk@mojadomena.pl <span class="badge">wspólna</span></td>
                 <td>biuro@nowa-firma.pl</td>
                 <td>Zapytanie o wsparcie IT</td>
                 <td><span class="badge">nowa-firma.pl</span></td>
@@ -823,9 +836,8 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
                   </div>
                 </td>
               </tr>
-              <tr data-firma="Bongo">
+              <tr>
                 <td class="lp">dziś 07:12</td>
-                <td class="small">bongo@mojadomena.pl</td>
                 <td>noreply@sklep-online.pl</td>
                 <td>Twoja przesyłka jest w drodze</td>
                 <td><span class="badge">sklep-online.pl</span></td>
@@ -842,7 +854,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
 
         <div class="alert alert-warn">
           Wiadomość przypisana do firmy dokłada jej domenę do listy dozwolonych dopiero wtedy, gdy operator to potwierdzi — jednorazowa decyzja nie otwiera helpdesku dla całej domeny.
-          Technik widzi tu tylko pocztę ze skrzynek swoich firm; wiadomości ze skrzynki wspólnej rozdziela operator.
+          Ten widok ma tylko operator: dopóki nie znamy firmy, nie ma czym mierzyć dostępu technika.
         </div>
       </section>
 
@@ -1128,43 +1140,64 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
         </section>
       </section>
 
-      <!-- ================= EKRAN: SKRZYNKI ================= -->
+      <!-- ================= EKRAN: SKRZYNKA ================= -->
       <section class="ekran" id="ekran-skrzynka">
         <div class="page-head">
           <div>
-            <h1>Skrzynki pocztowe</h1>
-            <p class="muted">Odbieranie jest osobne dla każdej firmy — każda pisze na swój adres, więc firmę zna się jeszcze przed przeczytaniem treści. Wysyłka idzie zawsze z jednego adresu: <b>helpdesk@mojadomena.pl</b>.</p>
+            <h1>Skrzynka helpdesku</h1>
+            <p class="muted">Wszyscy klienci piszą pod jeden adres: <b>helpdesk@mojadomena.pl</b>. Tą samą skrzynką odbieramy i wysyłamy, więc odpowiedzi wracają tam, skąd wyszły. O tym, czyje jest zgłoszenie i jaki dostanie numer, decyduje <b>domena nadawcy</b>.</p>
           </div>
-          <div class="head-actions"><button type="button" class="btn">Sprawdź wszystkie połączenia</button></div>
+          <div class="head-actions"><button type="button" class="btn">Sprawdź połączenie</button></div>
         </div>
 
-        <div class="alert alert-ok">Ostatnie pobranie: dziś 10:42 — 3 nowe wiadomości, 2 dopisane do istniejących zgłoszeń, 1 do nierozpoznanych.</div>
+        <div class="alert alert-ok">Ostatnie pobranie: dziś 10:42 — 3 nowe wiadomości: 2 dopisane do istniejących zgłoszeń, 1 do nierozpoznanych.</div>
 
-        <section class="panel panel-scroll">
-          <h2>Odbieranie — IMAP, skrzynka na firmę</h2>
-          <table class="table">
-            <thead><tr><th>Firma</th><th>Skrzynka</th><th>Serwer</th><th>Ostatnie pobranie</th><th>Stan</th><th></th></tr></thead>
-            <tbody>
-              <tr><td><b>Bongo</b></td><td class="small">bongo@mojadomena.pl</td><td class="small">imap.mojadomena.pl:993 · SSL/TLS</td><td class="lp">10:42</td><td><span class="badge badge-ok">działa</span></td><td class="lp"><button type="button" class="btn btn-small btn-ghost">Ustawienia</button></td></tr>
-              <tr><td><b>Klepsydra</b></td><td class="small">klepsydra@mojadomena.pl</td><td class="small">imap.mojadomena.pl:993 · SSL/TLS</td><td class="lp">10:42</td><td><span class="badge badge-ok">działa</span></td><td class="lp"><button type="button" class="btn btn-small btn-ghost">Ustawienia</button></td></tr>
-              <tr><td><b>ŁKS</b></td><td class="small">lks@mojadomena.pl</td><td class="small">imap.mojadomena.pl:993 · SSL/TLS</td><td class="lp">10:41</td><td><span class="badge badge-ok">działa</span></td><td class="lp"><button type="button" class="btn btn-small btn-ghost">Ustawienia</button></td></tr>
-              <tr><td><b>Gloria</b></td><td class="small">gloria@mojadomena.pl</td><td class="small">imap.gloria.com.pl:993 · SSL/TLS</td><td class="lp">wczoraj 08:15</td><td><span class="badge badge-danger">błąd logowania</span></td><td class="lp"><button type="button" class="btn btn-small">Popraw</button></td></tr>
-              <tr><td><b>—</b> <span class="badge">wspólna</span></td><td class="small">helpdesk@mojadomena.pl</td><td class="small">imap.mojadomena.pl:993 · SSL/TLS</td><td class="lp">10:42</td><td><span class="badge badge-ok">działa</span></td><td class="lp"><button type="button" class="btn btn-small btn-ghost">Ustawienia</button></td></tr>
-            </tbody>
-          </table>
-          <div class="rzad-akcji" style="margin-top: 12px;"><button type="button" class="btn btn-small">Dodaj skrzynkę</button></div>
-          <div class="alert alert-warn" style="margin: 14px 0 0;">
-            Skrzynka wspólna musi być odbierana, bo odpowiedzi klientów wracają na adres, z którego wyszła wiadomość —
-            czyli na <b>helpdesk@mojadomena.pl</b>. Firmę rozpoznaje się tam po znaczniku w temacie i nagłówkach
-            <code>In-Reply-To</code>/<code>References</code>, a nie po skrzynce.
-            <b>Wariant do rozważenia:</b> ustawić w wychodzących <code>Reply-To</code> na adres firmy — wtedy odpowiedzi wracają do skrzynki firmy,
-            a klient i tak widzi jednego nadawcę.
+        <section class="panel">
+          <h2>Droga wiadomości</h2>
+          <div class="tor">
+            <div class="krok"><span class="krok-etykieta">wiadomość</span><b>jan@bongo.pl</b><span class="muted small">na helpdesk@mojadomena.pl</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok"><span class="krok-etykieta">domena nadawcy</span><b class="nr">bongo.pl</b><span class="muted small">na liście firmy Bongo</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok"><span class="krok-etykieta">firma</span><b>Bongo</b><span class="muted small">skrót BON</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok krok-wynik"><span class="krok-etykieta">nowe zgłoszenie</span><b class="nr">BON-124</b><span class="muted small">+ potwierdzenie do klienta</span></div>
           </div>
+          <div class="tor tor-drugi">
+            <div class="krok"><span class="krok-etykieta">wiadomość</span><b>anna.kowalska@gmail.com</b><span class="muted small">na helpdesk@mojadomena.pl</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok"><span class="krok-etykieta">domena nadawcy</span><b class="nr">gmail.com</b><span class="muted small">nie należy do żadnej firmy</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok"><span class="krok-etykieta">firma</span><b>—</b><span class="muted small">nie da się wskazać</span></div>
+            <span class="strzalka" aria-hidden="true">→</span>
+            <div class="krok krok-czeka"><span class="krok-etykieta">nierozpoznane</span><b>czeka na operatora</b><span class="muted small">nic nie wychodzi do nadawcy</span></div>
+          </div>
+          <p class="muted small" style="margin: 14px 0 0;">
+            Numer bierze się z firmy, więc przed jego nadaniem trzeba znać domenę. Odpowiedź na istniejący wątek omija całą tę drogę —
+            rozpoznaje się ją po znaczniku w temacie i nagłówkach, nawet gdy klient napisze z innego adresu.
+          </p>
         </section>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start;">
           <section class="panel">
-            <h2>Wysyłka — SMTP, jeden adres</h2>
+            <h2>Odbieranie — IMAP</h2>
+            <div class="pole-boczne"><label for="i-adres">Adres helpdesku</label><input id="i-adres" value="helpdesk@mojadomena.pl"></div>
+            <div class="pole-boczne"><label for="i-host">Serwer IMAP</label><input id="i-host" value="imap.mojadomena.pl"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="pole-boczne"><label for="i-port">Port</label><input id="i-port" value="993"></div>
+              <div class="pole-boczne"><label for="i-szyfr">Szyfrowanie</label><select id="i-szyfr"><option selected>SSL/TLS</option><option>STARTTLS</option><option>bez szyfrowania</option></select></div>
+            </div>
+            <div class="pole-boczne"><label for="i-haslo">Hasło</label><input id="i-haslo" type="password" value="••••••••••••"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="pole-boczne"><label for="i-folder">Folder</label><input id="i-folder" value="INBOX"></div>
+              <div class="pole-boczne"><label for="i-co">Co ile sprawdzać</label><select id="i-co"><option selected>co 2 minuty</option><option>co 5 minut</option><option>co 15 minut</option></select></div>
+            </div>
+            <div class="pole-boczne"><label for="i-po">Po pobraniu</label><select id="i-po"><option selected>oznacz jako przeczytaną</option><option>przenieś do folderu „Helpdesk”</option><option>zostaw bez zmian</option></select></div>
+            <p class="muted small" style="margin: 0;">Wiadomości nie są kasowane ze skrzynki — helpdesk tylko je czyta.</p>
+          </section>
+
+          <section class="panel">
+            <h2>Wysyłanie — SMTP</h2>
             <div class="pole-boczne"><label for="s-host">Serwer SMTP</label><input id="s-host" value="smtp.mojadomena.pl"></div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
               <div class="pole-boczne"><label for="s-port">Port</label><input id="s-port" value="587"></div>
@@ -1172,17 +1205,19 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
             </div>
             <div class="pole-boczne"><label for="s-nadawca">Adres nadawcy</label><input id="s-nadawca" value="helpdesk@mojadomena.pl"></div>
             <div class="pole-boczne"><label for="s-nazwa">Nazwa nadawcy</label><input id="s-nazwa" value="Helpdesk"></div>
-            <div class="pole-boczne"><label for="s-reply">Reply-To</label><select id="s-reply"><option selected>ten sam adres (helpdesk@mojadomena.pl)</option><option>adres skrzynki firmy</option></select></div>
             <div class="pole-boczne"><label for="s-stopka">Stopka doklejana do odpowiedzi</label><textarea id="s-stopka" style="min-height: 66px;">Pozdrawiamy, Helpdesk · tel. 42 000 00 00</textarea></div>
-            <p class="muted small" style="margin: 0;">Klient zawsze widzi ten sam adres, niezależnie od tego, na którą skrzynkę napisał.</p>
+            <p class="muted small" style="margin: 0;">Ten sam adres w nadawcy i w odbiorze, więc odpowiedź klienta wraca do tej samej skrzynki i trafia do swojego zgłoszenia.</p>
           </section>
 
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start;">
           <section class="panel">
             <h2>Automatyczne potwierdzenie</h2>
             <label class="kolumna-wybor" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;"><input type="checkbox" checked style="width: auto;"> Wysyłaj potwierdzenie przyjęcia zgłoszenia</label>
             <p class="small" style="margin-bottom: 4px;"><b>Wysyłamy</b>, gdy wszystko naraz:</p>
             <ul class="small muted" style="margin: 0 0 10px; padding-left: 18px;">
-              <li>nadawca jest z dozwolonej domeny firmy,</li>
+              <li>domena nadawcy wskazuje firmę,</li>
               <li>wiadomość zakłada <b>nowe</b> zgłoszenie,</li>
               <li>ma treść — to jest zgłoszenie, a nie „dziękuję” czy pusty mail z załącznikiem.</li>
             </ul>
@@ -1190,7 +1225,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
             <ul class="small muted" style="margin: 0 0 12px; padding-left: 18px;">
               <li>na odpowiedź w istniejącym wątku,</li>
               <li>na autoodpowiedź (<code>Auto-Submitted</code>, „Out of office”) — inaczej dwa systemy piszą do siebie w kółko,</li>
-              <li>na wiadomość z nierozpoznanej domeny — ta czeka na decyzję operatora.</li>
+              <li>na wiadomość z nierozpoznanej domeny — ta czeka na decyzję operatora i nie dostaje żadnej odpowiedzi.</li>
             </ul>
             <div class="pole-boczne"><label for="a-tresc">Treść potwierdzenia</label><textarea id="a-tresc" style="min-height: 78px;">Dzień dobry, przyjęliśmy zgłoszenie {numer} — „{temat}”. Odpowiadając na tego maila, dopisze Pan/Pani wiadomość do tego samego zgłoszenia.</textarea></div>
             <p class="muted small tresc-etap2" style="margin: 0;"><span class="etap2-znacznik" style="margin: 0 6px 0 0;">Etap 2</span>AI ocenia, czy mail w ogóle jest zgłoszeniem — faktura albo newsletter z domeny klienta nie założy wtedy zgłoszenia ani nie dostanie potwierdzenia.</p>
@@ -1206,7 +1241,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
               <li>temat zawiera znacznik <code>[BON-123]</code>,</li>
               <li>nadawca i temat pasują do zgłoszenia otwartego w ostatnich 7 dniach.</li>
             </ul>
-            <p class="small muted" style="margin: 0;">Jeśli nic nie pasuje — powstaje nowe zgłoszenie (domena znana) albo wpis w „Nierozpoznanych” (domena nieznana).</p>
+            <p class="small muted" style="margin: 0;">Jeśli nic nie pasuje — decyduje domena nadawcy: znana zakłada nowe zgłoszenie, nieznana trafia do „Nierozpoznanych”.</p>
           </section>
         </div>
       </section>
@@ -1227,8 +1262,8 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
               <tbody>
                 <tr><td>Firmy, dozwolone domeny, skróty numerów</td><td class="lp"><a href="#" data-ekran-link="firmy">Firmy i dostępy</a></td></tr>
                 <tr><td>Technicy i ich dostęp do firm (także w CMDB)</td><td class="lp"><a href="#" data-ekran-link="firmy">Firmy i dostępy</a></td></tr>
-                <tr><td>IMAP na firmę, jedna skrzynka wysyłkowa</td><td class="lp"><a href="#" data-ekran-link="skrzynka">Skrzynki</a></td></tr>
-                <tr><td>Automatyczne potwierdzenie przyjęcia</td><td class="lp"><a href="#" data-ekran-link="skrzynka">Skrzynki</a></td></tr>
+                <tr><td>Jedna skrzynka: IMAP + SMTP, firma z domeny nadawcy</td><td class="lp"><a href="#" data-ekran-link="skrzynka">Skrzynka</a></td></tr>
+                <tr><td>Automatyczne potwierdzenie przyjęcia</td><td class="lp"><a href="#" data-ekran-link="skrzynka">Skrzynka</a></td></tr>
                 <tr><td>Zgłoszenie z maila + dopisywanie odpowiedzi</td><td class="lp"><a href="#" data-ekran-link="ticket">Karta zgłoszenia</a></td></tr>
                 <tr><td>Kanban / lista, status, filtry, szukanie</td><td class="lp"><a href="#" data-ekran-link="kanban">Zgłoszenia</a></td></tr>
                 <tr><td>Przypisanie i przekazanie technika</td><td class="lp"><a href="#" data-ekran-link="ticket">Karta zgłoszenia</a></td></tr>
@@ -1263,7 +1298,8 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
             <ul class="tight small" style="padding-left: 18px; margin: 0 0 16px;">
               <li>Dwie role: <b>operator</b> (wszystko) i <b>technik</b> (tylko przypisane firmy).</li>
               <li>Dostęp technika do firmy obejmuje też jej <b>kartotekę CMDB</b>.</li>
-              <li>Odbiór poczty <b>osobną skrzynką na firmę</b>, wysyłka z jednego adresu <b>helpdesk@mojadomena.pl</b>.</li>
+              <li>Jedna skrzynka <b>helpdesk@mojadomena.pl</b> — tam piszą wszyscy, stamtąd wychodzą odpowiedzi.</li>
+              <li>Firmę wskazuje <b>domena nadawcy</b>, a firma nadaje numer zgłoszenia.</li>
               <li>Numeracja <b>per firma</b>, ze skrótem firmy w numerze i w temacie maila.</li>
               <li>Potwierdzenie automatyczne tylko dla <b>nowego</b> zgłoszenia z dozwolonej domeny, które jest zgłoszeniem.</li>
               <li>Czas pracy <b>tylko się dopisuje</b> — bez edycji i kasowania.</li>
@@ -1271,7 +1307,8 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
 
             <h2>Zostało do rozstrzygnięcia</h2>
             <ol class="small" style="padding-left: 18px; margin: 0;">
-              <li style="margin-bottom: 6px;">Odpowiedzi klientów wracają na adres nadawcy, czyli na skrzynkę wspólną. Odbieramy ją równolegle (tak jest w makiecie), czy ustawiamy <code>Reply-To</code> na adres firmy?</li>
+              <li style="margin-bottom: 6px;">Mail od kogoś z <b>własnej</b> domeny (technik, księgowość) — nierozpoznany jak każdy inny, czy zgłoszenie wewnętrzne na osobną „firmę”?</li>
+              <li style="margin-bottom: 6px;">Jedna domena = jedna firma. Co z klientem, który ma kilka spółek na jednej domenie — rozstrzyga wtedy operator ręcznie, czy dokładamy regułę (np. po adresie nadawcy)?</li>
               <li style="margin-bottom: 6px;">Skrót firmy w numerze — operator wpisuje ręcznie czy system proponuje z nazwy? Co przy zmianie firmy: nowy numer i odsyłacz ze starego (tak w makiecie)?</li>
               <li style="margin-bottom: 6px;">Czy technik może przekazać zgłoszenie komuś bez dostępu do tej firmy — i czy przekazanie ma ten dostęp nadawać?</li>
               <li style="margin-bottom: 6px;">Czy technik widzi raport „firma → technik" dla swoich firm (czyli czasy kolegów), czy tylko własny czas?</li>
