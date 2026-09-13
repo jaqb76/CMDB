@@ -64,6 +64,7 @@ from ..services.auth import (
     authenticate_user,
     client_ip,
     current_user,
+    firmy_konta,
     naive_utc,
     require_user,
     tenant_context_for,
@@ -211,10 +212,13 @@ def resolve_tenant(
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> TenantContext:
-    """Zwykly uzytkownik ma tenant przypisany na sztywno.
+    """Ktora firme oglada to konto w tym zapytaniu.
+
     Superadmin i audytor globalny przelaczaja sie parametrem ?tenant=<slug>
-    (zapamietanym w ciasteczku). Audytor dostaje kontekst bez prawa zapisu -
-    decyduje o tym tenant_context_for, wiec nie da sie tego tu przeoczyc."""
+    (zapamietanym w ciasteczku). Technik helpdesku tak samo, ale wylacznie
+    miedzy firmami, ktore dostal. Zwykly uzytkownik ma swoja firme na sztywno.
+    Audytor dostaje kontekst bez prawa zapisu - decyduje o tym
+    tenant_context_for, wiec nie da sie tego tu przeoczyc."""
     if widzi_wszystkie_firmy(user):
         slug = request.query_params.get("tenant") or request.cookies.get("cmdb_tenant")
         tenant = None
@@ -228,12 +232,19 @@ def resolve_tenant(
             raise HTTPException(status_code=404, detail="brak zdefiniowanych firm")
         return tenant_context_for(user, tenant)
 
-    if not user.tenant_id:
+    # Technik helpdesku nie nalezy do zadnej firmy, a obsluguje kilka - wybiera
+    # miedzy nimi tak samo jak superadmin, tyle ze lista konczy sie na tych,
+    # ktore dostal. Poza ta liste nie da sie wyjsc parametrem w adresie:
+    # nieznany slug nie jest bledem, tylko wraca do pierwszej dozwolonej firmy.
+    firmy = firmy_konta(db, user)
+    if not firmy:
+        if user.tenant_id:
+            raise HTTPException(status_code=403, detail="firma nieaktywna")
         raise HTTPException(status_code=403, detail="konto nie jest przypisane do firmy")
-    tenant = db.get(Tenant, user.tenant_id)
-    if tenant is None or not tenant.is_active:
-        raise HTTPException(status_code=403, detail="firma nieaktywna")
-    return tenant_context_for(user, tenant)
+
+    slug = request.query_params.get("tenant") or request.cookies.get("cmdb_tenant")
+    wybrana = next((t for t in firmy if t.slug == slug), None) if slug else None
+    return tenant_context_for(user, wybrana or firmy[0])
 
 
 def render(
@@ -245,9 +256,11 @@ def render(
     **extra,
 ) -> HTMLResponse:
     settings = get_settings()
-    tenants = []
-    if widzi_wszystkie_firmy(user):
-        tenants = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
+    # Lista do przelacznika firm w pasku. Dla konta z jedna firma zostaje
+    # pusta - nie ma miedzy czym wybierac.
+    tenants = firmy_konta(db, user)
+    if len(tenants) < 2:
+        tenants = []
     payload = {
         "request": request,
         "user": user,
@@ -436,11 +449,12 @@ def switch_tenant(
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    if not widzi_wszystkie_firmy(user):
-        raise HTTPException(status_code=403, detail="to konto widzi tylko swoja firme")
-    tenant = db.execute(select(Tenant).where(Tenant.slug == slug)).scalar_one_or_none()
+    # Wybor jest ograniczony ta sama lista, ktorej uzywa resolve_tenant -
+    # inaczej ciasteczko ustawione tu otwieraloby firme, ktorej zapytania
+    # i tak nie pokaza, a uzytkownik widzialby pusty panel zamiast odmowy.
+    tenant = next((t for t in firmy_konta(db, user) if t.slug == slug), None)
     if tenant is None:
-        raise HTTPException(status_code=404, detail="nieznana firma")
+        raise HTTPException(status_code=403, detail="to konto nie ma dostepu do tej firmy")
     response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie("cmdb_tenant", tenant.slug, httponly=True, samesite="lax", path="/")
     return response

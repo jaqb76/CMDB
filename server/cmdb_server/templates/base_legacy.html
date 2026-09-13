@@ -38,7 +38,7 @@
     {% if user.is_superadmin %}
       <a href="/admin" class="btn btn-small nav-admin">&larr; Administracja</a>
     {% endif %}
-    {% if user.is_superadmin and all_tenants %}
+    {% if all_tenants %}
       <form method="get" action="/switch-tenant" class="inline-form">
         <select name="slug" class="tenant-select" data-autosubmit>
           {% for t in all_tenants %}

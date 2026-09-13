@@ -10,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Asset, AgentCredential, EnrollmentToken, PortalUser, Tenant, as_utc, utcnow
+from ..models import (Asset, AgentCredential, EnrollmentToken, HelpdeskDostep, PortalUser,
+                      Tenant, as_utc, utcnow)
 from ..security import (
     check_csrf_token,
     hash_password,
@@ -243,6 +244,38 @@ def widzi_wszystkie_firmy(user: PortalUser) -> bool:
     widoku, ale wylacznie do odczytu (patrz tenant_context_for).
     """
     return bool(user.is_superadmin or user.is_global_viewer)
+
+
+def firmy_konta(db: Session, user: PortalUser) -> list[Tenant]:
+    """Firmy, ktore konto moze ogladac - w kolejnosci alfabetycznej.
+
+    Do niedawna odpowiedz byla jednoznaczna: albo konto widzi wszystkie firmy,
+    albo dokladnie te jedna, do ktorej nalezy. Helpdesk dolozyl trzeci
+    przypadek - technika, ktory nie nalezy do zadnej firmy, a obsluguje
+    kilka. Jego uprawnienie to lista wpisow w helpdesk_dostepy i nadaje ja
+    wylacznie superadmin.
+
+    Lista powstaje w jednym miejscu, bo sluzy do dwoch rzeczy naraz: wyboru
+    firmy w pasku i kontroli, czy wolno ja wybrac. Dwie osobne odpowiedzi na
+    to samo pytanie predzej czy pozniej rozjechalyby sie o jedna firme.
+    """
+    if widzi_wszystkie_firmy(user):
+        return list(db.execute(select(Tenant).order_by(Tenant.name)).scalars())
+
+    identyfikatory: set[str] = set()
+    if user.tenant_id:
+        identyfikatory.add(user.tenant_id)
+    identyfikatory.update(db.execute(
+        select(HelpdeskDostep.tenant_id).where(HelpdeskDostep.user_id == user.id)
+    ).scalars())
+    if not identyfikatory:
+        return []
+
+    return list(db.execute(
+        select(Tenant)
+        .where(Tenant.id.in_(identyfikatory), Tenant.is_active.is_(True))
+        .order_by(Tenant.name)
+    ).scalars())
 
 
 def tenant_context_for(user: PortalUser, tenant: Tenant) -> TenantContext:

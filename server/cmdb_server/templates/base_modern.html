@@ -79,7 +79,7 @@
         <button type="button" class="motyw" data-motyw title="Motyw: automatyczny / jasny / ciemny">
           <span class="motyw-ikona motyw-auto">auto</span><span class="motyw-ikona motyw-jasny">jasny</span><span class="motyw-ikona motyw-ciemny">ciemny</span>
         </button>
-        {% if user.is_superadmin and all_tenants %}
+        {% if all_tenants %}
           <form method="get" action="/switch-tenant" class="inline-form">
             <select name="slug" class="tenant-select" data-autosubmit aria-label="Aktywna firma">
               {% for t in all_tenants %}<option value="{{ t.slug }}" {% if ctx and t.id == ctx.tenant_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
