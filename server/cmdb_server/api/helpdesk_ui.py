@@ -683,7 +683,10 @@ def zmien_dostep(
             "Jego zgloszenia i czas pracy zostaja."
         )
     else:
-        helpdesk.nadaj_dostep(db, konto.id, tenant.id, nadal=user.email)
+        try:
+            helpdesk.nadaj_dostep(db, konto.id, tenant.id, nadal=user.email)
+        except helpdesk.BladHelpdesku as blad:
+            raise HTTPException(status_code=400, detail=str(blad)) from blad
         komunikat = f"{konto.email} obsluguje firme {tenant.name} - ze zgloszeniami i CMDB."
 
     audit(db, None, action="helpdesk.dostep", target=konto.email,

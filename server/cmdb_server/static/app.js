@@ -604,4 +604,38 @@
     wybor.addEventListener("change", rysuj);
     rysuj();
   });
+
+  // --- rodzaj konta panelu -------------------------------------------------
+  // Formularz konta pokazywal naraz wszystkie pola: rodzaj, firme i role -
+  // takze wtedy, gdy do wybranego rodzaju nie pasowaly. Superadmin nie ma
+  // firmy, audytor nie ma roli (nigdzie nie zapisuje), a technik dostaje firmy
+  // w osobnej kolumnie. Pole, ktorego wartosc i tak nic nie zmienia, tylko
+  // podpowiada, ze cos znaczy.
+  //
+  // Pola niepasujace do rodzaju sa WYLACZANE, a nie tylko chowane: wylaczone
+  // pole nie idzie w formularzu, wiec serwer nie dostaje wartosci, ktorej nikt
+  // nie widzial na ekranie.
+  document.querySelectorAll("[data-konto-form]").forEach(function (form) {
+    var wybor = form.querySelector("[data-konto-zakres]");
+    if (!wybor) { return; }
+    var opis = form.querySelector("[data-konto-opis]")
+      || (form.parentElement && form.parentElement.querySelector("[data-konto-opis]"));
+
+    function rysuj() {
+      var opcja = wybor.options[wybor.selectedIndex];
+      var pasuje = (opcja && opcja.dataset.pola ? opcja.dataset.pola : "").split(" ");
+
+      form.querySelectorAll("[data-konto-pole]").forEach(function (blok) {
+        var potrzebne = pasuje.indexOf(blok.dataset.kontoPole) !== -1;
+        blok.hidden = !potrzebne;
+        blok.querySelectorAll("input, select").forEach(function (pole) {
+          pole.disabled = !potrzebne;
+        });
+      });
+      if (opis && opcja) { opis.textContent = opcja.dataset.opis || ""; }
+    }
+
+    wybor.addEventListener("change", rysuj);
+    rysuj();
+  });
 })();
