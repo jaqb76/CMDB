@@ -286,6 +286,30 @@ siedzi przy alarmach.
 Szczegóły, kontrakt raportu i lista adresów, pod które agent świadomie nie
 pójdzie: [`docs/monitorowanie-uslug.md`](docs/monitorowanie-uslug.md).
 
+## Helpdesk — zgłoszenia klientów
+
+Klienci piszą maile pod **jeden adres**, a system zakłada z nich zgłoszenia.
+O tym, czyje jest zgłoszenie, decyduje domena nadawcy; firma nadaje numer
+(`BON-123`, `KLE-88`), a numer wraca w temacie maila, więc odpowiedź klienta
+trafia do swojej sprawy, a nie zakłada drugiej.
+
+| Element | Jak działa |
+|---|---|
+| Odbiór | IMAP, jedna skrzynka, pętla co 2 minuty; wiadomości nie są kasowane |
+| Rozpoznanie | wątek (`In-Reply-To`, `References`, numer w temacie) → domena → firma |
+| Nierozpoznane | poczta z obcej domeny czeka na decyzję operatora; nikt nie dostaje odpowiedzi |
+| Wątek | wiadomości, odpowiedzi, komentarze wewnętrzne i zdarzenia w jednej rozmowie |
+| Czas pracy | każdy technik dopisuje swoje minuty; wpisu nie da się zmienić ani usunąć |
+| Raporty | firma → technik → zgłoszenie i technik → firma, eksport CSV i XLSX |
+| Sprzęt | zgłoszenie wiąże się z maszyną z CMDB — to jest jej karta napraw |
+
+Technik nie należy do żadnej firmy: obsługuje te, które przypisze mu
+superadmin, i w każdej z nich pracuje z prawami jej operatora — łącznie
+z wdrożeniem innej wersji agenta, bo „agent nie wysyła danych" też bywa
+zgłoszeniem.
+
+Szczegóły: [`docs/helpdesk.md`](docs/helpdesk.md).
+
 ## Wielofirmowość i tokeny
 
 Rejestracja agenta jest dwustopniowa:
@@ -314,6 +338,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | [`docs/podatnosci.md`](docs/podatnosci.md) | badanie CVE, dane dystrybucji, porównywanie wersji dpkg |
 | [`docs/raporty.md`](docs/raporty.md) | raporty pocztą, SMTP per firma, harmonogram, dane gwarancji |
 | [`docs/monitorowanie-uslug.md`](docs/monitorowanie-uslug.md) | monitorowanie dostępności usług i ważności certyfikatów SSL, progi, powiadomienia |
+| [`docs/helpdesk.md`](docs/helpdesk.md) | zgłoszenia z maili, rozpoznawanie wątków, czas pracy, raporty, dostępy techników |
 | [`docs/wdrozenie.md`](docs/wdrozenie.md) | docker compose, TLS, kopie zapasowe, utrzymanie |
 
 ## Testy

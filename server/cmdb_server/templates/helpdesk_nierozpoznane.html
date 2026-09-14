@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Nierozpoznane wiadomości - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Nierozpoznane wiadomości</h1>
+    <p class="muted">
+      Poczta ze skrzynki helpdesku, której domena nadawcy nie należy do żadnej firmy —
+      także z własnej domeny. Nic nie jest kasowane ani odrzucane i <b>nic nie wychodzi
+      do nadawcy</b>: wiadomość czeka, aż zdecydujesz.
+    </p>
+  </div>
+  <div class="head-actions">
+    {% for klucz, etykieta in [('czeka', 'Czekające'), ('zignorowana', 'Zignorowane'), ('przypisana', 'Przypisane')] %}
+      <a class="btn {{ 'btn-primary' if stan == klucz else '' }}" href="/helpdesk/nierozpoznane?pokaz={{ klucz }}">
+        {{ etykieta }} ({{ liczby[klucz] }})</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+
+<section class="panel tabela-przewijana">
+  <table class="table">
+    <thead>
+      <tr><th>Otrzymano</th><th>Nadawca</th><th>Temat</th><th>Domena</th><th style="width: 330px;">Decyzja</th></tr>
+    </thead>
+    <tbody>
+      {% for w in wiadomosci %}
+      <tr>
+        <td class="small">{{ w.otrzymano | dt }}</td>
+        <td class="small">{{ w.nadawca_email }}</td>
+        <td>{{ w.temat or '(bez tematu)' }}
+          {% if w.tresc %}<div class="muted small">{{ w.tresc[:120] }}{% if w.tresc | length > 120 %}…{% endif %}</div>{% endif %}
+        </td>
+        <td><span class="badge">{{ w.domena }}</span></td>
+        <td>
+          {% if w.stan == 'czeka' %}
+          <form method="post" action="/helpdesk/nierozpoznane/{{ w.id }}" class="row-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div>
+              <select name="tenant_id" aria-label="Firma dla tej wiadomości">
+                <option value="">wskaż firmę…</option>
+                {% for f in firmy %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="submit" name="akcja" value="utworz" class="btn btn-small btn-primary">Utwórz zgłoszenie</button>
+              <button type="submit" name="akcja" value="zignoruj" class="btn btn-small btn-ghost">Zignoruj</button>
+              <button type="submit" name="akcja" value="zignoruj_domene" class="btn btn-small btn-ghost"
+                      title="Kolejne wiadomości z tej domeny pominą tę listę. Regułę widać niżej.">Zignoruj domenę</button>
+            </div>
+          </form>
+          {% else %}
+            <span class="muted small">{{ w.decyzje_podjal or '—' }} · {{ w.decyzja_o | dt }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Nic tu nie czeka.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Ignorowane domeny</h2>
+  <p class="muted small" style="max-width: 82ch;">
+    Reguła odsuwa pocztę od tej listy, ale jej <b>nie kasuje</b> — wiadomości lądują
+    w zignorowanych. Licznik pokazuje, ile poczty każda reguła przechwyciła, więc pomyłkę
+    widać. Domeny należącej do firmy nie da się zignorować.
+  </p>
+  <table class="table">
+    <thead><tr><th>Domena</th><th>Reguła założona</th><th>Przez</th><th class="lp">Przechwycone</th><th>Ostatnia</th><th></th></tr></thead>
+    <tbody>
+      {% for r in reguly %}
+      <tr>
+        <td class="nr">{{ r.domena }}</td>
+        <td class="small">{{ r.utworzono | dt }}</td>
+        <td class="small">{{ r.zalozyl or '—' }}</td>
+        <td class="lp">{{ r.przechwycone }}</td>
+        <td class="small">{{ r.ostatnia_wiadomosc | dt }}</td>
+        <td class="lp">
+          <form method="post" action="/helpdesk/domeny/{{ r.id }}/przywroc" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small">Przywróć</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">Żadna domena nie jest ignorowana.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -206,6 +206,21 @@ templates.env.filters["pretty_json"] = _pretty_json
 templates.env.filters["zmiany"] = changes.odmiana_zmian
 
 
+def _fmt_czas(minuty) -> str:
+    """Minuty jako "1 h 35 min" - ta sama postac w panelu i w eksporcie."""
+    from ..services.helpdesk import formatuj_czas
+
+    if _missing(minuty):
+        return "-"
+    try:
+        return formatuj_czas(int(minuty))
+    except (TypeError, ValueError):
+        return "-"
+
+
+templates.env.filters["czas"] = _fmt_czas
+
+
 # --- kontekst tenanta -------------------------------------------------------
 
 def resolve_tenant(
@@ -276,6 +291,9 @@ def render(
         "wersja_portalu": wersja.opis(),
         "csrf_token": issue_csrf_token(user.id),
         "all_tenants": tenants,
+        # Menu helpdesku widzi tylko ten, kto obsluguje zgloszenia - pozycja,
+        # ktora kazdemu innemu odpowiada odmowa, jest gorsza niz jej brak.
+        "helpdesk_widoczny": bool(user.is_superadmin or firmy_helpdesku(db, user)),
         # Prog braku kontaktu moze byc ustawiony per firma - szablony maja
         # pokazywac te wartosc, ktora faktycznie obowiazuje.
         "stale_after_hours": ustawienia.prog_bez_kontaktu(

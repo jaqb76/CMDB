@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}{{ zgloszenie.numer_pelny }} - CMDB{% endblock %}
+{% block content %}
+
+<p><a href="/helpdesk" class="muted small">← Wróć do zgłoszeń</a></p>
+
+<div class="page-head">
+  <div>
+    <h1><span class="nr">{{ zgloszenie.numer_pelny }}</span> {{ zgloszenie.temat }}</h1>
+    <p class="muted small">
+      {{ firma.name }} · zgłosił <a href="mailto:{{ zgloszenie.zglaszajacy_email }}">{{ zgloszenie.zglaszajacy_email }}</a>
+      · utworzone {{ zgloszenie.utworzono | dt }}
+    </p>
+  </div>
+  <div class="head-actions">
+    <span class="badge hd-status-{{ zgloszenie.status }}">{{ statusy[zgloszenie.status] }}</span>
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert {{ 'alert-error' if 'NIE' in komunikat else 'alert-ok' }}">{{ komunikat }}</div>{% endif %}
+{% if not skrzynka %}
+<div class="alert alert-warn">
+  Skrzynka helpdesku jest wyłączona — odpowiedzi do klienta nie wyjdą.
+  {% if user.is_superadmin %}<a href="/helpdesk/skrzynka">Ustaw ją</a>.{% endif %}
+</div>
+{% endif %}
+{% if niewyslane %}
+<div class="alert alert-error">
+  <b>{{ niewyslane | length }}</b> odpowiedzi nie wyszło do klienta. Treść jest w wątku —
+  po naprawieniu skrzynki wyślij ją ponownie, wklejając w pole odpowiedzi.
+</div>
+{% endif %}
+
+<div class="two-col">
+  <div>
+    <section class="panel">
+      <h2>Historia zgłoszenia</h2>
+      <div class="hd-watek">
+        {% for w in wpisy %}
+          {% if w.rodzaj == 'system' %}
+            <div class="hd-system">
+              <span class="wpis-godzina">{{ w.utworzono | dt }}</span>
+              <span>{{ w.tresc }}</span>
+            </div>
+          {% else %}
+            <div class="hd-wpis hd-wpis-{{ w.rodzaj }}">
+              <div class="hd-wpis-glowa">
+                <span class="wpis-godzina">{{ w.utworzono | dt }}</span>
+                <b>{{ w.autor_nazwa or w.autor_email or osoby.get(w.autor_id, '—') }}</b>
+                {% if w.rodzaj == 'od_klienta' %}<span class="hd-kierunek">e-mail od klienta</span>{% endif %}
+                {% if w.rodzaj == 'do_klienta' %}
+                  <span class="hd-kierunek hd-kierunek-out">odpowiedź do klienta</span>
+                  {% if w.blad_wysylki %}<span class="badge badge-danger">nie wysłano</span>{% endif %}
+                {% endif %}
+                {% if w.rodzaj == 'wewnetrzny' %}<span class="hd-wewn-znacznik">tylko dla techników</span>{% endif %}
+              </div>
+              <div class="hd-tresc">{{ w.tresc }}</div>
+              {% if w.dw %}<div class="muted small">DW: {{ w.dw | join(', ') }}</div>{% endif %}
+              {% if w.blad_wysylki %}<div class="small" style="color: var(--danger-fg);">{{ w.blad_wysylki }}</div>{% endif %}
+              {% for z in zalaczniki.get(w.id, []) %}
+                <div class="small">📎 <a href="/helpdesk/zalacznik/{{ z.id }}">{{ z.nazwa }}</a>
+                  <span class="muted">({{ z.rozmiar | bytes }})</span></div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Nowa wiadomość</h2>
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/wiadomosc" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="tresc">Treść</label>
+        <textarea id="tresc" name="tresc" rows="5" required
+                  placeholder="Napisz wiadomość…"></textarea>
+        <div class="rzad-akcji" style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+          <button type="submit" name="rodzaj" value="wewnetrzny" class="btn btn-wewn">
+            Zapisz komentarz wewnętrzny
+          </button>
+          <button type="submit" name="rodzaj" value="do_klienta" class="btn btn-primary">
+            Wyślij do klienta
+          </button>
+        </div>
+        <p class="muted small" style="margin-top: 10px;">
+          Komentarz wewnętrzny zostaje w zgłoszeniu i <b>nie wychodzi</b> na żaden adres.
+          Odpowiedź idzie na {{ zgloszenie.zglaszajacy_email }} z tematem
+          <b>Re: [{{ zgloszenie.numer_pelny }}] {{ zgloszenie.temat }}</b>, a kopia wraca
+          do osób z DW ostatniej wiadomości klienta.
+        </p>
+      </form>
+    </section>
+  </div>
+
+  <aside>
+    <section class="panel">
+      <h2>Zgłoszenie</h2>
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/status" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="stan">Status</label>
+        <div class="pole-z-podgladem">
+          <select id="stan" name="stan">
+            {% for klucz, etykieta in statusy.items() %}
+              <option value="{{ klucz }}" {% if zgloszenie.status == klucz %}selected{% endif %}>{{ etykieta }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-small">Zmień</button>
+        </div>
+      </form>
+
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/technik" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="technik_id">Przypisany technik</label>
+        <div class="pole-z-podgladem">
+          <select id="technik_id" name="technik_id">
+            <option value="">nieprzypisany</option>
+            {% for t in technicy %}
+              <option value="{{ t.id }}" {% if zgloszenie.technik_id == t.id %}selected{% endif %}>{{ t.full_name or t.email }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-small">Przekaż</button>
+        </div>
+      </form>
+
+      <dl class="kv" style="margin-top: 14px;">
+        <dt>Firma</dt><dd>{{ firma.name }}</dd>
+        <dt>Typ</dt><dd>{{ typy.get(zgloszenie.typ, '—') }}</dd>
+        <dt>Aktywność</dt><dd>{{ zgloszenie.ostatnia_aktywnosc | dt }}</dd>
+      </dl>
+    </section>
+
+    <section class="panel">
+      <h2>Czas pracy</h2>
+      <p><b style="font-size: 24px;">{{ suma_czasu | czas }}</b>
+        <span class="muted small">łącznie, {{ udzialy | length }} techników</span></p>
+      <ul class="tight small">
+        {% for u in udzialy %}<li>{{ u.nazwa }} — <b>{{ u.minuty | czas }}</b></li>{% endfor %}
+      </ul>
+      <ul class="czas-wpisy small muted" style="list-style: none; padding: 0; margin: 10px 0;">
+        {% for w in wpisy_czasu %}
+        <li><b>{{ w.minuty | czas }}</b> · {{ osoby.get(w.technik_id, '—') }} · {{ w.utworzono | dt }}
+          {% if w.opis %}· {{ w.opis }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/czas" class="row-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div style="min-width: 90px;">
+          <label for="minuty">Minuty</label>
+          <input id="minuty" name="minuty" inputmode="numeric" placeholder="30" required>
+        </div>
+        <div>
+          <label for="opis">Opis (opcjonalnie)</label>
+          <input id="opis" name="opis" placeholder="Diagnostyka VPN">
+        </div>
+        <div><button type="submit" class="btn">Dodaj czas</button></div>
+      </form>
+      <p class="muted small" style="margin-top: 8px;">
+        Wpis jest Twój i nie da się go zmienić ani usunąć — pomyłkę prostuje kolejny wpis.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Sprzęt, którego dotyczy</h2>
+      {% for asset, wiazanie in sprzet %}
+      <div class="lista-powiazan" style="display: flex; align-items: center; gap: 8px;">
+        <a href="/assets/{{ asset.id }}">{{ asset.hostname }}</a>
+        <span class="muted small">{{ 'rozpoznany po zgłaszającym' if wiazanie.zrodlo == 'automat' else 'dopięty ręcznie' }}</span>
+        <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/sprzet" class="inline-form" style="margin-left: auto;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="asset_id" value="{{ asset.id }}">
+          <input type="hidden" name="akcja" value="odepnij">
+          <button type="submit" class="btn-link">odepnij</button>
+        </form>
+      </div>
+      {% else %}
+      <p class="muted small">Brak powiązanego sprzętu.</p>
+      {% endfor %}
+
+      {% if kandydaci %}
+      <p class="muted small" style="margin-top: 10px;">Sprzęt zgłaszającego:</p>
+      {% endif %}
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/sprzet" class="stack" style="margin-top: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="pole-z-podgladem">
+          <select name="asset_id" aria-label="Sprzęt do podpięcia">
+            {% for a in kandydaci %}
+              <option value="{{ a.id }}">{{ a.hostname }} — sprzęt zgłaszającego</option>
+            {% endfor %}
+            {% for a in sprzet_firmy %}
+              <option value="{{ a.id }}">{{ a.hostname }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-small">Podepnij</button>
+        </div>
+      </form>
+      <p class="muted small" style="margin-top: 8px;">
+        Każde powiązanie trafia na kartę napraw tego sprzętu — po niej widać,
+        ile razy się psuł i ile czasu na niego poszło.
+      </p>
+    </section>
+  </aside>
+</div>
+{% endblock %}

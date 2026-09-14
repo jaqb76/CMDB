@@ -787,3 +787,83 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   .dashboard-cards .card-value { font-size: 25px; }
   .app-layout .motyw { display: none; }
 }
+
+
+/* --- helpdesk: tablica zgloszen ------------------------------------------ */
+/* Kolumny statusow czyta sie wzrokiem z gory na dol, wiec karta ma byc niska
+   i miec zawsze te same trzy wiersze: numer, temat, kto i kiedy. */
+.hd-tablica {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; align-items: start;
+}
+@media (max-width: 1180px) { .hd-tablica { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .hd-tablica { grid-template-columns: 1fr; } }
+
+.hd-kolumna {
+  background: color-mix(in srgb, var(--text) 4%, var(--bg));
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; min-width: 0;
+}
+.hd-kolumna-glowa { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; }
+.hd-kolumna-tytul {
+  font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+.hd-kolumna-glowa .lp { margin-left: auto; }
+.hd-kolumna-lista { display: flex; flex-direction: column; gap: 9px; }
+
+.hd-kropka { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.hd-kropka-nowe { background: var(--accent); }
+.hd-kropka-w_trakcie { background: var(--warn-fg); }
+.hd-kropka-oczekuje { background: var(--muted); }
+.hd-kropka-zamkniete { background: var(--ok-fg); }
+
+.hd-karta {
+  display: block; background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--border); border-radius: 6px; padding: 10px 11px; color: var(--text);
+}
+.hd-karta:hover { border-color: var(--accent); text-decoration: none; }
+.hd-pas-nowe { border-left-color: var(--accent); }
+.hd-pas-w_trakcie { border-left-color: var(--warn-fg); }
+.hd-pas-oczekuje { border-left-color: var(--muted); }
+.hd-pas-zamkniete { border-left-color: var(--ok-fg); }
+.hd-karta-glowa { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.hd-karta-temat { font-size: 13.5px; font-weight: 600; line-height: 1.35; margin-bottom: 6px; }
+.hd-karta-stopka {
+  display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  font-size: 11.5px; color: var(--muted); margin-top: 8px;
+}
+
+.badge.hd-status-nowe { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); border-color: transparent; }
+.badge.hd-status-w_trakcie { background: var(--warn-bg); color: var(--warn-fg); border-color: transparent; }
+.badge.hd-status-oczekuje { background: var(--bg); color: var(--muted); }
+.badge.hd-status-zamkniete { background: var(--ok-bg); color: var(--ok-fg); border-color: transparent; }
+
+/* --- helpdesk: watek zgloszenia ------------------------------------------ */
+/* Jedna chronologiczna rozmowa: wiadomosci klienta, odpowiedzi i komentarze
+   wewnetrzne w jednej kolumnie. Komentarz wewnetrzny jest CELOWO brzydszy od
+   reszty - ma rzucac sie w oczy, zeby nikt nie wyslal go klientowi. */
+.hd-watek { display: flex; flex-direction: column; gap: 12px; }
+.hd-wpis { border: 1px solid var(--border); border-radius: 6px; padding: 11px 13px; }
+.hd-wpis-glowa {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; color: var(--muted); margin-bottom: 6px;
+}
+.hd-tresc { font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hd-wpis-od_klienta { border-left: 3px solid var(--border); }
+.hd-wpis-do_klienta {
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+.hd-wpis-wewnetrzny {
+  border: 1px dashed var(--warn-fg); border-left: 3px solid var(--warn-fg);
+  background: var(--warn-bg); color: var(--warn-fg);
+}
+.hd-wewn-znacznik {
+  font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--warn-fg); border: 1px solid var(--warn-fg); border-radius: 3px; padding: 1px 6px;
+}
+.hd-kierunek { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.hd-kierunek-out { color: var(--accent); }
+.hd-system {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--muted); padding: 2px 4px 2px 13px;
+}
+.btn-wewn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-fg); }

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Czas pracy - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Czas pracy — {{ 'firma' if rodzaj == 'firma' else 'technik' }}</h1>
+    <p class="muted">
+      {% if rodzaj == 'firma' %}
+        Firma → technik → zgłoszenie. Jedno zgłoszenie bywa u dwóch techników —
+        każdy ma w nim swoje minuty.
+      {% else %}
+        Technik → firma → zgłoszenie. To samo zestawienie oglądane z drugiej strony.
+      {% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="?{{ rodzaj }}={{ wybrany }}&okres={{ okres }}&eksport=csv">Eksport CSV</a>
+    <a class="btn" href="?{{ rodzaj }}={{ wybrany }}&okres={{ okres }}&eksport=xlsx">Eksport XLSX</a>
+  </div>
+</div>
+
+<form method="get" class="filtry">
+  <select name="{{ rodzaj }}">
+    {% for id, nazwa in wybor %}
+      <option value="{{ id }}" {% if wybrany == id %}selected{% endif %}>{{ nazwa }}</option>
+    {% endfor %}
+  </select>
+  <select name="okres">
+    {% for klucz, etykieta in miesiace %}
+      <option value="{{ klucz }}" {% if okres == klucz %}selected{% endif %}>{{ etykieta }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary">Pokaż</button>
+</form>
+
+<section class="kafelki">
+  <div class="kafelek">
+    <div class="kafelek-wartosc">{{ raport.suma | czas }}</div>
+    <div class="kafelek-opis">{{ raport.tytul }} — {{ raport.podtytul }}</div>
+  </div>
+  <div class="kafelek">
+    <div class="kafelek-wartosc">{{ raport.grupy | length }}</div>
+    <div class="kafelek-opis">{{ 'technicy w tej firmie' if rodzaj == 'firma' else 'firmy, dla których pracował' }}</div>
+  </div>
+  <div class="kafelek">
+    <div class="kafelek-wartosc">{{ raport.zgloszen }}</div>
+    <div class="kafelek-opis">zgłoszenia z czasem pracy</div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>{{ raport.tytul }} → {{ naglowek_grupy | lower }} → zgłoszenie</h2>
+  {% for grupa in raport.grupy %}
+  <details class="raport" open>
+    <summary>
+      <span class="strong">{{ grupa.nazwa }}</span>
+      <span class="raport-suma">{{ grupa.minuty | czas }}</span>
+    </summary>
+    <table class="table">
+      <thead><tr><th>Zgłoszenie</th><th>Temat</th><th>Status</th><th class="lp">Czas</th></tr></thead>
+      <tbody>
+        {% for p in grupa.zgloszenia %}
+        <tr>
+          <td class="nr">{{ p.numer }}</td>
+          <td>{{ p.temat }}</td>
+          <td class="small">{{ p.status }}</td>
+          <td class="lp">{{ p.minuty | czas }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% else %}
+  <p class="muted">W tym okresie nikt nie dopisał tu czasu pracy.</p>
+  {% endfor %}
+  <div style="display: flex; justify-content: flex-end; gap: 12px; padding: 12px 6px 0;">
+    <span class="muted">Razem, {{ raport.podtytul }}</span>
+    <b class="lp" style="min-width: 90px;">{{ raport.suma | czas }}</b>
+  </div>
+</section>
+{% endblock %}
