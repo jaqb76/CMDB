@@ -60,9 +60,10 @@ class Raport:
 
 # --- okresy -----------------------------------------------------------------
 
+# Nazwy dla oka - do nazwy pliku i tak idzie wersja bez ogonkow z nazwa_pliku().
 MIESIACE = (
-    "styczen", "luty", "marzec", "kwiecien", "maj", "czerwiec",
-    "lipiec", "sierpien", "wrzesien", "pazdziernik", "listopad", "grudzien",
+    "styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
+    "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień",
 )
 
 
@@ -84,7 +85,7 @@ def miesiac(wartosc: str | None) -> tuple[datetime, datetime, str]:
 
 
 def ostatnie_miesiace(ile: int = 12) -> list[tuple[str, str]]:
-    """Lista miesiecy do wyboru w formularzu: [("2026-09", "wrzesien 2026"), ...]."""
+    """Lista miesiecy do wyboru w formularzu: [("2026-09", "wrzesień 2026"), ...]."""
     dzis = date.today().replace(day=1)
     wybor = []
     for _ in range(ile):
@@ -190,7 +191,7 @@ def raport_technika(
 
 # --- eksport ----------------------------------------------------------------
 
-NAGLOWKI = ("Grupa", "Zgloszenie", "Temat", "Status", "Minuty", "Czas")
+NAGLOWKI = ("Grupa", "Zgłoszenie", "Temat", "Status", "Minuty", "Czas")
 
 
 def wiersze_eksportu(raport: Raport) -> list[tuple]:

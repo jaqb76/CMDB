@@ -502,6 +502,25 @@ def test_raport_technika_pokazuje_jego_firmy(client, tenant_a, tenant_b, smtp):
     assert "Firma A" in strona and "Firma B" in strona
 
 
+def test_raport_technika_wybiera_osobe_z_raportu(client, tenant_a, make_user):
+    """Lista wyboru ma pokazywac tego, kogo pokazuje raport pod nia.
+
+    Superadmin nie ma przydzielonych firm, wiec nie ma go wsrod technikow -
+    a raport domyslnie jest wlasnie jego. Bez dopisania go do listy przegladarka
+    zaznaczala pierwsza pozycje i ekran mowil "Wladek Nowak" nad raportem Marty.
+    """
+    _firma(tenant_a["id"])
+    _technik("wladek@mojadomena.pl", [tenant_a["id"]], "Wladek Nowak")
+    make_user(None, "szef@mojadomena.pl", HASLO)
+    _login(client, "szef@mojadomena.pl", HASLO)
+
+    strona = client.get("/helpdesk/raporty/technik").text
+    wybrany = strona.split('id="r-wybor"')[1].split("</select>")[0]
+    assert 'selected' in wybrany
+    zaznaczona = [w for w in wybrany.split("<option") if "selected" in w][0]
+    assert "szef@mojadomena.pl" in zaznaczona
+
+
 def test_eksport_csv_i_xlsx(client, tenant_a, smtp):
     _firma(tenant_a["id"])
     zgloszenie_id = _zgloszenie(tenant_a["id"])
@@ -513,7 +532,7 @@ def test_eksport_csv_i_xlsx(client, tenant_a, smtp):
     assert csv_.status_code == 200
     assert "attachment" in csv_.headers["content-disposition"]
     tresc = csv_.content.decode("utf-8-sig")
-    assert "Grupa;Zgloszenie" in tresc
+    assert "Grupa;Zgłoszenie" in tresc
     assert "BON-1" in tresc and "1 h 35 min" in tresc
 
     xlsx = client.get(f"/helpdesk/raporty/firma?firma={tenant_a['id']}&eksport=xlsx")

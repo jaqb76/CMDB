@@ -84,7 +84,7 @@
       <tr>
         <td>{{ k.full_name or k.email }}<div class="muted small">{{ k.email }}</div></td>
         <td>
-          {% if k.is_superadmin %}<span class="badge badge-nowy">superadmin</span>
+          {% if k.is_superadmin %}<span class="badge badge-akcent">superadmin</span>
           {% else %}<span class="badge">{{ k.role }}</span>{% endif %}
         </td>
         <td>

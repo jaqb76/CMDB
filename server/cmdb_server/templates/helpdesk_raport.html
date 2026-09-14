@@ -20,18 +20,24 @@
   </div>
 </div>
 
-<form method="get" class="filtry">
-  <select name="{{ rodzaj }}">
-    {% for id, nazwa in wybor %}
-      <option value="{{ id }}" {% if wybrany == id %}selected{% endif %}>{{ nazwa }}</option>
-    {% endfor %}
-  </select>
-  <select name="okres">
-    {% for klucz, etykieta in miesiace %}
-      <option value="{{ klucz }}" {% if okres == klucz %}selected{% endif %}>{{ etykieta }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit" class="btn btn-primary">Pokaż</button>
+<form method="get" class="row-form row-form-filtry">
+  <div>
+    <label for="r-wybor">{{ 'Firma' if rodzaj == 'firma' else 'Technik' }}</label>
+    <select id="r-wybor" name="{{ rodzaj }}">
+      {% for id, nazwa in wybor %}
+        <option value="{{ id }}" {% if wybrany == id %}selected{% endif %}>{{ nazwa }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="r-okres">Okres</label>
+    <select id="r-okres" name="okres">
+      {% for klucz, etykieta in miesiace %}
+        <option value="{{ klucz }}" {% if okres == klucz %}selected{% endif %}>{{ etykieta }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div><button type="submit" class="btn btn-primary">Pokaż</button></div>
 </form>
 
 <section class="kafelki">

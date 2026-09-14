@@ -74,7 +74,7 @@
         <label for="tresc">Treść</label>
         <textarea id="tresc" name="tresc" rows="5" required
                   placeholder="Napisz wiadomość…"></textarea>
-        <div class="rzad-akcji" style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+        <div class="rzad-akcji" style="margin-top: 12px;">
           <button type="submit" name="rodzaj" value="wewnetrzny" class="btn btn-wewn">
             Zapisz komentarz wewnętrzny
           </button>
@@ -136,7 +136,7 @@
       <ul class="tight small">
         {% for u in udzialy %}<li>{{ u.nazwa }} — <b>{{ u.minuty | czas }}</b></li>{% endfor %}
       </ul>
-      <ul class="czas-wpisy small muted" style="list-style: none; padding: 0; margin: 10px 0;">
+      <ul class="czas-wpisy">
         {% for w in wpisy_czasu %}
         <li><b>{{ w.minuty | czas }}</b> · {{ osoby.get(w.technik_id, '—') }} · {{ w.utworzono | dt }}
           {% if w.opis %}· {{ w.opis }}{% endif %}</li>
@@ -162,7 +162,7 @@
     <section class="panel">
       <h2>Sprzęt, którego dotyczy</h2>
       {% for asset, wiazanie in sprzet %}
-      <div class="lista-powiazan" style="display: flex; align-items: center; gap: 8px;">
+      <div class="rzad-akcji" style="padding: 4px 0;">
         <a href="/assets/{{ asset.id }}">{{ asset.hostname }}</a>
         <span class="muted small">{{ 'rozpoznany po zgłaszającym' if wiazanie.zrodlo == 'automat' else 'dopięty ręcznie' }}</span>
         <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/sprzet" class="inline-form" style="margin-left: auto;">

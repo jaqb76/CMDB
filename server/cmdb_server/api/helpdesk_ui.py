@@ -270,16 +270,16 @@ def dopisz_wiadomosc(
     if rodzaj == WPIS_DO_KLIENTA:
         try:
             helpdesk_wysylka.odpowiedz_klientowi(db, zgloszenie, tresc.strip(), user)
-            komunikat = f"Odpowiedz poszla do {zgloszenie.zglaszajacy_email}."
+            komunikat = f"Odpowiedź poszła do {zgloszenie.zglaszajacy_email}."
         except helpdesk_wysylka.BladWysylki as blad:
             # Tresc zostaje w watku - zapis byl przed wysylka.
             db.commit()
-            return _wroc(powrot, f"Wiadomosc zapisana, ale NIE wyszla: {blad}")
+            return _wroc(powrot, f"Wiadomość zapisana, ale NIE wyszła: {blad}")
     elif rodzaj == WPIS_WEWNETRZNY:
         helpdesk.dopisz_wiadomosc(
             db, zgloszenie, rodzaj=WPIS_WEWNETRZNY, tresc=tresc.strip(), autor=user
         )
-        komunikat = "Komentarz widoczny tylko dla technikow."
+        komunikat = "Komentarz widoczny tylko dla techników."
     else:
         raise HTTPException(status_code=400, detail="nieznany rodzaj wpisu")
 
@@ -497,13 +497,13 @@ def decyzja_o_wiadomosci(
         wiadomosc.stan = NIEROZPOZNANA_PRZYPISANA
         wiadomosc.zgloszenie_id = zgloszenie.id
         komunikat = (
-            f"Zalozono {zgloszenie.numer_pelny} dla firmy {firma.name}. "
-            f"Domena {wiadomosc.domena} NIE zostala dodana do firmy - "
-            "zrob to w Firmach, jesli kolejne maile maja zakladac zgloszenia same."
+            f"Założono {zgloszenie.numer_pelny} dla firmy {firma.name}. "
+            f"Domena {wiadomosc.domena} NIE została dodana do firmy — "
+            "zrób to w Firmach, jeśli kolejne maile mają zakładać zgłoszenia same."
         )
     elif akcja == "zignoruj":
         wiadomosc.stan = NIEROZPOZNANA_ZIGNOROWANA
-        komunikat = "Wiadomosc zignorowana. Nie zostala skasowana."
+        komunikat = "Wiadomość zignorowana. Nie została skasowana."
     elif akcja == "zignoruj_domene":
         try:
             poczta.ignoruj_domene(db, wiadomosc.domena, zalozyl=user.email)
@@ -511,8 +511,8 @@ def decyzja_o_wiadomosci(
             raise HTTPException(status_code=400, detail=str(blad)) from blad
         wiadomosc.stan = NIEROZPOZNANA_ZIGNOROWANA
         komunikat = (
-            f"Kolejne wiadomosci z {wiadomosc.domena} nie trafia juz na te liste. "
-            "Regule widac nizej razem z licznikiem przechwyconej poczty."
+            f"Kolejne wiadomości z {wiadomosc.domena} nie trafią już na tę listę. "
+            "Regułę widać niżej razem z licznikiem przechwyconej poczty."
         )
     else:
         raise HTTPException(status_code=400, detail="nieznana decyzja")
@@ -544,8 +544,8 @@ def przywroc_domene(
     db.commit()
     return _wroc(
         "/helpdesk/nierozpoznane",
-        f"Poczta z {domena} znow trafia na liste do przejrzenia. "
-        "Wiadomosci juz przechwycone zostaja w zignorowanych.",
+        f"Poczta z {domena} znów trafia na listę do przejrzenia. "
+        "Wiadomości już przechwycone zostają w zignorowanych.",
     )
 
 
@@ -623,7 +623,7 @@ def dodaj_domene(
     except helpdesk.BladHelpdesku as blad:
         raise HTTPException(status_code=400, detail=str(blad)) from blad
     db.commit()
-    return _wroc("/helpdesk/firmy", f"Poczta z {wpis.domena} zaklada teraz zgloszenia.")
+    return _wroc("/helpdesk/firmy", f"Poczta z {wpis.domena} zakłada teraz zgłoszenia.")
 
 
 @router.post("/helpdesk/firmy/domena/{domena_id}/usun")
@@ -679,15 +679,15 @@ def zmien_dostep(
     if akcja == "odbierz":
         helpdesk.odbierz_dostep(db, konto.id, tenant.id)
         komunikat = (
-            f"{konto.email} nie widzi juz firmy {tenant.name}. "
-            "Jego zgloszenia i czas pracy zostaja."
+            f"{konto.email} nie widzi już firmy {tenant.name}. "
+            "Jego zgłoszenia i czas pracy zostają."
         )
     else:
         try:
             helpdesk.nadaj_dostep(db, konto.id, tenant.id, nadal=user.email)
         except helpdesk.BladHelpdesku as blad:
             raise HTTPException(status_code=400, detail=str(blad)) from blad
-        komunikat = f"{konto.email} obsluguje firme {tenant.name} - ze zgloszeniami i CMDB."
+        komunikat = f"{konto.email} obsługuje firmę {tenant.name} — ze zgłoszeniami i CMDB."
 
     audit(db, None, action="helpdesk.dostep", target=konto.email,
           detail={"firma": tenant.slug, "akcja": akcja},
@@ -771,9 +771,9 @@ async def zapisz_skrzynke(
     if formularz.get("sprawdz"):
         try:
             helpdesk_wysylka.sprawdz(db, user.email)
-            return _wroc("/helpdesk/skrzynka", f"Wiadomosc probna poszla na {user.email}.")
+            return _wroc("/helpdesk/skrzynka", f"Wiadomość próbna poszła na {user.email}.")
         except helpdesk_wysylka.BladWysylki as blad:
-            return _wroc("/helpdesk/skrzynka", f"Wysylka nie dziala: {blad}")
+            return _wroc("/helpdesk/skrzynka", f"Wysyłka nie działa: {blad}")
     return _wroc("/helpdesk/skrzynka", "Ustawienia zapisane.")
 
 
@@ -790,12 +790,12 @@ def pobierz_teraz(
 
     wynik = helpdesk_imap.pobierz(db)
     if "blad" in wynik:
-        return _wroc("/helpdesk/skrzynka", f"Odbior nie powiodl sie: {wynik['blad']}")
+        return _wroc("/helpdesk/skrzynka", f"Odbiór nie powiódł się: {wynik['blad']}")
     if "pominiete" in wynik:
         return _wroc("/helpdesk/skrzynka", wynik["pominiete"])
     return _wroc(
         "/helpdesk/skrzynka",
-        f"Pobrano {wynik['pobrane']} wiadomosci: {wynik['nowe']} nowych zgloszen, "
+        f"Pobrano {wynik['pobrane']} wiadomości: {wynik['nowe']} nowych zgłoszeń, "
         f"{wynik['dopisane']} dopisanych, {wynik['nierozpoznane']} nierozpoznanych.",
     )
 
@@ -851,6 +851,10 @@ def raport_technika(
     dostepni = _technicy(db, firmy)
     if not any(t.id == technik for t in dostepni) and technik != user.id:
         technik = user.id
+    # Superadmin nie ma przydzielonych firm, wiec nie ma go na liscie technikow.
+    # Bez tego lista pokazywalaby kogos innego niz raport pod nia.
+    if not any(t.id == technik for t in dostepni):
+        dostepni = [user, *dostepni]
 
     raport = helpdesk_raporty.raport_technika(
         db, technik, okres, firmy=None if helpdesk.prowadzi_helpdesk(user) else firmy
@@ -861,9 +865,7 @@ def raport_technika(
     return render(
         request, "helpdesk_raport.html", user, ctx, db,
         raport=raport, rodzaj="technik",
-        wybor=[(t.id, helpdesk.opis_osoby(t)) for t in dostepni] or [
-            (user.id, helpdesk.opis_osoby(user))
-        ],
+        wybor=[(t.id, helpdesk.opis_osoby(t)) for t in dostepni],
         wybrany=technik, okres=okres or helpdesk_raporty.ostatnie_miesiace(1)[0][0],
         miesiace=helpdesk_raporty.ostatnie_miesiace(),
         naglowek_grupy="Firma",
