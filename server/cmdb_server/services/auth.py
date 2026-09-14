@@ -278,7 +278,18 @@ def firmy_konta(db: Session, user: PortalUser) -> list[Tenant]:
     ).scalars())
 
 
-def tenant_context_for(user: PortalUser, tenant: Tenant) -> TenantContext:
+def tenant_context_for(
+    user: PortalUser, tenant: Tenant, helpdesk: bool = False
+) -> TenantContext:
+    """Kontekst pracy konta w jednej firmie.
+
+    ``helpdesk`` znaczy, ze konto obsluguje te firme jako technik helpdesku.
+    Taki technik pracuje w niej z prawami administratora firmy - i tak ma byc:
+    zgloszenie "agent nie wysyla danych" konczy sie wdrozeniem innej wersji
+    agenta, a technik, ktory moze tylko patrzec, musialby prosic o to kogos
+    innego przy kazdej takiej sprawie. Rol nie mnozymy: technik w swojej
+    firmie to ten sam poziom co jej administrator.
+    """
     return TenantContext(
         tenant_id=tenant.id,
         tenant_slug=tenant.slug,
@@ -286,8 +297,20 @@ def tenant_context_for(user: PortalUser, tenant: Tenant) -> TenantContext:
         is_superadmin=user.is_superadmin,
         # Audytor globalny nie zapisuje niczego w zadnej firmie - warunek jest
         # tutaj, bo to jedyne miejsce, w ktorym powstaje prawo do zapisu.
-        can_write=(user.is_superadmin or user.role == "admin") and not user.is_global_viewer,
+        can_write=(
+            (user.is_superadmin or user.role == "admin" or helpdesk)
+            and not user.is_global_viewer
+        ),
     )
+
+
+def firmy_helpdesku(db: Session, user: PortalUser) -> set[str]:
+    """Firmy, ktore konto obsluguje jako technik helpdesku."""
+    if user.is_superadmin:
+        return set()
+    return set(db.execute(
+        select(HelpdeskDostep.tenant_id).where(HelpdeskDostep.user_id == user.id)
+    ).scalars())
 
 
 def verify_csrf(request: Request, user: PortalUser, form_token: str | None) -> None:

@@ -16,6 +16,10 @@
   </div>
 </div>
 
+{% if komunikat %}
+<div class="alert alert-ok">{{ komunikat }}</div>
+{% endif %}
+
 <section class="panel">
   <h2>Wersja docelowa</h2>
   <table class="table">
@@ -31,20 +35,52 @@
     </tbody>
   </table>
   <p class="muted small">
-    Którą wersję rozsyłamy, decyduje operator systemu — to on odpowiada za to,
-    że plik jest sprawdzony i podpisany. Ten widok niczego nie zleca.
-    Serwer też nie łączy się do maszyn: agent sam, przy swoim cyklicznym
-    przebiegu, dowiaduje się o nowej wersji i ją pobiera.
+    Wydania <b>publikuje operator systemu</b> — to on odpowiada za to, że plik jest
+    sprawdzony i podpisany. Którą z opublikowanych wersji ma mieć ta firma, ustawiasz tutaj.
+    Serwer nie łączy się do maszyn: agent sam, przy swoim cyklicznym przebiegu,
+    dowiaduje się o innej wersji i ją pobiera.
   </p>
+
+  {% if ctx.can_write %}
+  <form method="post" action="/wersje-agentow/cel" class="row-form" style="margin-top: 14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="zakres" value="firma">
+    <div>
+      <label for="cel-system">System</label>
+      <select id="cel-system" name="os_family">
+        <option value="windows">Windows</option>
+        <option value="linux">Linux</option>
+      </select>
+    </div>
+    <div>
+      <label for="cel-wersja">Wersja dla całej firmy</label>
+      <select id="cel-wersja" name="release_id">
+        <option value="">— bez własnego ustawienia (wersja oficjalna) —</option>
+        {% for wydanie in do_wyboru %}
+        <option value="{{ wydanie.id }}">{{ wydanie.os_family }} · {{ wydanie.version }} ({{ wydanie.arch }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><button type="submit" class="btn">Zleć całej firmie</button></div>
+  </form>
+  <p class="muted small" style="margin-top: 8px;">
+    Ustawienie firmowe kasuje wersje przypięte pojedynczym maszynom tego systemu —
+    inaczej maszyna zostałaby na wersji, której nikt już nie chce.
+  </p>
+  {% endif %}
 </section>
 
 <section class="panel">
   <h2>Maszyny ({{ wiersze | length }})</h2>
   {% if wiersze %}
+  <form method="post" action="/wersje-agentow/cel">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="zakres" value="maszyny">
   <div class="tabela-przewijana">
     <table class="table">
       <thead>
         <tr>
+          {% if ctx.can_write %}<th></th>{% endif %}
           <th>Maszyna</th><th>System</th><th>Wersja agenta</th>
           <th>Wersja docelowa</th><th>Stan</th><th>Ostatni kontakt</th>
         </tr>
@@ -52,6 +88,10 @@
       <tbody>
       {% for w in wiersze %}
         <tr>
+          {% if ctx.can_write %}
+          <td><input type="checkbox" name="asset_id" value="{{ w.maszyna.id }}"
+                     aria-label="Zaznacz {{ w.maszyna.hostname }}"></td>
+          {% endif %}
           <td class="strong"><a href="/assets/{{ w.maszyna.id }}">{{ w.maszyna.hostname }}</a></td>
           <td class="small">{{ w.maszyna.os_family or '—' }}</td>
           <td class="small">{{ w.maszyna.agent_version or '?' }}</td>
@@ -84,6 +124,25 @@
       </tbody>
     </table>
   </div>
+  {% if ctx.can_write %}
+  <div class="row-form" style="margin-top: 14px;">
+    <div>
+      <label for="cel-wersja-maszyn">Wersja dla zaznaczonych maszyn</label>
+      <select id="cel-wersja-maszyn" name="release_id">
+        <option value="">— zdejmij przypięcie (wersja firmowa albo oficjalna) —</option>
+        {% for wydanie in do_wyboru %}
+        <option value="{{ wydanie.id }}">{{ wydanie.os_family }} · {{ wydanie.version }} ({{ wydanie.arch }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><button type="submit" class="btn btn-primary">Zleć zaznaczonym</button></div>
+  </div>
+  <p class="muted small" style="margin-top: 8px;">
+    Tak wraca się do starszej wersji, gdy nowa zawiodła na konkretnej maszynie —
+    i tak wypycha poprawkę, zanim dostanie ją reszta floty.
+  </p>
+  {% endif %}
+  </form>
   {% else %}
   <p class="muted">
     Żadna maszyna nie ma jeszcze agenta. Sprzęt wpisany ręcznie nie jest tu

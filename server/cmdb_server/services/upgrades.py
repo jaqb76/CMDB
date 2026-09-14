@@ -273,3 +273,121 @@ def wersja_ikony(db: Session, tenant_id: str) -> AgentRelease | None:
     return db.execute(
         zapytanie.order_by(AgentRelease.created_at.desc())
     ).scalars().first()
+
+
+# --- zlecanie wersji docelowej ----------------------------------------------
+#
+# Te dwie funkcje uzywa i panel administracyjny, i panel firmy. Nie chodzi
+# o oszczednosc linijek: regula "ustawienie firmowe kasuje ustawienia
+# poszczegolnych maszyn" jest nieoczywista i w dwoch kopiach rozjechalaby sie
+# przy pierwszej poprawce - a rozjazd znaczy maszyny, ktore zostaja na wersji,
+# ktorej nikt juz nie chce.
+
+SYSTEMY_AGENTA = ("windows", "linux")
+
+
+class BladCelu(ValueError):
+    """Zlecenie, ktorego nie da sie wykonac. Tresc idzie do uzytkownika."""
+
+
+def wydanie_do_rozeslania(db: Session, release_id: str) -> AgentRelease | None:
+    """Wydanie wskazane w formularzu, po sprawdzeniu, czy wolno je rozsylac.
+
+    Pusty identyfikator znaczy "bez wlasnego ustawienia" i jest poprawna
+    odpowiedzia - tak sie zdejmuje przypiecie do wersji.
+    """
+    if not (release_id or "").strip():
+        return None
+    wydanie = db.get(AgentRelease, release_id.strip())
+    if wydanie is None:
+        raise BladCelu("nie znaleziono wskazanej wersji")
+    problem = release_trust.admission_problem(wydanie)
+    if problem:
+        raise BladCelu(f"Nie można rozesłać wydania: {problem}")
+    return wydanie
+
+
+def ustaw_cel_firmy(
+    db: Session, tenant_id: str, system: str, wydanie: AgentRelease | None, kto: str
+) -> str:
+    """Cel dla wszystkich maszyn firmy dzialajacych na wskazanym systemie."""
+    system = (system or "").strip().lower()
+    if system not in SYSTEMY_AGENTA:
+        raise BladCelu("nieznany system operacyjny")
+    if wydanie is not None and wydanie.os_family != system:
+        raise BladCelu(
+            f"wersja {wydanie.version} jest dla {wydanie.os_family}, a cel dotyczy {system}"
+        )
+
+    cel = db.execute(
+        select(TenantAgentTarget).where(
+            TenantAgentTarget.tenant_id == tenant_id,
+            TenantAgentTarget.os_family == system,
+        )
+    ).scalar_one_or_none()
+
+    if wydanie is None:
+        # Brak wlasnego ustawienia znaczy "korzystaj z wersji oficjalnej".
+        if cel is not None:
+            db.delete(cel)
+    elif cel is None:
+        db.add(TenantAgentTarget(
+            tenant_id=tenant_id, os_family=system, release_id=wydanie.id, updated_by=kto
+        ))
+    else:
+        cel.release_id = wydanie.id
+        cel.updated_at = utcnow()
+        cel.updated_by = kto
+
+    # Ustawienia poszczegolnych maszyn tego systemu kasujemy, zeby nie
+    # przeslanialy decyzji podjetej dla calej firmy.
+    maszyny = db.execute(
+        select(Asset).where(Asset.tenant_id == tenant_id, Asset.os_family == system)
+    ).scalars().all()
+    for maszyna in maszyny:
+        maszyna.target_release_id = None
+        maszyna.upgrade_status = "zlecona" if wydanie else None
+        maszyna.upgrade_detail = None
+        maszyna.upgrade_updated_at = utcnow()
+    return f"wszystkie maszyny {system} ({len(maszyny)})"
+
+
+def ustaw_cel_maszyn(
+    db: Session, tenant_id: str, wybrane: list[str], wydanie: AgentRelease | None
+) -> str:
+    """Cel dla wskazanych maszyn jednej firmy."""
+    from ..models import ZRODLO_AGENT
+
+    wybrane = [identyfikator for identyfikator in wybrane if identyfikator]
+    if not wybrane:
+        raise BladCelu("nie wskazano zadnej maszyny")
+
+    maszyny = db.execute(
+        select(Asset).where(Asset.tenant_id == tenant_id, Asset.id.in_(wybrane))
+    ).scalars().all()
+    # Maszyna spoza firmy nie jest tu bledem walidacji, tylko probe siegniecia
+    # po cudzy sprzet - i tak ma zostac nazwana.
+    if len(maszyny) != len(set(wybrane)):
+        raise BladCelu("maszyna spoza tej firmy")
+
+    reczne = [m.hostname for m in maszyny if m.zrodlo != ZRODLO_AGENT]
+    if reczne:
+        raise BladCelu(
+            "wpis reczny nie ma agenta, wiec nie da sie mu zlecic wersji: "
+            + ", ".join(reczne[:5])
+        )
+
+    if wydanie is not None:
+        niezgodne = [m.hostname for m in maszyny if (m.os_family or "") != wydanie.os_family]
+        if niezgodne:
+            raise BladCelu(
+                f"wersja jest dla {wydanie.os_family}, a wskazano maszyny "
+                f"innego systemu: {', '.join(niezgodne[:5])}"
+            )
+
+    for maszyna in maszyny:
+        maszyna.target_release_id = wydanie.id if wydanie else None
+        maszyna.upgrade_status = "zlecona" if wydanie else None
+        maszyna.upgrade_detail = None
+        maszyna.upgrade_updated_at = utcnow()
+    return f"{len(maszyny)} maszyn"
