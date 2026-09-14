@@ -16,6 +16,7 @@ import logging
 import re
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
@@ -421,21 +422,35 @@ def utworz_konto(
     return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _powrot(wskazany: str) -> str:
+    """Dokad wracamy po akcji na koncie.
+
+    Te same przyciski stoja na dwoch ekranach - przy firmie i na liscie kont -
+    i maja wracac tam, skad je klikniejeto. Lista dozwolonych adresow jest
+    krotka i zamknieta, bo pole formularza nie moze przekierowywac gdziekolwiek.
+    """
+    return wskazany if wskazany in ("/admin/konta", "/admin/firmy") else "/admin/firmy"
+
+
 @router.post("/users/{user_id}/active")
 def przelacz_konto(
     user_id: str,
     request: Request,
     csrf_token: str = Form(""),
+    powrot: str = Form("/admin/firmy"),
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> Response:
     sprawdz_csrf(user, csrf_token)
     konto = _konto_do_zmiany(db, user, user_id)
     konto.is_active = not konto.is_active
+    # Wylaczone konto ma stracic dostep natychmiast, a nie z wygasnieciem
+    # ciasteczka: sesja sprawdza wersje przy kazdym zapytaniu.
+    konto.session_version = PortalUser.session_version + 1
     audit(db, None, action="user.active_changed", target=konto.email,
           detail={"is_active": konto.is_active}, ip=client_ip(request), actor=user.email)
     db.commit()
-    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(_powrot(powrot), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/users/{user_id}/usun")
@@ -443,6 +458,7 @@ def usun_konto(
     user_id: str,
     request: Request,
     csrf_token: str = Form(""),
+    powrot: str = Form("/admin/firmy"),
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -459,12 +475,31 @@ def usun_konto(
     # tylko wpisem do usuniecia i siegniecie po powiazana firme moze sie nie udac.
     adres = konto.email
     firma = konto.tenant.slug if konto.tenant else None
+
+    # Czas pracy technika jest podstawa faktury i nie wolno mu zniknac razem
+    # z kontem - baza tego pilnuje, a my zamieniamy jej blad na zdanie, ktore
+    # mowi, co zrobic zamiast usuwania.
+    from ..models import CzasPracy
+
+    minuty = db.execute(
+        select(func.count(CzasPracy.id)).where(CzasPracy.technik_id == konto.id)
+    ).scalar_one()
+    if minuty:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{adres} ma zapisany czas pracy w {minuty} wpisach i usuniecie konta "
+                "zabraloby go z raportow. Wylacz konto - przestanie sie logowac, "
+                "a historia zostanie."
+            ),
+        )
+
     db.delete(konto)
     audit(db, None, action="user.deleted", target=adres,
           detail={"tenant": firma}, ip=client_ip(request), actor=user.email)
     db.commit()
     log.info("superadmin %s usunal konto %s", user.email, adres)
-    return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(_powrot(powrot), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/users/globalne")
@@ -1163,6 +1198,229 @@ async def zlec_aktualizacje(
         user.email, wydanie.version if wydanie else "(brak)", objete, firma.slug,
     )
     return RedirectResponse(powrot, status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- konta w jednym miejscu -------------------------------------------------
+
+# Rodzaje kont opisane tak, jak wyglada ich uprawnienie, a nie jak sa zapisane
+# w kolumnach. Konto "technik" to konto bez wlasnej firmy z wpisami w
+# helpdesk_dostepy - i dopoki nie widac tego w jednym miejscu, takie konto po
+# nadaniu mu firm znikalo z listy kont firmowych i nie dalo sie go usunac.
+ZAKRES_FIRMA = "firma"
+ZAKRES_TECHNIK = "technik"
+ZAKRES_AUDYTOR = "audytor"
+ZAKRES_SUPERADMIN = "superadmin"
+ZAKRESY = {
+    ZAKRES_FIRMA: "konto firmy",
+    ZAKRES_TECHNIK: "technik helpdesku",
+    ZAKRES_AUDYTOR: "audytor globalny",
+    ZAKRES_SUPERADMIN: "superadmin",
+}
+
+
+def _zakres_konta(konto: PortalUser, firmy_helpdesku: set[str]) -> str:
+    if konto.is_superadmin:
+        return ZAKRES_SUPERADMIN
+    if konto.is_global_viewer:
+        return ZAKRES_AUDYTOR
+    if firmy_helpdesku:
+        return ZAKRES_TECHNIK
+    return ZAKRES_FIRMA
+
+
+@router.get("/konta", response_class=HTMLResponse)
+def widok_kont(
+    request: Request,
+    komunikat: str = "",
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Wszystkie konta panelu na jednej liscie.
+
+    Konta byly dotad pokazywane pod firmami, a technik helpdesku do zadnej
+    firmy nie nalezy - po nadaniu mu firm znikal z widoku i nie dalo sie go
+    ani wylaczyc, ani usunac. Ta lista pokazuje kazde konto niezaleznie od
+    tego, skad bierze sie jego uprawnienie.
+    """
+    from ..models import CzasPracy, HelpdeskDostep
+
+    dostepy: dict[str, list[str]] = {}
+    for user_id, tenant_id in db.execute(
+        select(HelpdeskDostep.user_id, HelpdeskDostep.tenant_id)
+    ).all():
+        dostepy.setdefault(user_id, []).append(tenant_id)
+
+    nazwy_firm = dict(db.execute(select(Tenant.id, Tenant.name)).all())
+    czasy = dict(db.execute(
+        select(CzasPracy.technik_id, func.count(CzasPracy.id)).group_by(CzasPracy.technik_id)
+    ).all())
+
+    konta = []
+    for konto in db.execute(
+        select(PortalUser).order_by(PortalUser.email)
+    ).scalars():
+        firmy_konta = dostepy.get(konto.id, [])
+        konta.append({
+            "konto": konto,
+            "zakres": _zakres_konta(konto, set(firmy_konta)),
+            "firma": nazwy_firm.get(konto.tenant_id),
+            "firmy_helpdesku": sorted(
+                (nazwy_firm.get(t, t), t) for t in firmy_konta
+            ),
+            # Konto z zapisanym czasem pracy da sie wylaczyc, ale nie usunac -
+            # pokazujemy to od razu, zeby nie proponowac czegos, co odmowi.
+            "wpisow_czasu": czasy.get(konto.id, 0),
+        })
+
+    return render_admin(
+        request, "admin_konta.html", user, "konta",
+        konta=konta,
+        firmy=db.execute(select(Tenant).order_by(Tenant.name)).scalars().all(),
+        zakresy=ZAKRESY,
+        min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
+        komunikat=komunikat,
+    )
+
+
+@router.post("/konta")
+def utworz_konto_dowolne(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(""),
+    zakres: str = Form(ZAKRES_FIRMA),
+    tenant_id: str = Form(""),
+    role: str = Form("admin"),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zaklada konto dowolnego rodzaju - takze technika helpdesku od razu z firmami.
+
+    Technika nie dalo sie dotad zalozyc wcale: panel umial tworzyc konto firmy
+    albo audytora globalnego, a technik jest kontem bez firmy, ktore dostaje
+    ich kilka.
+    """
+    sprawdz_csrf(user, csrf_token)
+    adres = email.strip().lower()
+    if len(password) < MIN_DLUGOSC_HASLA:
+        raise HTTPException(
+            status_code=400,
+            detail=f"haslo musi miec co najmniej {MIN_DLUGOSC_HASLA} znakow",
+        )
+    if db.execute(select(PortalUser).where(PortalUser.email == adres)).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="konto o tym adresie juz istnieje")
+    if zakres not in ZAKRESY:
+        raise HTTPException(status_code=400, detail="nieznany rodzaj konta")
+    if role not in {"admin", "viewer"}:
+        raise HTTPException(status_code=400, detail="nieznana rola")
+
+    konto = PortalUser(
+        email=adres,
+        full_name=full_name.strip() or None,
+        password_hash=hash_password(password),
+        role=role,
+        tenant_id=None,
+        is_superadmin=(zakres == ZAKRES_SUPERADMIN),
+        is_global_viewer=(zakres == ZAKRES_AUDYTOR),
+    )
+    if zakres == ZAKRES_FIRMA:
+        konto.tenant_id = znajdz_firme(db, tenant_id).id
+    if zakres == ZAKRES_AUDYTOR:
+        # Audytor niczego nie zmienia w zadnej firmie - rola opisuje, co wolno
+        # W firmie, a to jest zgoda na ogladanie wszystkich.
+        konto.role = "viewer"
+
+    db.add(konto)
+    db.flush()
+    audit(db, None, action="user.created", target=adres,
+          detail={"zakres": zakres, "role": konto.role}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s zalozyl konto %s (%s)", user.email, adres, zakres)
+    komunikat = f"Konto {adres} zalozone jako {ZAKRESY[zakres]}."
+    if zakres == ZAKRES_TECHNIK:
+        komunikat += " Przydziel mu firmy - bez nich nie widzi zadnych zgloszen."
+    return RedirectResponse(
+        f"/admin/konta?komunikat={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/users/{user_id}/zakres")
+def zmien_zakres_konta(
+    user_id: str,
+    request: Request,
+    zakres: str = Form(ZAKRES_FIRMA),
+    tenant_id: str = Form(""),
+    role: str = Form("admin"),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zmienia rodzaj konta i jego role.
+
+    Zmiana uprawnien uniewaznia zalogowane sesje tego konta: inaczej odebrane
+    prawo dzialaloby az do wygasniecia ciasteczka, a nadane - dopiero po
+    ponownym zalogowaniu.
+    """
+    sprawdz_csrf(user, csrf_token)
+    konto = _konto_do_zmiany(db, user, user_id)
+    if zakres not in ZAKRESY:
+        raise HTTPException(status_code=400, detail="nieznany rodzaj konta")
+    if role not in {"admin", "viewer"}:
+        raise HTTPException(status_code=400, detail="nieznana rola")
+
+    konto.is_superadmin = zakres == ZAKRES_SUPERADMIN
+    konto.is_global_viewer = zakres == ZAKRES_AUDYTOR
+    konto.role = "viewer" if zakres == ZAKRES_AUDYTOR else role
+    konto.tenant_id = znajdz_firme(db, tenant_id).id if zakres == ZAKRES_FIRMA else None
+    konto.session_version = PortalUser.session_version + 1
+
+    audit(db, None, action="user.role_changed", target=konto.email,
+          detail={"zakres": zakres, "role": konto.role}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    komunikat = f"{konto.email}: {ZAKRESY[zakres]}. Konto musi zalogowac sie ponownie."
+    return RedirectResponse(
+        f"/admin/konta?komunikat={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/users/{user_id}/helpdesk")
+def zmien_firmy_technika(
+    user_id: str,
+    request: Request,
+    tenant_id: str = Form(""),
+    akcja: str = Form("nadaj"),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Nadaje albo odbiera kontu firme helpdesku - z listy kont.
+
+    To samo, co robi ekran helpdesku, ale tutaj obok reszty uprawnien konta:
+    firmy technika sa jego uprawnieniem, wiec maja stac tam, gdzie sie je
+    oglada i odbiera.
+    """
+    from ..services import helpdesk
+
+    sprawdz_csrf(user, csrf_token)
+    konto = db.get(PortalUser, user_id)
+    firma = db.get(Tenant, tenant_id) if tenant_id else None
+    if konto is None or firma is None:
+        raise HTTPException(status_code=400, detail="wskaz konto i firme")
+
+    if akcja == "odbierz":
+        helpdesk.odbierz_dostep(db, konto.id, firma.id)
+        komunikat = f"{konto.email} nie obsluguje juz firmy {firma.name}. Historia zostaje."
+    else:
+        helpdesk.nadaj_dostep(db, konto.id, firma.id, nadal=user.email)
+        komunikat = f"{konto.email} obsluguje firme {firma.name} - zgloszenia i CMDB."
+
+    audit(db, None, action="helpdesk.dostep", target=konto.email,
+          detail={"firma": firma.slug, "akcja": akcja}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    return RedirectResponse(
+        f"/admin/konta?komunikat={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 # --- audyt globalny ---------------------------------------------------------

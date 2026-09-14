@@ -73,6 +73,15 @@ uruchomi się na maszynach klientów.
 Odebranie dostępu nie kasuje historii: zgłoszenia i czas pracy zostają, technik
 po prostu przestaje je widzieć.
 
+Konta zakłada się i kasuje w jednym miejscu: **administracja → Konta i role**
+(`/admin/konta`). Widać tam każde konto niezależnie od tego, skąd bierze się
+jego uprawnienie — konta firm, techników bez własnej firmy, audytorów
+i superadminów — bo technik przypisany do firm nie należy do żadnej z nich
+i pod firmami byłby niewidoczny. Zmiana rodzaju konta unieważnia jego
+zalogowane sesje: odebrane prawo ma przestać działać natychmiast, a nie
+z wygaśnięciem ciasteczka. Konta z zapisanym czasem pracy nie da się usunąć —
+te minuty są podstawą faktur — ale da się je wyłączyć i historia zostaje.
+
 ## Wątek zgłoszenia
 
 Wiadomości klienta, odpowiedzi techników, komentarze wewnętrzne i zdarzenia
