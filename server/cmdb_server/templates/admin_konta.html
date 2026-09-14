@@ -1,0 +1,173 @@
+{% extends "base_admin.html" %}
+{% block title %}Konta - administracja CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Konta</h1>
+    <p class="muted">
+      Wszystkie konta panelu w jednym miejscu — także technicy helpdesku, którzy
+      nie należą do żadnej firmy. Rodzaj konta opisuje jego uprawnienie:
+      <b>konto firmy</b> pracuje w jednej, <b>technik</b> w tych, które dostał,
+      <b>audytor</b> ogląda wszystkie bez prawa zapisu, <b>superadmin</b> prowadzi system.
+    </p>
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+
+<section class="panel tabela-przewijana">
+  <h2>Konta ({{ konta | length }})</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Konto</th><th>Rodzaj i rola</th><th>Firmy helpdesku</th>
+        <th>Stan</th><th>Ostatnie logowanie</th><th>Akcje</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in konta %}
+      {% set k = w.konto %}
+      <tr {% if not k.is_active %}class="row-muted"{% endif %}>
+        <td>
+          <b>{{ k.full_name or k.email }}</b>
+          <div class="muted small">{{ k.email }}</div>
+          {% if w.wpisow_czasu %}
+            <div class="muted small">{{ w.wpisow_czasu }} wpisów czasu pracy</div>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/admin/users/{{ k.id }}/zakres" class="stack">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <select name="zakres" aria-label="Rodzaj konta {{ k.email }}">
+              {% for klucz, opis in zakresy.items() %}
+                <option value="{{ klucz }}" {% if w.zakres == klucz %}selected{% endif %}>{{ opis }}</option>
+              {% endfor %}
+            </select>
+            <select name="tenant_id" aria-label="Firma konta {{ k.email }}">
+              <option value="">— firma (dla konta firmy) —</option>
+              {% for f in firmy %}
+                <option value="{{ f.id }}" {% if k.tenant_id == f.id %}selected{% endif %}>{{ f.name }}</option>
+              {% endfor %}
+            </select>
+            <select name="role" aria-label="Rola konta {{ k.email }}">
+              <option value="admin" {% if k.role == 'admin' %}selected{% endif %}>admin — zapisuje</option>
+              <option value="viewer" {% if k.role == 'viewer' %}selected{% endif %}>viewer — tylko odczyt</option>
+            </select>
+            <button type="submit" class="btn btn-small">Zapisz rodzaj</button>
+          </form>
+        </td>
+        <td>
+          {% if k.is_superadmin %}
+            <span class="badge">wszystkie firmy</span>
+          {% else %}
+            {% for nazwa, id in w.firmy_helpdesku %}
+            <form method="post" action="/admin/users/{{ k.id }}/helpdesk" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="tenant_id" value="{{ id }}">
+              <input type="hidden" name="akcja" value="odbierz">
+              <span class="chip">{{ nazwa }}<button type="submit" class="btn-link" title="Odbierz firmę">×</button></span>
+            </form>
+            {% endfor %}
+            <form method="post" action="/admin/users/{{ k.id }}/helpdesk" class="row-form" style="margin-top: 6px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="akcja" value="nadaj">
+              <div>
+                <select name="tenant_id" aria-label="Dodaj firmę technikowi {{ k.email }}">
+                  {% for f in firmy %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div><button type="submit" class="btn btn-small">Nadaj</button></div>
+            </form>
+          {% endif %}
+        </td>
+        <td>
+          {% if k.is_active %}<span class="badge badge-ok">czynne</span>
+          {% else %}<span class="badge badge-warn">wyłączone</span>{% endif %}
+          {% if w.zakres == 'firma' and w.firma %}<div class="muted small">{{ w.firma }}</div>{% endif %}
+        </td>
+        <td class="small">{{ k.last_login_at | ago }}</td>
+        <td>
+          <div class="konto-akcje">
+            <button type="button" class="btn btn-small btn-ghost"
+                    data-haslo-akcja="/admin/users/{{ k.id }}/haslo"
+                    data-haslo-konto="{{ k.email }}">Hasło</button>
+            <form method="post" action="/admin/users/{{ k.id }}/active" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="powrot" value="/admin/konta">
+              <button type="submit" class="btn btn-small">{{ 'Wyłącz' if k.is_active else 'Włącz' }}</button>
+            </form>
+            {% if w.wpisow_czasu %}
+              <span class="muted small" title="Usunięcie zabrałoby czas pracy z raportów">bez usuwania</span>
+            {% else %}
+            <form method="post" action="/admin/users/{{ k.id }}/usun" class="inline-form"
+                  data-potwierdz="Usunąć konto {{ k.email }}? Tego nie da się cofnąć.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="powrot" value="/admin/konta">
+              <button type="submit" class="btn btn-small btn-danger">Usuń</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small" style="margin-top: 10px;">
+    Własnego konta nie da się wyłączyć ani usunąć — zawsze zostaje przynajmniej jeden
+    czynny superadmin. Konto z zapisanym czasem pracy da się wyłączyć, ale nie usunąć:
+    te minuty są podstawą faktur i nie mogą zniknąć razem z kontem.
+  </p>
+</section>
+
+<section class="panel">
+  <h2>Nowe konto</h2>
+  <form method="post" action="/admin/konta" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="row-form">
+      <div>
+        <label for="nowe-email">E-mail</label>
+        <input id="nowe-email" name="email" type="email" required placeholder="wladek@mojadomena.pl">
+      </div>
+      <div>
+        <label for="nowe-nazwa">Imię i nazwisko</label>
+        <input id="nowe-nazwa" name="full_name" placeholder="Władek Nowak">
+      </div>
+      <div>
+        <label for="nowe-haslo">Hasło (min. {{ min_dlugosc_hasla }} znaków)</label>
+        <input id="nowe-haslo" name="password" type="password" required minlength="{{ min_dlugosc_hasla }}">
+      </div>
+    </div>
+    <div class="row-form">
+      <div>
+        <label for="nowe-zakres">Rodzaj konta</label>
+        <select id="nowe-zakres" name="zakres">
+          {% for klucz, opis in zakresy.items() %}
+            <option value="{{ klucz }}" {% if klucz == 'technik' %}selected{% endif %}>{{ opis }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="nowe-firma">Firma (tylko dla konta firmy)</label>
+        <select id="nowe-firma" name="tenant_id">
+          <option value="">—</option>
+          {% for f in firmy %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="nowe-rola">Rola</label>
+        <select id="nowe-rola" name="role">
+          <option value="admin">admin — zapisuje</option>
+          <option value="viewer">viewer — tylko odczyt</option>
+        </select>
+      </div>
+      <div><button type="submit" class="btn btn-primary">Załóż konto</button></div>
+    </div>
+    <p class="muted small" style="margin-top: 10px;">
+      Technikowi po założeniu przydziel firmy w kolumnie „Firmy helpdesku" — bez nich
+      nie widzi żadnych zgłoszeń. Przydzielenie firmy otwiera mu także jej kartotekę
+      w CMDB z prawami operatora tej firmy.
+    </p>
+  </form>
+</section>
+{% endblock %}
