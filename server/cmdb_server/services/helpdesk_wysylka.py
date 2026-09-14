@@ -34,10 +34,11 @@ log = logging.getLogger(__name__)
 
 LIMIT_SEKUND = 30
 
+# Ten tekst czyta klient, wiec z ogonkami. Operator moze go nadpisac w ustawieniach.
 DOMYSLNE_POTWIERDZENIE = (
-    "Dzien dobry,\n\n"
-    "przyjelismy zgloszenie {numer} - „{temat}”.\n"
-    "Odpowiadajac na tego maila, dopisze Pan/Pani wiadomosc do tego samego zgloszenia.\n"
+    "Dzień dobry,\n\n"
+    "przyjęliśmy zgłoszenie {numer} - „{temat}”.\n"
+    "Odpowiadając na tego maila, dopisze Pan/Pani wiadomość do tego samego zgłoszenia.\n"
 )
 
 
@@ -240,12 +241,12 @@ def sprawdz(db: Session, adres: str) -> None:
         raise BladWysylki("skrzynka helpdesku nie jest skonfigurowana")
 
     wiadomosc = EmailMessage()
-    wiadomosc["Subject"] = "Helpdesk: wiadomosc probna"
+    wiadomosc["Subject"] = "Helpdesk: wiadomość próbna"
     wiadomosc["From"] = formataddr((konfiguracja.nazwa_nadawcy or "Helpdesk", konfiguracja.nadawca))
     wiadomosc["To"] = adres
     wiadomosc["Message-ID"] = make_msgid(domain=helpdesk.domena_adresu(konfiguracja.nadawca) or None)
     wiadomosc.set_content(
-        "Ustawienia wysylki helpdesku dzialaja. Ta wiadomosc zostala wyslana z panelu CMDB."
+        "Ustawienia wysyłki helpdesku działają. Ta wiadomość została wysłana z panelu CMDB."
     )
     _wyslij(konfiguracja, wiadomosc)
 

@@ -448,7 +448,7 @@ def _otworz_ponownie(db: Session, zgloszenie: Zgloszenie) -> None:
     if zgloszenie.status != STATUS_ZAMKNIETE:
         return
     helpdesk.zdarzenie(
-        db, zgloszenie, "zgloszenie otwarte ponownie odpowiedzia klienta", autor="system"
+        db, zgloszenie, "zgłoszenie otwarte ponownie odpowiedzią klienta", autor="system"
     )
     helpdesk.zmien_status(db, zgloszenie, STATUS_W_TRAKCIE, autor="system")
 

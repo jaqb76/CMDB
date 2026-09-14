@@ -24,29 +24,42 @@
 
 {% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
 
-<form method="get" action="/helpdesk" class="filtry">
+<form method="get" action="/helpdesk" class="row-form row-form-filtry">
   <input type="hidden" name="widok" value="{{ widok }}">
-  <input type="search" name="szukaj" value="{{ szukaj }}" placeholder="numer, temat, adres e-mail">
-  <select name="firma">
-    <option value="">wszystkie firmy</option>
-    {% for id, nazwa in nazwy_firm.items() %}
-      <option value="{{ id }}" {% if firma == id %}selected{% endif %}>{{ nazwa }}</option>
-    {% endfor %}
-  </select>
-  <select name="technik">
-    <option value="">wszyscy technicy</option>
-    <option value="brak" {% if technik == 'brak' %}selected{% endif %}>nieprzypisane</option>
-    {% for t in technicy %}
-      <option value="{{ t.id }}" {% if technik == t.id %}selected{% endif %}>{{ t.full_name or t.email }}</option>
-    {% endfor %}
-  </select>
-  <select name="stan">
-    <option value="">wszystkie statusy</option>
-    {% for klucz, etykieta in statusy.items() %}
-      <option value="{{ klucz }}" {% if stan == klucz %}selected{% endif %}>{{ etykieta }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit" class="btn">Pokaż</button>
+  <div>
+    <label for="f-szukaj">Szukaj</label>
+    <input id="f-szukaj" type="search" name="szukaj" value="{{ szukaj }}"
+           placeholder="numer, temat, adres e-mail">
+  </div>
+  <div>
+    <label for="f-firma">Firma</label>
+    <select id="f-firma" name="firma">
+      <option value="">wszystkie</option>
+      {% for id, nazwa in nazwy_firm.items() %}
+        <option value="{{ id }}" {% if firma == id %}selected{% endif %}>{{ nazwa }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="f-technik">Technik</label>
+    <select id="f-technik" name="technik">
+      <option value="">wszyscy</option>
+      <option value="brak" {% if technik == 'brak' %}selected{% endif %}>nieprzypisane</option>
+      {% for t in technicy %}
+        <option value="{{ t.id }}" {% if technik == t.id %}selected{% endif %}>{{ t.full_name or t.email }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="f-stan">Status</label>
+    <select id="f-stan" name="stan">
+      <option value="">wszystkie</option>
+      {% for klucz, etykieta in statusy.items() %}
+        <option value="{{ klucz }}" {% if stan == klucz %}selected{% endif %}>{{ etykieta }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div><button type="submit" class="btn">Pokaż</button></div>
 </form>
 
 {% macro karta(z) %}

@@ -349,7 +349,7 @@ def utworz_zgloszenie(
     # Sesja nie ma autoflush, wiec bez tego pierwszy wpis nie istnieje jeszcze
     # dla zapytan - a to do niego dopina sie zalaczniki z tej samej wiadomosci.
     db.flush()
-    zdarzenie(db, zgloszenie, f"zgloszenie utworzone ({zrodlo}) jako {pelny}", autor=autor)
+    zdarzenie(db, zgloszenie, f"zgłoszenie utworzone ({zrodlo}) jako {pelny}", autor=autor)
     podepnij_sprzet_zglaszajacego(db, zgloszenie)
     return zgloszenie
 
@@ -423,11 +423,11 @@ def przypisz(
     zgloszenie.ostatnia_aktywnosc = utcnow()
 
     if technik is None:
-        zdarzenie(db, zgloszenie, "zgloszenie bez przypisanego technika", autor=autor)
+        zdarzenie(db, zgloszenie, "zgłoszenie bez przypisanego technika", autor=autor)
     elif poprzedni is None:
-        zdarzenie(db, zgloszenie, f"zgloszenie przypisane: {opis_osoby(technik)}", autor=autor)
+        zdarzenie(db, zgloszenie, f"zgłoszenie przypisane: {opis_osoby(technik)}", autor=autor)
     else:
-        zdarzenie(db, zgloszenie, f"zgloszenie przekazane: {opis_osoby(technik)}", autor=autor)
+        zdarzenie(db, zgloszenie, f"zgłoszenie przekazane: {opis_osoby(technik)}", autor=autor)
 
 
 def zmien_status(db: Session, zgloszenie: Zgloszenie, status: str, autor: str) -> None:
@@ -510,7 +510,7 @@ def dodaj_czas(
     zgloszenie.ostatnia_aktywnosc = utcnow()
     zdarzenie(
         db, zgloszenie,
-        f"{opis_osoby(technik)} dopisal {formatuj_czas(minuty)}"
+        f"{opis_osoby(technik)} dopisał {formatuj_czas(minuty)}"
         + (f" - {opis}" if opis else ""),
         autor=opis_osoby(technik), autor_id=technik.id,
     )
@@ -633,7 +633,7 @@ def podepnij_sprzet(
     db.add(wiazanie)
     db.flush()
     if zrodlo == "reczne":
-        zdarzenie(db, zgloszenie, f"podpiety sprzet: {asset.hostname}", autor=dodal)
+        zdarzenie(db, zgloszenie, f"podpięty sprzęt: {asset.hostname}", autor=dodal)
     return wiazanie
 
 
@@ -650,7 +650,7 @@ def odepnij_sprzet(db: Session, zgloszenie: Zgloszenie, asset_id: str, autor: st
     db.delete(wiazanie)
     zdarzenie(
         db, zgloszenie,
-        f"odpiety sprzet: {asset.hostname if asset else asset_id}", autor=autor,
+        f"odpięty sprzęt: {asset.hostname if asset else asset_id}", autor=autor,
     )
     return True
 

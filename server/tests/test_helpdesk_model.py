@@ -467,7 +467,7 @@ def test_technik_podpina_i_odpina_sprzet_recznie(tenant_a):
                 WpisZgloszenia.rodzaj == WPIS_SYSTEM,
             )
         ).scalars()]
-        assert any("podpiety sprzet: DRUKARKA-01" in s for s in slady)
+        assert any("podpięty sprzęt: DRUKARKA-01" in s for s in slady)
 
         assert helpdesk.odepnij_sprzet(db, zgloszenie, drukarka.id, autor="Wladek Nowak") is True
         db.commit()
