@@ -250,7 +250,7 @@ def test_konta_z_czasem_pracy_nie_da_sie_usunac(client, tenant_a, make_user):
     }, follow_redirects=False)
 
     assert odpowiedz.status_code == 400
-    assert "Wylacz konto" in odpowiedz.text
+    assert "Wyłącz konto" in odpowiedz.text
     with SessionLocal() as db:
         assert db.get(PortalUser, konto_id) is not None
         # Historia zostaje nietknieta.
@@ -308,3 +308,110 @@ def test_odebranie_firmy_z_listy_kont(client, tenant_a, tenant_b, make_user):
         konto = db.get(PortalUser, konto_id)
         assert helpdesk.ma_dostep(db, konto, tenant_a["id"]) is True
         assert helpdesk.ma_dostep(db, konto, tenant_b["id"]) is False
+
+
+# --- czytelnosc formularza --------------------------------------------------
+
+def test_kazde_pole_ma_etykiete_i_opis_rodzaju(client, tenant_a, make_user):
+    """Trzy listy jedna pod druga bez podpisow nie mowia, co robia - a rola
+    przy audytorze czy firma przy superadminie nie znacza nic."""
+    _superadmin(client, make_user)
+    strona = client.get("/admin/konta").text
+
+    assert "Rodzaj konta" in strona
+    assert "Rola w tej firmie" in strona
+    # Opis wybranego rodzaju jedzie z serwera, wiec widac go takze bez JavaScriptu.
+    assert "Ogląda wszystkie firmy i nie zmienia" in strona
+    assert 'data-pola="firma rola"' in strona
+
+
+def test_audytor_nie_dostanie_firmy_helpdesku(client, tenant_a, make_user):
+    """Audytor globalny nigdzie nie zapisuje, wiec firma nic by mu nie dala -
+    nadanie wygladaloby jak nadanie uprawnien technika, a nie dawaloby ich."""
+    _superadmin(client, make_user)
+    client.post("/admin/konta", data={
+        "csrf_token": _csrf(client), "email": "audytor@mojadomena.pl",
+        "password": "haslo-audytora-2026", "zakres": "audytor",
+    }, follow_redirects=False)
+    with SessionLocal() as db:
+        konto_id = db.execute(
+            select(PortalUser.id).where(PortalUser.email == "audytor@mojadomena.pl")
+        ).scalar_one()
+
+    odpowiedz = client.post(f"/admin/users/{konto_id}/helpdesk", data={
+        "csrf_token": _csrf(client), "tenant_id": tenant_a["id"], "akcja": "nadaj",
+    }, follow_redirects=False)
+
+    assert odpowiedz.status_code == 400
+    assert "technika" in odpowiedz.text
+    with SessionLocal() as db:
+        assert helpdesk.ma_dostep(db, db.get(PortalUser, konto_id), tenant_a["id"]) is False
+
+
+def test_superadminowi_nie_nadaje_sie_firm(client, tenant_a, make_user):
+    _superadmin(client, make_user)
+    make_user(None, "drugi@mojadomena.pl", HASLO)
+    with SessionLocal() as db:
+        konto_id = db.execute(
+            select(PortalUser.id).where(PortalUser.email == "drugi@mojadomena.pl")
+        ).scalar_one()
+
+    odpowiedz = client.post(f"/admin/users/{konto_id}/helpdesk", data={
+        "csrf_token": _csrf(client), "tenant_id": tenant_a["id"], "akcja": "nadaj",
+    }, follow_redirects=False)
+    assert odpowiedz.status_code == 400
+    assert "wszystkie firmy" in odpowiedz.text
+
+
+def test_konto_niespojne_jest_nazwane(client, tenant_a, make_user):
+    """Stan odziedziczony po starszych danych: audytor z firmami helpdesku.
+    Lepiej go nazwac, niz pozwolic komus liczyc, ze technik dziala."""
+    with SessionLocal() as db:
+        konto = PortalUser(
+            tenant_id=None, email="dziwne@mojadomena.pl",
+            password_hash=hash_password(HASLO), role="viewer", is_global_viewer=True,
+        )
+        db.add(konto)
+        db.flush()
+        # Wpis zakladamy z pominieciem reguly - tak wlasnie wygladaja stare dane.
+        from cmdb_server.models import HelpdeskDostep
+
+        db.add(HelpdeskDostep(user_id=konto.id, tenant_id=tenant_a["id"]))
+        db.commit()
+
+    _superadmin(client, make_user)
+    strona = client.get("/admin/konta").text
+    assert "firmy helpdesku i uprawnienie audytora" in strona
+
+
+def test_konto_firmy_nie_dostanie_firmy_helpdesku(client, tenant_a, tenant_b, make_user):
+    """Konto z wlasna firma i firmami helpdesku mialoby dwa zrodla uprawnien
+    i nie dalo by sie powiedziec, czym wlasciwie jest."""
+    make_user(tenant_a["id"], "admin@firma-a.pl", HASLO, role="admin")
+    _superadmin(client, make_user)
+    with SessionLocal() as db:
+        konto_id = db.execute(
+            select(PortalUser.id).where(PortalUser.email == "admin@firma-a.pl")
+        ).scalar_one()
+
+    odpowiedz = client.post(f"/admin/users/{konto_id}/helpdesk", data={
+        "csrf_token": _csrf(client), "tenant_id": tenant_b["id"], "akcja": "nadaj",
+    }, follow_redirects=False)
+
+    assert odpowiedz.status_code == 400
+    assert "technika helpdesku" in odpowiedz.text
+    # Ekran mowi to samo, zanim ktos kliknie.
+    assert "zmień jego rodzaj na technika" in client.get("/admin/konta").text
+
+
+def test_pola_niepasujace_do_rodzaju_nie_zaslaniaja_formularza(client, tenant_a, make_user):
+    """Superadmin nie ma firmy, audytor nie ma roli - te pola sa w formularzu,
+    ale opisane danymi, po ktorych przegladarka je chowa i wylacza."""
+    _superadmin(client, make_user)
+    strona = client.get("/admin/konta").text
+
+    assert 'data-konto-pole="firma"' in strona
+    assert 'data-konto-pole="rola"' in strona
+    # Tylko konto firmy potrzebuje obu pol - reszta rodzajow zadnego.
+    assert 'data-pola="firma rola"' in strona
+    assert 'data-pola=""' in strona

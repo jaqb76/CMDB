@@ -488,8 +488,8 @@ def usun_konto(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"{adres} ma zapisany czas pracy w {minuty} wpisach i usuniecie konta "
-                "zabraloby go z raportow. Wylacz konto - przestanie sie logowac, "
+                f"{adres} ma zapisany czas pracy w {minuty} wpisach i usunięcie konta "
+                "zabrałoby go z raportów. Wyłącz konto — przestanie się logować, "
                 "a historia zostanie."
             ),
         )
@@ -1217,6 +1217,31 @@ ZAKRESY = {
     ZAKRES_SUPERADMIN: "superadmin",
 }
 
+# Ktore pola formularza w ogole dotycza danego rodzaju konta. Superadmin nie ma
+# firmy, audytor nie ma roli (nigdzie nie zapisuje), technik dostaje firmy
+# w osobnej kolumnie - pokazywanie tych pol zawsze sugerowalo, ze cos znacza.
+POLA_ZAKRESU = {
+    ZAKRES_FIRMA: "firma rola",
+    ZAKRES_TECHNIK: "",
+    ZAKRES_AUDYTOR: "",
+    ZAKRES_SUPERADMIN: "",
+}
+
+OPISY_ZAKRESU = {
+    ZAKRES_FIRMA:
+        "Pracuje w jednej firmie. Rola decyduje, czy w niej zapisuje, czy tylko ogląda.",
+    ZAKRES_TECHNIK:
+        "Nie należy do żadnej firmy. Obsługuje te, które dostanie w kolumnie "
+        "„Firmy helpdesku” — w każdej z nich pracuje z prawami jej operatora, "
+        "także w CMDB.",
+    ZAKRES_AUDYTOR:
+        "Ogląda wszystkie firmy i nie zmienia w nich niczego. Roli się nie ustawia, "
+        "bo prawo zapisu tego konta nie powstaje nigdzie.",
+    ZAKRES_SUPERADMIN:
+        "Prowadzi cały system: firmy, konta, wydania agenta i skrzynkę helpdesku. "
+        "Widzi wszystkie firmy bez przydzielania.",
+}
+
 
 def _zakres_konta(konto: PortalUser, firmy_helpdesku: set[str]) -> str:
     if konto.is_superadmin:
@@ -1270,6 +1295,10 @@ def widok_kont(
             # Konto z zapisanym czasem pracy da sie wylaczyc, ale nie usunac -
             # pokazujemy to od razu, zeby nie proponowac czegos, co odmowi.
             "wpisow_czasu": czasy.get(konto.id, 0),
+            # Audytor globalny nigdzie nie zapisuje, wiec firmy helpdesku nic mu
+            # nie daja. Taki stan da sie odziedziczyc po starszych danych i lepiej
+            # go nazwac, niz pozwolic komus liczyc, ze technik dziala.
+            "niespojne": bool(firmy_konta) and konto.is_global_viewer,
         })
 
     return render_admin(
@@ -1277,6 +1306,8 @@ def widok_kont(
         konta=konta,
         firmy=db.execute(select(Tenant).order_by(Tenant.name)).scalars().all(),
         zakresy=ZAKRESY,
+        pola_zakresu=POLA_ZAKRESU,
+        opisy_zakresu=OPISY_ZAKRESU,
         min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
         komunikat=komunikat,
     )
@@ -1337,9 +1368,9 @@ def utworz_konto_dowolne(
           detail={"zakres": zakres, "role": konto.role}, ip=client_ip(request), actor=user.email)
     db.commit()
     log.info("superadmin %s zalozyl konto %s (%s)", user.email, adres, zakres)
-    komunikat = f"Konto {adres} zalozone jako {ZAKRESY[zakres]}."
+    komunikat = f"Konto {adres} założone jako {ZAKRESY[zakres]}."
     if zakres == ZAKRES_TECHNIK:
-        komunikat += " Przydziel mu firmy - bez nich nie widzi zadnych zgloszen."
+        komunikat += " Przydziel mu firmy — bez nich nie widzi żadnych zgłoszeń."
     return RedirectResponse(
         f"/admin/konta?komunikat={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
     )
@@ -1378,7 +1409,7 @@ def zmien_zakres_konta(
     audit(db, None, action="user.role_changed", target=konto.email,
           detail={"zakres": zakres, "role": konto.role}, ip=client_ip(request), actor=user.email)
     db.commit()
-    komunikat = f"{konto.email}: {ZAKRESY[zakres]}. Konto musi zalogowac sie ponownie."
+    komunikat = f"{konto.email}: {ZAKRESY[zakres]}. Konto musi zalogować się ponownie."
     return RedirectResponse(
         f"/admin/konta?komunikat={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
     )
@@ -1410,10 +1441,13 @@ def zmien_firmy_technika(
 
     if akcja == "odbierz":
         helpdesk.odbierz_dostep(db, konto.id, firma.id)
-        komunikat = f"{konto.email} nie obsluguje juz firmy {firma.name}. Historia zostaje."
+        komunikat = f"{konto.email} nie obsługuje już firmy {firma.name}. Historia zostaje."
     else:
-        helpdesk.nadaj_dostep(db, konto.id, firma.id, nadal=user.email)
-        komunikat = f"{konto.email} obsluguje firme {firma.name} - zgloszenia i CMDB."
+        try:
+            helpdesk.nadaj_dostep(db, konto.id, firma.id, nadal=user.email)
+        except helpdesk.BladHelpdesku as blad:
+            raise HTTPException(status_code=400, detail=str(blad)) from blad
+        komunikat = f"{konto.email} obsługuje firmę {firma.name} — zgłoszenia i CMDB."
 
     audit(db, None, action="helpdesk.dostep", target=konto.email,
           detail={"firma": firma.slug, "akcja": akcja}, ip=client_ip(request), actor=user.email)

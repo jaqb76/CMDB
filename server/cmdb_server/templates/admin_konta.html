@@ -37,29 +37,56 @@
           {% endif %}
         </td>
         <td>
-          <form method="post" action="/admin/users/{{ k.id }}/zakres" class="stack">
+          <form method="post" action="/admin/users/{{ k.id }}/zakres" class="stack" data-konto-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <select name="zakres" aria-label="Rodzaj konta {{ k.email }}">
+            <label for="zakres-{{ k.id }}">Rodzaj konta</label>
+            <select id="zakres-{{ k.id }}" name="zakres" data-konto-zakres>
               {% for klucz, opis in zakresy.items() %}
-                <option value="{{ klucz }}" {% if w.zakres == klucz %}selected{% endif %}>{{ opis }}</option>
+                <option value="{{ klucz }}" data-pola="{{ pola_zakresu[klucz] }}"
+                        data-opis="{{ opisy_zakresu[klucz] }}"
+                        {% if w.zakres == klucz %}selected{% endif %}>{{ opis }}</option>
               {% endfor %}
             </select>
-            <select name="tenant_id" aria-label="Firma konta {{ k.email }}">
-              <option value="">— firma (dla konta firmy) —</option>
-              {% for f in firmy %}
-                <option value="{{ f.id }}" {% if k.tenant_id == f.id %}selected{% endif %}>{{ f.name }}</option>
-              {% endfor %}
-            </select>
-            <select name="role" aria-label="Rola konta {{ k.email }}">
-              <option value="admin" {% if k.role == 'admin' %}selected{% endif %}>admin — zapisuje</option>
-              <option value="viewer" {% if k.role == 'viewer' %}selected{% endif %}>viewer — tylko odczyt</option>
-            </select>
+            <p class="muted small" data-konto-opis>{{ opisy_zakresu[w.zakres] }}</p>
+
+            <div data-konto-pole="firma">
+              <label for="firma-{{ k.id }}">Firma</label>
+              <select id="firma-{{ k.id }}" name="tenant_id">
+                <option value="">— wskaż firmę —</option>
+                {% for f in firmy %}
+                  <option value="{{ f.id }}" {% if k.tenant_id == f.id %}selected{% endif %}>{{ f.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div data-konto-pole="rola">
+              <label for="rola-{{ k.id }}">Rola w tej firmie</label>
+              <select id="rola-{{ k.id }}" name="role">
+                <option value="admin" {% if k.role == 'admin' %}selected{% endif %}>admin — zapisuje</option>
+                <option value="viewer" {% if k.role == 'viewer' %}selected{% endif %}>viewer — tylko odczyt</option>
+              </select>
+            </div>
+
             <button type="submit" class="btn btn-small">Zapisz rodzaj</button>
           </form>
+          {% if w.niespojne %}
+          <p class="small" style="color: var(--warn-fg); margin-top: 6px;">
+            To konto ma jednocześnie firmy helpdesku i uprawnienie audytora, które
+            zabrania zapisu — firmy nic mu nie dają. Zmień rodzaj na technika
+            albo odbierz firmy.
+          </p>
+          {% endif %}
         </td>
         <td>
           {% if k.is_superadmin %}
             <span class="badge">wszystkie firmy</span>
+            <div class="muted small">superadmin obsługuje wszystkie bez przydzielania</div>
+          {% elif k.is_global_viewer %}
+            <span class="muted small">audytor ogląda wszystkie firmy i nic w nich nie zmienia —
+              firmy helpdesku nic by mu nie dały</span>
+          {% elif k.tenant_id %}
+            <span class="muted small">konto firmy pracuje w swojej jednej firmie;
+              żeby obsługiwało zgłoszenia, zmień jego rodzaj na technika</span>
           {% else %}
             {% for nazwa, id in w.firmy_helpdesku %}
             <form method="post" action="/admin/users/{{ k.id }}/helpdesk" class="inline-form">
@@ -138,24 +165,26 @@
         <input id="nowe-haslo" name="password" type="password" required minlength="{{ min_dlugosc_hasla }}">
       </div>
     </div>
-    <div class="row-form">
+    <div class="row-form" data-konto-form>
       <div>
         <label for="nowe-zakres">Rodzaj konta</label>
-        <select id="nowe-zakres" name="zakres">
+        <select id="nowe-zakres" name="zakres" data-konto-zakres>
           {% for klucz, opis in zakresy.items() %}
-            <option value="{{ klucz }}" {% if klucz == 'technik' %}selected{% endif %}>{{ opis }}</option>
+            <option value="{{ klucz }}" data-pola="{{ pola_zakresu[klucz] }}"
+                    data-opis="{{ opisy_zakresu[klucz] }}"
+                    {% if klucz == 'technik' %}selected{% endif %}>{{ opis }}</option>
           {% endfor %}
         </select>
       </div>
-      <div>
-        <label for="nowe-firma">Firma (tylko dla konta firmy)</label>
+      <div data-konto-pole="firma">
+        <label for="nowe-firma">Firma</label>
         <select id="nowe-firma" name="tenant_id">
-          <option value="">—</option>
+          <option value="">— wskaż firmę —</option>
           {% for f in firmy %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
         </select>
       </div>
-      <div>
-        <label for="nowe-rola">Rola</label>
+      <div data-konto-pole="rola">
+        <label for="nowe-rola">Rola w tej firmie</label>
         <select id="nowe-rola" name="role">
           <option value="admin">admin — zapisuje</option>
           <option value="viewer">viewer — tylko odczyt</option>
@@ -163,10 +192,9 @@
       </div>
       <div><button type="submit" class="btn btn-primary">Załóż konto</button></div>
     </div>
+    <p class="muted small" data-konto-opis style="margin: 0;">{{ opisy_zakresu['technik'] }}</p>
     <p class="muted small" style="margin-top: 10px;">
-      Technikowi po założeniu przydziel firmy w kolumnie „Firmy helpdesku" — bez nich
-      nie widzi żadnych zgłoszeń. Przydzielenie firmy otwiera mu także jej kartotekę
-      w CMDB z prawami operatora tej firmy.
+      Hasło konto zmieni samo pod <code>/konto</code>; tutaj ustawiasz pierwsze.
     </p>
   </form>
 </section>

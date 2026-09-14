@@ -244,6 +244,36 @@ def ma_dostep(db: Session, user: PortalUser, tenant_id: str) -> bool:
 
 
 def nadaj_dostep(db: Session, user_id: str, tenant_id: str, nadal: str | None = None) -> HelpdeskDostep:
+    """Przydziela kontu firme helpdesku.
+
+    Dwa rodzaje kont odmawiaja przyjecia firmy, bo nic by z niej nie mialy:
+    superadmin obsluguje juz wszystkie, a audytor globalny nie zapisuje nigdzie
+    (odbiera mu to tenant_context_for). Nadanie firmy audytorowi wygladaloby
+    jak nadanie uprawnien technika, a nie dawaloby ich wcale - lepiej odmowic
+    i powiedziec, co zrobic zamiast tego.
+    """
+    konto = db.get(PortalUser, user_id)
+    if konto is None:
+        raise BladHelpdesku("nie znaleziono konta")
+    if konto.is_superadmin:
+        raise BladHelpdesku(
+            f"{konto.email} jest superadminem i obsługuje wszystkie firmy — "
+            "nie trzeba mu ich nadawać."
+        )
+    if konto.is_global_viewer:
+        raise BladHelpdesku(
+            f"{konto.email} jest audytorem globalnym i niczego nie zmienia w firmach. "
+            "Zmień najpierw rodzaj konta na technika helpdesku."
+        )
+    if konto.tenant_id:
+        # Konto firmy pracuje w swojej jednej firmie. Dolozenie mu firm
+        # helpdeskowych dawaloby konto o dwoch roznych zrodlach uprawnien -
+        # i nie dalo by sie powiedziec, czym ono wlasciwie jest.
+        raise BladHelpdesku(
+            f"{konto.email} jest kontem firmy. Zmień najpierw jego rodzaj na "
+            "technika helpdesku — technik nie należy do żadnej firmy."
+        )
+
     istniejacy = db.execute(
         select(HelpdeskDostep).where(
             HelpdeskDostep.user_id == user_id, HelpdeskDostep.tenant_id == tenant_id
