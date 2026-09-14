@@ -18,6 +18,7 @@
     <a href="/relacje">Relacje</a>
     <a href="/wykrywanie">Wykrywanie sieci</a>
     <a href="/monitoring">Monitorowanie usług</a>
+    {% if helpdesk_widoczny %}<a href="/helpdesk">Zgłoszenia</a>{% endif %}
     <a href="/jakosc">Jakość danych</a>
         <a href="/slowniki">Słowniki</a>
     <a href="/tokens">Tokeny agentów</a>
@@ -38,7 +39,7 @@
     {% if user.is_superadmin %}
       <a href="/admin" class="btn btn-small nav-admin">&larr; Administracja</a>
     {% endif %}
-    {% if user.is_superadmin and all_tenants %}
+    {% if all_tenants %}
       <form method="get" action="/switch-tenant" class="inline-form">
         <select name="slug" class="tenant-select" data-autosubmit>
           {% for t in all_tenants %}

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Zgłoszenia - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Zgłoszenia</h1>
+    <p class="muted">
+      Wszystko, co przyszło na adres helpdesku. Domena nadawcy wskazuje firmę,
+      firma nadaje numer. <b>{{ otwarte }}</b> otwartych
+      {% if firmy | length > 1 %}w {{ firmy | length }} firmach{% endif %}.
+      {% if czekajace %}
+        <a href="/helpdesk/nierozpoznane">{{ czekajace }} wiadomości czeka na rozpoznanie</a>.
+      {% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    <a class="btn {{ 'btn-primary' if widok == 'tablica' else '' }}"
+       href="/helpdesk?widok=tablica&szukaj={{ szukaj }}&firma={{ firma }}&technik={{ technik }}&stan={{ stan }}">Tablica</a>
+    <a class="btn {{ 'btn-primary' if widok == 'lista' else '' }}"
+       href="/helpdesk?widok=lista&szukaj={{ szukaj }}&firma={{ firma }}&technik={{ technik }}&stan={{ stan }}">Lista</a>
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+
+<form method="get" action="/helpdesk" class="filtry">
+  <input type="hidden" name="widok" value="{{ widok }}">
+  <input type="search" name="szukaj" value="{{ szukaj }}" placeholder="numer, temat, adres e-mail">
+  <select name="firma">
+    <option value="">wszystkie firmy</option>
+    {% for id, nazwa in nazwy_firm.items() %}
+      <option value="{{ id }}" {% if firma == id %}selected{% endif %}>{{ nazwa }}</option>
+    {% endfor %}
+  </select>
+  <select name="technik">
+    <option value="">wszyscy technicy</option>
+    <option value="brak" {% if technik == 'brak' %}selected{% endif %}>nieprzypisane</option>
+    {% for t in technicy %}
+      <option value="{{ t.id }}" {% if technik == t.id %}selected{% endif %}>{{ t.full_name or t.email }}</option>
+    {% endfor %}
+  </select>
+  <select name="stan">
+    <option value="">wszystkie statusy</option>
+    {% for klucz, etykieta in statusy.items() %}
+      <option value="{{ klucz }}" {% if stan == klucz %}selected{% endif %}>{{ etykieta }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn">Pokaż</button>
+</form>
+
+{% macro karta(z) %}
+  <a class="hd-karta hd-pas-{{ z.status }}" href="/helpdesk/zgloszenie/{{ z.id }}">
+    <div class="hd-karta-glowa">
+      <span class="nr">{{ z.numer_pelny }}</span>
+      {% if z.typ %}<span class="badge">{{ z.typ }}</span>{% endif %}
+    </div>
+    <div class="hd-karta-temat">{{ z.temat }}</div>
+    <div class="muted small">{{ nazwy_firm.get(z.tenant_id, '—') }} · {{ z.zglaszajacy_email }}</div>
+    <div class="hd-karta-stopka">
+      <span>{% if z.technik %}{{ z.technik.full_name or z.technik.email }}{% else %}<span class="muted">nieprzypisany</span>{% endif %}</span>
+      <span class="lp">{% if czasy.get(z.id) %}{{ czasy[z.id] | czas }} · {% endif %}{{ z.ostatnia_aktywnosc | ago }}</span>
+    </div>
+  </a>
+{% endmacro %}
+
+{% if widok == 'tablica' %}
+<div class="hd-tablica">
+  {% for klucz, etykieta in statusy.items() %}
+  <section class="hd-kolumna">
+    <div class="hd-kolumna-glowa">
+      <span class="hd-kropka hd-kropka-{{ klucz }}"></span>
+      <span class="hd-kolumna-tytul">{{ etykieta }}</span>
+      <span class="lp muted">{{ kolumny[klucz] | length + ukryte[klucz] }}</span>
+    </div>
+    <div class="hd-kolumna-lista">
+      {% for z in kolumny[klucz] %}{{ karta(z) }}{% endfor %}
+      {% if ukryte[klucz] %}<p class="muted small">+ {{ ukryte[klucz] }} starszych</p>{% endif %}
+      {% if not kolumny[klucz] %}<p class="muted small">—</p>{% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<section class="panel tabela-przewijana">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Numer</th><th>Temat</th><th>Firma</th><th>Technik</th><th>Status</th>
+        <th class="lp">Czas pracy</th><th>Ostatnia aktywność</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for z in zgloszenia %}
+      <tr>
+        <td class="nr"><a href="/helpdesk/zgloszenie/{{ z.id }}">{{ z.numer_pelny }}</a></td>
+        <td>{{ z.temat }}</td>
+        <td>{{ nazwy_firm.get(z.tenant_id, '—') }}</td>
+        <td>{% if z.technik %}{{ z.technik.full_name or z.technik.email }}{% else %}<span class="muted">nieprzypisany</span>{% endif %}</td>
+        <td><span class="badge hd-status-{{ z.status }}">{{ statusy[z.status] }}</span></td>
+        <td class="lp">{{ czasy.get(z.id) | czas }}</td>
+        <td class="small">{{ z.ostatnia_aktywnosc | dt }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">Żadne zgłoszenie nie pasuje do tych filtrów.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

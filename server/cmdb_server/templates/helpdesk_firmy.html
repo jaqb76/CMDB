@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Firmy i dostępy helpdesku - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Firmy i dostępy</h1>
+    <p class="muted">
+      Domena decyduje, czyje zgłoszenie powstaje z maila, a skrót firmy jest prefiksem
+      numeru. <b>Domena należy tylko do jednej firmy</b>; odwrotnie wolno — firma może
+      mieć ich kilka, np. po konsolidacji.
+    </p>
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+
+<section class="panel tabela-przewijana">
+  <h2>Firmy w helpdesku</h2>
+  <table class="table">
+    <thead><tr><th>Firma</th><th>Numery</th><th>Dozwolone domeny</th><th>Dodaj domenę</th></tr></thead>
+    <tbody>
+      {% for f in firmy %}
+      <tr>
+        <td class="strong">{{ f.tenant.name }}</td>
+        <td>
+          {% if f.wpis %}
+            <span class="nr">{{ f.wpis.skrot }}-{{ f.wpis.licznik + 1 }}</span>
+            <div class="muted small">następny numer</div>
+          {% else %}
+          <form method="post" action="/helpdesk/firmy/{{ f.tenant.id }}/wlacz" class="row-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div style="min-width: 90px;">
+              <input name="skrot" value="{{ f.propozycja }}" maxlength="8" aria-label="Skrót firmy">
+            </div>
+            <div><button type="submit" class="btn btn-small">Włącz do helpdesku</button></div>
+          </form>
+          {% endif %}
+        </td>
+        <td>
+          {% for d in f.domeny %}
+          <form method="post" action="/helpdesk/firmy/domena/{{ d.id }}/usun" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <span class="chip">{{ d.domena }}
+              <button type="submit" class="btn-link" title="Usuń domenę">×</button></span>
+          </form>
+          {% else %}
+          <span class="muted small">— brak —</span>
+          {% endfor %}
+        </td>
+        <td>
+          {% if f.wpis %}
+          <form method="post" action="/helpdesk/firmy/{{ f.tenant.id }}/domena" class="row-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div><input name="domena" placeholder="bongo.pl" aria-label="Nowa domena"></div>
+            <div><button type="submit" class="btn btn-small">Dodaj</button></div>
+          </form>
+          {% else %}
+          <span class="muted small">najpierw włącz firmę</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small" style="margin-top: 10px;">
+    Usunięcie domeny nie rusza starych zgłoszeń — zamyka drogę nowym.
+  </p>
+</section>
+
+<section class="panel tabela-przewijana">
+  <h2>Kto obsługuje którą firmę</h2>
+  <p class="muted small" style="max-width: 82ch;">
+    Dostęp nadaje <b>wyłącznie superadmin</b>, bo przypisanie firmy otwiera technikowi
+    także jej kartotekę w CMDB — z prawami operatora tej firmy, łącznie z wdrażaniem
+    wersji agenta. Odebranie dostępu nie kasuje historii: zgłoszenia i czas pracy zostają.
+  </p>
+  <table class="table">
+    <thead><tr><th>Konto</th><th>Rola</th><th>Firmy</th><th>Nadaj firmę</th></tr></thead>
+    <tbody>
+      {% for k in konta %}
+      <tr>
+        <td>{{ k.full_name or k.email }}<div class="muted small">{{ k.email }}</div></td>
+        <td>
+          {% if k.is_superadmin %}<span class="badge badge-nowy">superadmin</span>
+          {% else %}<span class="badge">{{ k.role }}</span>{% endif %}
+        </td>
+        <td>
+          {% if k.is_superadmin %}<span class="badge">wszystkie firmy</span>{% endif %}
+          {% for d in dostepy if d.user_id == k.id %}
+          <form method="post" action="/helpdesk/dostepy" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="user_id" value="{{ k.id }}">
+            <input type="hidden" name="tenant_id" value="{{ d.tenant_id }}">
+            <input type="hidden" name="akcja" value="odbierz">
+            <span class="chip">
+              {% for f in firmy if f.tenant.id == d.tenant_id %}{{ f.tenant.name }}{% endfor %}
+              <button type="submit" class="btn-link" title="Odbierz dostęp">×</button>
+            </span>
+          </form>
+          {% endfor %}
+        </td>
+        <td>
+          {% if not k.is_superadmin %}
+          <form method="post" action="/helpdesk/dostepy" class="row-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="user_id" value="{{ k.id }}">
+            <input type="hidden" name="akcja" value="nadaj">
+            <div>
+              <select name="tenant_id" aria-label="Firma do nadania">
+                {% for f in firmy if f.wpis %}
+                  <option value="{{ f.tenant.id }}">{{ f.tenant.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div><button type="submit" class="btn btn-small">Nadaj</button></div>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

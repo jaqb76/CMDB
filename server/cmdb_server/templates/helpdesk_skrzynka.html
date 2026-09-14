@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Skrzynka helpdesku - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Skrzynka helpdesku</h1>
+    <p class="muted">
+      Wszyscy klienci piszą pod jeden adres. Tą samą skrzynką odbieramy i wysyłamy,
+      więc odpowiedzi wracają tam, skąd wyszły. O tym, czyje jest zgłoszenie i jaki
+      dostanie numer, decyduje <b>domena nadawcy</b>.
+    </p>
+  </div>
+  <div class="head-actions">
+    <form method="post" action="/helpdesk/skrzynka/pobierz" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn">Pobierz teraz</button>
+    </form>
+  </div>
+</div>
+
+{% if komunikat %}
+<div class="alert {{ 'alert-error' if 'nie ' in komunikat or 'Odbior nie' in komunikat else 'alert-ok' }}">{{ komunikat }}</div>
+{% endif %}
+
+{% if ustawienia and ustawienia.ostatni_blad %}
+<div class="alert alert-error"><b>Ostatni błąd skrzynki:</b> {{ ustawienia.ostatni_blad }}</div>
+{% elif ustawienia and ustawienia.ostatnie_pobranie %}
+<div class="alert alert-ok">Ostatnie pobranie: {{ ustawienia.ostatnie_pobranie | dt }}</div>
+{% endif %}
+
+<form method="post" action="/helpdesk/skrzynka">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div class="grid-2">
+  <section class="panel">
+    <h2>Odbieranie — IMAP</h2>
+    <label for="imap_host">Serwer IMAP</label>
+    <input id="imap_host" name="imap_host" value="{{ ustawienia.imap_host if ustawienia else '' }}" placeholder="imap.mojadomena.pl">
+    <div class="grid-2">
+      <div>
+        <label for="imap_port">Port</label>
+        <input id="imap_port" name="imap_port" value="{{ ustawienia.imap_port if ustawienia else 993 }}">
+      </div>
+      <div>
+        <label for="imap_szyfrowanie">Szyfrowanie</label>
+        <select id="imap_szyfrowanie" name="imap_szyfrowanie">
+          {% for wariant, opis in [('ssl', 'SSL/TLS (zwykle 993)'), ('starttls', 'STARTTLS'), ('brak', 'bez szyfrowania')] %}
+            <option value="{{ wariant }}" {% if ustawienia and ustawienia.imap_szyfrowanie == wariant %}selected{% endif %}>{{ opis }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label for="imap_uzytkownik">Login</label>
+    <input id="imap_uzytkownik" name="imap_uzytkownik" value="{{ ustawienia.imap_uzytkownik if ustawienia else '' }}" placeholder="helpdesk@mojadomena.pl">
+    <label for="imap_haslo">Hasło</label>
+    <input id="imap_haslo" name="imap_haslo" type="password" placeholder="{{ '(zapisane — wpisz, aby zmienić)' if ustawienia and ustawienia.imap_haslo_szyfr else '' }}">
+    <div class="grid-2">
+      <div>
+        <label for="imap_folder">Folder</label>
+        <input id="imap_folder" name="imap_folder" value="{{ ustawienia.imap_folder if ustawienia else 'INBOX' }}">
+      </div>
+      <div>
+        <label for="imap_interwal_sekund">Co ile sekund sprawdzać</label>
+        <input id="imap_interwal_sekund" name="imap_interwal_sekund" value="{{ ustawienia.imap_interwal_sekund if ustawienia else 120 }}">
+      </div>
+    </div>
+    <label for="imap_po_pobraniu">Po pobraniu</label>
+    <select id="imap_po_pobraniu" name="imap_po_pobraniu">
+      {% for wariant, opis in [('przeczytana', 'oznacz jako przeczytaną'), ('przenies', 'przenieś do folderu'), ('nic', 'zostaw bez zmian')] %}
+        <option value="{{ wariant }}" {% if ustawienia and ustawienia.imap_po_pobraniu == wariant %}selected{% endif %}>{{ opis }}</option>
+      {% endfor %}
+    </select>
+    <label for="imap_folder_docelowy">Folder docelowy (przy przenoszeniu)</label>
+    <input id="imap_folder_docelowy" name="imap_folder_docelowy" value="{{ ustawienia.imap_folder_docelowy if ustawienia else '' }}">
+    <p class="muted small">Wiadomości nie są kasowane ze skrzynki — helpdesk tylko je czyta.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Wysyłanie — SMTP</h2>
+    <label for="smtp_host">Serwer SMTP</label>
+    <input id="smtp_host" name="smtp_host" value="{{ ustawienia.smtp_host if ustawienia else '' }}" placeholder="smtp.mojadomena.pl">
+    <div class="grid-2">
+      <div>
+        <label for="smtp_port">Port</label>
+        <input id="smtp_port" name="smtp_port" value="{{ ustawienia.smtp_port if ustawienia else 587 }}">
+      </div>
+      <div>
+        <label for="smtp_szyfrowanie">Szyfrowanie</label>
+        <select id="smtp_szyfrowanie" name="smtp_szyfrowanie">
+          {% for wariant, opis in [('starttls', 'STARTTLS (zwykle 587)'), ('ssl', 'SSL/TLS (zwykle 465)'), ('brak', 'bez szyfrowania')] %}
+            <option value="{{ wariant }}" {% if ustawienia and ustawienia.smtp_szyfrowanie == wariant %}selected{% endif %}>{{ opis }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label for="smtp_uzytkownik">Login</label>
+    <input id="smtp_uzytkownik" name="smtp_uzytkownik" value="{{ ustawienia.smtp_uzytkownik if ustawienia else '' }}">
+    <label for="smtp_haslo">Hasło</label>
+    <input id="smtp_haslo" name="smtp_haslo" type="password" placeholder="{{ '(zapisane — wpisz, aby zmienić)' if ustawienia and ustawienia.smtp_haslo_szyfr else '' }}">
+    <label for="nadawca">Adres nadawcy</label>
+    <input id="nadawca" name="nadawca" value="{{ ustawienia.nadawca if ustawienia else '' }}" placeholder="helpdesk@mojadomena.pl">
+    <label for="nazwa_nadawcy">Nazwa nadawcy</label>
+    <input id="nazwa_nadawcy" name="nazwa_nadawcy" value="{{ ustawienia.nazwa_nadawcy if ustawienia else 'Helpdesk' }}">
+    <label for="stopka">Stopka doklejana do odpowiedzi</label>
+    <textarea id="stopka" name="stopka" rows="2">{{ ustawienia.stopka if ustawienia else '' }}</textarea>
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Automatyczne potwierdzenie</h2>
+    <label class="kolumna-wybor">
+      <input type="checkbox" name="potwierdzenie_wlaczone" {% if not ustawienia or ustawienia.potwierdzenie_wlaczone %}checked{% endif %}>
+      Wysyłaj potwierdzenie przyjęcia zgłoszenia
+    </label>
+    <p class="small muted">
+      Idzie tylko wtedy, gdy domena nadawcy wskazuje firmę, wiadomość zakłada <b>nowe</b>
+      zgłoszenie i ma treść. Nie idzie na odpowiedzi w wątku, na autoodpowiedzi
+      („Out of office") ani do nieznanych domen — tym drugim nie odpowiadamy wcale.
+    </p>
+    <label for="potwierdzenie_tresc">Treść ({numer} i {temat} zostaną podstawione)</label>
+    <textarea id="potwierdzenie_tresc" name="potwierdzenie_tresc" rows="4">{{ ustawienia.potwierdzenie_tresc if ustawienia and ustawienia.potwierdzenie_tresc else domyslne_potwierdzenie }}</textarea>
+  </section>
+
+  <section class="panel">
+    <h2>Przechowywanie i włączenie</h2>
+    <div class="grid-2">
+      <div>
+        <label for="usun_zignorowane_po_dniach">Usuwaj zignorowane po (dniach)</label>
+        <input id="usun_zignorowane_po_dniach" name="usun_zignorowane_po_dniach"
+               value="{{ ustawienia.usun_zignorowane_po_dniach if ustawienia and ustawienia.usun_zignorowane_po_dniach else '' }}"
+               placeholder="pusto = nigdy">
+      </div>
+      <div>
+        <label for="usun_spam_po_dniach">Usuwaj spam po (dniach)</label>
+        <input id="usun_spam_po_dniach" name="usun_spam_po_dniach"
+               value="{{ ustawienia.usun_spam_po_dniach if ustawienia and ustawienia.usun_spam_po_dniach else '' }}"
+               placeholder="pusto = nigdy">
+      </div>
+    </div>
+    <p class="muted small">
+      Domyślnie helpdesk nie kasuje niczego. Termin dotyczy wyłącznie poczty
+      nierozpoznanej — zgłoszeń i ich historii nie usuwa nigdy.
+    </p>
+    <label class="kolumna-wybor" style="margin-top: 10px;">
+      <input type="checkbox" name="aktywne" {% if ustawienia and ustawienia.aktywne %}checked{% endif %}>
+      Skrzynka włączona (odbieranie i wysyłanie)
+    </label>
+    <div class="pasek-akcji">
+      <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
+      <button type="submit" name="sprawdz" value="1" class="btn">Zapisz i wyślij próbną</button>
+    </div>
+  </section>
+</div>
+</form>
+{% endblock %}

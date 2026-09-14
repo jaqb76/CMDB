@@ -54,6 +54,7 @@ from ..models import (
 from ..security import check_csrf_token, generate_token, hash_password, issue_csrf_token
 from ..services.auth import client_ip, require_superadmin
 from ..services import architektura, cve, pakiet, ustawienia
+from ..services import upgrades
 from ..services.scoping import audit
 from .ui import MIN_DLUGOSC_HASLA, motyw_z_ciasteczka, templates
 
@@ -1140,29 +1141,18 @@ async def zlec_aktualizacje(
     release_id = (formularz.get("release_id") or "").strip()
     powrot = formularz.get("powrot") or f"/admin/tenants/{firma.id}/upgrade"
 
-    wydanie = None
-    if release_id:
-        wydanie = db.get(AgentRelease, release_id)
-        if wydanie is None:
-            raise HTTPException(status_code=400, detail="nie znaleziono wskazanej wersji")
-        from ..services.release_trust import admission_problem
-        problem = admission_problem(wydanie)
-        if problem:
-            raise HTTPException(400, f"Nie można rozesłać wydania: {problem}")
-
-    if zakres == "firma":
-        system = (formularz.get("os_family") or "").strip().lower()
-        if system not in SYSTEMY:
-            raise HTTPException(status_code=400, detail="nieznany system operacyjny")
-        if wydanie is not None and wydanie.os_family != system:
-            raise HTTPException(
-                status_code=400,
-                detail=f"wersja {wydanie.version} jest dla {wydanie.os_family}, "
-                       f"a cel dotyczy {system}",
+    try:
+        wydanie = upgrades.wydanie_do_rozeslania(db, release_id)
+        if zakres == "firma":
+            objete = upgrades.ustaw_cel_firmy(
+                db, firma.id, formularz.get("os_family") or "", wydanie, user.email
             )
-        objete = _ustaw_cel_firmy(db, firma, system, wydanie, user.email)
-    else:
-        objete = _ustaw_cel_maszyn(db, firma, formularz.getlist("asset_id"), wydanie)
+        else:
+            objete = upgrades.ustaw_cel_maszyn(
+                db, firma.id, formularz.getlist("asset_id"), wydanie
+            )
+    except upgrades.BladCelu as blad:
+        raise HTTPException(status_code=400, detail=str(blad)) from blad
 
     audit(db, None, action="agent.upgrade_requested", target=firma.slug,
           detail={"wersja": wydanie.version if wydanie else None, "zakres": objete},
@@ -1173,83 +1163,6 @@ async def zlec_aktualizacje(
         user.email, wydanie.version if wydanie else "(brak)", objete, firma.slug,
     )
     return RedirectResponse(powrot, status_code=status.HTTP_303_SEE_OTHER)
-
-
-def _ustaw_cel_firmy(
-    db: Session, firma: Tenant, system: str, wydanie: AgentRelease | None, kto: str
-) -> str:
-    """Cel dla wszystkich maszyn firmy dzialajacych na wskazanym systemie."""
-    cel = db.execute(
-        select(TenantAgentTarget).where(
-            TenantAgentTarget.tenant_id == firma.id,
-            TenantAgentTarget.os_family == system,
-        )
-    ).scalar_one_or_none()
-
-    if wydanie is None:
-        # Brak wlasnego ustawienia znaczy "korzystaj z wersji oficjalnej".
-        if cel is not None:
-            db.delete(cel)
-    elif cel is None:
-        db.add(
-            TenantAgentTarget(
-                tenant_id=firma.id, os_family=system, release_id=wydanie.id, updated_by=kto
-            )
-        )
-    else:
-        cel.release_id = wydanie.id
-        cel.updated_at = utcnow()
-        cel.updated_by = kto
-
-    # Ustawienia poszczegolnych maszyn tego systemu kasujemy, zeby nie
-    # przeslanialy decyzji podjetej dla calej firmy.
-    maszyny = db.execute(
-        select(Asset).where(Asset.tenant_id == firma.id, Asset.os_family == system)
-    ).scalars().all()
-    for maszyna in maszyny:
-        maszyna.target_release_id = None
-        maszyna.upgrade_status = "zlecona" if wydanie else None
-        maszyna.upgrade_detail = None
-        maszyna.upgrade_updated_at = utcnow()
-    etykieta = SYSTEMY.get(system, {}).get("etykieta", system)
-    return f"wszystkie maszyny {etykieta} ({len(maszyny)})"
-
-
-def _ustaw_cel_maszyn(
-    db: Session, firma: Tenant, wybrane: list[str], wydanie: AgentRelease | None
-) -> str:
-    if not wybrane:
-        raise HTTPException(status_code=400, detail="nie wskazano zadnej maszyny")
-
-    maszyny = db.execute(
-        select(Asset).where(Asset.tenant_id == firma.id, Asset.id.in_(wybrane))
-    ).scalars().all()
-    if len(maszyny) != len(set(wybrane)):
-        raise HTTPException(status_code=400, detail="maszyna spoza tej firmy")
-
-    reczne = [m.hostname for m in maszyny if m.zrodlo != ZRODLO_AGENT]
-    if reczne:
-        raise HTTPException(
-            status_code=400,
-            detail="wpis reczny nie ma agenta, wiec nie da sie mu zlecic wersji: "
-                   + ", ".join(reczne[:5]),
-        )
-
-    if wydanie is not None:
-        niezgodne = [m.hostname for m in maszyny if (m.os_family or "") != wydanie.os_family]
-        if niezgodne:
-            raise HTTPException(
-                status_code=400,
-                detail=f"wersja jest dla {wydanie.os_family}, a wskazano maszyny "
-                       f"innego systemu: {', '.join(niezgodne[:5])}",
-            )
-
-    for maszyna in maszyny:
-        maszyna.target_release_id = wydanie.id if wydanie else None
-        maszyna.upgrade_status = "zlecona" if wydanie else None
-        maszyna.upgrade_detail = None
-        maszyna.upgrade_updated_at = utcnow()
-    return f"{len(maszyny)} maszyn"
 
 
 # --- audyt globalny ---------------------------------------------------------

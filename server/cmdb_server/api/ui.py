@@ -64,6 +64,8 @@ from ..services.auth import (
     authenticate_user,
     client_ip,
     current_user,
+    firmy_helpdesku,
+    firmy_konta,
     naive_utc,
     require_user,
     tenant_context_for,
@@ -204,6 +206,21 @@ templates.env.filters["pretty_json"] = _pretty_json
 templates.env.filters["zmiany"] = changes.odmiana_zmian
 
 
+def _fmt_czas(minuty) -> str:
+    """Minuty jako "1 h 35 min" - ta sama postac w panelu i w eksporcie."""
+    from ..services.helpdesk import formatuj_czas
+
+    if _missing(minuty):
+        return "-"
+    try:
+        return formatuj_czas(int(minuty))
+    except (TypeError, ValueError):
+        return "-"
+
+
+templates.env.filters["czas"] = _fmt_czas
+
+
 # --- kontekst tenanta -------------------------------------------------------
 
 def resolve_tenant(
@@ -211,10 +228,13 @@ def resolve_tenant(
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> TenantContext:
-    """Zwykly uzytkownik ma tenant przypisany na sztywno.
+    """Ktora firme oglada to konto w tym zapytaniu.
+
     Superadmin i audytor globalny przelaczaja sie parametrem ?tenant=<slug>
-    (zapamietanym w ciasteczku). Audytor dostaje kontekst bez prawa zapisu -
-    decyduje o tym tenant_context_for, wiec nie da sie tego tu przeoczyc."""
+    (zapamietanym w ciasteczku). Technik helpdesku tak samo, ale wylacznie
+    miedzy firmami, ktore dostal. Zwykly uzytkownik ma swoja firme na sztywno.
+    Audytor dostaje kontekst bez prawa zapisu - decyduje o tym
+    tenant_context_for, wiec nie da sie tego tu przeoczyc."""
     if widzi_wszystkie_firmy(user):
         slug = request.query_params.get("tenant") or request.cookies.get("cmdb_tenant")
         tenant = None
@@ -228,12 +248,22 @@ def resolve_tenant(
             raise HTTPException(status_code=404, detail="brak zdefiniowanych firm")
         return tenant_context_for(user, tenant)
 
-    if not user.tenant_id:
+    # Technik helpdesku nie nalezy do zadnej firmy, a obsluguje kilka - wybiera
+    # miedzy nimi tak samo jak superadmin, tyle ze lista konczy sie na tych,
+    # ktore dostal. Poza ta liste nie da sie wyjsc parametrem w adresie:
+    # nieznany slug nie jest bledem, tylko wraca do pierwszej dozwolonej firmy.
+    firmy = firmy_konta(db, user)
+    if not firmy:
+        if user.tenant_id:
+            raise HTTPException(status_code=403, detail="firma nieaktywna")
         raise HTTPException(status_code=403, detail="konto nie jest przypisane do firmy")
-    tenant = db.get(Tenant, user.tenant_id)
-    if tenant is None or not tenant.is_active:
-        raise HTTPException(status_code=403, detail="firma nieaktywna")
-    return tenant_context_for(user, tenant)
+
+    slug = request.query_params.get("tenant") or request.cookies.get("cmdb_tenant")
+    wybrana = next((t for t in firmy if t.slug == slug), None) if slug else None
+    wybrana = wybrana or firmy[0]
+    return tenant_context_for(
+        user, wybrana, helpdesk=wybrana.id in firmy_helpdesku(db, user)
+    )
 
 
 def render(
@@ -245,9 +275,11 @@ def render(
     **extra,
 ) -> HTMLResponse:
     settings = get_settings()
-    tenants = []
-    if widzi_wszystkie_firmy(user):
-        tenants = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
+    # Lista do przelacznika firm w pasku. Dla konta z jedna firma zostaje
+    # pusta - nie ma miedzy czym wybierac.
+    tenants = firmy_konta(db, user)
+    if len(tenants) < 2:
+        tenants = []
     payload = {
         "request": request,
         "user": user,
@@ -259,6 +291,9 @@ def render(
         "wersja_portalu": wersja.opis(),
         "csrf_token": issue_csrf_token(user.id),
         "all_tenants": tenants,
+        # Menu helpdesku widzi tylko ten, kto obsluguje zgloszenia - pozycja,
+        # ktora kazdemu innemu odpowiada odmowa, jest gorsza niz jej brak.
+        "helpdesk_widoczny": bool(user.is_superadmin or firmy_helpdesku(db, user)),
         # Prog braku kontaktu moze byc ustawiony per firma - szablony maja
         # pokazywac te wartosc, ktora faktycznie obowiazuje.
         "stale_after_hours": ustawienia.prog_bez_kontaktu(
@@ -436,11 +471,12 @@ def switch_tenant(
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    if not widzi_wszystkie_firmy(user):
-        raise HTTPException(status_code=403, detail="to konto widzi tylko swoja firme")
-    tenant = db.execute(select(Tenant).where(Tenant.slug == slug)).scalar_one_or_none()
+    # Wybor jest ograniczony ta sama lista, ktorej uzywa resolve_tenant -
+    # inaczej ciasteczko ustawione tu otwieraloby firme, ktorej zapytania
+    # i tak nie pokaza, a uzytkownik widzialby pusty panel zamiast odmowy.
+    tenant = next((t for t in firmy_konta(db, user) if t.slug == slug), None)
     if tenant is None:
-        raise HTTPException(status_code=404, detail="nieznana firma")
+        raise HTTPException(status_code=403, detail="to konto nie ma dostepu do tej firmy")
     response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie("cmdb_tenant", tenant.slug, httponly=True, samesite="lax", path="/")
     return response
@@ -1303,17 +1339,16 @@ def owner_list(user: PortalUser = Depends(require_user)) -> Response:
 @router.get("/wersje-agentow", response_class=HTMLResponse)
 def widok_wersji_agentow(
     request: Request,
+    komunikat: str = Query("", max_length=500),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Gdzie aktualizacja agenta juz doszla, a gdzie jeszcze nie.
+    """Gdzie aktualizacja agenta juz doszla, a gdzie jeszcze nie - i zlecanie.
 
-    Widok jest TYLKO DO ODCZYTU. Ktora wersja jest rozsylana, decyduje operator
-    systemu - to on odpowiada za to, ze plik jest sprawdzony i podpisany.
-    Administrator firmy musi natomiast widziec, co sie z jego flota dzieje:
-    bez tego jedyna odpowiedzia na pytanie "czy wszyscy maja nowego agenta"
-    jest obchodzenie kart maszyn po kolei.
+    Wydania PUBLIKUJE operator systemu i tylko on: to on odpowiada za to, ze
+    plik jest sprawdzony i podpisany. Ktora z opublikowanych wersji ma stanac
+    na maszynie klienta, rozstrzyga juz ten, kto obsluguje jego zgloszenia.
     """
     from ..models import AgentRelease, GlobalAgentTarget, TenantAgentTarget
 
@@ -1354,10 +1389,73 @@ def widok_wersji_agentow(
                      else "firma" if firmowe.get(system) else "wersja oficjalna"),
         })
 
+    # Do wyboru tylko wydania, ktore wolno rozsylac. Lista z pozycjami
+    # nie do rozeslania konczy sie bledem po klinieciu "Zlec" - a wtedy
+    # technik nie wie, czy pomylil sie on, czy system.
+    from ..services import release_trust
+
+    do_wyboru = [
+        wydanie for wydanie in sorted(
+            wersje.values(), key=lambda w: (w.os_family or "", w.created_at),
+            reverse=True,
+        )
+        if not release_trust.admission_problem(wydanie)
+    ]
+
     return render(
         request, "wersje_agentow.html", user, ctx, db,
         wiersze=wiersze, zalegaja=zalegaja,
-        firmowe=firmowe, oficjalne=oficjalne,
+        firmowe=firmowe, oficjalne=oficjalne, do_wyboru=do_wyboru,
+        komunikat=komunikat,
+    )
+
+
+@router.post("/wersje-agentow/cel")
+async def zlec_wersje_agenta(
+    request: Request,
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Ustawia wersje docelowa dla maszyny albo dla calej firmy.
+
+    Zgloszenie "agent przestal wysylac dane" konczy sie wdrozeniem innej
+    wersji - starszej, gdy zawiodla nowa, albo nowszej, gdy poprawka jest juz
+    wydana. Dotad mogl to zrobic wylacznie superadmin z panelu globalnego,
+    wiec kazda taka sprawa czekala na niego; teraz robi to ten, kto ja
+    obsluguje - technik helpdesku albo administrator firmy.
+
+    Czego tu nadal nie ma: PUBLIKOWANIA wydan. Kto wgrywa plik agenta,
+    decyduje o tym, co uruchomi sie na maszynach klientow - i to zostaje
+    u operatora systemu, bo za podpis i sprawdzenie pliku odpowiada on.
+    """
+    _require_write(ctx)
+    formularz = await request.form()
+    verify_csrf(request, user, formularz.get("csrf_token"))
+
+    zakres = formularz.get("zakres", "maszyny")
+    try:
+        wydanie = upgrades.wydanie_do_rozeslania(db, formularz.get("release_id") or "")
+        if zakres == "firma":
+            objete = upgrades.ustaw_cel_firmy(
+                db, ctx.tenant_id, formularz.get("os_family") or "", wydanie, user.email
+            )
+        else:
+            objete = upgrades.ustaw_cel_maszyn(
+                db, ctx.tenant_id, formularz.getlist("asset_id"), wydanie
+            )
+    except upgrades.BladCelu as blad:
+        raise HTTPException(status_code=400, detail=str(blad)) from blad
+
+    audit(db, ctx, action="agent.upgrade_requested",
+          target=wydanie.version if wydanie else "(bez wlasnego ustawienia)",
+          detail={"zakres": objete}, ip=client_ip(request))
+    db.commit()
+
+    opis = f"wersje {wydanie.version}" if wydanie else "powrot do wersji oficjalnej"
+    komunikat = f"Zlecono {opis} dla: {objete}. Agent pobierze ja przy swoim najblizszym cyklu."
+    return RedirectResponse(
+        f"/wersje-agentow?komunikat={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
     )
 
 

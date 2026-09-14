@@ -59,15 +59,21 @@ def test_wpis_reczny_nie_zalega_z_aktualizacja(client, tenant_a, make_user):
     assert "Drukarka w sekretariacie" not in strona
 
 
-def test_widok_nie_zleca_wersji(client, tenant_a, make_user):
-    """Rozsylanie binariow zostaje u operatora systemu - ten widok tylko
-    pokazuje stan."""
+def test_widok_zleca_wersje_ale_nie_publikuje_wydan(client, tenant_a, make_user):
+    """Ktora z OPUBLIKOWANYCH wersji ma stanac na maszynie, rozstrzyga ten, kto
+    obsluguje zgloszenie - administrator firmy albo technik helpdesku.
+    Publikowanie wydan zostaje u operatora systemu: kto wgrywa plik agenta,
+    decyduje o tym, co uruchomi sie na maszynach klientow."""
     _maszyna_z_agentem(client, tenant_a)
     _zalogowany(client, tenant_a, make_user)
 
     strona = client.get("/wersje-agentow").text
-    assert 'name="release_id"' not in strona
-    assert "<form" not in strona.split('<main class="content">')[1]
+    assert 'name="release_id"' in strona
+    assert 'action="/wersje-agentow/cel"' in strona
+    # Zadnego wgrywania pliku ani wejscia do panelu wydan.
+    tresc = strona.split('<main class="content">')[1]
+    assert 'type="file"' not in tresc
+    assert "/admin/wersje" not in tresc
 
 
 def test_konto_tylko_do_odczytu_nie_wchodzi(client, tenant_a, make_user):

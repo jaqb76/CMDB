@@ -38,6 +38,17 @@
       <a class="app-nav-link{{ akt('/assets') }}" href="/assets" title="Wszystkie zasoby"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Wszystkie zasoby</span></a>
       <a class="app-nav-link{{ akt('/relacje') }}" href="/relacje" title="Relacje i zależności"><span class="nav-icon" aria-hidden="true">⇄</span><span class="nav-label">Relacje i zależności</span></a>
 
+      {% if helpdesk_widoczny %}
+      <div class="nav-group-label">Helpdesk</div>
+      <a class="app-nav-link{{ akt('/helpdesk') }}" href="/helpdesk" title="Zgłoszenia klientów"><span class="nav-icon" aria-hidden="true">✉</span><span class="nav-label">Zgłoszenia</span></a>
+      {% if user.is_superadmin %}
+      <a class="app-nav-link{{ akt('/helpdesk/nierozpoznane') }}" href="/helpdesk/nierozpoznane" title="Nierozpoznane wiadomości"><span class="nav-icon" aria-hidden="true">◐</span><span class="nav-label">Nierozpoznane</span></a>
+      <a class="app-nav-link{{ akt('/helpdesk/firmy') }}" href="/helpdesk/firmy" title="Firmy, domeny i dostępy"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">Firmy i dostępy</span></a>
+      <a class="app-nav-link{{ akt('/helpdesk/skrzynka') }}" href="/helpdesk/skrzynka" title="Skrzynka helpdesku"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Skrzynka</span></a>
+      {% endif %}
+      <a class="app-nav-link{{ akt('/helpdesk/raporty') }}" href="/helpdesk/raporty/firma" title="Czas pracy"><span class="nav-icon" aria-hidden="true">◔</span><span class="nav-label">Czas pracy</span></a>
+      {% endif %}
+
       <div class="nav-group-label">Monitorowanie</div>
       <a class="app-nav-link{{ akt('/zmiany') }}" href="/zmiany" title="Ostatnie zmiany"><span class="nav-icon" aria-hidden="true">↻</span><span class="nav-label">Ostatnie zmiany</span></a>
       <a class="app-nav-link{{ akt('/wykrywanie') }}" href="/wykrywanie" title="Wykrywanie sieci"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Wykrywanie sieci</span></a>
@@ -79,7 +90,7 @@
         <button type="button" class="motyw" data-motyw title="Motyw: automatyczny / jasny / ciemny">
           <span class="motyw-ikona motyw-auto">auto</span><span class="motyw-ikona motyw-jasny">jasny</span><span class="motyw-ikona motyw-ciemny">ciemny</span>
         </button>
-        {% if user.is_superadmin and all_tenants %}
+        {% if all_tenants %}
           <form method="get" action="/switch-tenant" class="inline-form">
             <select name="slug" class="tenant-select" data-autosubmit aria-label="Aktywna firma">
               {% for t in all_tenants %}<option value="{{ t.slug }}" {% if ctx and t.id == ctx.tenant_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}

@@ -80,10 +80,15 @@ async def lifespan(app: FastAPI):
     zadanie = asyncio.create_task(petla())
     from .services.release_import import loop as release_loop
     import_job = asyncio.create_task(release_loop())
+    # Poczta helpdesku ma wlasna petle, bo chodzi w innym rytmie: skrzynke
+    # sprawdza sie co dwie minuty, a raporty ida raz na dobe. Doklejenie jej
+    # do harmonogramu raportow znaczyloby zgloszenia zauwazane co kwadrans.
+    from .services.helpdesk_imap import petla as petla_helpdesku
+    poczta_job = asyncio.create_task(petla_helpdesku())
     # Monitorowanie NIE ma tu wlasnej petli: sonduje agent, a serwer tylko
     # przyjmuje wyniki. Sprzatanie starych okien i przerw jedzie z istniejacym
     # harmonogramem raportow - to jedyna praca w tle, jaka po nim zostaje.
-    zadania = (zadanie, import_job)
+    zadania = (zadanie, import_job, poczta_job)
     try:
         yield
     finally:
@@ -169,7 +174,9 @@ def create_app() -> FastAPI:
     from .api import discovery_ui
     app.include_router(discovery_ui.router)
     from .api import monitoring_ui
+    from .api import helpdesk_ui
     app.include_router(monitoring_ui.router)
+    app.include_router(helpdesk_ui.router)
 
     # Agenci wysylaja raporty spakowane gzipem - rozpakowujemy z limitem.
     app.add_middleware(GzipRequestMiddleware, max_bytes=settings.max_report_bytes)
