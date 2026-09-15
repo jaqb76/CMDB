@@ -35,6 +35,7 @@ from ..config import get_settings
 from ..models import (
     NIEROZPOZNANA_CZEKA,
     NIEROZPOZNANA_ZIGNOROWANA,
+    STATUS_OCZEKUJE,
     STATUS_W_TRAKCIE,
     STATUS_ZAMKNIETE,
     IgnorowanaDomena,
@@ -438,19 +439,32 @@ def zapisz_nierozpoznana(
     return wpis
 
 
-def _otworz_ponownie(db: Session, zgloszenie: Zgloszenie) -> None:
-    """Odpowiedz klienta na zamknieta sprawe otwiera ja z powrotem.
+def _po_odpowiedzi_klienta(db: Session, zgloszenie: Zgloszenie) -> None:
+    """Odpowiedz klienta wraca pilka na strone technika.
 
-    Zamkniete zgloszenia sa poza tablica, wiec wiadomosc doklejona do takiego
-    watku nie trafilaby nikomu na oczy - sprawa wygladalaby na zalatwiona,
-    a klient czekalby na odpowiedz, ktorej nikt nie pisze.
+    Zamkniete: sprawa otwiera sie z powrotem. Zamkniete zgloszenia sa poza
+    tablica, wiec wiadomosc doklejona do takiego watku nie trafilaby nikomu
+    na oczy - sprawa wygladalaby na zalatwiona, a klient czekalby na
+    odpowiedz, ktorej nikt nie pisze.
+
+    Oczekuje: czekalismy wlasnie na te wiadomosc, wiec zgloszenie wraca do
+    realizacji. Bez tego "Oczekuje" zbieralo by sprawy, na ktore klient juz
+    odpisal, i technik musialby przegladac te kolumne recznie.
+
+    Nowe i W trakcie zostawiamy: dopisek klienta do sprawy, ktorej nikt
+    jeszcze nie wzial, nie robi z niej sprawy w toku.
     """
-    if zgloszenie.status != STATUS_ZAMKNIETE:
-        return
-    helpdesk.zdarzenie(
-        db, zgloszenie, "zgłoszenie otwarte ponownie odpowiedzią klienta", autor="system"
-    )
-    helpdesk.zmien_status(db, zgloszenie, STATUS_W_TRAKCIE, autor="system")
+    if zgloszenie.status == STATUS_ZAMKNIETE:
+        helpdesk.zdarzenie(
+            db, zgloszenie, "zgłoszenie otwarte ponownie odpowiedzią klienta", autor="system"
+        )
+        helpdesk.zmien_status(db, zgloszenie, STATUS_W_TRAKCIE, autor="system")
+    elif zgloszenie.status == STATUS_OCZEKUJE:
+        helpdesk.zdarzenie(
+            db, zgloszenie, "klient odpowiedział - zgłoszenie wraca do realizacji",
+            autor="system",
+        )
+        helpdesk.zmien_status(db, zgloszenie, STATUS_W_TRAKCIE, autor="system")
 
 
 # --- zalaczniki na dysku ----------------------------------------------------
@@ -533,7 +547,7 @@ def przyjmij(db: Session, wiadomosc: Wiadomosc) -> Kwalifikacja:
             dw=list(wiadomosc.dw),
         )
         zapisz_zalaczniki(db, wpis, wiadomosc.zalaczniki)
-        _otworz_ponownie(db, wynik.zgloszenie)
+        _po_odpowiedzi_klienta(db, wynik.zgloszenie)
         return wynik
 
     if wynik.decyzja == DECYZJA_NOWE and wynik.firma is not None:

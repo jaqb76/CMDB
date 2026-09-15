@@ -638,4 +638,23 @@
     wybor.addEventListener("change", rysuj);
     rysuj();
   });
+
+  // --- podsumowanie przy zamykaniu zgloszenia -------------------------------
+  // Tresc doklejana do maila o zakonczeniu ma sens tylko wtedy, gdy zgloszenie
+  // wlasnie sie zamyka. Przy pozostalych statusach nic nie wychodzi, a przy
+  // zgloszeniu juz zamknietym nie ma przejscia, wiec i maila. Bez skryptu pole
+  // zostaje widoczne - puste niczego nie psuje.
+  document.querySelectorAll("[data-status-wybor]").forEach(function (wybor) {
+    var form = wybor.closest("form");
+    var blok = form && form.querySelector("[data-status-podsumowanie]");
+    if (!blok) { return; }
+    var juzZamkniete = wybor.dataset.statusWybor === "zamkniete";
+
+    function rysuj() {
+      blok.hidden = juzZamkniete || wybor.value !== "zamkniete";
+    }
+
+    wybor.addEventListener("change", rysuj);
+    rysuj();
+  });
 })();

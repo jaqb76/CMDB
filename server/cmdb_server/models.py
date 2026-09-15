@@ -1181,7 +1181,7 @@ STATUSY_ZGLOSZENIA: dict[str, str] = {
     STATUS_NOWE: "Nowe",
     STATUS_W_TRAKCIE: "W trakcie",
     STATUS_OCZEKUJE: "Oczekuje",
-    STATUS_ZAMKNIETE: "Zamkniete",
+    STATUS_ZAMKNIETE: "Zamknięte",
 }
 STATUSY_OTWARTE = (STATUS_NOWE, STATUS_W_TRAKCIE, STATUS_OCZEKUJE)
 
@@ -1189,7 +1189,7 @@ STATUSY_OTWARTE = (STATUS_NOWE, STATUS_W_TRAKCIE, STATUS_OCZEKUJE)
 # helpdesk ma dzialac bez kategoryzowania niczego.
 TYPY_ZGLOSZENIA: dict[str, str] = {
     "incydent": "Incydent",
-    "prosba": "Prosba / zmiana",
+    "prosba": "Prośba / zmiana",
     "inne": "Inne",
 }
 
@@ -1255,6 +1255,10 @@ class HelpdeskUstawienia(Base):
     # --- zachowanie ---
     potwierdzenie_wlaczone: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     potwierdzenie_tresc: Mapped[str | None] = mapped_column(Text)
+    # Mail o zakonczeniu sprawy. Osobny wlacznik od potwierdzenia przyjecia,
+    # bo to dwie rozne decyzje: jedna firma chce obu, inna tylko domkniecia.
+    zamkniecie_wlaczone: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    zamkniecie_tresc: Mapped[str | None] = mapped_column(Text)
     # Puste znaczy "nie usuwaj nigdy" i taka jest wartosc domyslna: nierozpoznana
     # poczta bywa jedynym sladem po zgubionym zgloszeniu.
     usun_zignorowane_po_dniach: Mapped[int | None] = mapped_column(Integer)

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from cmdb_server.db import SessionLocal
 from cmdb_server.models import (
     STATUS_NOWE,
+    STATUS_OCZEKUJE,
     STATUS_W_TRAKCIE,
     WPIS_DO_KLIENTA,
     WPIS_WEWNETRZNY,
@@ -166,7 +167,8 @@ def test_komentarz_wewnetrzny_zostaje_w_zgloszeniu(client, tenant_a, smtp):
     assert "tylko dla techników" in strona
 
 
-def test_odpowiedz_do_klienta_wychodzi_i_rusza_status(client, tenant_a, smtp):
+def test_odpowiedz_do_klienta_wychodzi_i_czeka_na_niego(client, tenant_a, smtp):
+    """Napisalismy do klienta, wiec pilka jest po jego stronie."""
     _firma(tenant_a["id"])
     _skrzynka()
     zgloszenie_id = _zgloszenie(tenant_a["id"])
@@ -183,9 +185,129 @@ def test_odpowiedz_do_klienta_wychodzi_i_rusza_status(client, tenant_a, smtp):
     assert smtp.wyslane[0]["To"] == "jan@bongo.pl"
     assert "BON-1" in smtp.wyslane[0]["Subject"]
     with SessionLocal() as db:
-        # Ktos odpisal, wiec sprawa przestaje byc "nowa" - inaczej pierwsza
-        # kolumna tablicy zbiera zgloszenia, ktorymi ktos sie juz zajmuje.
+        assert db.get(Zgloszenie, zgloszenie_id).status == STATUS_OCZEKUJE
+
+
+def test_odpowiedz_informacyjna_zostaje_w_trakcie(client, tenant_a, smtp):
+    """"Pracujemy nad tym" to nie jest pytanie - nie ma na co czekac."""
+    _firma(tenant_a["id"])
+    _skrzynka()
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+    client.post(f"{sciezka}/wiadomosc", data={
+        "csrf_token": _csrf(client, sciezka), "rodzaj": WPIS_DO_KLIENTA,
+        "tresc": "Zajmujemy sie tym, damy znac.", "zostaw_w_trakcie": "1",
+    }, follow_redirects=False)
+
+    assert len(smtp.wyslane) == 1
+    with SessionLocal() as db:
         assert db.get(Zgloszenie, zgloszenie_id).status == STATUS_W_TRAKCIE
+
+
+def test_komentarz_wewnetrzny_nie_ustawia_oczekiwania(client, tenant_a, smtp):
+    """Notatka dla siebie nie jest wiadomoscia do klienta - nie czekamy na nic."""
+    _firma(tenant_a["id"])
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+    client.post(f"{sciezka}/wiadomosc", data={
+        "csrf_token": _csrf(client, sciezka), "rodzaj": WPIS_WEWNETRZNY,
+        "tresc": "Sprawdzic sterownik.",
+    }, follow_redirects=False)
+
+    assert smtp.wyslane == []
+    with SessionLocal() as db:
+        assert db.get(Zgloszenie, zgloszenie_id).status == STATUS_W_TRAKCIE
+
+
+def test_niewyslana_odpowiedz_nie_ustawia_oczekiwania(client, tenant_a, monkeypatch):
+    """Nie czekamy na klienta, ktory niczego nie dostal."""
+    import smtplib
+
+    monkeypatch.setattr(
+        helpdesk_wysylka, "_polaczenie",
+        lambda konfiguracja: AtrapaSMTP(blad=smtplib.SMTPException("serwer nie odpowiada")),
+    )
+    _firma(tenant_a["id"])
+    _skrzynka()
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+    client.post(f"{sciezka}/wiadomosc", data={
+        "csrf_token": _csrf(client, sciezka), "rodzaj": WPIS_DO_KLIENTA,
+        "tresc": "Prosze zrestartowac.",
+    }, follow_redirects=False)
+
+    with SessionLocal() as db:
+        assert db.get(Zgloszenie, zgloszenie_id).status == STATUS_NOWE
+
+
+def test_zamkniecie_wysyla_mail_z_podsumowaniem(client, tenant_a, smtp):
+    """Zamkniete zgloszenie znika z tablicy - klient ma sie o tym dowiedziec."""
+    _firma(tenant_a["id"])
+    _skrzynka()
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+    client.post(f"{sciezka}/status", data={
+        "csrf_token": _csrf(client, sciezka), "stan": "zamkniete",
+        "podsumowanie": "Wymieniony beben w drukarce.",
+    }, follow_redirects=False)
+
+    assert len(smtp.wyslane) == 1
+    tresc = smtp.wyslane[0].get_content()
+    assert "zostało zakończone" in tresc
+    assert "BON-1" in tresc
+    assert "Wymieniony beben w drukarce." in tresc
+    with SessionLocal() as db:
+        # Mail o zamknieciu nie odwraca zamkniecia - status zostaje.
+        assert db.get(Zgloszenie, zgloszenie_id).status == "zamkniete"
+
+
+def test_powtorne_zamkniecie_nie_wysyla_drugiego_maila(client, tenant_a, smtp):
+    """Klient nie ma dostac dwoch zawiadomien o koncu tej samej sprawy."""
+    _firma(tenant_a["id"])
+    _skrzynka()
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+    for _ in range(2):
+        client.post(f"{sciezka}/status", data={
+            "csrf_token": _csrf(client, sciezka), "stan": "zamkniete",
+        }, follow_redirects=False)
+
+    assert len(smtp.wyslane) == 1
+
+
+def test_wylaczony_mail_o_zamknieciu_nie_wychodzi(client, tenant_a, smtp):
+    _firma(tenant_a["id"])
+    _skrzynka()
+    with SessionLocal() as db:
+        db.get(HelpdeskUstawienia, "helpdesk").zamkniecie_wlaczone = False
+        db.commit()
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+    client.post(f"{sciezka}/status", data={
+        "csrf_token": _csrf(client, sciezka), "stan": "zamkniete",
+    }, follow_redirects=False)
+
+    assert smtp.wyslane == []
+    with SessionLocal() as db:
+        assert db.get(Zgloszenie, zgloszenie_id).status == "zamkniete"
 
 
 def test_pusta_wiadomosc_jest_odrzucana(client, tenant_a, smtp):
