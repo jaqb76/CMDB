@@ -13,6 +13,8 @@ from sqlalchemy import select
 
 from cmdb_server.db import SessionLocal
 from cmdb_server.models import (
+    STATUS_NOWE,
+    STATUS_OCZEKUJE,
     STATUS_W_TRAKCIE,
     STATUS_ZAMKNIETE,
     WPIS_DO_KLIENTA,
@@ -342,6 +344,29 @@ def test_odpowiedz_otwiera_zamkniete_zgloszenie(client, tenant_a, smtp):
         assert zgloszenie.status == STATUS_W_TRAKCIE
 
 
+def test_odpowiedz_zdejmuje_zgloszenie_z_oczekiwania(client, tenant_a, smtp):
+    """Czekalismy wlasnie na te wiadomosc - sprawa wraca do realizacji.
+
+    Bez tego kolumna "Oczekuje" zbieralaby sprawy, na ktore klient juz odpisal,
+    i technik musialby przegladac ja recznie w poszukiwaniu odpowiedzi.
+    """
+    with SessionLocal() as db:
+        _firma(db, tenant_a["id"])
+        poczta.przyjmij(db, poczta.przeczytaj(_mail()))
+        zgloszenie = db.execute(select(Zgloszenie)).scalar_one()
+        helpdesk.zmien_status(db, zgloszenie, STATUS_OCZEKUJE, autor="operator")
+        db.commit()
+
+        poczta.przyjmij(db, poczta.przeczytaj(_mail(
+            temat="Re: [BON-1] Nie dziala drukarka", message_id="<k3@bongo.pl>",
+            tresc="Zrestartowalem, dalej nie dziala.",
+        )))
+        db.commit()
+
+        db.refresh(zgloszenie)
+        assert zgloszenie.status == STATUS_W_TRAKCIE
+
+
 def test_dw_klienta_wraca_w_odpowiedzi_technika(client, tenant_a, smtp):
     with SessionLocal() as db:
         _skrzynka(db)
@@ -502,6 +527,27 @@ def test_nowe_zgloszenie_dostaje_potwierdzenie_z_numerem(client, tenant_a, monke
             )
         ).scalars()]
         assert WPIS_DO_KLIENTA in wpisy
+
+
+def test_potwierdzenie_zostawia_zgloszenie_nowym(client, tenant_a, monkeypatch, smtp):
+    """Automat pisze do klienta, ale nikt nie zaczal jeszcze pracy.
+
+    Gdyby potwierdzenie ustawialo "Oczekuje", kolumna "Nowe" na tablicy bylaby
+    zawsze pusta i nie dalo by sie odroznic sprawy swiezej od takiej, ktora
+    ktos juz obejrzal. Status rusza dopiero odpowiedz napisana przez technika.
+    """
+    atrapa = AtrapaIMAP({b"1": _mail()})
+    monkeypatch.setattr(helpdesk_imap, "_polaczenie", lambda konfiguracja: atrapa)
+
+    with SessionLocal() as db:
+        _skrzynka(db)
+        _firma(db, tenant_a["id"])
+        db.commit()
+
+        helpdesk_imap.pobierz(db)
+
+        assert smtp.wyslane, "potwierdzenie mialo pojsc"
+        assert db.execute(select(Zgloszenie)).scalar_one().status == STATUS_NOWE
 
 
 def test_odpowiedz_w_watku_nie_dostaje_potwierdzenia(client, tenant_a, monkeypatch, smtp):

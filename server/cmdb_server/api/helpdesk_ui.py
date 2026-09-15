@@ -26,7 +26,9 @@ from ..models import (
     NIEROZPOZNANA_PRZYPISANA,
     NIEROZPOZNANA_ZIGNOROWANA,
     STATUS_NOWE,
+    STATUS_OCZEKUJE,
     STATUS_W_TRAKCIE,
+    STATUS_ZAMKNIETE,
     STATUSY_OTWARTE,
     STATUSY_ZGLOSZENIA,
     TYPY_ZGLOSZENIA,
@@ -241,6 +243,7 @@ def karta_zgloszenia(
         ).scalars()),
         niewyslane=helpdesk_wysylka.niewyslane(db, zgloszenie.id),
         skrzynka=helpdesk_wysylka.ustawienia(db),
+        zamkniecie_mailem=helpdesk_wysylka.zamkniecie_nalezne(db),
         komunikat=komunikat,
     )
 
@@ -251,6 +254,7 @@ def dopisz_wiadomosc(
     request: Request,
     tresc: str = Form("", max_length=20000),
     rodzaj: str = Form(WPIS_WEWNETRZNY),
+    zostaw_w_trakcie: bool = Form(False),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
@@ -267,14 +271,24 @@ def dopisz_wiadomosc(
         raise HTTPException(status_code=400, detail="pusta wiadomosc")
 
     powrot = f"/helpdesk/zgloszenie/{zgloszenie.id}"
+    autor = helpdesk.opis_osoby(user)
     if rodzaj == WPIS_DO_KLIENTA:
         try:
             helpdesk_wysylka.odpowiedz_klientowi(db, zgloszenie, tresc.strip(), user)
             komunikat = f"Odpowiedź poszła do {zgloszenie.zglaszajacy_email}."
         except helpdesk_wysylka.BladWysylki as blad:
-            # Tresc zostaje w watku - zapis byl przed wysylka.
+            # Tresc zostaje w watku - zapis byl przed wysylka. Statusu nie
+            # ruszamy: nie czekamy na klienta, ktory niczego nie dostal.
             db.commit()
             return _wroc(powrot, f"Wiadomość zapisana, ale NIE wyszła: {blad}")
+
+        if not zostaw_w_trakcie:
+            # Napisalismy do klienta, wiec pilka jest po jego stronie - i tak
+            # ma to wygladac na tablicy. Technik moze to wylaczyc dla
+            # wiadomosci czysto informacyjnej, po ktorej na nic nie czeka.
+            helpdesk.zmien_status(db, zgloszenie, STATUS_OCZEKUJE, autor=autor)
+            db.commit()
+            return _wroc(powrot, komunikat + " Zgłoszenie czeka na klienta.")
     elif rodzaj == WPIS_WEWNETRZNY:
         helpdesk.dopisz_wiadomosc(
             db, zgloszenie, rodzaj=WPIS_WEWNETRZNY, tresc=tresc.strip(), autor=user
@@ -286,7 +300,7 @@ def dopisz_wiadomosc(
     if zgloszenie.status == STATUS_NOWE:
         # Ktos odpisal, wiec sprawa nie jest juz "nowa" - inaczej pierwsza
         # kolumna tablicy zbiera zgloszenia, ktorymi ktos sie zajmuje.
-        helpdesk.zmien_status(db, zgloszenie, STATUS_W_TRAKCIE, autor=helpdesk.opis_osoby(user))
+        helpdesk.zmien_status(db, zgloszenie, STATUS_W_TRAKCIE, autor=autor)
     db.commit()
     return _wroc(powrot, komunikat)
 
@@ -296,18 +310,38 @@ def zmien_status(
     zgloszenie_id: str,
     request: Request,
     stan: str = Form(""),
+    podsumowanie: str = Form("", max_length=20000),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Zmiana statusu, a przy zamknieciu - wiadomosc do klienta.
+
+    Mail idzie tylko przy przejsciu do zamknietego: powtorne wybranie tego
+    samego statusu niczego nie wysyla, bo klient dostalby drugie zawiadomienie
+    o zakonczeniu sprawy, ktora juz raz zakonczylismy.
+    """
     zgloszenie = _zgloszenie(db, user, zgloszenie_id)
     verify_csrf(request, user, csrf_token)
+
+    zamykamy = stan == STATUS_ZAMKNIETE and zgloszenie.status != STATUS_ZAMKNIETE
     try:
         helpdesk.zmien_status(db, zgloszenie, stan, autor=helpdesk.opis_osoby(user))
     except helpdesk.BladHelpdesku as blad:
         raise HTTPException(status_code=400, detail=str(blad)) from blad
+
+    komunikat = ""
+    if zamykamy and helpdesk_wysylka.zamkniecie_nalezne(db):
+        # Wysylka nie rzuca wyzej - zamkniecie ma sie udac takze wtedy, gdy
+        # serwer poczty akurat nie odpowiada. Blad widac przy wpisie w watku.
+        wpis = helpdesk_wysylka.wyslij_zamkniecie(db, zgloszenie, podsumowanie)
+        if wpis is not None and wpis.blad_wysylki:
+            komunikat = f"Zgłoszenie zamknięte, ale mail NIE wyszedł: {wpis.blad_wysylki}"
+        else:
+            komunikat = f"Zgłoszenie zamknięte, klient dostał wiadomość na {zgloszenie.zglaszajacy_email}."
+
     db.commit()
-    return _wroc(f"/helpdesk/zgloszenie/{zgloszenie.id}")
+    return _wroc(f"/helpdesk/zgloszenie/{zgloszenie.id}", komunikat)
 
 
 @router.post("/helpdesk/zgloszenie/{zgloszenie_id}/technik")
@@ -711,6 +745,7 @@ def skrzynka(
         request, "helpdesk_skrzynka.html", user, ctx, db,
         ustawienia=db.get(HelpdeskUstawienia, "helpdesk"),
         domyslne_potwierdzenie=helpdesk_wysylka.DOMYSLNE_POTWIERDZENIE,
+        domyslne_zamkniecie=helpdesk_wysylka.DOMYSLNE_ZAMKNIECIE,
         komunikat=komunikat,
     )
 
@@ -733,7 +768,7 @@ async def zapisz_skrzynke(
     # Pola, ktore moga zostac puste - puste znaczy "nie ustawiono".
     for pole in ("imap_host", "imap_uzytkownik", "imap_folder_docelowy", "smtp_host",
                  "smtp_uzytkownik", "nadawca", "nazwa_nadawcy", "stopka",
-                 "potwierdzenie_tresc"):
+                 "potwierdzenie_tresc", "zamkniecie_tresc"):
         if pole in formularz:
             setattr(ustawienia, pole, (formularz.get(pole) or "").strip() or None)
 
@@ -763,6 +798,7 @@ async def zapisz_skrzynke(
             setattr(ustawienia, kolumna, sekrety.zaszyfruj(nowe))
 
     ustawienia.potwierdzenie_wlaczone = bool(formularz.get("potwierdzenie_wlaczone"))
+    ustawienia.zamkniecie_wlaczone = bool(formularz.get("zamkniecie_wlaczone"))
     ustawienia.aktywne = bool(formularz.get("aktywne"))
     audit(db, None, action="helpdesk.skrzynka", target=ustawienia.nadawca or "-",
           ip=client_ip(request), actor=user.email)

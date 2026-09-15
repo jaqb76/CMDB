@@ -299,6 +299,8 @@ trafia do swojej sprawy, a nie zakłada drugiej.
 | Rozpoznanie | wątek (`In-Reply-To`, `References`, numer w temacie) → domena → firma |
 | Nierozpoznane | poczta z obcej domeny czeka na decyzję operatora; nikt nie dostaje odpowiedzi |
 | Wątek | wiadomości, odpowiedzi, komentarze wewnętrzne i zdarzenia w jednej rozmowie |
+| Status | idzie za pocztą: odpowiedź do klienta → „Oczekuje", jego odpowiedź → „W trakcie" |
+| Zamknięcie | wysyła klientowi wiadomość o zakończeniu, z podsumowaniem technika |
 | Czas pracy | każdy technik dopisuje swoje minuty; wpisu nie da się zmienić ani usunąć |
 | Raporty | firma → technik → zgłoszenie i technik → firma, eksport CSV i XLSX |
 | Sprzęt | zgłoszenie wiąże się z maszyną z CMDB — to jest jej karta napraw |

@@ -123,34 +123,50 @@
   </section>
 
   <section class="panel">
-    <h2>Przechowywanie i włączenie</h2>
-    <div class="grid-2">
-      <div>
-        <label for="usun_zignorowane_po_dniach">Usuwaj zignorowane po (dniach)</label>
-        <input id="usun_zignorowane_po_dniach" name="usun_zignorowane_po_dniach"
-               value="{{ ustawienia.usun_zignorowane_po_dniach if ustawienia and ustawienia.usun_zignorowane_po_dniach else '' }}"
-               placeholder="pusto = nigdy">
-      </div>
-      <div>
-        <label for="usun_spam_po_dniach">Usuwaj spam po (dniach)</label>
-        <input id="usun_spam_po_dniach" name="usun_spam_po_dniach"
-               value="{{ ustawienia.usun_spam_po_dniach if ustawienia and ustawienia.usun_spam_po_dniach else '' }}"
-               placeholder="pusto = nigdy">
-      </div>
-    </div>
-    <p class="muted small">
-      Domyślnie helpdesk nie kasuje niczego. Termin dotyczy wyłącznie poczty
-      nierozpoznanej — zgłoszeń i ich historii nie usuwa nigdy.
-    </p>
-    <label class="kolumna-wybor" style="margin-top: 10px;">
-      <input type="checkbox" name="aktywne" {% if ustawienia and ustawienia.aktywne %}checked{% endif %}>
-      Skrzynka włączona (odbieranie i wysyłanie)
+    <h2>Zakończenie zgłoszenia</h2>
+    <label class="kolumna-wybor">
+      <input type="checkbox" name="zamkniecie_wlaczone" {% if not ustawienia or ustawienia.zamkniecie_wlaczone %}checked{% endif %}>
+      Wysyłaj wiadomość o zakończeniu zgłoszenia
     </label>
-    <div class="pasek-akcji">
-      <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
-      <button type="submit" name="sprawdz" value="1" class="btn">Zapisz i wyślij próbną</button>
-    </div>
+    <p class="small muted">
+      Idzie w chwili zamknięcia zgłoszenia przez technika. Technik może dopisać
+      pod spodem kilka zdań podsumowania — pole jest przy zmianie statusu.
+      Odpowiedź klienta na taką wiadomość otwiera sprawę z powrotem, pod tym
+      samym numerem.
+    </p>
+    <label for="zamkniecie_tresc">Treść ({numer} i {temat} zostaną podstawione)</label>
+    <textarea id="zamkniecie_tresc" name="zamkniecie_tresc" rows="4">{{ ustawienia.zamkniecie_tresc if ustawienia and ustawienia.zamkniecie_tresc else domyslne_zamkniecie }}</textarea>
   </section>
 </div>
+
+<section class="panel">
+  <h2>Przechowywanie i włączenie</h2>
+  <div class="grid-2">
+    <div>
+      <label for="usun_zignorowane_po_dniach">Usuwaj zignorowane po (dniach)</label>
+      <input id="usun_zignorowane_po_dniach" name="usun_zignorowane_po_dniach"
+             value="{{ ustawienia.usun_zignorowane_po_dniach if ustawienia and ustawienia.usun_zignorowane_po_dniach else '' }}"
+             placeholder="pusto = nigdy">
+    </div>
+    <div>
+      <label for="usun_spam_po_dniach">Usuwaj spam po (dniach)</label>
+      <input id="usun_spam_po_dniach" name="usun_spam_po_dniach"
+             value="{{ ustawienia.usun_spam_po_dniach if ustawienia and ustawienia.usun_spam_po_dniach else '' }}"
+             placeholder="pusto = nigdy">
+    </div>
+  </div>
+  <p class="muted small">
+    Domyślnie helpdesk nie kasuje niczego. Termin dotyczy wyłącznie poczty
+    nierozpoznanej — zgłoszeń i ich historii nie usuwa nigdy.
+  </p>
+  <label class="kolumna-wybor" style="margin-top: 10px;">
+    <input type="checkbox" name="aktywne" {% if ustawienia and ustawienia.aktywne %}checked{% endif %}>
+    Skrzynka włączona (odbieranie i wysyłanie)
+  </label>
+  <div class="pasek-akcji">
+    <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
+    <button type="submit" name="sprawdz" value="1" class="btn">Zapisz i wyślij próbną</button>
+  </div>
+</section>
 </form>
 {% endblock %}

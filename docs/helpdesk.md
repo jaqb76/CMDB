@@ -106,6 +106,36 @@ pliku od klienta jest wyłącznie opisem — ścieżkę budujemy z identyfikator
 więc `..\..\etc\passwd` nie dotknie systemu plików. Pliki serwujemy zawsze jako
 pobranie, nigdy do wyświetlenia w przeglądarce.
 
+## Status idzie za pocztą
+
+Kolumna, w której stoi zgłoszenie, ma odpowiadać na jedno pytanie: **czyj jest
+teraz ruch**. Dlatego status przestawia się sam razem z korespondencją i nikt
+nie musi o tym pamiętać:
+
+| Zdarzenie | Status po |
+|---|---|
+| technik wysyła odpowiedź do klienta | **Oczekuje** — czekamy na klienta |
+| … a zaznaczył „zostaw w trakcie" | **W trakcie** — wiadomość była informacyjna |
+| odpowiedź technika nie wyszła (awaria SMTP) | bez zmian — nie czekamy na kogoś, kto nic nie dostał |
+| klient odpisuje na zgłoszenie „Oczekuje" | **W trakcie** — piłka wraca do technika |
+| klient odpisuje na zgłoszenie **zamknięte** | **W trakcie** — sprawa otwiera się pod tym samym numerem |
+| klient odpisuje na „Nowe" albo „W trakcie" | bez zmian |
+| automatyczne potwierdzenie przyjęcia | bez zmian — zgłoszenie zostaje **Nowe** |
+| komentarz wewnętrzny | tylko „Nowe" → „W trakcie" (ktoś się tym zajął) |
+
+Automaty statusu nie ruszają celowo. Gdyby potwierdzenie przyjęcia ustawiało
+„Oczekuje", kolumna „Nowe" byłaby zawsze pusta i nie dałoby się odróżnić sprawy
+świeżej od takiej, którą ktoś już obejrzał.
+
+**Zamknięcie zgłoszenia wysyła wiadomość do klienta.** Zamknięte zgłoszenia
+znikają z tablicy, więc bez tego maila klient dowiaduje się o końcu sprawy
+dopiero wtedy, gdy sam zapyta. Treść bierze się z szablonu w Skrzynce, a technik
+może dopisać pod nim kilka zdań podsumowania — pole jest przy zmianie statusu.
+Mail idzie tylko przy **przejściu** do zamkniętego: powtórne wybranie tego
+samego statusu niczego nie wysyła. Wysyłka nie może przewrócić zamknięcia —
+jeśli SMTP nie odpowiada, zgłoszenie i tak się zamyka, a błąd widać przy wpisie
+w wątku.
+
 ## Czas pracy
 
 Każdy technik dopisuje **swoje** minuty; jedno zgłoszenie zbiera czas kilku
@@ -173,6 +203,11 @@ niż skrzynka, do której nikt nie napisał.
 firmę, wiadomość zakłada nowe zgłoszenie i ma treść. Nie idzie na odpowiedzi
 w wątku, na autoodpowiedzi ani do nieznanych domen. Jest zwykłym wpisem „do
 klienta" w wątku, więc technik widzi dokładnie to, co klient dostał.
+
+**Wiadomość o zakończeniu** ma własny włącznik i własny szablon — to osobna
+decyzja od potwierdzenia przyjęcia, bo jedna firma chce obu, inna tylko
+domknięcia. Oba szablony podstawiają `{numer}` i `{temat}` i oba są wpisami
+w wątku, nie zdarzeniami systemowymi: to są wiadomości, które wyszły na zewnątrz.
 
 ## Konfiguracja
 

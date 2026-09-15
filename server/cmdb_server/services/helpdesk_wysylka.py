@@ -34,11 +34,18 @@ log = logging.getLogger(__name__)
 
 LIMIT_SEKUND = 30
 
-# Ten tekst czyta klient, wiec z ogonkami. Operator moze go nadpisac w ustawieniach.
+# Te teksty czyta klient, wiec z ogonkami. Operator moze je nadpisac w ustawieniach.
 DOMYSLNE_POTWIERDZENIE = (
     "Dzień dobry,\n\n"
     "przyjęliśmy zgłoszenie {numer} - „{temat}”.\n"
     "Odpowiadając na tego maila, dopisze Pan/Pani wiadomość do tego samego zgłoszenia.\n"
+)
+
+DOMYSLNE_ZAMKNIECIE = (
+    "Dzień dobry,\n\n"
+    "zgłoszenie {numer} - „{temat}” zostało zakończone.\n"
+    "Jeśli sprawa nie jest dla Pana/Pani załatwiona, wystarczy odpowiedzieć "
+    "na tego maila - zgłoszenie wróci do realizacji pod tym samym numerem.\n"
 )
 
 
@@ -208,30 +215,77 @@ def potwierdzenie_nalezne(
     return bool((tresc_maila or "").strip())
 
 
-def wyslij_potwierdzenie(db: Session, zgloszenie: Zgloszenie) -> WpisZgloszenia | None:
-    """Potwierdzenie przyjecia jako zwykly wpis w watku.
+def _z_szablonu(zgloszenie: Zgloszenie, szablon: str, dopisek: str = "") -> str:
+    """Szablon z podstawionym numerem i tematem, opcjonalnie z dopiskiem technika."""
+    tresc = szablon.replace("{numer}", zgloszenie.numer_pelny).replace("{temat}", zgloszenie.temat)
+    if dopisek.strip():
+        tresc = f"{tresc.rstrip()}\n\n{dopisek.strip()}\n"
+    return tresc
+
+
+def _wiadomosc_automatyczna(
+    db: Session, zgloszenie: Zgloszenie, tresc: str, autor_nazwa: str, co: str
+) -> WpisZgloszenia:
+    """Wiadomosc wychodzaca sama, zapisana w watku jak kazda inna.
 
     Klient ma zobaczyc numer, a technik - co dokladnie klient dostal. Wpis
     systemowy nie wystarczy: to jest wiadomosc, ktora wyszla na zewnatrz.
+
+    Blad wysylki zostaje przy wpisie (robi to wyslij_wpis) i w dzienniku, ale
+    nie leci wyzej: te maile towarzysza czynnosci, ktora wlasnie sie udala -
+    zgloszenie zostalo zalozone albo zamkniete - i nie moga jej przewrocic.
     """
-    konfiguracja = ustawienia(db)
-    if konfiguracja is None:
-        return None
-
-    szablon = konfiguracja.potwierdzenie_tresc or DOMYSLNE_POTWIERDZENIE
-    tresc = szablon.replace("{numer}", zgloszenie.numer_pelny).replace("{temat}", zgloszenie.temat)
-
     wpis = helpdesk.dopisz_wiadomosc(
-        db, zgloszenie, rodzaj=WPIS_DO_KLIENTA, tresc=tresc,
-        autor_nazwa="Helpdesk (potwierdzenie automatyczne)",
+        db, zgloszenie, rodzaj=WPIS_DO_KLIENTA, tresc=tresc, autor_nazwa=autor_nazwa,
     )
     try:
         wyslij_wpis(db, zgloszenie, wpis)
     except BladWysylki as blad:
-        # Niewyslane potwierdzenie nie moze przewrocic odbioru poczty -
-        # zgloszenie jest juz zalozone i to ono jest tu wazniejsze.
-        log.warning("helpdesk: potwierdzenie %s nie poszlo: %s", zgloszenie.numer_pelny, blad)
+        log.warning("helpdesk: %s %s nie poszlo: %s", co, zgloszenie.numer_pelny, blad)
     return wpis
+
+
+def wyslij_potwierdzenie(db: Session, zgloszenie: Zgloszenie) -> WpisZgloszenia | None:
+    """Potwierdzenie przyjecia zgloszenia."""
+    konfiguracja = ustawienia(db)
+    if konfiguracja is None:
+        return None
+
+    return _wiadomosc_automatyczna(
+        db, zgloszenie,
+        _z_szablonu(zgloszenie, konfiguracja.potwierdzenie_tresc or DOMYSLNE_POTWIERDZENIE),
+        autor_nazwa="Helpdesk (potwierdzenie automatyczne)",
+        co="potwierdzenie",
+    )
+
+
+def zamkniecie_nalezne(db: Session) -> bool:
+    """Czy zamkniecie sprawy ma pojsc mailem do klienta."""
+    konfiguracja = ustawienia(db)
+    return konfiguracja is not None and konfiguracja.zamkniecie_wlaczone
+
+
+def wyslij_zamkniecie(
+    db: Session, zgloszenie: Zgloszenie, podsumowanie: str = ""
+) -> WpisZgloszenia | None:
+    """Wiadomosc o zakonczeniu sprawy, z opcjonalnym podsumowaniem technika.
+
+    Zamkniete zgloszenie znika z tablicy, wiec bez tego maila klient dowiaduje
+    sie o koncu sprawy dopiero wtedy, gdy sam zapyta. Podsumowanie jest
+    dopisywane pod szablonem: szablon zalatwia forme, technik - tresc.
+    """
+    konfiguracja = ustawienia(db)
+    if konfiguracja is None or not konfiguracja.zamkniecie_wlaczone:
+        return None
+
+    return _wiadomosc_automatyczna(
+        db, zgloszenie,
+        _z_szablonu(
+            zgloszenie, konfiguracja.zamkniecie_tresc or DOMYSLNE_ZAMKNIECIE, podsumowanie
+        ),
+        autor_nazwa="Helpdesk (zakończenie zgłoszenia)",
+        co="zamkniecie",
+    )
 
 
 def sprawdz(db: Session, adres: str) -> None:

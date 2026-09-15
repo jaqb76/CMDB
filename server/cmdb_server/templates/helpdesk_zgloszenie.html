@@ -74,6 +74,10 @@
         <label for="tresc">Treść</label>
         <textarea id="tresc" name="tresc" rows="5" required
                   placeholder="Napisz wiadomość…"></textarea>
+        <label class="kolumna-wybor" style="margin-top: 10px;">
+          <input type="checkbox" name="zostaw_w_trakcie" value="1">
+          Zostaw w trakcie — na tę wiadomość nie czekam na odpowiedź
+        </label>
         <div class="rzad-akcji" style="margin-top: 12px;">
           <button type="submit" name="rodzaj" value="wewnetrzny" class="btn btn-wewn">
             Zapisz komentarz wewnętrzny
@@ -86,7 +90,8 @@
           Komentarz wewnętrzny zostaje w zgłoszeniu i <b>nie wychodzi</b> na żaden adres.
           Odpowiedź idzie na {{ zgloszenie.zglaszajacy_email }} z tematem
           <b>Re: [{{ zgloszenie.numer_pelny }}] {{ zgloszenie.temat }}</b>, a kopia wraca
-          do osób z DW ostatniej wiadomości klienta.
+          do osób z DW ostatniej wiadomości klienta. Po wysłaniu zgłoszenie
+          przechodzi na <b>Oczekuje</b> — wraca do realizacji, gdy klient odpisze.
         </p>
       </form>
     </section>
@@ -99,12 +104,31 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label for="stan">Status</label>
         <div class="pole-z-podgladem">
-          <select id="stan" name="stan">
+          <select id="stan" name="stan" data-status-wybor="{{ zgloszenie.status }}">
             {% for klucz, etykieta in statusy.items() %}
               <option value="{{ klucz }}" {% if zgloszenie.status == klucz %}selected{% endif %}>{{ etykieta }}</option>
             {% endfor %}
           </select>
           <button type="submit" class="btn btn-small">Zmień</button>
+        </div>
+        {#
+          Pole widac tylko przy zamykaniu - przy pozostalych statusach nic nie
+          wysylamy, wiec byloby polem, ktore nic nie robi. Bez JavaScriptu
+          zostaje widoczne: pusta tresc niczego nie psuje.
+        #}
+        <div data-status-podsumowanie{% if zgloszenie.status == 'zamkniete' %} hidden{% endif %}>
+          <label for="podsumowanie">Podsumowanie dla klienta (opcjonalnie)</label>
+          <textarea id="podsumowanie" name="podsumowanie" rows="3"
+                    placeholder="Co zostało zrobione…"></textarea>
+          <p class="muted small">
+            {% if zamkniecie_mailem %}
+              Dopisywane pod wiadomością o zakończeniu, którą klient dostanie
+              przy zamknięciu zgłoszenia.
+            {% else %}
+              Wiadomość o zakończeniu jest wyłączona w
+              <a href="/helpdesk/skrzynka">ustawieniach skrzynki</a> — to pole nic nie wyśle.
+            {% endif %}
+          </p>
         </div>
       </form>
 
