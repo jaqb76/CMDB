@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Nowe zgłoszenie - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Nowe zgłoszenie</h1>
+    <p class="muted">
+      Zgłoszenie z telefonu albo z rozmowy przy biurku — zapisujesz je w imieniu
+      klienta. Numer i wątek działają tak samo jak przy mailu: gdy klient odpisze
+      na potwierdzenie, jego wiadomość dopisze się do tej sprawy.
+    </p>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/helpdesk">Wróć do zgłoszeń</a>
+  </div>
+</div>
+
+{% if blad %}<div class="alert alert-error">{{ blad }}</div>{% endif %}
+
+<form method="post" action="/helpdesk/nowe" class="stack" style="max-width: 760px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <section class="panel">
+    <h2>Kto zgłasza</h2>
+    <div class="row-form">
+      <div>
+        <label for="tenant_id">Firma</label>
+        <select id="tenant_id" name="tenant_id" required>
+          {% if nazwy_firm | length > 1 %}<option value="">wybierz firmę</option>{% endif %}
+          {% for id, nazwa in nazwy_firm.items() %}
+            <option value="{{ id }}" {% if wybrana_firma == id %}selected{% endif %}>{{ nazwa }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="zrodlo">Skąd zgłoszenie</label>
+        <select id="zrodlo" name="zrodlo">
+          {% for klucz, etykieta in zrodla.items() %}
+            <option value="{{ klucz }}" {% if dane.zrodlo == klucz %}selected{% endif %}>{{ etykieta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label for="zglaszajacy_email">Adres e-mail zgłaszającego</label>
+        <input id="zglaszajacy_email" type="email" name="zglaszajacy_email" required
+               value="{{ dane.zglaszajacy_email or '' }}" placeholder="jan.kowalski@firma.pl">
+      </div>
+      <div>
+        <label for="zglaszajacy_nazwa">Imię i nazwisko (opcjonalnie)</label>
+        <input id="zglaszajacy_nazwa" name="zglaszajacy_nazwa"
+               value="{{ dane.zglaszajacy_nazwa or '' }}" placeholder="Jan Kowalski">
+      </div>
+    </div>
+    <p class="muted small">
+      Adres jest potrzebny, bo bez niego nie ma jak odpisać ani wysłać wiadomości
+      o zakończeniu. Może być spoza domeny firmy (np. prywatny) — <b>nie może</b>
+      należeć do domeny innej firmy.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Czego dotyczy</h2>
+    <div class="row-form">
+      <div>
+        <label for="temat">Temat</label>
+        <input id="temat" name="temat" required maxlength="500"
+               value="{{ dane.temat or '' }}" placeholder="Nie drukuje drukarka w księgowości">
+      </div>
+      <div>
+        <label for="typ">Typ (opcjonalnie)</label>
+        <select id="typ" name="typ">
+          <option value="">—</option>
+          {% for klucz, etykieta in typy.items() %}
+            <option value="{{ klucz }}" {% if dane.typ == klucz %}selected{% endif %}>{{ etykieta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <label for="tresc">Opis</label>
+    <textarea id="tresc" name="tresc" rows="6" required
+              placeholder="Co powiedział klient…">{{ dane.tresc or '' }}</textarea>
+    <p class="muted small">
+      Treść ląduje w wątku jako pierwsza wiadomość zgłaszającego — tak samo jak
+      mail, od którego zwykle zaczyna się sprawa.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Co dalej</h2>
+    <label class="kolumna-wybor">
+      <input type="checkbox" name="przypisz_do_mnie" value="1"
+             {% if dane.przypisz_do_mnie %}checked{% endif %}>
+      Przypisz do mnie i ustaw „W trakcie"
+    </label>
+    <label class="kolumna-wybor">
+      <input type="checkbox" name="powiadom_klienta" value="1"
+             {% if dane.powiadom_klienta %}checked{% endif %}
+             {% if not skrzynka %}disabled{% endif %}>
+      Wyślij klientowi potwierdzenie z numerem
+    </label>
+    <p class="muted small">
+      {% if skrzynka %}
+        Idzie ta sama treść co przy zgłoszeniach z poczty — klient dostaje numer
+        i może odpisać prosto w ten wątek.
+      {% else %}
+        Skrzynka helpdesku jest wyłączona, więc nic nie wyjdzie.
+        <a href="/helpdesk/skrzynka">Ustaw ją</a>, żeby wysyłać potwierdzenia.
+      {% endif %}
+    </p>
+    <div class="rzad-akcji" style="margin-top: 12px;">
+      <button type="submit" class="btn btn-primary">Załóż zgłoszenie</button>
+      <a class="btn btn-ghost" href="/helpdesk">Anuluj</a>
+    </div>
+  </section>
+</form>
+{% endblock %}

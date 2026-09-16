@@ -297,6 +297,7 @@ trafia do swojej sprawy, a nie zakłada drugiej.
 |---|---|
 | Odbiór | IMAP, jedna skrzynka, pętla co 2 minuty; wiadomości nie są kasowane |
 | Rozpoznanie | wątek (`In-Reply-To`, `References`, numer w temacie) → domena → firma |
+| Z telefonu | technik zakłada zgłoszenie w imieniu klienta; dalej idzie tą samą drogą co mail |
 | Nierozpoznane | poczta z obcej domeny czeka na decyzję operatora; nikt nie dostaje odpowiedzi |
 | Wątek | wiadomości, odpowiedzi, komentarze wewnętrzne i zdarzenia w jednej rozmowie |
 | Status | idzie za pocztą: odpowiedź do klienta → „Oczekuje", jego odpowiedź → „W trakcie" |

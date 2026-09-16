@@ -106,6 +106,32 @@ pliku od klienta jest wyłącznie opisem — ścieżkę budujemy z identyfikator
 więc `..\..\etc\passwd` nie dotknie systemu plików. Pliki serwujemy zawsze jako
 pobranie, nigdy do wyświetlenia w przeglądarce.
 
+## Zgłoszenie z telefonu
+
+Nie każda sprawa przychodzi mailem. **Helpdesk → Zgłoszenia → Nowe zgłoszenie**
+zakłada zgłoszenie w imieniu klienta: technik wybiera firmę, wpisuje adres
+i nazwisko zgłaszającego, temat i to, z czym klient dzwonił. Dalej droga jest
+ta sama co przy poczcie — numer firmy, pierwszy wpis w wątku, ślad w historii
+(`zgłoszenie utworzone (telefon) jako BON-12`).
+
+Dwie rzeczy różnią ten formularz od poczty:
+
+**Firmę wybiera technik, nie domena.** Dlatego tylko tutaj trzeba pilnować, żeby
+adres nie należał do innej firmy — zgłoszenie z adresem `@klepsydra.pl`
+założone firmie Bongo wyglądałoby dobrze do pierwszej odpowiedzi klienta:
+ta wróciłaby pocztą i po domenie założyła **drugą** sprawę Klepsydrze. Taki
+adres jest odrzucany z nazwą firmy, do której należy. Adres z domeny, której
+nikt nie zgłosił (prywatna skrzynka pracownika), przechodzi — to nie pomyłka.
+
+**Adres jest wymagany.** Bez niego nie ma jak odpisać ani wysłać wiadomości
+o zakończeniu, a zgłoszenie żyłoby tylko w panelu.
+
+Domyślnie zgłoszenie trafia do technika, który je zakłada, i od razu jest
+„W trakcie" — skoro właśnie rozmawia z klientem, sprawa nie czeka w pierwszej
+kolumnie na kogoś, kto ją przeczyta. Oba zachowania są checkboxami: dyżurny
+przyjmujący telefony może zostawić zgłoszenie nieprzypisane, a potwierdzenie
+z numerem odznaczyć, gdy rozmowa wszystko załatwiła.
+
 ## Status idzie za pocztą
 
 Kolumna, w której stoi zgłoszenie, ma odpowiadać na jedno pytanie: **czyj jest

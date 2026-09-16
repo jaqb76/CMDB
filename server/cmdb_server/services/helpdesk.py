@@ -82,6 +82,21 @@ def firma_dla_adresu(db: Session, email: str) -> Tenant | None:
     return None if wpis is None else db.get(Tenant, wpis.tenant_id)
 
 
+def obca_firma_adresu(db: Session, email: str, tenant_id: str) -> Tenant | None:
+    """Firma, do ktorej nalezy domena adresu, gdy to NIE jest wskazana firma.
+
+    Sluzy zgloszeniom zakladanym recznie: tam firme wybiera technik, a nie
+    domena, wiec da sie wpisac adres z cudzej domeny. Taka pomylka nie zostaje
+    w jednym zgloszeniu - odpowiedz z tego adresu wroci poczta i zalozy sprawe
+    tej drugiej firmie, wiec lepiej zatrzymac ja przy zakladaniu.
+
+    Adres z domeny, ktorej nikt nie zglosil (prywatna skrzynka pracownika),
+    nie jest pomylka - zwracamy None i zgloszenie powstaje.
+    """
+    firma = firma_dla_adresu(db, email)
+    return None if firma is None or firma.id == tenant_id else firma
+
+
 def dodaj_domene(db: Session, tenant_id: str, domena: str, dodal: str | None = None) -> HelpdeskDomena:
     """Przypisuje domene do firmy.
 

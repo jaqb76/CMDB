@@ -34,6 +34,7 @@ from ..models import (
     TYPY_ZGLOSZENIA,
     WPIS_DO_KLIENTA,
     WPIS_WEWNETRZNY,
+    ZRODLA_RECZNE,
     Asset,
     CzasPracy,
     HelpdeskDostep,
@@ -191,6 +192,132 @@ def lista_zgloszen(
             .where(NierozpoznanaWiadomosc.stan == NIEROZPOZNANA_CZEKA)
         ).scalar_one() if helpdesk.prowadzi_helpdesk(user) else 0,
     )
+
+
+# --- zgloszenie zakladane recznie -------------------------------------------
+
+def _formularz_nowego(
+    request: Request, user: PortalUser, ctx: TenantContext, db: Session,
+    dane: dict, blad: str = "",
+) -> Response:
+    """Formularz zakladania - ten sam przy wejsciu i po odrzuceniu danych.
+
+    Po bledzie wracaja WPISANE wartosci, a nie puste pola: technik ma tu caly
+    opis rozmowy, ktora wlasnie skonczyl, i literowka w adresie nie moze go
+    skasowac.
+    """
+    firmy = _firmy(db, user)
+    wybrana = dane.get("tenant_id", "")
+    return render(
+        request, "helpdesk_nowe.html", user, ctx, db,
+        nazwy_firm=_nazwy_firm(db, firmy),
+        dane=dane,
+        wybrana_firma=wybrana if wybrana in firmy else (firmy[0] if len(firmy) == 1 else ""),
+        typy=TYPY_ZGLOSZENIA, zrodla=ZRODLA_RECZNE,
+        skrzynka=helpdesk_wysylka.ustawienia(db),
+        blad=blad,
+    )
+
+
+@router.get("/helpdesk/nowe", response_class=HTMLResponse)
+def formularz_nowego(
+    request: Request,
+    firma: str = Query("", max_length=36),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zgloszenie z telefonu: technik zapisuje je w imieniu klienta."""
+    return _formularz_nowego(
+        request, user, ctx, db,
+        {"tenant_id": firma, "zrodlo": "telefon",
+         "przypisz_do_mnie": True, "powiadom_klienta": True},
+    )
+
+
+@router.post("/helpdesk/nowe")
+def zaloz_zgloszenie(
+    request: Request,
+    tenant_id: str = Form(""),
+    zglaszajacy_email: str = Form("", max_length=320),
+    zglaszajacy_nazwa: str = Form("", max_length=200),
+    temat: str = Form("", max_length=500),
+    tresc: str = Form("", max_length=20000),
+    typ: str = Form(""),
+    zrodlo: str = Form("telefon"),
+    przypisz_do_mnie: bool = Form(False),
+    powiadom_klienta: bool = Form(False),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zaklada zgloszenie wpisane recznie i opcjonalnie zawiadamia klienta.
+
+    Firme wybiera tu technik, a nie domena nadawcy - wiec tylko tutaj trzeba
+    pilnowac, zeby adres nie nalezal do innej firmy. Reszta drogi jest ta sama
+    co przy poczcie: numer, pierwszy wpis w watku, slad w historii.
+    """
+    firmy = _firmy(db, user)
+    verify_csrf(request, user, csrf_token)
+
+    dane = {
+        "tenant_id": tenant_id, "zglaszajacy_email": zglaszajacy_email.strip(),
+        "zglaszajacy_nazwa": zglaszajacy_nazwa.strip(), "temat": temat.strip(),
+        "tresc": tresc.strip(), "typ": typ, "zrodlo": zrodlo,
+        "przypisz_do_mnie": przypisz_do_mnie, "powiadom_klienta": powiadom_klienta,
+    }
+
+    def odrzuc(powod: str) -> Response:
+        return _formularz_nowego(request, user, ctx, db, dane, powod)
+
+    if tenant_id not in firmy:
+        return odrzuc("Wskaż firmę, którą obsługujesz.")
+    adres = zglaszajacy_email.strip().lower()
+    if "@" not in adres or "." not in helpdesk.domena_adresu(adres):
+        return odrzuc("Adres zgłaszającego jest potrzebny - bez niego nie ma jak odpisać.")
+    if not temat.strip():
+        return odrzuc("Temat jest wymagany.")
+    if not tresc.strip():
+        return odrzuc("Opisz, z czym dzwonił klient.")
+
+    obca = helpdesk.obca_firma_adresu(db, adres, tenant_id)
+    if obca is not None:
+        return odrzuc(
+            f"Domena adresu {adres} należy do firmy {obca.name} - "
+            "wybierz tę firmę albo popraw adres."
+        )
+
+    zgloszenie = helpdesk.utworz_zgloszenie(
+        db, tenant_id=tenant_id, temat=temat.strip(), tresc=tresc.strip(),
+        zglaszajacy_email=adres, zglaszajacy_nazwa=zglaszajacy_nazwa.strip() or None,
+        typ=typ if typ in TYPY_ZGLOSZENIA else None,
+        technik_id=user.id if przypisz_do_mnie else None,
+        zrodlo=ZRODLA_RECZNE.get(zrodlo, ZRODLA_RECZNE["inne"]).lower(),
+        autor=helpdesk.opis_osoby(user),
+    )
+    if przypisz_do_mnie:
+        # Technik wlasnie rozmawia z klientem, wiec sprawa jest w toku, a nie
+        # czeka w pierwszej kolumnie na kogos, kto ja przeczyta.
+        helpdesk.zmien_status(
+            db, zgloszenie, STATUS_W_TRAKCIE, autor=helpdesk.opis_osoby(user)
+        )
+
+    komunikat = f"Zgłoszenie {zgloszenie.numer_pelny} założone."
+    if powiadom_klienta:
+        wpis = helpdesk_wysylka.wyslij_potwierdzenie(db, zgloszenie)
+        if wpis is None:
+            komunikat += " Skrzynka jest wyłączona, więc klient nie dostał numeru."
+        elif wpis.blad_wysylki:
+            komunikat += f" Potwierdzenie NIE wyszło: {wpis.blad_wysylki}"
+        else:
+            komunikat += f" Klient dostał numer na {adres}."
+
+    audit(db, None, action="helpdesk.zgloszenie.reczne", target=zgloszenie.numer_pelny,
+          detail={"firma": tenant_id, "zrodlo": zrodlo},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return _wroc(f"/helpdesk/zgloszenie/{zgloszenie.id}", komunikat)
 
 
 # --- karta zgloszenia -------------------------------------------------------

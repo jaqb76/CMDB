@@ -47,7 +47,13 @@
               <div class="hd-wpis-glowa">
                 <span class="wpis-godzina">{{ w.utworzono | dt }}</span>
                 <b>{{ w.autor_nazwa or w.autor_email or osoby.get(w.autor_id, '—') }}</b>
-                {% if w.rodzaj == 'od_klienta' %}<span class="hd-kierunek">e-mail od klienta</span>{% endif %}
+                {#
+                  Pierwszy wpis zgloszenia z telefonu spisuje technik, wiec nie
+                  ma Message-ID. Napis "e-mail od klienta" mowilby wtedy nieprawde.
+                #}
+                {% if w.rodzaj == 'od_klienta' %}
+                  <span class="hd-kierunek">{{ 'e-mail od klienta' if w.message_id else 'od klienta' }}</span>
+                {% endif %}
                 {% if w.rodzaj == 'do_klienta' %}
                   <span class="hd-kierunek hd-kierunek-out">odpowiedź do klienta</span>
                   {% if w.blad_wysylki %}<span class="badge badge-danger">nie wysłano</span>{% endif %}

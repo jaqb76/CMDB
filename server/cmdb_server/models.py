@@ -1193,6 +1193,15 @@ TYPY_ZGLOSZENIA: dict[str, str] = {
     "inne": "Inne",
 }
 
+# Skad wzielo sie zgloszenie zakladane recznie. Wartosc trafia do sladu
+# w historii ("zgloszenie utworzone (telefon) jako BON-12"), wiec jest napisem
+# do czytania, a nie kluczem obcym - zgloszenia z poczty maja tu "e-mail".
+ZRODLA_RECZNE: dict[str, str] = {
+    "telefon": "Telefon",
+    "osobiscie": "Osobiście",
+    "inne": "Inne",
+}
+
 # Rodzaje wpisow w watku. Wszystkie leza w jednej tabeli, bo zgloszenie ma byc
 # jedna chronologiczna rozmowa - trzy osobne listy trzeba by scalac przy
 # kazdym wyswietleniu i przy kazdym scalaniu mozna sie pomylic o kolejnosc.

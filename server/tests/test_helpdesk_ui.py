@@ -90,6 +90,136 @@ def _csrf(client, sciezka: str) -> str:
     return _extract_csrf(client.get(sciezka).text)
 
 
+# --- zgloszenie zakladane recznie -------------------------------------------
+
+def _zaloz(client, dane: dict):
+    """Wysyla formularz recznego zgloszenia z domyslnie poprawnymi polami."""
+    pola = {
+        "csrf_token": _csrf(client, "/helpdesk/nowe"),
+        "zglaszajacy_email": "jan@bongo.pl",
+        "zglaszajacy_nazwa": "Jan Kowalski",
+        "temat": "Telefon: nie drukuje drukarka",
+        "tresc": "Dzwonil, ze drukarka miga na czerwono.",
+        "zrodlo": "telefon",
+    }
+    pola.update(dane)
+    return client.post("/helpdesk/nowe", data=pola, follow_redirects=False)
+
+
+def test_technik_zaklada_zgloszenie_z_telefonu(client, tenant_a, smtp):
+    """Zgloszenie z telefonu ma przejsc te sama droge co mail: numer i watek."""
+    _firma(tenant_a["id"])
+    _skrzynka()
+    technik_id = _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    _zaloz(client, {"tenant_id": tenant_a["id"],
+                    "przypisz_do_mnie": "1", "powiadom_klienta": "1"})
+
+    with SessionLocal() as db:
+        zgloszenie = db.execute(select(Zgloszenie)).scalar_one()
+        assert zgloszenie.numer_pelny == "BON-1"
+        assert zgloszenie.zglaszajacy_email == "jan@bongo.pl"
+        assert zgloszenie.zglaszajacy_nazwa == "Jan Kowalski"
+        # Technik wlasnie rozmawia z klientem, wiec sprawa jest jego i w toku.
+        assert zgloszenie.technik_id == technik_id
+        assert zgloszenie.status == STATUS_W_TRAKCIE
+
+        wpisy = list(db.execute(
+            select(WpisZgloszenia).where(WpisZgloszenia.zgloszenie_id == zgloszenie.id)
+            .order_by(WpisZgloszenia.utworzono)
+        ).scalars())
+        pierwszy = wpisy[0]
+        assert pierwszy.rodzaj == "od_klienta"
+        assert "drukarka miga" in pierwszy.tresc
+        # Slad w historii mowi, skad wzielo sie zgloszenie.
+        assert any("(telefon)" in w.tresc for w in wpisy if w.rodzaj == "system")
+
+    # Klient dostal numer, wiec ma na co odpisac.
+    assert len(smtp.wyslane) == 1
+    assert "BON-1" in smtp.wyslane[0].get_content()
+
+
+def test_zgloszenie_reczne_bez_przypisania_zostaje_nowe(client, tenant_a, smtp):
+    """Gdy telefony odbiera kto inny niz naprawia, sprawa czeka w pierwszej kolumnie."""
+    _firma(tenant_a["id"])
+    _skrzynka()
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    _zaloz(client, {"tenant_id": tenant_a["id"]})
+
+    with SessionLocal() as db:
+        zgloszenie = db.execute(select(Zgloszenie)).scalar_one()
+        assert zgloszenie.status == STATUS_NOWE
+        assert zgloszenie.technik_id is None
+    assert smtp.wyslane == []
+
+
+def test_reczne_zgloszenie_odrzuca_adres_innej_firmy(client, tenant_a, tenant_b, smtp):
+    """Pomylka w adresie nie zostaje w jednym zgloszeniu.
+
+    Odpowiedz z takiego adresu wrocilaby poczta i po domenie zalozylaby sprawe
+    TEJ DRUGIEJ firmie - czyli jedna rozmowa rozjechalaby sie na dwie kartoteki.
+    """
+    _firma(tenant_a["id"], "BON", ["bongo.pl"])
+    _firma(tenant_b["id"], "KLE", ["klepsydra.pl"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"], tenant_b["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    odpowiedz = _zaloz(client, {
+        "tenant_id": tenant_a["id"], "zglaszajacy_email": "biuro@klepsydra.pl",
+    })
+
+    assert "należy do firmy Firma B" in odpowiedz.text
+    # Wpisana tresc wraca w formularzu - literowka w adresie nie kasuje
+    # opisu rozmowy, ktora technik wlasnie skonczyl.
+    assert "drukarka miga na czerwono" in odpowiedz.text
+    with SessionLocal() as db:
+        assert db.execute(select(Zgloszenie)).scalars().all() == []
+
+
+def test_reczne_zgloszenie_przyjmuje_adres_spoza_domen(client, tenant_a, smtp):
+    """Prywatna skrzynka pracownika to nie pomylka - nikt tej domeny nie zglosil."""
+    _firma(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    _zaloz(client, {"tenant_id": tenant_a["id"], "zglaszajacy_email": "jan.k@gmail.com"})
+
+    with SessionLocal() as db:
+        assert db.execute(select(Zgloszenie)).scalar_one().zglaszajacy_email == "jan.k@gmail.com"
+
+
+def test_reczne_zgloszenie_wymaga_kompletu_pol(client, tenant_a, smtp):
+    _firma(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    for brak in ({"zglaszajacy_email": "bez-malpy"}, {"temat": "  "}, {"tresc": ""}):
+        odpowiedz = _zaloz(client, {"tenant_id": tenant_a["id"], **brak})
+        assert "alert-error" in odpowiedz.text, brak
+
+    with SessionLocal() as db:
+        assert db.execute(select(Zgloszenie)).scalars().all() == []
+
+
+def test_technik_nie_zaklada_zgloszenia_obcej_firmie(client, tenant_a, tenant_b, smtp):
+    """Granica firm trzyma sie takze przez formularz zakladania."""
+    _firma(tenant_a["id"], "BON", ["bongo.pl"])
+    _firma(tenant_b["id"], "KLE", ["klepsydra.pl"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    odpowiedz = _zaloz(client, {
+        "tenant_id": tenant_b["id"], "zglaszajacy_email": "biuro@klepsydra.pl",
+    })
+
+    assert "Wskaż firmę" in odpowiedz.text
+    with SessionLocal() as db:
+        assert db.execute(select(Zgloszenie)).scalars().all() == []
+
+
 # --- tablica i granica firm -------------------------------------------------
 
 def test_tablica_pokazuje_zgloszenia_firm_technika(client, tenant_a, tenant_b):
