@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Czas techników - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Czas pracy — podsumowanie</h1>
+    <p class="muted">
+      {% if wszyscy %}
+        Wszyscy technicy za jeden miesiąc. Wiersz to technik, kolumna to firma,
+        ostatnia kolumna — jego suma. Bez otwierania raportu po jednym.
+      {% else %}
+        Twój czas za jeden miesiąc, z podziałem na firmy — bez klikania po jednej.
+      {% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/helpdesk/raporty/podsumowanie?okres={{ okres }}&eksport=csv">Eksport CSV</a>
+    <a class="btn" href="/helpdesk/raporty/podsumowanie?okres={{ okres }}&eksport=xlsx">Eksport XLSX</a>
+  </div>
+</div>
+
+<nav class="podzakladki">
+  <a class="is-active" href="/helpdesk/raporty/podsumowanie?okres={{ okres }}">Podsumowanie</a>
+  <a href="/helpdesk/raporty/firma?okres={{ okres }}">Wg firmy</a>
+  <a href="/helpdesk/raporty/technik?okres={{ okres }}">Wg technika</a>
+</nav>
+
+<form method="get" class="row-form row-form-filtry">
+  <div style="max-width: 280px;">
+    <label for="r-okres">Okres</label>
+    <select id="r-okres" name="okres">
+      {% for klucz, etykieta in miesiace %}
+        <option value="{{ klucz }}" {% if okres == klucz %}selected{% endif %}>{{ etykieta }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div><button type="submit" class="btn btn-primary">Pokaż</button></div>
+</form>
+
+<section class="kafelki">
+  <div class="kafelek">
+    <div class="kafelek-wartosc">{{ dane.suma | czas }}</div>
+    <div class="kafelek-opis">{{ 'wszyscy technicy' if wszyscy else 'Twój czas' }} — {{ dane.okres }}</div>
+  </div>
+  <div class="kafelek">
+    <div class="kafelek-wartosc">{{ dane.technicy | length }}</div>
+    <div class="kafelek-opis">{{ 'technicy z czasem pracy' if wszyscy else 'wiersz z Twoim czasem' }}</div>
+  </div>
+  <div class="kafelek">
+    <div class="kafelek-wartosc">{{ dane.nazwy_firm | length }}</div>
+    <div class="kafelek-opis">firmy z czasem pracy</div>
+  </div>
+</section>
+
+<section class="panel tabela-przewijana">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Technik</th>
+        {% for id, nazwa in dane.nazwy_firm %}<th class="lp">{{ nazwa }}</th>{% endfor %}
+        <th class="lp">Razem</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in dane.technicy %}
+      {% set po_firmie = dict(w.firmy) %}
+      <tr>
+        <td class="strong">
+          <a href="/helpdesk/raporty/technik?technik={{ w.technik_id }}&okres={{ okres }}">{{ w.nazwa }}</a>
+        </td>
+        {% for id, nazwa in dane.nazwy_firm %}
+          <td class="lp">{{ po_firmie.get(id) | czas }}</td>
+        {% endfor %}
+        <td class="lp strong">{{ w.minuty | czas }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ dane.nazwy_firm | length + 2 }}" class="muted">
+        W tym miesiącu nikt nie dopisał czasu pracy.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+    {% if dane.technicy %}
+    <tfoot>
+      <tr>
+        <th>Razem, {{ dane.okres }}</th>
+        {% for id, nazwa in dane.nazwy_firm %}
+          <th class="lp">{{ dane.sumy_firm.get(id) | czas }}</th>
+        {% endfor %}
+        <th class="lp">{{ dane.suma | czas }}</th>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</section>
+{% endblock %}

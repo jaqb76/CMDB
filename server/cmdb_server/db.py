@@ -143,11 +143,39 @@ def _dodaj_brakujace_kolumny() -> None:
     if ("agent_releases", "arch") in dodane:
         _uzupelnij_architekture_wydan()
 
+    _popraw_ograniczenie_czasu()
     _popraw_unikalnosc_wydan()
     _usun_stare_pola_slownikow()
     _przenies_osoby_do_slownika()
     _popraw_unikalnosc_schematow()
     _usun_pomiary_monitorow()
+
+
+def _popraw_ograniczenie_czasu() -> None:
+    """Wymienia warunek czasu pracy: z "dodatni" na "niezerowy".
+
+    Pierwotnie czas pracy mogl byc tylko dodatni. Skoro jednak wpisu nie da sie
+    poprawic ani skasowac, jedyna droga do naprawienia pomylki jest wpis ujemny
+    ("-15") - i baza musi go przepuscic. Zera nadal nie wpuszczamy: wpis o zerze
+    minut niczego nie mowi.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "helpdesk_czas" not in set(inspector.get_table_names()):
+        return
+    nazwy = {w["name"] for w in inspector.get_check_constraints("helpdesk_czas")}
+    if "ck_czas_niezerowy" in nazwy:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE helpdesk_czas DROP CONSTRAINT IF EXISTS ck_czas_dodatni"
+        ))
+        conn.execute(text(
+            "ALTER TABLE helpdesk_czas ADD CONSTRAINT ck_czas_niezerowy CHECK (minuty <> 0)"
+        ))
+    log.info("czas pracy: warunek 'minuty > 0' wymieniony na 'minuty <> 0'")
 
 
 def _popraw_unikalnosc_wydan() -> None:

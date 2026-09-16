@@ -66,6 +66,18 @@
               {% for z in zalaczniki.get(w.id, []) %}
                 <div class="small">📎 <a href="/helpdesk/zalacznik/{{ z.id }}">{{ z.nazwa }}</a>
                   <span class="muted">({{ z.rozmiar | bytes }})</span></div>
+                {#
+                  Zrzut ekranu z komunikatem bledu bywa cala trescia zgloszenia,
+                  wiec pokazujemy go od razu. Klikniecie otwiera plik w pelnym
+                  rozmiarze. Podglad dostaja wylacznie formaty, ktore niczego
+                  nie wykonuja - decyduje o tym trasa, nie ten szablon.
+                #}
+                {% if z.id in podglady %}
+                  <a href="/helpdesk/zalacznik/{{ z.id }}">
+                    <img class="hd-podglad" src="/helpdesk/zalacznik/{{ z.id }}/podglad"
+                         alt="{{ z.nazwa }}" loading="lazy">
+                  </a>
+                {% endif %}
               {% endfor %}
             </div>
           {% endif %}
@@ -160,6 +172,36 @@
     </section>
 
     <section class="panel">
+      <h2>Zgłaszający</h2>
+      {# Adres stoi juz w naglowku zgloszenia, wiec tu tylko nazwisko. #}
+      <p class="strong">{{ zgloszenie.zglaszajacy_nazwa or (osoba.wartosc if osoba else zgloszenie.zglaszajacy_email) }}</p>
+      {% if osoba %}
+        <dl class="kv">
+          {% for pole in osoba_pola %}
+            <dt>{{ pole.etykieta }}</dt><dd>{{ pole.wartosc }}</dd>
+          {% endfor %}
+        </dl>
+        <p><a class="btn btn-small" href="/slowniki/wpis/{{ osoba.id }}?tenant={{ firma.slug }}">Karta osoby</a></p>
+      {% else %}
+        <p class="muted small">
+          Tego adresu nie ma w kartotece osób firmy {{ firma.name }} — dlatego nie
+          widać tu telefonu ani lokalizacji.
+          <a href="/slowniki?kategoria=osoba&tenant={{ firma.slug }}">Dopisz osobę</a>, a przy
+          kolejnym zgłoszeniu rozpozna się sama.
+        </p>
+      {% endif %}
+      {% if kandydaci %}
+        <p class="muted small" style="margin-top: 10px;">Sprzęt tej osoby:</p>
+        <ul class="tight small">
+          {% for a in kandydaci %}
+            <li><a href="/assets/{{ a.id }}?tenant={{ firma.slug }}">{{ a.hostname }}</a>
+              {% if a.lokalizacja %}<span class="muted">· {{ a.lokalizacja.wartosc }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+
+    <section class="panel">
       <h2>Czas pracy</h2>
       <p><b style="font-size: 24px;">{{ suma_czasu | czas }}</b>
         <span class="muted small">łącznie, {{ udzialy | length }} techników</span></p>
@@ -176,7 +218,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div style="min-width: 90px;">
           <label for="minuty">Minuty</label>
-          <input id="minuty" name="minuty" inputmode="numeric" placeholder="30" required>
+          <input id="minuty" name="minuty" placeholder="30" required>
         </div>
         <div>
           <label for="opis">Opis (opcjonalnie)</label>
@@ -185,7 +227,9 @@
         <div><button type="submit" class="btn">Dodaj czas</button></div>
       </form>
       <p class="muted small" style="margin-top: 8px;">
-        Wpis jest Twój i nie da się go zmienić ani usunąć — pomyłkę prostuje kolejny wpis.
+        Wpis jest Twój i nie da się go zmienić ani usunąć. Pomyłkę prostuje wpis
+        na minus: <b>-15</b> odejmie 15 minut i zostanie w historii razem z tym,
+        co prostuje — dlatego korekta wymaga opisu.
       </p>
     </section>
 
@@ -193,7 +237,7 @@
       <h2>Sprzęt, którego dotyczy</h2>
       {% for asset, wiazanie in sprzet %}
       <div class="rzad-akcji" style="padding: 4px 0;">
-        <a href="/assets/{{ asset.id }}">{{ asset.hostname }}</a>
+        <a href="/assets/{{ asset.id }}?tenant={{ firma.slug }}">{{ asset.hostname }}</a>
         <span class="muted small">{{ 'rozpoznany po zgłaszającym' if wiazanie.zrodlo == 'automat' else 'dopięty ręcznie' }}</span>
         <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/sprzet" class="inline-form" style="margin-left: auto;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

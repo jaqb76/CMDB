@@ -23,6 +23,7 @@ from cmdb_server.models import (
     NierozpoznanaWiadomosc,
     PortalUser,
     Tenant,
+    WpisSlownika,
     WpisZgloszenia,
     Zgloszenie,
 )
@@ -771,6 +772,164 @@ def test_raport_technika_wybiera_osobe_z_raportu(client, tenant_a, make_user):
     assert 'selected' in wybrany
     zaznaczona = [w for w in wybrany.split("<option") if "selected" in w][0]
     assert "szef@mojadomena.pl" in zaznaczona
+
+
+def test_korekta_na_minus_odejmuje_czas(client, tenant_a, smtp):
+    """Wpisu nie da sie poprawic, wiec pomylke prostuje wpis ujemny."""
+    _firma(tenant_a["id"])
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+
+    client.post(f"{sciezka}/czas", data={
+        "csrf_token": _csrf(client, sciezka), "minuty": "45", "opis": "Diagnostyka",
+    }, follow_redirects=False)
+    client.post(f"{sciezka}/czas", data={
+        "csrf_token": _csrf(client, sciezka), "minuty": "-15",
+        "opis": "Pomylka, to byla inna sprawa",
+    }, follow_redirects=False)
+
+    with SessionLocal() as db:
+        suma, udzialy = helpdesk.czas_zgloszenia(db, zgloszenie_id)
+        assert suma == 30
+        # Oba wpisy zostaja - rejestr pokazuje i blad, i korekte.
+        assert len(db.execute(select(CzasPracy)).scalars().all()) == 2
+        slady = [w.tresc for w in db.execute(
+            select(WpisZgloszenia).where(WpisZgloszenia.rodzaj == "system")
+        ).scalars()]
+        assert any("odjął 15 min" in s for s in slady)
+
+
+def test_korekta_na_minus_wymaga_opisu(client, tenant_a, smtp):
+    """Na fakturze ma byc widac, skad wziela sie korekta."""
+    _firma(tenant_a["id"])
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+
+    client.post(f"{sciezka}/czas", data={
+        "csrf_token": _csrf(client, sciezka), "minuty": "45",
+    }, follow_redirects=False)
+    odpowiedz = client.post(f"{sciezka}/czas", data={
+        "csrf_token": _csrf(client, sciezka), "minuty": "-15",
+    }, follow_redirects=False)
+
+    assert odpowiedz.status_code == 400
+    with SessionLocal() as db:
+        assert helpdesk.czas_zgloszenia(db, zgloszenie_id)[0] == 45
+
+
+def test_korekta_nie_schodzi_ponizej_zera(client, tenant_a, smtp):
+    """Ujemny czas pracy nic nie znaczy - i nie da sie go wpisac."""
+    _firma(tenant_a["id"])
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+    sciezka = f"/helpdesk/zgloszenie/{zgloszenie_id}"
+
+    client.post(f"{sciezka}/czas", data={
+        "csrf_token": _csrf(client, sciezka), "minuty": "10", "opis": "Rozmowa",
+    }, follow_redirects=False)
+    odpowiedz = client.post(f"{sciezka}/czas", data={
+        "csrf_token": _csrf(client, sciezka), "minuty": "-30", "opis": "Za duzo odjalem",
+    }, follow_redirects=False)
+
+    assert odpowiedz.status_code == 400
+    with SessionLocal() as db:
+        assert helpdesk.czas_zgloszenia(db, zgloszenie_id)[0] == 10
+
+
+def test_karta_pokazuje_dane_zglaszajacego_z_kartoteki(client, tenant_a, smtp):
+    """Adres zglaszajacego ma od razu prowadzic do jego telefonu i lokalizacji."""
+    _firma(tenant_a["id"])
+    with SessionLocal() as db:
+        db.add(WpisSlownika(
+            tenant_id=tenant_a["id"], kategoria="osoba", wartosc="Jan Kowalski",
+            klucz="jan kowalski",
+            atrybuty={"email": "jan@bongo.pl", "telefon": "600 100 200"},
+        ))
+        db.commit()
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    strona = client.get(f"/helpdesk/zgloszenie/{zgloszenie_id}").text
+    assert "Zgłaszający" in strona
+    assert "600 100 200" in strona
+    assert "Karta osoby" in strona
+
+
+def test_karta_mowi_wprost_ze_zglaszajacego_nie_ma_w_kartotece(client, tenant_a, smtp):
+    _firma(tenant_a["id"])
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    _login(client, "technik@mojadomena.pl", HASLO)
+
+    strona = client.get(f"/helpdesk/zgloszenie/{zgloszenie_id}").text
+    assert "nie ma w kartotece osób" in strona
+
+
+def test_karta_pokazuje_przypisanego_spoza_listy_technikow(client, tenant_a, smtp, make_user):
+    """Select ma pokazywac tego, kto zgloszenie ma - takze superadmina.
+
+    Superadmin nie ma przydzielonych firm, wiec nie ma go wsrod technikow
+    firmy, a zgloszenie z telefonu zaklada zwykle wlasnie on. Bez dopisania go
+    ekran mowilby "nieprzypisany" przy sprawie, ktora ma wlasciciela.
+    """
+    _firma(tenant_a["id"])
+    zgloszenie_id = _zgloszenie(tenant_a["id"])
+    szef_id = make_user(None, "szef@mojadomena.pl", HASLO)
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    with SessionLocal() as db:
+        db.get(Zgloszenie, zgloszenie_id).technik_id = szef_id
+        db.commit()
+
+    _login(client, "szef@mojadomena.pl", HASLO)
+    strona = client.get(f"/helpdesk/zgloszenie/{zgloszenie_id}").text
+    wybor = strona.split('id="technik_id"')[1].split("</select>")[0]
+    zaznaczona = [w for w in wybor.split("<option") if "selected" in w]
+    assert zaznaczona and "szef@mojadomena.pl" in zaznaczona[0]
+
+
+def test_podsumowanie_zbiera_technikow_i_firmy(client, tenant_a, tenant_b, smtp, make_user):
+    """Jeden ekran zamiast otwierania raportu po jednym techniku."""
+    _firma(tenant_a["id"], "BON", ["bongo.pl"])
+    _firma(tenant_b["id"], "KLE", ["klepsydra.pl"])
+    pierwsze = _zgloszenie(tenant_a["id"], "Drukarka")
+    drugie = _zgloszenie(tenant_b["id"], "Dysk", "biuro@klepsydra.pl")
+    _technik("wladek@mojadomena.pl", [tenant_a["id"], tenant_b["id"]], "Wladek Nowak")
+    _technik("ola@mojadomena.pl", [tenant_a["id"]], "Ola Zimna")
+    _czas(tenant_a["id"], pierwsze, "wladek@mojadomena.pl", 30)
+    _czas(tenant_b["id"], drugie, "wladek@mojadomena.pl", 90)
+    _czas(tenant_a["id"], pierwsze, "ola@mojadomena.pl", 20)
+
+    make_user(None, "szef@mojadomena.pl", HASLO)
+    _login(client, "szef@mojadomena.pl", HASLO)
+    strona = client.get("/helpdesk/raporty/podsumowanie").text
+
+    assert "Wladek Nowak" in strona and "Ola Zimna" in strona
+    assert "Firma A" in strona and "Firma B" in strona
+    # 30 + 90 + 20 = 140 minut
+    assert "2 h 20 min" in strona
+
+
+def test_podsumowanie_technika_to_tylko_jego_wiersz(client, tenant_a, tenant_b, smtp):
+    """Suma godzin kolegi nie jest sprawa technika."""
+    _firma(tenant_a["id"], "BON", ["bongo.pl"])
+    _firma(tenant_b["id"], "KLE", ["klepsydra.pl"])
+    pierwsze = _zgloszenie(tenant_a["id"], "Drukarka")
+    _technik("wladek@mojadomena.pl", [tenant_a["id"]], "Wladek Nowak")
+    _technik("ola@mojadomena.pl", [tenant_a["id"]], "Ola Zimna")
+    _czas(tenant_a["id"], pierwsze, "wladek@mojadomena.pl", 30)
+    _czas(tenant_a["id"], pierwsze, "ola@mojadomena.pl", 20)
+
+    _login(client, "wladek@mojadomena.pl", HASLO)
+    strona = client.get("/helpdesk/raporty/podsumowanie").text
+
+    assert "Wladek Nowak" in strona
+    assert "Ola Zimna" not in strona
 
 
 def test_eksport_csv_i_xlsx(client, tenant_a, smtp):

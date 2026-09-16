@@ -20,6 +20,12 @@
   </div>
 </div>
 
+<nav class="podzakladki">
+  <a href="/helpdesk/raporty/podsumowanie?okres={{ okres }}">Podsumowanie</a>
+  <a class="{{ 'is-active' if rodzaj == 'firma' }}" href="/helpdesk/raporty/firma?okres={{ okres }}">Wg firmy</a>
+  <a class="{{ 'is-active' if rodzaj == 'technik' }}" href="/helpdesk/raporty/technik?okres={{ okres }}">Wg technika</a>
+</nav>
+
 <form method="get" class="row-form row-form-filtry">
   <div>
     <label for="r-wybor">{{ 'Firma' if rodzaj == 'firma' else 'Technik' }}</label>

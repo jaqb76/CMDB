@@ -1542,7 +1542,11 @@ class CzasPracy(Base):
 
     __tablename__ = "helpdesk_czas"
     __table_args__ = (
-        CheckConstraint("minuty > 0", name="ck_czas_dodatni"),
+        # Zero nie jest czasem pracy. Minus JEST - to korekta pomylki, bo wpisu
+        # nie da sie poprawic ani skasowac. Ze suma zgloszenia nie schodzi
+        # ponizej zera, pilnuje services/helpdesk.dodaj_czas: tego jednym
+        # warunkiem na wierszu sprawdzic sie nie da.
+        CheckConstraint("minuty <> 0", name="ck_czas_niezerowy"),
         Index("ix_czas_firma_data", "tenant_id", "utworzono"),
         Index("ix_czas_technik_data", "technik_id", "utworzono"),
     )

@@ -469,6 +469,31 @@ def _po_odpowiedzi_klienta(db: Session, zgloszenie: Zgloszenie) -> None:
 
 # --- zalaczniki na dysku ----------------------------------------------------
 
+# Typy, ktore pokazujemy w watku jako obrazek. Swiadomie waskie: PNG/JPEG/GIF
+# i WEBP nie potrafia niczego wykonac w przegladarce. SVG POTRAFI (nosi skrypty),
+# wiec zostaje plikiem do pobrania, mimo ze jest obrazkiem.
+TYPY_PODGLADU: dict[str, bytes] = {
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/gif": b"GIF8",
+    "image/webp": b"RIFF",
+}
+
+
+def do_podgladu(typ_mime: str | None, poczatek: bytes) -> str | None:
+    """Typ, ktorym wolno podac ten plik przegladarce - albo None.
+
+    Nie wierzymy samemu naglowkowi z maila: typ deklaruje nadawca, a plik
+    nazwany "image/png" moze byc czymkolwiek. Zgodny musi byc TAKZE poczatek
+    pliku. Przy niezgodnosci zostaje pobranie - nic nie ginie, a nic obcego
+    nie wyswietli sie w przegladarce technika.
+    """
+    znacznik = TYPY_PODGLADU.get((typ_mime or "").split(";")[0].strip().lower())
+    if znacznik is None or not poczatek.startswith(znacznik):
+        return None
+    return (typ_mime or "").split(";")[0].strip().lower()
+
+
 def katalog_zalacznikow() -> Path:
     return Path(get_settings().helpdesk_dir) / "zalaczniki"
 

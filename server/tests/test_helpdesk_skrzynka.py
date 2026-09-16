@@ -27,6 +27,8 @@ from cmdb_server.models import (
     Zgloszenie,
 )
 from cmdb_server.security import hash_password
+
+from .test_tenant_isolation import _login
 from cmdb_server.services import helpdesk, helpdesk_imap, helpdesk_wysylka, sekrety
 from cmdb_server.services import helpdesk_poczta as poczta
 
@@ -280,6 +282,44 @@ def test_zalacznik_ladu_je_na_dysku_i_w_watku(client, tenant_a, monkeypatch, smt
         assert zalacznik.nazwa == "zrzut ekranu.png"
         assert zalacznik.rozmiar == len(b"\x89PNG-udawany")
         assert (tmp_path / zalacznik.sciezka).read_bytes() == b"\x89PNG-udawany"
+
+
+def test_podglad_dostaje_tylko_prawdziwy_obrazek(client, tenant_a, monkeypatch, smtp, tmp_path):
+    """Typ pliku deklaruje nadawca, wiec sam naglowek nie wystarcza.
+
+    Zrzut ekranu ma sie pokazac w watku od razu - to czesto cala tresc
+    zgloszenia. Ale "image/png", ktore w srodku jest czyms innym, wraca do
+    pobierania: podglad dostaja wylacznie pliki zgodne z wlasnym naglowkiem.
+    """
+    monkeypatch.setattr(
+        "cmdb_server.services.helpdesk_poczta.katalog_zalacznikow", lambda: tmp_path
+    )
+    prawdziwy_png = b"\x89PNG\r\n\x1a\n" + b"reszta pliku"
+    with SessionLocal() as db:
+        _firma(db, tenant_a["id"])
+        db.commit()
+        poczta.przyjmij(db, poczta.przeczytaj(_mail(zalaczniki=[
+            ("zrzut.png", "image/png", prawdziwy_png),
+            ("podszywacz.png", "image/png", b"<html>wcale nie obrazek"),
+            ("logo.svg", "image/svg+xml", b"<svg onload=alert(1)></svg>"),
+        ])))
+        db.commit()
+        _technik(db, tenant_a["id"])
+        db.commit()
+        pliki = {z.nazwa: z.id for z in db.execute(select(ZalacznikWpisu)).scalars()}
+
+    _login(client, "wladek@mojadomena.pl", "haslo-testowe-123")
+
+    odp = client.get(f"/helpdesk/zalacznik/{pliki['zrzut.png']}/podglad")
+    assert odp.status_code == 200
+    assert odp.headers["content-type"].startswith("image/png")
+    assert odp.content == prawdziwy_png
+
+    # Plik, ktory tylko udaje obrazek, oraz SVG (potrafi nosic skrypty) -
+    # bez podgladu. Pobrac je nadal mozna, bo nic nie ginie.
+    assert client.get(f"/helpdesk/zalacznik/{pliki['podszywacz.png']}/podglad").status_code == 404
+    assert client.get(f"/helpdesk/zalacznik/{pliki['logo.svg']}/podglad").status_code == 404
+    assert client.get(f"/helpdesk/zalacznik/{pliki['logo.svg']}").status_code == 200
 
 
 def test_nazwa_pliku_od_klienta_nie_dotyka_sciezki(client, tenant_a, monkeypatch, smtp, tmp_path):
