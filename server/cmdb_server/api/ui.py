@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import urllib.parse
 
 from markupsafe import Markup
@@ -22,6 +23,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 from jinja2 import ChainableUndefined, Undefined
 from sqlalchemy import case, func, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .. import wersja
@@ -82,6 +84,7 @@ _ODCISKI: dict[str, tuple[tuple[int, int], str]] = {}
 # ChainableUndefined: brak sekcji w raporcie (np. maszyna jeszcze nie raportowala)
 # nie moze wywalac calego widoku - '{{ a.b.c }}' renderuje sie pusto zamiast rzucac.
 templates.env.undefined = ChainableUndefined
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["ui"])
 
 
@@ -273,6 +276,22 @@ def resolve_tenant(
     )
 
 
+def helpdesk_czeka(db: Session, user: PortalUser) -> int:
+    """Liczba zgloszen czekajacych na odpowiedz tego konta.
+
+    Technik liczy swoje firmy, superadmin wszystkie obslugiwane. Blad tutaj
+    nie moze przewrocic strony: znacznik na belce jest dodatkiem, a nie
+    trescia, dla ktorej ktos wszedl.
+    """
+    from ..services import helpdesk
+
+    try:
+        return helpdesk.ile_czeka(db, helpdesk.firmy_technika(db, user))
+    except SQLAlchemyError:
+        log.warning("nie policzylem czekajacych zgloszen", exc_info=True)
+        return 0
+
+
 def render(
     request: Request,
     template: str,
@@ -287,6 +306,7 @@ def render(
     tenants = firmy_konta(db, user)
     if len(tenants) < 2:
         tenants = []
+    widzi_helpdesk = bool(user.is_superadmin or firmy_helpdesku(db, user))
     payload = {
         "request": request,
         "user": user,
@@ -300,7 +320,13 @@ def render(
         "all_tenants": tenants,
         # Menu helpdesku widzi tylko ten, kto obsluguje zgloszenia - pozycja,
         # ktora kazdemu innemu odpowiada odmowa, jest gorsza niz jej brak.
-        "helpdesk_widoczny": bool(user.is_superadmin or firmy_helpdesku(db, user)),
+        "helpdesk_widoczny": widzi_helpdesk,
+        # Ile spraw czeka na NASZA odpowiedz. Liczba jest tu, a nie tylko na
+        # ekranie zgloszen, bo technik siedzi caly dzien na innych stronach -
+        # a wiadomosc od klienta nie przychodzi wtedy, gdy na nia patrzy.
+        "czeka_w_helpdesku": (
+            helpdesk_czeka(db, user) if widzi_helpdesk else 0
+        ),
         # Prog braku kontaktu moze byc ustawiony per firma - szablony maja
         # pokazywac te wartosc, ktora faktycznie obowiazuje.
         "stale_after_hours": ustawienia.prog_bez_kontaktu(

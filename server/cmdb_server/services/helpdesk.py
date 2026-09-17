@@ -16,7 +16,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..models import (
@@ -495,6 +495,63 @@ def ostatnia_od_klienta(db: Session, zgloszenie_id: str) -> WpisZgloszenia | Non
         .order_by(WpisZgloszenia.utworzono.desc())
         .limit(1)
     ).scalar_one_or_none()
+
+
+# --- czyja jest pilka -------------------------------------------------------
+
+def czekaja_na_odpowiedz(db: Session, firmy: list[str]) -> set[str]:
+    """Zgloszenia, w ktorych ruch nalezy do nas. Zwraca same identyfikatory.
+
+    Zgloszenie czeka, dopoki OSTATNIA wiadomosc w watku przyszla od klienta.
+    Nie liczy sie tu ani obejrzenie sprawy, ani zmiana statusu, ani komentarz
+    wewnetrzny - licznik kasuje wylacznie odpowiedz, ktora faktycznie poszla
+    do klienta. Dzieki temu nie trzeba nigdzie trzymac stanu "przeczytane":
+    odpowiedz na pytanie "czyja jest pilka" jest juz w watku.
+
+    Trzy rzeczy, ktore odpowiedzia NIE sa:
+
+    * potwierdzenie przyjecia i wiadomosc o zamknieciu - pisze je automat
+      (``autor_id`` pusty). Gdyby liczyly sie jak odpowiedz, kazde nowe
+      zgloszenie kasowaloby sie samo w chwili powstania;
+    * odpowiedz, ktora nie wyszla - klient nic nie dostal, wiec pilka dalej
+      jest po naszej stronie. To ta sama zasada, ktora nie ustawia wtedy
+      statusu "Oczekuje";
+    * komentarz wewnetrzny - z definicji nie opuszcza zgloszenia.
+
+    Zamkniete zgloszenia nie czekaja nigdy, nawet gdy ostatni glos nalezal do
+    klienta: zamkniecie jest odpowiedzia samo w sobie, a wiadomosc o nim bywa
+    wylaczona w ustawieniach skrzynki.
+    """
+    if not firmy:
+        return set()
+
+    od_klienta = func.max(WpisZgloszenia.utworzono).filter(
+        WpisZgloszenia.rodzaj == WPIS_OD_KLIENTA
+    )
+    nasza_odpowiedz = func.max(WpisZgloszenia.utworzono).filter(
+        WpisZgloszenia.rodzaj == WPIS_DO_KLIENTA,
+        WpisZgloszenia.autor_id.is_not(None),
+        WpisZgloszenia.wyslano_o.is_not(None),
+        WpisZgloszenia.blad_wysylki.is_(None),
+    )
+
+    wiersze = db.execute(
+        select(Zgloszenie.id)
+        .join(WpisZgloszenia, WpisZgloszenia.zgloszenie_id == Zgloszenie.id)
+        .where(
+            Zgloszenie.tenant_id.in_(firmy),
+            Zgloszenie.status != STATUS_ZAMKNIETE,
+        )
+        .group_by(Zgloszenie.id)
+        .having(od_klienta.is_not(None))
+        .having(or_(nasza_odpowiedz.is_(None), nasza_odpowiedz < od_klienta))
+    ).scalars()
+    return set(wiersze)
+
+
+def ile_czeka(db: Session, firmy: list[str]) -> int:
+    """Sama liczba do znacznika na belce."""
+    return len(czekaja_na_odpowiedz(db, firmy))
 
 
 # --- czas pracy -------------------------------------------------------------

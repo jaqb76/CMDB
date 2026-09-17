@@ -72,9 +72,11 @@
 </form>
 
 {% macro karta(z) %}
-  <a class="hd-karta hd-pas-{{ z.status }}" href="/helpdesk/zgloszenie/{{ z.id }}">
+  <a class="hd-karta hd-pas-{{ z.status }}{{ ' hd-karta-czeka' if z.id in czekaja }}"
+     href="/helpdesk/zgloszenie/{{ z.id }}">
     <div class="hd-karta-glowa">
       <span class="nr">{{ z.numer_pelny }}</span>
+      {% if z.id in czekaja %}<span class="znacznik-czeka" title="Ostatnie słowo należy do klienta">czeka</span>{% endif %}
       {% if z.typ %}<span class="badge">{{ z.typ }}</span>{% endif %}
     </div>
     <div class="hd-karta-temat">{{ z.temat }}</div>
@@ -114,8 +116,9 @@
     </thead>
     <tbody>
       {% for z in zgloszenia %}
-      <tr>
-        <td class="nr"><a href="/helpdesk/zgloszenie/{{ z.id }}">{{ z.numer_pelny }}</a></td>
+      <tr class="{{ 'wiersz-czeka' if z.id in czekaja }}">
+        <td class="nr"><a href="/helpdesk/zgloszenie/{{ z.id }}">{{ z.numer_pelny }}</a>
+          {% if z.id in czekaja %}<span class="znacznik-czeka">czeka</span>{% endif %}</td>
         <td>{{ z.temat }}</td>
         <td>{{ nazwy_firm.get(z.tenant_id, '—') }}</td>
         <td>{% if z.technik %}{{ z.technik.full_name or z.technik.email }}{% else %}<span class="muted">nieprzypisany</span>{% endif %}</td>

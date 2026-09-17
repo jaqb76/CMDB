@@ -132,6 +132,44 @@ kolumnie na kogoś, kto ją przeczyta. Oba zachowania są checkboxami: dyżurny
 przyjmujący telefony może zostawić zgłoszenie nieprzypisane, a potwierdzenie
 z numerem odznaczyć, gdy rozmowa wszystko załatwiła.
 
+## Czyja jest piłka
+
+Na górnej belce, obok przełącznika motywu, stoi znacznik: **ile zgłoszeń czeka
+na naszą odpowiedź**. Widzi go tylko ten, kto obsługuje zgłoszenia. Jest tam
+zawsze — gdy nie ma na co odpowiadać, mówi „Wszystko odpisane" i jest szary.
+Element, który znika, nie daje pewności: nie wiadomo, czy nic nie czeka, czy
+coś się zepsuło.
+
+Reguła jest jedna i nie ma w niej żadnego stanu „przeczytane”:
+
+> Zgłoszenie czeka, dopóki **ostatnia wiadomość w wątku przyszła od klienta**.
+
+Licznik kasuje **wyłącznie odpowiedź, która do klienta poszła**. Nie kasuje go
+obejrzenie sprawy, zmiana statusu ani komentarz wewnętrzny — od samego patrzenia
+nikomu nie odpisano. Dzięki temu nie trzeba nigdzie trzymać, kto co widział:
+odpowiedź na pytanie „czyja jest piłka” jest już w wątku.
+
+Trzy rzeczy, które odpowiedzią **nie są**:
+
+| Co | Dlaczego nie kasuje |
+|---|---|
+| potwierdzenie przyjęcia i mail o zamknięciu | pisze je automat — inaczej każde nowe zgłoszenie kasowałoby się samo w chwili powstania |
+| odpowiedź, która nie wyszła (awaria SMTP) | klient nic nie dostał, więc piłka dalej jest po naszej stronie |
+| komentarz wewnętrzny | z definicji nie opuszcza zgłoszenia |
+
+Zamknięte zgłoszenia nie czekają nigdy, nawet gdy ostatnie słowo należało do
+klienta: zamknięcie jest odpowiedzią samo w sobie, a wiadomość o nim bywa
+wyłączona w ustawieniach skrzynki.
+
+Te same zgłoszenia są **wyróżnione na tablicy i na liście** znacznikiem „czeka”.
+Widać wtedy wprost sprawę zaparkowaną w „Oczekuje”, do której nikt nie napisał —
+czyli dokładnie tę, która przepada.
+
+Znacznik **odświeża się sam** co minutę (`/helpdesk/licznik`), bo wiadomość od
+klienta nie przychodzi wtedy, gdy technik patrzy na listę. Samo odpytywanie
+niczego nie oznacza jako załatwione; gdyby kasowało licznik, kasowałby się sam
+w tle, bez udziału człowieka.
+
 ## Status idzie za pocztą
 
 Kolumna, w której stoi zgłoszenie, ma odpowiadać na jedno pytanie: **czyj jest

@@ -301,6 +301,7 @@ trafia do swojej sprawy, a nie zakłada drugiej.
 | Nierozpoznane | poczta z obcej domeny czeka na decyzję operatora; nikt nie dostaje odpowiedzi |
 | Wątek | wiadomości, odpowiedzi, komentarze wewnętrzne i zdarzenia w jednej rozmowie |
 | Status | idzie za pocztą: odpowiedź do klienta → „Oczekuje", jego odpowiedź → „W trakcie" |
+| Czyja piłka | znacznik na belce liczy zgłoszenia czekające na naszą odpowiedź; kasuje go tylko wysłana wiadomość |
 | Zamknięcie | wysyła klientowi wiadomość o zakończeniu, z podsumowaniem technika |
 | Czas pracy | każdy technik dopisuje swoje minuty; pomyłkę prostuje wpis na minus (`-15`) |
 | Zgłaszający | adres z maila wiąże zgłoszenie z osobą z kartoteki — telefon, lokalizacja, jej sprzęt |

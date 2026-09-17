@@ -38,6 +38,15 @@
     <a href="/pomoc">Pomoc</a>
   </nav>
   <div class="userbox">
+    {% if helpdesk_widoczny %}
+    {# Znacznik czekajacych - ten sam mechanizm co w ukladzie nowoczesnym. #}
+    <a class="czeka-znacznik{{ ' czeka-sa' if czeka_w_helpdesku }}"
+       href="/helpdesk" data-czeka title="Zgłoszenia czekające na odpowiedź">
+      <span class="czeka-ikona" aria-hidden="true">✉</span>
+      <span class="czeka-liczba" data-czeka-liczba>{{ czeka_w_helpdesku or '' }}</span>
+      <span class="czeka-napis" data-czeka-napis>{{ 'Czeka na odpowiedź' if czeka_w_helpdesku else 'Wszystko odpisane' }}</span>
+    </a>
+    {% endif %}
     <button type="button" class="btn btn-small btn-ghost" data-layout-switch="modern" title="Przełącz na nowy układ">Nowy widok</button>
     <button type="button" class="motyw" data-motyw
             title="Motyw: automatyczny / jasny / ciemny">
