@@ -25,7 +25,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      # Domyslnie akcja instaluje pakiety "tools platform-tools". Pakiet "tools"
+      # zostal wycofany z repozytorium Google i sdkmanager konczy sie bledem
+      # "Failed to find package 'tools'", zanim cokolwiek sie zbuduje. Do
+      # budowania APK wystarcza platform-tools; reszte SDK ma juz obraz runnera.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"

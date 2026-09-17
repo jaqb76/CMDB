@@ -158,13 +158,15 @@ def _dolacz_pliki(db: Session, wpis: WpisZgloszenia, wiadomosc: EmailMessage) ->
             raise BladWysylki(
                 f"nie moge odczytac zalacznika {zalacznik.nazwa}: {blad}"
             ) from blad
-        typ = (zalacznik.typ_mime or "application/octet-stream").split(";")[0].strip()
-        glowny, _, podtyp = typ.partition("/")
+        # Typ deklaruje nadawca pliku, wiec moze byc bylejaki. Do naglowka
+        # wpuszczamy go tylko w postaci "cos/cos"; reszta idzie jako zwykle
+        # bajty do zapisania.
+        typ = (zalacznik.typ_mime or "").split(";")[0].strip().lower()
+        glowny, ukosnik, podtyp = typ.partition("/")
+        if not (ukosnik and glowny and podtyp):
+            glowny, podtyp = "application", "octet-stream"
         wiadomosc.add_attachment(
-            dane,
-            maintype=glowny or "application",
-            subtype=podtyp or "octet-stream",
-            filename=zalacznik.nazwa,
+            dane, maintype=glowny, subtype=podtyp, filename=zalacznik.nazwa,
         )
 
 
