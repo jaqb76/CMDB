@@ -324,3 +324,57 @@ docker compose exec proxy grep -A2 "location /admin/releases" /etc/nginx/conf.d/
 
 Pusty wynik oznacza, że na serwerze nie ma jeszcze aktualnego repozytorium —
 wtedy najpierw `git pull`.
+
+### Sieć `cmdb-ingress` nie powstaje: „Pool overlaps"
+
+```
+failed to create network cmdb-ingress: Error response from daemon:
+invalid pool request: Pool overlaps with other one on this address space
+```
+
+Sieć wejściowa ma wpisany zakres (`CMDB_PROXY_SUBNET`, domyślnie
+`172.30.77.0/24`), bo nginx musi mieć w niej stały adres — ten sam, który
+serwer dostaje w `FORWARDED_ALLOW_IPS`. Komunikat znaczy tyle, że zakres
+zachodzi na sieć już istniejącą na tym hoście.
+
+Zwykle nie jest to żadna sieć CMDB. Docker sieciom zakładanym automatycznie
+rozdaje kolejne /16 z puli `172.17.0.0/12`: `172.17.0.0/16`, `172.18.0.0/16`
+i tak dalej. Gdy kolej dojdzie do `172.30.0.0/16`, nasza /24 leży w środku —
+a dzieje się to na hoście, który przewinął przez siebie kilkanaście stosów.
+
+Kto trzyma zakres:
+
+```bash
+docker network ls -q \
+  | xargs -r docker network inspect \
+      -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}'
+```
+
+Dalej dwie drogi, zależnie od tego, co pokaże ta lista:
+
+* **zakres trzyma pozostałość po starym stosie** — `docker network rm <nazwa>`.
+  (`docker network prune` też zadziała, ale usuwa **wszystkie** nieużywane
+  sieci na hoście, również spoza CMDB.)
+* **zakres trzyma coś żywego** — przenosimy się my. W `deploy/.env` obie
+  wartości naraz, bo `CMDB_PROXY_IP` musi leżeć wewnątrz
+  `CMDB_PROXY_SUBNET`:
+
+  ```
+  CMDB_PROXY_SUBNET=10.83.77.0/24
+  CMDB_PROXY_IP=10.83.77.10
+  ```
+
+  Nowy zakres sprawdź dwa razy. Poza `172.17.0.0/12` (i `192.168.0.0/16`)
+  Docker nie sięga sam z siebie, więc kolizja nie wróci przy kolejnym stosie —
+  ale zakres nie może pokrywać się z siecią firmową, bo adresy z niej
+  przestałyby być dla kontenerów osiągalne, a to po nich chodzi agent.
+
+Po zmianie zatrzymaj oba stosy (produkcyjny i testowy), usuń starą sieć
+i postaw je na nowo — `docker compose up -d` nie przeadresuje sieci, która
+już istnieje:
+
+```bash
+docker compose -f deploy/docker-compose.yml down
+docker network rm cmdb-ingress    # jeśli została
+./deploy/wdroz.sh
+```
