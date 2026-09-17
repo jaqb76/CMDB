@@ -42,7 +42,7 @@
   </p>
 
   {% if ctx.can_write %}
-  <form method="post" action="/wersje-agentow/cel" class="row-form" style="margin-top: 14px;">
+  <form method="post" action="/wersje-agentow/cel" class="row-form odstep-m">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="zakres" value="firma">
     <div>
@@ -63,7 +63,7 @@
     </div>
     <div><button type="submit" class="btn">Zleć całej firmie</button></div>
   </form>
-  <p class="muted small" style="margin-top: 8px;">
+  <p class="muted small odstep-s">
     Ustawienie firmowe kasuje wersje przypięte pojedynczym maszynom tego systemu —
     inaczej maszyna zostałaby na wersji, której nikt już nie chce.
   </p>
@@ -125,7 +125,7 @@
     </table>
   </div>
   {% if ctx.can_write %}
-  <div class="row-form" style="margin-top: 14px;">
+  <div class="row-form odstep-m">
     <div>
       <label for="cel-wersja-maszyn">Wersja dla zaznaczonych maszyn</label>
       <select id="cel-wersja-maszyn" name="release_id">
@@ -137,7 +137,7 @@
     </div>
     <div><button type="submit" class="btn btn-primary">Zleć zaznaczonym</button></div>
   </div>
-  <p class="muted small" style="margin-top: 8px;">
+  <p class="muted small odstep-s">
     Tak wraca się do starszej wersji, gdy nowa zawiodła na konkretnej maszynie —
     i tak wypycha poprawkę, zanim dostanie ją reszta floty.
   </p>

@@ -52,6 +52,43 @@ class Settings(BaseSettings):
     # Gorna granica jednego zalacznika. Skrzynka i tak odrzuci wieksze, ale
     # serwer nie moze polegac na cudzych limitach.
     helpdesk_zalacznik_mb: int = 25
+
+    # --- kopie zapasowe ---
+    # Katalog archiwow. Ten sam dla nocnego zadania i dla panelu, zeby lista
+    # w panelu pokazywala to, co faktycznie lezy na dysku.
+    kopie_dir: str = "./kopie"
+    # Ile kopii trzymamy. Dzienne rotuja sie codziennie, tygodniowe to kopie
+    # z niedzieli - razem daje to miesiac wstecz bez trzymania trzydziestu
+    # plikow.
+    kopie_dziennych: int = 7
+    kopie_tygodniowych: int = 4
+    # Maksymalny rozmiar archiwum przyjmowanego przez formularz przywracania.
+    # Wiekszej kopii nie przepchniesz przegladarka - zostaje scp i CLI.
+    max_kopia_bytes: int = 512 * 1024 * 1024
+
+    # --- oznaczenie instancji ---
+    # Pusty napis znaczy produkcje: zaden pasek, zaden prefiks w tytule.
+    # Na instancji testowej napis pojawia sie u gory kazdej strony i w tytule
+    # karty przegladarki - wlasciwa karte znajduje sie po tytule, nie po
+    # kolorze. Etykieta jest tekstem, a nie flaga, bo obsluguje tez instalacje
+    # zapasowa ("KOPIA Z 17.09") i szkoleniowa.
+    instancja: str = ""
+    # Barwa z zamknietej listy, nie dowolny kolor: wartosc trafia do CSS jako
+    # KLASA, bo Content-Security-Policy tej aplikacji ma style-src 'self'
+    # i atrybut style="" jest w przegladarce ignorowany.
+    instancja_barwa: Literal["bursztyn", "czerwony", "fiolet", "zielony"] = "bursztyn"
+
+    @property
+    def etykieta_instancji(self) -> str:
+        """Napis do paska. Na dev wlacza sie sam, nawet przy pustym polu.
+
+        Zapomniec mozna w obie strony, ale tylko jedna boli: instancja testowa
+        wygladajaca jak produkcja. Dlatego CMDB_ENV=dev wystarcza, zeby
+        oznaczenie bylo widac.
+        """
+        if self.instancja.strip():
+            return self.instancja.strip()
+        return "DEVELOPMENT" if self.env == "dev" else ''
     # Independent trust root, deployed by server operations, NEVER populated
     # from an upload/footer. SHA-256 -> {version, arch} of tested Windows workers.
     # Empty by default: no Windows worker can be activated/distributed.

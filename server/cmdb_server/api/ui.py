@@ -199,6 +199,13 @@ def _odcisk(nazwa: str) -> str:
 
 templates.env.globals["zasob"] = _odcisk
 
+# Oznaczenie instancji jako GLOBAL, a nie wartosc doklejana przy kazdym
+# renderowaniu: musi byc na kazdej stronie, takze na logowaniu i w pomocy,
+# ktore maja wlasne, osobne wywolania. Jedna zapomniana strona to dokladnie
+# ta strona, na ktorej ktos pomyli instancje.
+templates.env.globals["instancja"] = get_settings().etykieta_instancji
+templates.env.globals["instancja_barwa"] = get_settings().instancja_barwa
+
 templates.env.filters["dt"] = _fmt_dt
 templates.env.filters["ago"] = _fmt_ago
 templates.env.filters["bytes"] = _fmt_bytes

@@ -14,6 +14,8 @@ import hashlib
 import json
 import logging
 import re
+import secrets
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -24,11 +26,12 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -52,7 +55,13 @@ from ..models import (
     TenantAgentTarget,
     utcnow,
 )
-from ..security import check_csrf_token, generate_token, hash_password, issue_csrf_token
+from ..security import (
+    check_csrf_token,
+    generate_token,
+    hash_password,
+    issue_csrf_token,
+    verify_password,
+)
 from ..services.auth import client_ip, require_superadmin
 from ..services import architektura, cve, pakiet, ustawienia
 from ..services import upgrades
@@ -1472,3 +1481,256 @@ def widok_audytu(
     return render_admin(
         request, "admin_audyt.html", user, "audyt", wpisy=wpisy, nazwy_firm=nazwy_firm
     )
+
+
+# --- kopie zapasowe ---------------------------------------------------------
+#
+# Caly ten rozdzial nalezy do superadmina i tylko do niego: archiwum zawiera
+# dane WSZYSTKICH firm naraz, a przywracanie zastepuje baze.
+#
+# Panel nie odtwarza bazy sam. Uvicorn chodzi w kilku workerach, kazdy trzyma
+# polaczenia, a w tle kreca sie petla IMAP, harmonogram i import wydan -
+# pg_restore --clean musialby usunac tabele, ktore te sesje trzymaja otwarte.
+# Dlatego panel UZBRAJA przywrocenie, a wykonuje je wejscie kontenera przy
+# najblizszym starcie, zanim wstanie uvicorn.
+
+@router.get("/kopie", response_class=HTMLResponse)
+def widok_kopii(
+    request: Request,
+    komunikat: str = Query("", max_length=500),
+    blad: str = Query("", max_length=500),
+    user: PortalUser = Depends(require_superadmin),
+) -> Response:
+    from ..services import kopie
+
+    wolne, ostatnia = kopie.miejsce_na_dysku()
+    return render_admin(
+        request, "admin_kopie.html", user, "kopie",
+        kopie=kopie.lista(),
+        uzbrojone=kopie.uzbrojone(),
+        wolne_bajty=wolne,
+        ostatnia_bajty=ostatnia,
+        limit_wgrania=get_settings().max_kopia_bytes,
+        komunikat=komunikat,
+        blad=blad,
+    )
+
+
+def _wroc_do_kopii(komunikat: str = "", blad: str = "") -> RedirectResponse:
+    pytanie = f"komunikat={quote(komunikat)}" if komunikat else f"blad={quote(blad)}"
+    return RedirectResponse(
+        f"/admin/kopie?{pytanie}" if (komunikat or blad) else "/admin/kopie",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/kopie")
+def zrob_kopie(
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Kopia na zadanie - ta sama funkcja, ktora wola nocne zadanie."""
+    from ..services import kopie
+
+    sprawdz_csrf(user, csrf_token)
+    try:
+        kopia = kopie.utworz("reczna", autor=user.email)
+    except kopie.BladKopii as bledne:
+        return _wroc_do_kopii(blad=f"Kopia się nie udała: {bledne}")
+
+    audit(db, None, action="kopia.utworzona", target=kopia.nazwa,
+          detail={"rozmiar": kopia.rozmiar}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    return _wroc_do_kopii(
+        f"Kopia {kopia.nazwa} gotowa ({kopia.rozmiar // 1048576} MB)."
+    )
+
+
+@router.get("/kopie/{nazwa}/pobierz")
+def pobierz_kopie(
+    nazwa: str,
+    request: Request,
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Archiwum do przegladarki. Strumieniem - plik bywa wiekszy od pamieci."""
+    from ..services import kopie
+
+    kopia = kopie.znajdz(nazwa)
+    if kopia is None:
+        raise HTTPException(status_code=404, detail="nie ma takiej kopii")
+
+    # Pobranie kopii to wyniesienie calej bazy poza serwer - to sie audytuje
+    # tak samo jak jej przywrocenie.
+    audit(db, None, action="kopia.pobrana", target=kopia.nazwa,
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return FileResponse(
+        kopia.sciezka, filename=kopia.nazwa, media_type="application/gzip",
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.post("/kopie/{nazwa}/sprawdz")
+def sprawdz_kopie(
+    nazwa: str,
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Odtworzenie do bazy pomocniczej. Dzialajacej instalacji nie rusza.
+
+    Kopia, ktorej nikt nigdy nie odtworzyl, to nie kopia, tylko plik. Tu
+    sprawdzamy to bez ryzyka: pg_restore idzie do osobnej bazy, ktora zaraz
+    potem znika.
+    """
+    from sqlalchemy import text
+
+    from ..db import engine
+    from ..services import kopie
+
+    sprawdz_csrf(user, csrf_token)
+    kopia = kopie.znajdz(nazwa)
+    if kopia is None:
+        raise HTTPException(status_code=404, detail="nie ma takiej kopii")
+
+    baza = f"cmdb_sprawdzenie_{secrets.token_hex(4)}"
+    # CREATE DATABASE nie dziala w transakcji, stad polaczenie w trybie
+    # autocommit. Nazwa bazy pochodzi z secrets, wiec nie ma tu cudzego tekstu.
+    polaczenie = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        polaczenie.execute(text(f'CREATE DATABASE "{baza}"'))
+    except Exception as bledne:  # noqa: BLE001
+        polaczenie.close()
+        return _wroc_do_kopii(blad=f"Nie mogę założyć bazy pomocniczej: {bledne}")
+
+    try:
+        kopie.odtworz(kopia.sciezka, do_bazy=baza)
+        wynik = _policz_w_bazie(baza)
+        komunikat = (
+            f"Kopia {kopia.nazwa} jest dobra — odtworzyła się, "
+            f"{wynik['firmy']} firm, {wynik['maszyny']} maszyn, "
+            f"{wynik['zgloszenia']} zgłoszeń."
+        )
+        odpowiedz = _wroc_do_kopii(komunikat)
+    except kopie.BladKopii as bledne:
+        odpowiedz = _wroc_do_kopii(blad=f"Kopia {kopia.nazwa} NIE nadaje się: {bledne}")
+    finally:
+        try:
+            polaczenie.execute(text(f'DROP DATABASE IF EXISTS "{baza}" WITH (FORCE)'))
+        except Exception as bledne:  # noqa: BLE001
+            log.warning("nie usunalem bazy pomocniczej %s: %s", baza, bledne)
+        polaczenie.close()
+
+    audit(db, None, action="kopia.sprawdzona", target=kopia.nazwa,
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return odpowiedz
+
+
+def _policz_w_bazie(nazwa_bazy: str) -> dict[str, int]:
+    """Kilka liczb z odtworzonej bazy - dowod, ze w srodku sa dane."""
+    from sqlalchemy import create_engine, text
+
+    adres = get_settings().database_url.rsplit("/", 1)[0] + "/" + nazwa_bazy
+    silnik = create_engine(adres, pool_pre_ping=False)
+    liczby = {"firmy": 0, "maszyny": 0, "zgloszenia": 0}
+    try:
+        with silnik.connect() as polaczenie:
+            for klucz, tabela in (("firmy", "tenants"), ("maszyny", "assets"),
+                                  ("zgloszenia", "helpdesk_zgloszenia")):
+                try:
+                    liczby[klucz] = polaczenie.execute(
+                        text(f"SELECT count(*) FROM {tabela}")  # noqa: S608 - stale nazwy
+                    ).scalar_one()
+                except Exception:  # noqa: BLE001 - brak tabeli to tez odpowiedz
+                    liczby[klucz] = -1
+    finally:
+        silnik.dispose()
+    return liczby
+
+
+@router.post("/kopie/przywroc")
+async def przywroc_kopie(
+    request: Request,
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Uzbraja przywrocenie z listy albo z wgranego pliku.
+
+    Haslo pytamy ponownie, mimo ze konto jest juz zalogowane. Zrzut Postgresa
+    nie jest biernym plikiem z danymi, tylko skryptem wykonujacym SQL jako
+    wlasciciel bazy - przejeta sesja superadmina nie moze wystarczyc.
+    """
+    from ..services import kopie
+
+    formularz = await request.form()
+    sprawdz_csrf(user, formularz.get("csrf_token"))
+
+    haslo = (formularz.get("haslo") or "").strip()
+    if not haslo or not verify_password(haslo, user.password_hash):
+        return _wroc_do_kopii(blad="Hasło się nie zgadza — nic nie zostało zmienione.")
+
+    wgrany = formularz.get("plik")
+    nazwa = (formularz.get("nazwa") or "").strip()
+
+    with tempfile.TemporaryDirectory() as roboczy:
+        if wgrany is not None and getattr(wgrany, "filename", ""):
+            sciezka = Path(roboczy) / "wgrana.tar.gz"
+            limit = get_settings().max_kopia_bytes
+            zapisane = 0
+            with sciezka.open("wb") as plik:
+                while kawalek := await wgrany.read(1024 * 1024):
+                    zapisane += len(kawalek)
+                    if zapisane > limit:
+                        return _wroc_do_kopii(
+                            blad=f"Plik przekracza {limit // 1048576} MB — "
+                                 "przy tej wielkości użyj scp i polecenia "
+                                 "'python -m cmdb_server.cli przywroc'."
+                        )
+                    plik.write(kawalek)
+            zrodlo = wgrany.filename
+        elif nazwa:
+            kopia = kopie.znajdz(nazwa)
+            if kopia is None:
+                raise HTTPException(status_code=404, detail="nie ma takiej kopii")
+            sciezka = kopia.sciezka
+            zrodlo = kopia.nazwa
+        else:
+            return _wroc_do_kopii(blad="Wskaż kopię z listy albo wgraj plik.")
+
+        try:
+            znacznik = kopie.uzbroj(sciezka, autor=user.email)
+        except kopie.BladKopii as bledne:
+            return _wroc_do_kopii(blad=f"Tego archiwum nie przyjmuję: {bledne}")
+
+    audit(db, None, action="kopia.uzbrojona", target=zrodlo,
+          detail={"manifest": znacznik.get("manifest", {})},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return _wroc_do_kopii(
+        f"Przywrócenie z {zrodlo} przygotowane. Uruchom na serwerze "
+        "'docker compose restart server', żeby je wgrać."
+    )
+
+
+@router.post("/kopie/odwolaj")
+def odwolaj_przywrocenie(
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    from ..services import kopie
+
+    sprawdz_csrf(user, csrf_token)
+    if not kopie.rozbroj():
+        return _wroc_do_kopii(blad="Nie było czego odwoływać.")
+
+    audit(db, None, action="kopia.odwolana", target="-",
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return _wroc_do_kopii("Przywrócenie odwołane — restart niczego nie zmieni.")

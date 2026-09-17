@@ -779,7 +779,7 @@
             <div class="card-label">wszystkich braków</div>
           </div>
           <div class="card">
-            <div class="card-value" style="font-size:18px">{{ braki.source }}</div>
+            <div class="card-value liczba-srednia">{{ braki.source }}</div>
             <div class="card-label">sprawdzono {{ braki.checked_at | ago }}</div>
           </div>
         </div>
@@ -884,7 +884,7 @@
           </div>
 
           <div class="card">
-            <div class="card-value" style="font-size:18px">{{ podatnosci.source }}</div>
+            <div class="card-value liczba-srednia">{{ podatnosci.source }}</div>
             <div class="card-label">
               dane sprzed {{ podatnosci.feed_age_hours }} h
             </div>
@@ -924,7 +924,7 @@
                                         else ('badge-warn' if p.base_score >= 4 else '') }}">
                     {{ '%.1f' | format(p.base_score) }} {{ p.cvss_severity }}
                   </span>
-                  {% if p.vector %}<div class="muted" style="font-size:11px">{{ p.vector }}</div>{% endif %}
+                  {% if p.vector %}<div class="muted tekst-drobny">{{ p.vector }}</div>{% endif %}
                 {% else %}
                   <span class="muted">—</span>
                 {% endif %}

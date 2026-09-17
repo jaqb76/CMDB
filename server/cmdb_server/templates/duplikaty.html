@@ -49,7 +49,7 @@
   </table>
 
   {% if ctx.can_write and reczne | length == 1 and z_agentem | length == 1 %}
-  <form method="post" action="/duplikaty/scal" class="row-form" style="margin-top:12px"
+  <form method="post" action="/duplikaty/scal" class="row-form odstep-m"
         data-confirm="Połączyć wpis {{ reczne[0].hostname }} z maszyna {{ z_agentem[0].hostname }}? Wpis ręczny zostanie wycofany.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="zrodlowy_id" value="{{ reczne[0].id }}">
@@ -62,7 +62,7 @@
     </div>
   </form>
   {% elif reczne and z_agentem %}
-  <p class="muted small" style="margin-top:12px">
+  <p class="muted small odstep-m">
     W tej grupie jest więcej niż jeden wpis ręczny albo więcej niż jedna maszyna
     z agentem — połączenie wymaga wskazania konkretnej pary na kartach zasobów.
   </p>

@@ -34,7 +34,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      CMDB_ENV: prod
+      CMDB_ENV: ${CMDB_ENV:-prod}
       FORWARDED_ALLOW_IPS: ${CMDB_PROXY_IP:-172.30.77.10}
       CMDB_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-cmdb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-cmdb}
       CMDB_SECRET_KEY: ${CMDB_SECRET_KEY:?ustaw CMDB_SECRET_KEY w pliku .env}
@@ -43,6 +43,10 @@ services:
       CMDB_SNAPSHOT_RETENTION: ${CMDB_SNAPSHOT_RETENTION:-50}
       CMDB_REPORT_INTERVAL_SECONDS: ${CMDB_REPORT_INTERVAL_SECONDS:-3600}
       CMDB_LOG_LEVEL: ${CMDB_LOG_LEVEL:-INFO}
+      CMDB_INSTANCJA: ${CMDB_INSTANCJA:-}
+      CMDB_INSTANCJA_BARWA: ${CMDB_INSTANCJA_BARWA:-bursztyn}
+      CMDB_KOPIE_DZIENNYCH: ${CMDB_KOPIE_DZIENNYCH:-7}
+      CMDB_KOPIE_TYGODNIOWYCH: ${CMDB_KOPIE_TYGODNIOWYCH:-4}
       # Out-of-band catalog of tested Windows builds; empty means deny.
       CMDB_TRUSTED_WINDOWS_BUILDS: "${CMDB_TRUSTED_WINDOWS_BUILDS:-null}"
       CMDB_RELEASE_IMPORT_ENABLED: ${CMDB_RELEASE_IMPORT_ENABLED:-false}
@@ -73,15 +77,34 @@ services:
       # Adres, pod ktorym klienci widza serwer - trafia do wydawanego skryptu
       # instalacyjnego. Za proxy nie da sie go wiarygodnie odgadnac z zadania.
       CMDB_PUBLIC_URL: ${CMDB_PUBLIC_URL:?ustaw CMDB_PUBLIC_URL, np. https://cmdb.firma.pl}
+      CMDB_RELEASE_DIR: /app/releases
+      CMDB_HELPDESK_DIR: /app/helpdesk
+      CMDB_KOPIE_DIR: /app/kopie
     volumes:
       # Wgrane wersje agenta musza przezyc odtworzenie kontenera - bez tego
       # znikaja, a wskazania wersji oficjalnej zostaja bez plikow.
       - releases:/app/releases
+      # To samo dotyczy zalacznikow zgloszen. Bez tego wolumenu zrzuty ekranu
+      # od klientow gina przy kazdym wdrozeniu: wiersz w bazie zostaje, plik
+      # nie, a watek pokazuje "pliku nie ma juz na dysku".
+      - helpdesk:/app/helpdesk
+      # Kopie zapasowe. Wspolny wolumen dla crona i panelu, zeby lista w panelu
+      # pokazywala te same pliki, ktore zaklada nocne zadanie.
+      - kopie:/app/kopie
     expose:
       - "8000"
 
-    networks: [backend, ingress]
+    networks:
+      backend:
+      ingress:
+        aliases:
+          # Pod ta nazwa nginx kieruje ruch. Stala i niezalezna od nazwy
+          # projektu, wiec konfiguracja nginx nie zmienia sie razem z nia.
+          - ${CMDB_ALIAS:-cmdb-prod}
 
+  # Ten nginx trzyma porty 80 i 443 i jest jedynym wejsciem z zewnatrz -
+  # takze dla instancji testowej, ktora dolacza sie do jego sieci i nie
+  # publikuje wlasnych portow. Patrz deploy/docker-compose.dev.yml.
   proxy:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -102,6 +125,10 @@ networks:
   backend:
     internal: true
   ingress:
+    # Nazwa jest stala i jawna, bo dolacza sie do niej drugi stos
+    # (docker-compose.dev.yml). Domyslna nazwa zawiera nazwe projektu, wiec
+    # zmienialaby sie razem z katalogiem, w ktorym stoi produkcja.
+    name: ${CMDB_SIEC_WEJSCIOWA:-cmdb-ingress}
     ipam:
       config:
         - subnet: ${CMDB_PROXY_SUBNET:-172.30.77.0/24}
@@ -109,3 +136,5 @@ networks:
 volumes:
   pgdata:
   releases:
+  helpdesk:
+  kopie:

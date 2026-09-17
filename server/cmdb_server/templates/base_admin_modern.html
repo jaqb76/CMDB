@@ -9,12 +9,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Administracja - CMDB{% endblock %}</title>
+  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block title %}Administracja - CMDB{% endblock %}</title>
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
 </head>
 <body class="app-layout admin-scope{% if not menu_rozwiniete %} sidebar-collapsed{% endif %}">
+{% if instancja %}
+{#
+  Oznaczenie instancji. Pusta etykieta znaczy produkcje i wtedy nie ma tu nic.
+  Barwa jest KLASA, nie stylem: Content-Security-Policy ma style-src 'self',
+  wiec atrybut style="" przegladarka odrzuca.
+#}
+<div class="pasek-instancji pasek-{{ instancja_barwa }}">{{ instancja }}</div>
+{% endif %}
+
 <div class="app-shell" data-sidebar-shell>
   <aside class="app-sidebar app-sidebar-admin" aria-label="Menu administratora głównego">
     <div class="sidebar-brand">
@@ -40,6 +49,7 @@
 
       <div class="nav-group-label">Nadzór</div>
       <a class="app-nav-link{% if strona == 'audyt' %} is-active{% endif %}" href="/admin/audyt" title="Pełny audyt"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Pełny audyt</span></a>
+      <a class="app-nav-link{% if strona == 'kopie' %} is-active{% endif %}" href="/admin/kopie" title="Kopie zapasowe"><span class="nav-icon" aria-hidden="true">⛁</span><span class="nav-label">Kopie zapasowe</span></a>
     </nav>
 
     <nav class="sidebar-bottom" aria-label="Nawigacja dodatkowa">

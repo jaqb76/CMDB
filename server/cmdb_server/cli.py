@@ -246,6 +246,88 @@ def cmd_demo_secret(_args: argparse.Namespace) -> None:
     print(secrets.token_urlsafe(48))
 
 
+def _rozmiar(bajty: int) -> str:
+    for jednostka in ("B", "kB", "MB", "GB"):
+        if bajty < 1024 or jednostka == "GB":
+            return f"{bajty:.0f} {jednostka}" if jednostka == "B" else f"{bajty:.1f} {jednostka}"
+        bajty /= 1024
+    return f"{bajty:.1f} GB"
+
+
+def cmd_kopia(args: argparse.Namespace) -> None:
+    from .services import kopie
+
+    try:
+        if args.nocna:
+            kopia = kopie.kopia_nocna(autor="cron")
+        else:
+            kopia = kopie.utworz(args.rodzaj, autor="cli")
+            if args.rotuj:
+                kopie.rotuj()
+    except kopie.BladKopii as blad:
+        sys.exit(f"blad: {blad}")
+    print(f"{kopia.nazwa}  {_rozmiar(kopia.rozmiar)}  ({kopia.rodzaj})")
+
+
+def cmd_kopie_lista(_args: argparse.Namespace) -> None:
+    from .services import kopie
+
+    wszystkie = kopie.lista()
+    if not wszystkie:
+        print("brak kopii")
+        return
+    for kopia in wszystkie:
+        print(
+            f"{kopia.utworzono:%Y-%m-%d %H:%M}  {kopia.rozmiar / 1048576:8.1f} MB  "
+            f"{kopia.rodzaj:11s}  {kopia.nazwa}"
+        )
+    wolne, ostatnia = kopie.miejsce_na_dysku()
+    print(f"\nwolne na dysku: {_rozmiar(wolne)}, ostatnia kopia: {_rozmiar(ostatnia)}")
+
+
+def cmd_przywroc(args: argparse.Namespace) -> None:
+    """Przywracanie z wiersza polecen - bez limitu rozmiaru i bez przegladarki.
+
+    To jest droga do przenosin na inny serwer: kopiujesz archiwum przez scp
+    i odtwarzasz tutaj. Panel robi to samo, ale przez formularz i z sufitem
+    na rozmiar wgrywanego pliku.
+    """
+    from pathlib import Path
+
+    from .services import kopie
+
+    sciezka = Path(args.plik)
+    if not sciezka.is_file():
+        kopia = kopie.znajdz(args.plik)
+        if kopia is None:
+            sys.exit(f"blad: nie ma pliku ani kopii o nazwie '{args.plik}'")
+        sciezka = kopia.sciezka
+
+    try:
+        opis = kopie.sprawdz_archiwum(sciezka)
+    except kopie.BladKopii as blad:
+        sys.exit(f"blad: {blad}")
+
+    print(f"kopia z {opis.get('utworzono')}, wersja {opis.get('wersja')}, "
+          f"instancja {opis.get('instancja')}")
+    if not args.tak:
+        potwierdzenie = input("To ZASTAPI obecna baze. Wpisz 'tak', zeby kontynuowac: ")
+        if potwierdzenie.strip().lower() != "tak":
+            sys.exit("przerwane")
+
+    try:
+        if args.teraz:
+            # Odtworzenie tu i teraz wolno tylko wtedy, gdy serwer nie chodzi -
+            # inaczej pg_restore zderzy sie z polaczeniami wlasnych workerow.
+            kopie.odtworz(sciezka)
+            print("odtworzone")
+        else:
+            kopie.uzbroj(sciezka, autor="cli")
+            print("uzbrojone - uruchom: docker compose restart server")
+    except kopie.BladKopii as blad:
+        sys.exit(f"blad: {blad}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cmdb-admin", description="Administracja serwerem CMDB")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -298,6 +380,25 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("gen-secret", help="generuje losowy CMDB_SECRET_KEY").set_defaults(
         func=cmd_demo_secret
     )
+
+    p = sub.add_parser("kopia", help="robi kopie zapasowa (baza + pliki)")
+    p.add_argument("--rodzaj", default="reczna",
+                   choices=["dzienna", "tygodniowa", "reczna"])
+    p.add_argument("--nocna", action="store_true",
+                   help="zadanie z crona: w niedziele tygodniowa, potem rotacja")
+    p.add_argument("--rotuj", action="store_true", help="po kopii usun nadmiarowe")
+    p.set_defaults(func=cmd_kopia)
+
+    sub.add_parser("kopie", help="lista kopii na dysku").set_defaults(
+        func=cmd_kopie_lista
+    )
+
+    p = sub.add_parser("przywroc", help="przywraca kopie zapasowa")
+    p.add_argument("plik", help="sciezka do archiwum albo nazwa kopii z listy")
+    p.add_argument("--teraz", action="store_true",
+                   help="odtworz natychmiast - WYLACZNIE przy zatrzymanym serwerze")
+    p.add_argument("--tak", action="store_true", help="bez pytania o potwierdzenie")
+    p.set_defaults(func=cmd_przywroc)
 
     sub.add_parser(
         "odtworz-zmiany",

@@ -1,0 +1,105 @@
+# Instancja testowa obok produkcyjnej, na tym samym serwerze.
+#
+#   cd ~/CMDB-dev
+#   docker compose -p cmdb-dev -f deploy/docker-compose.dev.yml up -d --build
+#
+# Rozni sie od produkcyjnej trzema rzeczami i tylko nimi:
+#
+# 1. NIE MA WLASNEGO NGINX. Porty 80 i 443 trzyma nginx instancji produkcyjnej;
+#    ten stos dolacza sie do jego sieci i jest widoczny pod aliasem "cmdb-dev".
+#    Dwa procesy nie moga trzymac tego samego portu, wiec drugiego proxy
+#    postawic sie nie da - i nie trzeba.
+# 2. CMDB_ENV=dev, wiec oznaczenie instancji wlacza sie samo (pasek u gory
+#    i prefiks w tytule karty), nawet gdy CMDB_INSTANCJA zostanie puste.
+# 3. Skrzynka, monitorowanie i import wydan sa wylaczone. To NIE jest ostroznosc
+#    na wyrost: dev z odtworzona kopia produkcji ma te same haslo do skrzynki
+#    i te sama petle IMAP. Pobralby maila klienta, oznaczyl jako przeczytany,
+#    zalozyl zgloszenie u siebie - a produkcja tego maila juz by nie zobaczyla.
+#
+# Wlasny plik .env, wlasny katalog repozytorium, wlasna galaz. Cala reszta -
+# baza, wolumeny, siec wewnetrzna - jest osobna, bo osobna jest nazwa projektu.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cmdb}
+      POSTGRES_USER: ${POSTGRES_USER:-cmdb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ustaw POSTGRES_PASSWORD w pliku .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cmdb} -d ${POSTGRES_DB:-cmdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+    expose:
+      - "5432"
+
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        CMDB_WERSJA: ${CMDB_WERSJA:-nieznana}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CMDB_ENV: dev
+      FORWARDED_ALLOW_IPS: ${CMDB_PROXY_IP:-172.30.77.10}
+      CMDB_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-cmdb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-cmdb}
+      CMDB_SECRET_KEY: ${CMDB_SECRET_KEY:?ustaw CMDB_SECRET_KEY w pliku .env}
+      CMDB_REQUIRE_HTTPS: "true"
+      CMDB_PUBLIC_URL: ${CMDB_PUBLIC_URL:?ustaw CMDB_PUBLIC_URL, np. https://cmdb-dev.firma.pl}
+      CMDB_LOG_LEVEL: ${CMDB_LOG_LEVEL:-INFO}
+
+      CMDB_RELEASE_DIR: /app/releases
+      CMDB_HELPDESK_DIR: /app/helpdesk
+      CMDB_KOPIE_DIR: /app/kopie
+
+      # Oznaczenie instancji. Puste CMDB_INSTANCJA wystarcza - przy CMDB_ENV=dev
+      # pasek i tak sie pokaze z napisem DEVELOPMENT.
+      CMDB_INSTANCJA: ${CMDB_INSTANCJA:-}
+      CMDB_INSTANCJA_BARWA: ${CMDB_INSTANCJA_BARWA:-bursztyn}
+
+      # Wylaczone na instancji testowej - patrz komentarz na gorze pliku.
+      CMDB_MONITORING_ENABLED: "false"
+      CMDB_RELEASE_IMPORT_ENABLED: "false"
+
+      CMDB_STALE_AFTER_HOURS: ${CMDB_STALE_AFTER_HOURS:-48}
+      CMDB_SNAPSHOT_RETENTION: ${CMDB_SNAPSHOT_RETENTION:-50}
+      CMDB_REPORT_INTERVAL_SECONDS: ${CMDB_REPORT_INTERVAL_SECONDS:-3600}
+      CMDB_LOGIN_MAX_FAILURES: ${CMDB_LOGIN_MAX_FAILURES:-3}
+      CMDB_LOGIN_LOCKOUT_HOURS: ${CMDB_LOGIN_LOCKOUT_HOURS:-24}
+      CMDB_TRUSTED_WINDOWS_BUILDS: "${CMDB_TRUSTED_WINDOWS_BUILDS:-null}"
+      CMDB_RELEASE_PUBLIC_KEYS: "${CMDB_RELEASE_PUBLIC_KEYS:-null}"
+    volumes:
+      - releases:/app/releases
+      - helpdesk:/app/helpdesk
+      - kopie:/app/kopie
+    expose:
+      - "8000"
+    networks:
+      backend:
+      wejscie:
+        aliases:
+          - ${CMDB_ALIAS:-cmdb-dev}
+
+networks:
+  backend:
+    internal: true
+  # Siec zalozona przez stos produkcyjny. "external" znaczy: nie zakladaj jej,
+  # tylko sie podlacz - inaczej powstalaby druga siec o tej samej roli i nginx
+  # nie mialby jak tu trafic.
+  wejscie:
+    external: true
+    name: ${CMDB_SIEC_WEJSCIOWA:-cmdb-ingress}
+
+volumes:
+  pgdata:
+  releases:
+  helpdesk:
+  kopie:
