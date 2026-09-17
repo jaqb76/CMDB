@@ -175,8 +175,10 @@ def create_app() -> FastAPI:
     app.include_router(discovery_ui.router)
     from .api import monitoring_ui
     from .api import helpdesk_ui
+    from .api import mobile_helpdesk
     app.include_router(monitoring_ui.router)
     app.include_router(helpdesk_ui.router)
+    app.include_router(mobile_helpdesk.router)
 
     # Agenci wysylaja raporty spakowane gzipem - rozpakowujemy z limitem.
     app.add_middleware(GzipRequestMiddleware, max_bytes=settings.max_report_bytes)

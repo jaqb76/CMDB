@@ -17,5 +17,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Zdjecie robione do zgloszenia i pobrany zalacznik musza byc widoczne
+          dla aparatu i dla przegladarki obrazow. Dostawca jest nieeksportowany
+          i oddaje wylacznie dwa katalogi podreczne wymienione w file_paths.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.pliki"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

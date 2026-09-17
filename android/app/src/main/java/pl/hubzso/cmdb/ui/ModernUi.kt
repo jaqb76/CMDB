@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,6 +64,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.SupportAgent
 import androidx.compose.material.icons.outlined.SyncProblem
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -149,7 +151,11 @@ import pl.hubzso.cmdb.data.ChangeEntry
 import pl.hubzso.cmdb.data.CountItem
 import pl.hubzso.cmdb.data.Dashboard
 import pl.hubzso.cmdb.data.DictionaryEntry
+import pl.hubzso.cmdb.data.NewMessage
+import pl.hubzso.cmdb.data.NewTicket
 import pl.hubzso.cmdb.data.ReportWrite
+import pl.hubzso.cmdb.data.TicketAttachment
+import pl.hubzso.cmdb.data.WybranyPlik
 
 // Granat jest kolorem marki i w motywie jasnym pelni role koloru wiodacego:
 // pasek gorny, przyciski, zaznaczone filtry. W motywie ciemnym granat zlewa
@@ -439,13 +445,37 @@ internal fun ModernTenantScreen(state: AppState, onSelect: (pl.hubzso.cmdb.data.
     }
 }
 
-// Dolny pasek ma trzy pozycje, bo tyle miesci sie bez scinania podpisow.
-// Reszta ekranow wchodzi przez "Więcej".
+// Dolny pasek ma cztery pozycje: trzy stale i helpdesk, ktory pojawia sie
+// tylko kontu obslugujacemu zgloszenia. Reszta ekranow wchodzi przez "Więcej" -
+// wiecej podpisow nie miesci sie bez scinania.
 private enum class ModernTab(val label: String, val icon: ImageVector) {
     DASHBOARD("Pulpit", Icons.Outlined.Home),
     ASSETS("Maszyny", Icons.Outlined.Storage),
+    HELPDESK("Helpdesk", Icons.Outlined.SupportAgent),
     MORE("Więcej", Icons.Outlined.MoreHoriz),
 }
+
+/**
+ * Czynnosci helpdesku podane ekranom jednym pakietem.
+ *
+ * Zakladka ma ich kilkanascie i wypisanie kazdej osobnym parametrem zamienia
+ * naglowek ekranu glownego w liste, w ktorej nie widac juz reszty aplikacji.
+ */
+internal data class HelpdeskActions(
+    val onOpen: (String) -> Unit,
+    val onClose: () -> Unit,
+    val onSearch: (String, String) -> Unit,
+    val onMore: () -> Unit,
+    val onRefresh: () -> Unit,
+    val onCreate: (NewTicket, List<WybranyPlik>) -> Unit,
+    val onSend: (String, NewMessage, List<WybranyPlik>) -> Unit,
+    val onStatus: (String, String, String) -> Unit,
+    val onAssign: (String, String) -> Unit,
+    val onTime: (String, Int, String) -> Unit,
+    val onAsset: (String, String, String) -> Unit,
+    val onSearchAssets: (String, String) -> Unit,
+    val onOpenAttachment: (TicketAttachment) -> Unit,
+)
 
 private enum class ModernPage(val label: String, val icon: ImageVector) {
     PEOPLE("Słowniki", Icons.AutoMirrored.Outlined.MenuBook),
@@ -473,18 +503,47 @@ internal fun ModernMainScreen(
     onMoreAssets: () -> Unit,
     onChooseTenant: () -> Unit,
     onErrorShown: () -> Unit,
+    onNoticeShown: () -> Unit,
+    helpdesk: HelpdeskActions,
 ) {
     var tab by rememberSaveable { mutableStateOf(ModernTab.DASHBOARD) }
     var page by rememberSaveable { mutableStateOf<ModernPage?>(null) }
+    var helpdeskView by rememberSaveable { mutableStateOf(HelpdeskView.LIST) }
     var menuOpen by remember { mutableStateOf(false) }
     var alertsOpen by remember { mutableStateOf(false) }
     var focusSearch by remember { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
     val kolory = LocalCmdbColors.current
     val detail = state.selectedAsset
+    val zgloszenie = state.helpdesk.detail
+    // Zakladka helpdesku ma wlasna nawigacje w glab (lista -> karta -> rozmowa),
+    // wiec wstecz musi ja odwijac krok po kroku, a nie wychodzic z aplikacji.
+    val helpdeskWGlebi = tab == ModernTab.HELPDESK && helpdeskView != HelpdeskView.LIST
+    val cofnijHelpdesk = {
+        when (helpdeskView) {
+            HelpdeskView.THREAD -> helpdeskView = HelpdeskView.TICKET
+            HelpdeskView.TICKET -> { helpdeskView = HelpdeskView.LIST; helpdesk.onClose() }
+            else -> helpdeskView = HelpdeskView.LIST
+        }
+    }
     if (detail != null) BackHandler(enabled = !state.saving, onBack = onCloseAsset)
+    else if (helpdeskWGlebi) BackHandler(enabled = !state.saving) { cofnijHelpdesk() }
     else if (page != null) BackHandler(enabled = !state.saving) { page = null }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); onErrorShown() } }
+    LaunchedEffect(state.notice) { state.notice?.let { snackbar.showSnackbar(it); onNoticeShown() } }
+    // Konto moze stracic dostep do helpdesku miedzy odswiezeniami (odebrana
+    // firma). Zakladka znika z paska, wiec nie wolno na niej zostawic ekranu.
+    LaunchedEffect(state.helpdesk.available) {
+        if (!state.helpdesk.available && tab == ModernTab.HELPDESK) {
+            tab = ModernTab.DASHBOARD
+            helpdeskView = HelpdeskView.LIST
+        }
+    }
+    // Zalozone zgloszenie otwiera sie samo: technik wlasnie je opisal i chce
+    // zobaczyc numer, a nie wrocic na liste i go szukac.
+    LaunchedEffect(zgloszenie?.ticket?.id) {
+        if (zgloszenie != null && helpdeskView == HelpdeskView.NEW) helpdeskView = HelpdeskView.TICKET
+    }
 
     val przejdzDoMaszyn = { bezOpiekuna: Boolean ->
         page = null
@@ -498,7 +557,15 @@ internal fun ModernMainScreen(
             TopAppBar(
                 title = {
                     Text(
-                        detail?.asset?.hostname ?: page?.label ?: tab.label,
+                        detail?.asset?.hostname
+                            ?: page?.label
+                            ?: when {
+                                tab != ModernTab.HELPDESK -> tab.label
+                                helpdeskView == HelpdeskView.TICKET -> zgloszenie?.ticket?.number ?: "Zgłoszenie"
+                                helpdeskView == HelpdeskView.THREAD -> "Rozmowa"
+                                helpdeskView == HelpdeskView.NEW -> "Nowe zgłoszenie"
+                                else -> tab.label
+                            },
                         fontSize = 24.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -506,15 +573,21 @@ internal fun ModernMainScreen(
                     )
                 },
                 navigationIcon = {
-                    if (detail != null || page != null) IconButton(
+                    if (detail != null || page != null || helpdeskWGlebi) IconButton(
                         enabled = !state.saving,
-                        onClick = { if (detail != null) onCloseAsset() else page = null },
+                        onClick = {
+                            when {
+                                detail != null -> onCloseAsset()
+                                helpdeskWGlebi -> cofnijHelpdesk()
+                                else -> page = null
+                            }
+                        },
                     ) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Wstecz") }
                 },
                 actions = {
                     // Pasek ma akcje tylko dla zakladek. Karta maszyny i ekrany
                     // z "Więcej" maja strzalke wstecz i nic wiecej.
-                    val zakladka = if (detail != null || page != null) null else tab
+                    val zakladka = if (detail != null || page != null || helpdeskWGlebi) null else tab
                     when (zakladka) {
                         // Dzwonek zbiera to, co na pulpicie jest na czerwono i
                         // bursztynowo. Nie jest ozdoba: prowadzi do listy.
@@ -571,6 +644,10 @@ internal fun ModernMainScreen(
                                 }
                             }
                         }
+                        ModernTab.HELPDESK -> {
+                            IconButton(onClick = { focusSearch++ }) { Icon(Icons.Outlined.Search, "Szukaj") }
+                            IconButton(onClick = helpdesk.onRefresh) { Icon(Icons.Outlined.Refresh, "Odśwież") }
+                        }
                         ModernTab.MORE, null -> Unit
                     }
                 },
@@ -583,18 +660,44 @@ internal fun ModernMainScreen(
             )
         },
         bottomBar = {
-            if (detail == null) Column {
+            // Karta maszyny i wnetrze helpdesku (zgloszenie, rozmowa, formularz)
+            // zajmuja caly ekran - pasek wrocilby tam tylko po to, zeby zabrac
+            // miejsce polu wiadomosci.
+            if (detail == null && !helpdeskWGlebi) Column {
                 HorizontalDivider(color = LocalCmdbColors.current.cardBorder)
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
                 ) {
-                    ModernTab.entries.forEach { item ->
+                    val czeka = state.helpdesk.catalog?.waiting ?: state.helpdesk.counters.waiting
+                    ModernTab.entries.filter {
+                        // Zgloszenia sa osobnym uprawnieniem - konto bez dostepu
+                        // nie dostaje zakladki, ktora i tak odpowie odmowa.
+                        it != ModernTab.HELPDESK || state.helpdesk.available
+                    }.forEach { item ->
                         NavigationBarItem(
                             selected = tab == item && page == null,
                             enabled = !state.saving,
                             onClick = { tab = item; page = null },
-                            icon = { Icon(item.icon, item.label, Modifier.size(24.dp)) },
+                            icon = {
+                                Box {
+                                    Icon(item.icon, item.label, Modifier.size(24.dp))
+                                    if (item == ModernTab.HELPDESK && czeka > 0) Box(
+                                        Modifier.align(Alignment.TopEnd)
+                                            .offset(x = 9.dp, y = (-5).dp)
+                                            .clip(CircleShape)
+                                            .background(kolory.danger)
+                                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                                    ) {
+                                        Text(
+                                            if (czeka > 99) "99+" else "$czeka",
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                }
+                            },
                             label = { Text(item.label, fontSize = 11.sp, maxLines = 1) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -629,6 +732,44 @@ internal fun ModernMainScreen(
             null -> when (tab) {
                 ModernTab.DASHBOARD -> ModernDashboardScreen(state.dashboard, padding, onOpenAsset)
                 ModernTab.ASSETS -> ModernAssetList(state, padding, focusSearch, onOpenAsset, onSearchAssets, onMoreAssets)
+                ModernTab.HELPDESK -> when (helpdeskView) {
+                    HelpdeskView.LIST -> HelpdeskListScreen(
+                        state.helpdesk, padding, focusSearch,
+                        onOpen = { helpdeskView = HelpdeskView.TICKET; helpdesk.onOpen(it) },
+                        onSearch = helpdesk.onSearch,
+                        onMore = helpdesk.onMore,
+                        onNew = { helpdesk.onClose(); helpdeskView = HelpdeskView.NEW },
+                    )
+                    HelpdeskView.NEW -> HelpdeskNewTicketScreen(
+                        state.helpdesk.catalog, state.helpdesk.assetPicker, padding, state.saving,
+                        onSearchAssets = helpdesk.onSearchAssets,
+                        onCreate = helpdesk.onCreate,
+                    )
+                    HelpdeskView.TICKET, HelpdeskView.THREAD ->
+                        if (zgloszenie == null) ModernLoadingScreen()
+                        else if (helpdeskView == HelpdeskView.TICKET) HelpdeskTicketScreen(
+                            zgloszenie,
+                            state.helpdesk.catalog?.statuses.orEmpty(),
+                            state.helpdesk.assetPicker,
+                            padding, state.saving, state.mutationVersion,
+                            onThread = { helpdeskView = HelpdeskView.THREAD },
+                            onStatus = { status, podsumowanie ->
+                                helpdesk.onStatus(zgloszenie.ticket.id, status, podsumowanie)
+                            },
+                            onAssign = { helpdesk.onAssign(zgloszenie.ticket.id, it) },
+                            onTime = { minuty, opis -> helpdesk.onTime(zgloszenie.ticket.id, minuty, opis) },
+                            onAsset = { asset, akcja -> helpdesk.onAsset(zgloszenie.ticket.id, asset, akcja) },
+                            onSearchAssets = { helpdesk.onSearchAssets(zgloszenie.ticket.tenantId, it) },
+                            onOpenAttachment = helpdesk.onOpenAttachment,
+                        )
+                        else HelpdeskThreadScreen(
+                            zgloszenie, padding, state.saving, state.mutationVersion,
+                            onSend = { wiadomosc, pliki ->
+                                helpdesk.onSend(zgloszenie.ticket.id, wiadomosc, pliki)
+                            },
+                            onOpenAttachment = helpdesk.onOpenAttachment,
+                        )
+                }
                 ModernTab.MORE -> ModernMoreScreen(
                     state, theme, padding,
                     onOpenPage = { page = it },

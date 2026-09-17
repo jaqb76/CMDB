@@ -158,3 +158,156 @@ import kotlinx.serialization.Serializable
 )
 
 @Serializable data class ApiMessage(val detail: String)
+
+// --- helpdesk ---------------------------------------------------------------
+// Zgloszenia chodza po firmach, ktore obsluguje konto, a nie po firmie wybranej
+// w aplikacji - dlatego maja wlasny komplet modeli i wlasna nazwe firmy przy
+// kazdym zgloszeniu.
+
+@Serializable data class HelpdeskTenant(val id: String, val name: String)
+
+@Serializable data class HelpdeskTechnician(val id: String, val name: String, val email: String)
+
+@Serializable data class HelpdeskCatalog(
+    val available: Boolean = false,
+    val tenants: List<HelpdeskTenant> = emptyList(),
+    val technicians: List<HelpdeskTechnician> = emptyList(),
+    val statuses: List<ReportOption> = emptyList(),
+    val types: List<ReportOption> = emptyList(),
+    val sources: List<ReportOption> = emptyList(),
+    val mailbox: Boolean = false,
+    @SerialName("closing_email") val closingEmail: Boolean = false,
+    @SerialName("attachment_mb") val attachmentMb: Int = 0,
+    val waiting: Int = 0,
+)
+
+@Serializable data class TicketAsset(
+    val id: String,
+    val hostname: String,
+    val type: String? = null,
+    @SerialName("primary_ip") val primaryIp: String? = null,
+    @SerialName("tenant_id") val tenantId: String? = null,
+)
+
+@Serializable data class Ticket(
+    val id: String,
+    val number: String,
+    val subject: String,
+    val status: String,
+    @SerialName("status_label") val statusLabel: String,
+    val type: String? = null,
+    @SerialName("type_label") val typeLabel: String = "",
+    @SerialName("tenant_id") val tenantId: String,
+    val tenant: String = "",
+    @SerialName("requester_email") val requesterEmail: String,
+    @SerialName("requester_name") val requesterName: String? = null,
+    @SerialName("technician_id") val technicianId: String? = null,
+    val technician: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("last_activity") val lastActivity: String? = null,
+    @SerialName("closed_at") val closedAt: String? = null,
+    val waiting: Boolean = false,
+    @SerialName("waiting_since") val waitingSince: String? = null,
+    val assets: List<TicketAsset> = emptyList(),
+    val minutes: Int = 0,
+)
+
+@Serializable data class TicketCounters(
+    val open: Int = 0,
+    val mine: Int = 0,
+    val unassigned: Int = 0,
+    val closed: Int = 0,
+    val waiting: Int = 0,
+)
+
+@Serializable data class TicketPage(
+    val items: List<Ticket> = emptyList(),
+    val page: Int = 1,
+    @SerialName("page_size") val pageSize: Int = 30,
+    val total: Int = 0,
+    val counters: TicketCounters = TicketCounters(),
+)
+
+@Serializable data class TicketAttachment(
+    val id: String,
+    val name: String,
+    val mime: String? = null,
+    val size: Long = 0,
+    val image: Boolean = false,
+)
+
+@Serializable data class TicketEntry(
+    val id: String,
+    val kind: String,
+    val author: String,
+    @SerialName("author_email") val authorEmail: String? = null,
+    val mine: Boolean = false,
+    val content: String = "",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("sent_at") val sentAt: String? = null,
+    val error: String? = null,
+    val attachments: List<TicketAttachment> = emptyList(),
+)
+
+@Serializable data class TicketField(val label: String, val value: String)
+
+@Serializable data class TicketRequester(
+    val email: String,
+    val name: String? = null,
+    val known: Boolean = false,
+    val fields: List<TicketField> = emptyList(),
+)
+
+@Serializable data class TicketShare(val technician: String, val minutes: Int, val label: String)
+
+@Serializable data class TicketTime(
+    val total: Int = 0,
+    @SerialName("total_label") val totalLabel: String = "-",
+    val shares: List<TicketShare> = emptyList(),
+)
+
+@Serializable data class TicketDetail(
+    val ticket: Ticket,
+    val entries: List<TicketEntry> = emptyList(),
+    val requester: TicketRequester,
+    val candidates: List<TicketAsset> = emptyList(),
+    val technicians: List<HelpdeskTechnician> = emptyList(),
+    val time: TicketTime = TicketTime(),
+    @SerialName("closing_email") val closingEmail: Boolean = false,
+    val mailbox: Boolean = false,
+)
+
+@Serializable data class NewTicket(
+    @SerialName("tenant_id") val tenantId: String,
+    @SerialName("requester_email") val requesterEmail: String,
+    @SerialName("requester_name") val requesterName: String = "",
+    val subject: String,
+    val content: String,
+    val type: String = "",
+    val source: String = "telefon",
+    @SerialName("asset_id") val assetId: String = "",
+    @SerialName("assign_to_me") val assignToMe: Boolean = true,
+    @SerialName("notify_customer") val notifyCustomer: Boolean = true,
+)
+
+@Serializable data class NewMessage(
+    val content: String,
+    val kind: String,
+    @SerialName("keep_in_progress") val keepInProgress: Boolean = false,
+)
+
+@Serializable data class TicketStatusWrite(val status: String, val summary: String = "")
+@Serializable data class TicketTechnicianWrite(@SerialName("technician_id") val technicianId: String = "")
+@Serializable data class TicketTimeWrite(val minutes: Int, val description: String = "")
+@Serializable data class TicketAssetWrite(
+    @SerialName("asset_id") val assetId: String,
+    val action: String = "attach",
+)
+
+/** Odpowiedz na zapis w helpdesku: komunikat dla technika i skutek wysylki. */
+@Serializable data class TicketSaved(
+    val detail: String = "",
+    val sent: Boolean = false,
+    val id: String? = null,
+    val number: String? = null,
+)
