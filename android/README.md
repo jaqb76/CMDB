@@ -98,6 +98,37 @@ Kropka i kolor przy „Ostatni kontakt” mówią o świeżości danych (do godz
 do doby, powyżej doby). Kafelek „Bez kontaktu” liczy serwer według ustawień
 firmy — te dwie liczby nie muszą się zgadzać i nie są tym samym.
 
+## Wydanie 0.5.0 — helpdesk w telefonie
+
+Zakładka „Helpdesk” pokazuje zgłoszenia wszystkich firm, które obsługuje
+zalogowane konto — tak samo jak panel WWW i niezależnie od firmy wybranej
+w aplikacji. Konto bez dostępu do helpdesku nie widzi tej zakładki wcale.
+
+- Lista zgłoszeń z wyszukiwaniem po numerze, temacie i adresie, licznikami
+  „Otwarte / Moje / Czekają” oraz filtrami (otwarte, moje, czekające,
+  nieprzypisane, zamknięte). Znacznik na pasku liczy sprawy, w których
+  ostatnie słowo należy do klienta.
+- Karta zgłoszenia: status, rodzaj, powiązany sprzęt, kartoteka zgłaszającego,
+  przypisany technik, czas pracy i załączniki. Zmiana statusu, przypisanie,
+  dopisanie czasu i podpięcie sprzętu działają z telefonu.
+- Rozmowa: cały wątek w jednym miejscu — wiadomości klienta, odpowiedzi
+  i notatki wewnętrzne (oznaczone kłódką, nie wychodzą na zewnątrz).
+  Odpowiedź przestawia zgłoszenie na „Oczekuje”, chyba że technik to wyłączy.
+- Nowe zgłoszenie z telefonu: firma, zgłaszający, temat, rodzaj sprawy,
+  urządzenie, opis, zdjęcie z aparatu lub plik z dysku. Klient może dostać
+  numer mailem, jeżeli skrzynka helpdesku jest włączona.
+- Załączniki: pobranie i otwarcie w aplikacji telefonu, a doklejone do
+  odpowiedzi wychodzą razem z mailem do klienta.
+
+### Czego nie ma i dlaczego
+
+Projekt graficzny pokazuje priorytet zgłoszenia i licznik SLA. CMDB nie ma
+w modelu danych ani jednego, ani drugiego — zgłoszenie ma status, rodzaj
+i historię wiadomości. Zamiast priorytetu aplikacja pokazuje rodzaj sprawy
+(incydent, prośba, inne), a w miejscu licznika SLA to, co system naprawdę wie:
+od kiedy sprawa czeka na NASZĄ odpowiedź. Wymyślony licznik wyglądałby jak
+zobowiązanie, którego nikt nie podjął.
+
 ## Błąd 429 podczas logowania
 
 Po przekroczeniu limitu błędnych haseł portal blokuje konto i adres źródłowy.

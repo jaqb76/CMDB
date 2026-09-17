@@ -61,12 +61,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import pl.hubzso.cmdb.data.ApiFactory
 import pl.hubzso.cmdb.data.AssetDetail
 import pl.hubzso.cmdb.data.AssetPage
@@ -79,14 +86,31 @@ import pl.hubzso.cmdb.data.DictionaryCategory
 import pl.hubzso.cmdb.data.DictionaryEntry
 import pl.hubzso.cmdb.data.DictionarySchema
 import pl.hubzso.cmdb.data.DictionaryWrite
+import pl.hubzso.cmdb.data.HelpdeskCatalog
 import pl.hubzso.cmdb.data.LoginRequest
+import pl.hubzso.cmdb.data.NewMessage
+import pl.hubzso.cmdb.data.NewTicket
 import pl.hubzso.cmdb.data.ReportCatalog
 import pl.hubzso.cmdb.data.ReportDefinition
 import pl.hubzso.cmdb.data.ReportWrite
 import pl.hubzso.cmdb.data.SessionStore
 import pl.hubzso.cmdb.data.Tenant
+import pl.hubzso.cmdb.data.Ticket
+import pl.hubzso.cmdb.data.TicketAsset
+import pl.hubzso.cmdb.data.TicketAssetWrite
+import pl.hubzso.cmdb.data.TicketAttachment
+import pl.hubzso.cmdb.data.TicketCounters
+import pl.hubzso.cmdb.data.TicketDetail
+import pl.hubzso.cmdb.data.TicketSaved
+import pl.hubzso.cmdb.data.TicketStatusWrite
+import pl.hubzso.cmdb.data.TicketTechnicianWrite
+import pl.hubzso.cmdb.data.TicketTimeWrite
 import pl.hubzso.cmdb.data.User
+import pl.hubzso.cmdb.data.WybranyPlik
+import pl.hubzso.cmdb.data.czescPliku
+import pl.hubzso.cmdb.data.otworzPlik
 import pl.hubzso.cmdb.data.userMessage
+import pl.hubzso.cmdb.data.zapiszZalacznik
 
 private enum class Section(val label: String, val icon: ImageVector) {
     DASHBOARD("Pulpit", Icons.Outlined.Dashboard),
@@ -122,7 +146,31 @@ data class AppState(
     val changes: List<ChangeEntry> = emptyList(),
     val reports: List<ReportDefinition> = emptyList(),
     val reportCatalog: ReportCatalog? = null,
+    val helpdesk: HelpdeskState = HelpdeskState(),
     val error: String? = null,
+    // Komunikat z serwera po udanym zapisie ("Odpowiedź poszła do ..."). Nie
+    // jest bledem, ale technik musi go zobaczyc - zwlaszcza wtedy, gdy mowi,
+    // ze mail NIE wyszedl mimo zapisanej odpowiedzi.
+    val notice: String? = null,
+)
+
+/**
+ * Helpdesk chodzi po firmach, ktore obsluguje konto - nie po firmie wybranej
+ * w aplikacji. Dlatego ma wlasny kawalek stanu i wlasne odswiezanie: zmiana
+ * firmy w reszcie aplikacji nie zmienia tu niczego.
+ */
+data class HelpdeskState(
+    val available: Boolean = false,
+    val catalog: HelpdeskCatalog? = null,
+    val tickets: List<Ticket> = emptyList(),
+    val counters: TicketCounters = TicketCounters(),
+    val total: Int = 0,
+    val page: Int = 1,
+    val loading: Boolean = false,
+    val query: String = "",
+    val scope: String = "open",
+    val detail: TicketDetail? = null,
+    val assetPicker: List<TicketAsset> = emptyList(),
 )
 
 private data class RefreshPayload(
@@ -287,6 +335,10 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
                 reportCatalog = result.reportCatalog,
             )
         }.onFailure { _state.value = _state.value.copy(loading = false, error = it.userMessage()) }
+        // Zgloszenia sa osobnym zakresem danych i osobnym uprawnieniem, wiec
+        // ida osobnym torem: konto bez helpdesku ma zobaczyc pulpit, a nie
+        // blad dostepu do cudzej zakladki.
+        odswiezHelpdesk()
     }
 
     private fun mutate(block: suspend (CmdbApi) -> Unit) = viewModelScope.launch {
@@ -354,7 +406,176 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
         _state.value = _state.value.copy(selectedAsset = detail)
     } }
 
+    // --- helpdesk -----------------------------------------------------------
+
+    private var ticketSearch: Job? = null
+    private val helpdeskJson = Json { encodeDefaults = true; explicitNulls = false }
+
+    private fun helpdesk() = _state.value.helpdesk
+
+    private fun ustawHelpdesk(zmiana: HelpdeskState.() -> HelpdeskState) {
+        _state.value = _state.value.copy(helpdesk = _state.value.helpdesk.zmiana())
+    }
+
+    private suspend fun odswiezHelpdesk() {
+        val service = api ?: return
+        // Katalog odpowiada 200 takze kontu bez helpdesku (available = false),
+        // wiec jego blad znaczy naprawde blad - i tylko wtedy go pokazujemy.
+        val katalog = runCatching { service.helpdeskCatalog() }.getOrNull() ?: return
+        ustawHelpdesk { copy(available = katalog.available, catalog = katalog) }
+        if (katalog.available) pobierzZgloszenia(1)
+    }
+
+    private suspend fun pobierzZgloszenia(page: Int) {
+        val service = api ?: return
+        if (!helpdesk().available) return
+        val filtry = helpdesk().query to helpdesk().scope
+        ustawHelpdesk { copy(loading = true) }
+        runCatching { service.tickets(query = filtry.first, scope = filtry.second, page = page) }
+            .onSuccess { wynik ->
+                // Odpowiedz na nieaktualny filtr nie ma prawa podmienic listy,
+                // ktora widzi technik - przy pisaniu w polu szukania zapytania
+                // wracaja nie po kolei.
+                if (filtry != (helpdesk().query to helpdesk().scope)) return@onSuccess
+                ustawHelpdesk {
+                    copy(
+                        loading = false, page = page, total = wynik.total,
+                        counters = wynik.counters,
+                        tickets = if (page == 1) wynik.items
+                        else (tickets + wynik.items).distinctBy { it.id },
+                    )
+                }
+            }
+            .onFailure {
+                ustawHelpdesk { copy(loading = false) }
+                _state.value = _state.value.copy(error = it.userMessage())
+            }
+    }
+
+    fun refreshHelpdesk() = viewModelScope.launch { odswiezHelpdesk() }
+
+    fun searchTickets(query: String, scope: String) {
+        ticketSearch?.cancel()
+        ustawHelpdesk { copy(query = query, scope = scope, tickets = emptyList(), total = 0, loading = true) }
+        ticketSearch = viewModelScope.launch { delay(300); pobierzZgloszenia(1) }
+    }
+
+    fun moreTickets() {
+        if (helpdesk().loading) return
+        ticketSearch = viewModelScope.launch { pobierzZgloszenia(helpdesk().page + 1) }
+    }
+
+    fun openTicket(id: String) = viewModelScope.launch {
+        val service = api ?: return@launch
+        ustawHelpdesk { copy(loading = true) }
+        runCatching { service.ticket(id) }
+            .onSuccess { ustawHelpdesk { copy(loading = false, detail = it, assetPicker = emptyList()) } }
+            .onFailure {
+                ustawHelpdesk { copy(loading = false) }
+                _state.value = _state.value.copy(error = it.userMessage())
+            }
+    }
+
+    fun closeTicket() { ustawHelpdesk { copy(detail = null, assetPicker = emptyList()) } }
+
+    /**
+     * Wspolna droga kazdego zapisu w helpdesku.
+     *
+     * Po udanym zapisie odswiezamy TYLKO helpdesk, a nie caly komplet danych
+     * aplikacji: odpowiedz w watku nie jest powodem, zeby telefon pobieral od
+     * nowa slowniki i raporty.
+     */
+    private fun zapiszHelpdesk(
+        ticketId: String?, block: suspend (CmdbApi) -> TicketSaved,
+    ) = viewModelScope.launch {
+        val service = api ?: return@launch
+        if (_state.value.saving) return@launch
+        _state.value = _state.value.copy(saving = true, error = null, notice = null)
+        try {
+            val wynik = block(service)
+            _state.value = _state.value.copy(
+                saving = false,
+                mutationVersion = _state.value.mutationVersion + 1,
+                notice = wynik.detail.ifBlank { null },
+            )
+            (ticketId ?: wynik.id)?.let { openTicket(it).join() }
+            odswiezHelpdesk()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            _state.value = _state.value.copy(saving = false, error = error.userMessage())
+        }
+    }
+
+    private fun czesciPlikow(pliki: List<WybranyPlik>): List<MultipartBody.Part> {
+        val context = getApplication<Application>()
+        return pliki.mapNotNull { context.czescPliku(it) }
+    }
+
+    private fun czescDanych(tekst: String): RequestBody =
+        tekst.toRequestBody("application/json".toMediaType())
+
+    fun createTicket(body: NewTicket, pliki: List<WybranyPlik>) = zapiszHelpdesk(null) { service ->
+        val dane = czescDanych(helpdeskJson.encodeToString(NewTicket.serializer(), body))
+        withContext(Dispatchers.IO) { service.createTicket(dane, czesciPlikow(pliki)) }
+    }
+
+    fun sendTicketMessage(id: String, body: NewMessage, pliki: List<WybranyPlik>) =
+        zapiszHelpdesk(id) { service ->
+            val dane = czescDanych(helpdeskJson.encodeToString(NewMessage.serializer(), body))
+            withContext(Dispatchers.IO) { service.addTicketMessage(id, dane, czesciPlikow(pliki)) }
+        }
+
+    fun setTicketStatus(id: String, status: String, summary: String) = zapiszHelpdesk(id) {
+        it.setTicketStatus(id, TicketStatusWrite(status, summary))
+    }
+
+    fun assignTicket(id: String, technicianId: String) = zapiszHelpdesk(id) {
+        it.setTicketTechnician(id, TicketTechnicianWrite(technicianId))
+    }
+
+    fun addTicketTime(id: String, minutes: Int, description: String) = zapiszHelpdesk(id) {
+        it.addTicketTime(id, TicketTimeWrite(minutes, description))
+    }
+
+    fun changeTicketAsset(id: String, assetId: String, action: String) = zapiszHelpdesk(id) {
+        it.changeTicketAsset(id, TicketAssetWrite(assetId, action))
+    }
+
+    fun searchHelpdeskAssets(tenantId: String, query: String) = viewModelScope.launch {
+        val service = api ?: return@launch
+        runCatching { service.helpdeskAssets(tenant = tenantId, query = query) }
+            .onSuccess { ustawHelpdesk { copy(assetPicker = it) } }
+            .onFailure { _state.value = _state.value.copy(error = it.userMessage()) }
+    }
+
+    /**
+     * Pobiera zalacznik i oddaje go aplikacji, ktora umie go otworzyc.
+     *
+     * Plik idzie przez API z tokenem sesji, wiec nie da sie go otworzyc samym
+     * adresem w przegladarce - telefon musi go najpierw pobrac do katalogu
+     * podrecznego.
+     */
+    fun openAttachment(attachment: TicketAttachment) = viewModelScope.launch {
+        val service = api ?: return@launch
+        val context = getApplication<Application>()
+        runCatching {
+            withContext(Dispatchers.IO) {
+                val dane = service.attachment(attachment.id).use { it.bytes() }
+                context.zapiszZalacznik(attachment.id, attachment.name, dane)
+            }
+        }.onSuccess { adres ->
+            if (!context.otworzPlik(adres, attachment.mime)) {
+                _state.value = _state.value.copy(
+                    error = "Telefon nie ma czym otworzyć pliku ${attachment.name}.",
+                )
+            }
+        }.onFailure { _state.value = _state.value.copy(error = it.userMessage()) }
+    }
+
     fun clearError() { _state.value = _state.value.copy(error = null) }
+
+    fun clearNotice() { _state.value = _state.value.copy(notice = null) }
 }
 
 @Composable
@@ -379,7 +600,23 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
             }, theme,
                 vm::sendReport, vm::saveReport, vm::deleteReport,
                 vm::openAsset, vm::closeAsset, vm::saveDictionary, vm::deleteDictionary,
-                vm::updateAssignment, vm::searchAssets, vm::moreAssets, vm::chooseTenant, vm::clearError)
+                vm::updateAssignment, vm::searchAssets, vm::moreAssets, vm::chooseTenant,
+                vm::clearError, vm::clearNotice,
+                HelpdeskActions(
+                    onOpen = vm::openTicket,
+                    onClose = vm::closeTicket,
+                    onSearch = vm::searchTickets,
+                    onMore = vm::moreTickets,
+                    onRefresh = vm::refreshHelpdesk,
+                    onCreate = vm::createTicket,
+                    onSend = vm::sendTicketMessage,
+                    onStatus = vm::setTicketStatus,
+                    onAssign = vm::assignTicket,
+                    onTime = vm::addTicketTime,
+                    onAsset = vm::changeTicketAsset,
+                    onSearchAssets = vm::searchHelpdeskAssets,
+                    onOpenAttachment = vm::openAttachment,
+                ))
         }
     }
 }

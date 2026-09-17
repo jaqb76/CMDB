@@ -3,17 +3,23 @@ package pl.hubzso.cmdb.data
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 import java.util.concurrent.TimeUnit
 
 interface CmdbApi {
@@ -68,6 +74,60 @@ interface CmdbApi {
     @PUT("api/v1/mobile/reports/{id}") suspend fun updateReport(@Path("id") id: String, @Body body: ReportWrite): ReportDefinition
     @POST("api/v1/mobile/reports/{id}/send") suspend fun sendReport(@Path("id") id: String): ApiMessage
     @DELETE("api/v1/mobile/reports/{id}") suspend fun deleteReport(@Path("id") id: String)
+
+    // --- helpdesk ---
+    // Pola formularza jada jednym kawalkiem JSON ("dane"), a pliki osobnymi.
+    // Rozpisanie kazdego pola na wlasny kawalek formularza rozjezdzaloby sie
+    // z modelem przy pierwszej zmianie po stronie serwera.
+
+    @GET("api/v1/mobile/helpdesk/catalog") suspend fun helpdeskCatalog(): HelpdeskCatalog
+
+    @GET("api/v1/mobile/helpdesk/tickets")
+    suspend fun tickets(
+        @Query("q") query: String = "",
+        @Query("scope") scope: String = "open",
+        @Query("page") page: Int = 1,
+    ): TicketPage
+
+    @GET("api/v1/mobile/helpdesk/tickets/{id}")
+    suspend fun ticket(@Path("id") id: String): TicketDetail
+
+    @GET("api/v1/mobile/helpdesk/assets")
+    suspend fun helpdeskAssets(
+        @Query("tenant") tenant: String = "",
+        @Query("q") query: String = "",
+    ): List<TicketAsset>
+
+    @Multipart
+    @POST("api/v1/mobile/helpdesk/tickets")
+    suspend fun createTicket(
+        @Part("dane") dane: RequestBody,
+        @Part files: List<MultipartBody.Part>,
+    ): TicketSaved
+
+    @Multipart
+    @POST("api/v1/mobile/helpdesk/tickets/{id}/messages")
+    suspend fun addTicketMessage(
+        @Path("id") id: String,
+        @Part("dane") dane: RequestBody,
+        @Part files: List<MultipartBody.Part>,
+    ): TicketSaved
+
+    @POST("api/v1/mobile/helpdesk/tickets/{id}/status")
+    suspend fun setTicketStatus(@Path("id") id: String, @Body body: TicketStatusWrite): TicketSaved
+
+    @POST("api/v1/mobile/helpdesk/tickets/{id}/technician")
+    suspend fun setTicketTechnician(@Path("id") id: String, @Body body: TicketTechnicianWrite): TicketSaved
+
+    @POST("api/v1/mobile/helpdesk/tickets/{id}/time")
+    suspend fun addTicketTime(@Path("id") id: String, @Body body: TicketTimeWrite): TicketSaved
+
+    @POST("api/v1/mobile/helpdesk/tickets/{id}/assets")
+    suspend fun changeTicketAsset(@Path("id") id: String, @Body body: TicketAssetWrite): TicketSaved
+
+    @Streaming
+    @GET("api/v1/mobile/helpdesk/attachments/{id}")
+    suspend fun attachment(@Path("id") id: String): ResponseBody
 }
 
 class ApiFactory(private val session: SessionStore) {

@@ -25,6 +25,7 @@ from ..models import (
     HelpdeskUstawienia,
     PortalUser,
     WpisZgloszenia,
+    ZalacznikWpisu,
     Zgloszenie,
     utcnow,
 )
@@ -131,6 +132,42 @@ def _wyslij(konfiguracja: HelpdeskUstawienia, wiadomosc: EmailMessage) -> None:
         raise BladWysylki(f"{type(blad).__name__}: {blad}") from blad
 
 
+def _dolacz_pliki(db: Session, wpis: WpisZgloszenia, wiadomosc: EmailMessage) -> None:
+    """Dokleja do maila pliki zapisane przy tym wpisie.
+
+    Zalacznik odpowiedzi ma wyjsc razem z nia - inaczej technik wysylalby
+    "w zalaczeniu instrukcja" bez instrukcji, a w watku wygladaloby to na
+    wyslane. Bledu odczytu nie przemilczamy: przerywamy PRZED polaczeniem,
+    wiec wpis zostaje w watku z opisem bledu i da sie go powtorzyc.
+
+    Import modulu poczty jest tutaj, a nie na gorze pliku, bo tamten modul
+    importuje ten - a katalog zalacznikow potrzebny jest tylko w tym miejscu.
+    """
+    from . import helpdesk_poczta as poczta
+
+    zalaczniki = list(db.execute(
+        select(ZalacznikWpisu)
+        .where(ZalacznikWpisu.wpis_id == wpis.id)
+        .order_by(ZalacznikWpisu.utworzono)
+    ).scalars())
+    for zalacznik in zalaczniki:
+        sciezka = poczta.katalog_zalacznikow() / zalacznik.sciezka
+        try:
+            dane = sciezka.read_bytes()
+        except OSError as blad:
+            raise BladWysylki(
+                f"nie moge odczytac zalacznika {zalacznik.nazwa}: {blad}"
+            ) from blad
+        typ = (zalacznik.typ_mime or "application/octet-stream").split(";")[0].strip()
+        glowny, _, podtyp = typ.partition("/")
+        wiadomosc.add_attachment(
+            dane,
+            maintype=glowny or "application",
+            subtype=podtyp or "octet-stream",
+            filename=zalacznik.nazwa,
+        )
+
+
 def wyslij_wpis(db: Session, zgloszenie: Zgloszenie, wpis: WpisZgloszenia) -> None:
     """Wysyla wpis rodzaju "do klienta" i odnotowuje wynik przy nim.
 
@@ -162,6 +199,13 @@ def wyslij_wpis(db: Session, zgloszenie: Zgloszenie, wpis: WpisZgloszenia) -> No
         wiadomosc["In-Reply-To"] = ostatnia.message_id
         wiadomosc["References"] = ostatnia.message_id
     wiadomosc.set_content(_stopka(konfiguracja, wpis.tresc))
+    try:
+        _dolacz_pliki(db, wpis, wiadomosc)
+    except BladWysylki as blad:
+        # Nieczytelny plik nie jest awaria skrzynki, wiec nie dotykamy jej
+        # stanu - blad zostaje przy wpisie, ktory z tego powodu nie wyszedl.
+        wpis.blad_wysylki = str(blad)
+        raise
 
     try:
         _wyslij(konfiguracja, wiadomosc)

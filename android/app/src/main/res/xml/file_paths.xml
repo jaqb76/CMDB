@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Katalogi, ktore aplikacja udostepnia innym programom przez FileProvider.
+  Sa to WYLACZNIE dwa katalogi podreczne: zdjecie robione do zgloszenia
+  i pobrany zalacznik otwierany w przegladarce obrazow. Caly katalog danych
+  aplikacji (z tokenem sesji) nie jest tu wymieniony i wymieniony byc nie moze.
+-->
+<paths>
+    <cache-path name="zdjecia" path="zdjecia/" />
+    <cache-path name="zalaczniki" path="zalaczniki/" />
+</paths>
