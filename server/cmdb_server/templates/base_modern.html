@@ -96,6 +96,21 @@
         <div><span class="topbar-scope">Portal firmowy</span>{% if ctx %}<strong>{{ ctx.tenant_slug }}</strong>{% endif %}</div>
       </div>
       <div class="userbox">
+        {% if helpdesk_widoczny %}
+        {#
+          Ile spraw czeka na NASZA odpowiedz. Licznik kasuje wylacznie
+          wiadomosc wyslana do klienta - obejrzenie zgloszenia nie, bo od
+          samego patrzenia nikomu nie odpisano. Skrypt odswieza go w tle,
+          patrz app.js.
+        #}
+        <a class="czeka-znacznik{{ ' czeka-sa' if czeka_w_helpdesku }}"
+           href="/helpdesk" data-czeka
+           title="Zgłoszenia czekające na odpowiedź">
+          <span class="czeka-ikona" aria-hidden="true">✉</span>
+          <span class="czeka-liczba" data-czeka-liczba>{{ czeka_w_helpdesku or '' }}</span>
+          <span class="czeka-napis" data-czeka-napis>{{ 'Czeka na odpowiedź' if czeka_w_helpdesku else 'Wszystko odpisane' }}</span>
+        </a>
+        {% endif %}
         <button type="button" class="motyw" data-motyw title="Motyw: automatyczny / jasny / ciemny">
           <span class="motyw-ikona motyw-auto">auto</span><span class="motyw-ikona motyw-jasny">jasny</span><span class="motyw-ikona motyw-ciemny">ciemny</span>
         </button>

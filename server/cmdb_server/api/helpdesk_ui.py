@@ -17,7 +17,13 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -184,6 +190,7 @@ def lista_zgloszen(
         kolumny={klucz: wartosc[:NA_KOLUMNE] for klucz, wartosc in kolumny.items()},
         ukryte={klucz: max(0, len(wartosc) - NA_KOLUMNE) for klucz, wartosc in kolumny.items()},
         czasy=czasy, statusy=STATUSY_ZGLOSZENIA,
+        czekaja=helpdesk.czekaja_na_odpowiedz(db, firmy_widoku),
         nazwy_firm=_nazwy_firm(db, firmy), firmy=firmy,
         technicy=_technicy(db, firmy),
         widok=("lista" if widok == "lista" else "tablica"),
@@ -195,6 +202,22 @@ def lista_zgloszen(
             .where(NierozpoznanaWiadomosc.stan == NIEROZPOZNANA_CZEKA)
         ).scalar_one() if helpdesk.prowadzi_helpdesk(user) else 0,
     )
+
+
+@router.get("/helpdesk/licznik")
+def licznik_czekajacych(
+    user: PortalUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Sama liczba spraw czekajacych na odpowiedz - do odswiezania belki.
+
+    Wiadomosc od klienta nie przychodzi wtedy, gdy technik patrzy na liste,
+    wiec znacznik musi umiec sie zmienic bez przeladowania strony. Ta trasa
+    NICZEGO nie oznacza jako zalatwione: gdyby samo odpytywanie kasowalo
+    licznik, kasowalby sie sam w tle, bez udzialu czlowieka.
+    """
+    firmy = helpdesk.firmy_technika(db, user)
+    return JSONResponse({"czeka": helpdesk.ile_czeka(db, firmy)})
 
 
 # --- zgloszenie zakladane recznie -------------------------------------------

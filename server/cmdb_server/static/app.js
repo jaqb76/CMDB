@@ -657,4 +657,54 @@
     wybor.addEventListener("change", rysuj);
     rysuj();
   });
+
+  // --- znacznik "czeka na odpowiedz" ---------------------------------------
+  // Panel jest skladany na serwerze, wiec bez tego licznik zmienialby sie
+  // dopiero przy przejsciu na inna strone - a technik siedzi na jednym
+  // ekranie dlugimi kwadransami i to wlasnie wtedy przychodzi poczta.
+  //
+  // Odpytywanie NICZEGO nie oznacza jako zalatwione. Licznik kasuje wylacznie
+  // odpowiedz wyslana do klienta, wiec moze tu spokojnie chodzic w kolko.
+  document.querySelectorAll("[data-czeka]").forEach(function (znacznik) {
+    var liczba = znacznik.querySelector("[data-czeka-liczba]");
+    var napis = znacznik.querySelector("[data-czeka-napis]");
+    if (!liczba || !napis) { return; }
+
+    var CO_ILE = 60000;
+    var bledy = 0;
+
+    function pokaz(ile) {
+      znacznik.classList.toggle("czeka-sa", ile > 0);
+      liczba.textContent = ile > 0 ? String(ile) : "";
+      napis.textContent = ile > 0 ? "Czeka na odpowiedź" : "Wszystko odpisane";
+    }
+
+    function sprawdz() {
+      fetch("/helpdesk/licznik", { headers: { "Accept": "application/json" } })
+        .then(function (odp) {
+          if (!odp.ok) { throw new Error(odp.status); }
+          return odp.json();
+        })
+        .then(function (dane) {
+          bledy = 0;
+          pokaz(Number(dane.czeka) || 0);
+        })
+        .catch(function () {
+          // Zerwana siec albo wygasla sesja. Zostawiamy ostatnia znana liczbe
+          // - wyzerowanie jej wygladaloby jak "wszystko odpisane" i bylo by
+          // po prostu nieprawda. Po kilku probach przestajemy pytac, zeby nie
+          // dobijac serwera, ktory i tak nie odpowiada.
+          bledy += 1;
+          if (bledy >= 5) { clearInterval(zegar); }
+        });
+    }
+
+    var zegar = setInterval(sprawdz, CO_ILE);
+
+    // Powrot do karty po dluzszej przerwie: sprawdzamy od razu, zamiast czekac
+    // do konca biezacego odstepu.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) { sprawdz(); }
+    });
+  });
 })();

@@ -1089,3 +1089,40 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 .pasek-czerwony { background: #a52222; }
 .pasek-fiolet { background: #6d28d9; }
 .pasek-zielony { background: #1c6b34; }
+
+/* --- czeka na nasza odpowiedz -------------------------------------------- */
+/* Znacznik na belce jest widoczny ZAWSZE, takze gdy nie ma na co odpowiadac.
+   Element, ktory znika, nie daje pewnosci - nie wiadomo, czy nic nie czeka,
+   czy cos sie zepsulo. Rozni je barwa i napis, a nie obecnosc. */
+.czeka-znacznik {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--muted); font-size: 12.5px; text-decoration: none; white-space: nowrap;
+}
+.czeka-znacznik:hover { border-color: var(--accent); text-decoration: none; }
+.czeka-ikona { font-size: 14px; }
+.czeka-liczba { display: none; }
+
+.czeka-sa {
+  background: var(--accent); border-color: transparent;
+  color: var(--accent-contrast); font-weight: 600;
+}
+.czeka-sa .czeka-liczba {
+  display: inline-grid; place-content: center; min-width: 19px; height: 19px;
+  padding: 0 5px; border-radius: 999px;
+  background: var(--accent-contrast); color: var(--accent);
+  font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+/* Na waskim ekranie zostaje sama ikona z liczba - napis zabiralby cala belke. */
+@media (max-width: 860px) { .czeka-napis { display: none; } }
+
+/* Oznaczenie zgloszenia, w ktorym ostatnie slowo nalezy do klienta. */
+.znacznik-czeka {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  background: var(--accent); color: var(--accent-contrast);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  vertical-align: 1px;
+}
+.hd-karta-czeka { box-shadow: 0 0 0 2px var(--accent); }
+.wiersz-czeka > td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
