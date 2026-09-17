@@ -189,6 +189,115 @@ def raport_technika(
     )
 
 
+@dataclass
+class WierszPodsumowania:
+    """Jeden technik w podsumowaniu miesiaca: suma i rozbicie na firmy."""
+
+    technik_id: str
+    nazwa: str
+    minuty: int
+    firmy: list[tuple[str, int]]
+
+
+@dataclass
+class Podsumowanie:
+    """Caly miesiac na jednym ekranie: technicy w wierszach, firmy w kolumnach."""
+
+    okres: str
+    nazwy_firm: list[tuple[str, str]]
+    technicy: list[WierszPodsumowania]
+    sumy_firm: dict[str, int]
+    suma: int
+
+
+def podsumowanie(
+    db: Session, okres: str | None = None, firmy: list[str] | None = None,
+    technicy: list[str] | None = None,
+) -> Podsumowanie:
+    """Czas wszystkich technikow za miesiac, bez klikania po jednym.
+
+    Dotychczas odpowiedz na "ile kto zrobil w tym miesiacu" wymagala otwarcia
+    raportu osobno dla kazdego technika i zsumowania w glowie. Tu wszystko
+    jest w jednej tabeli: wiersz to technik, kolumna to firma, a ostatnia
+    kolumna - jego suma miesiaca.
+
+    ``firmy`` i ``technicy`` zawezaja zestawienie; sluzy to izolacji - technik
+    oglada wlasny wiersz i tylko firmy, ktore obsluguje.
+    """
+    od, do, opis = miesiac(okres)
+
+    warunki = [CzasPracy.utworzono >= od, CzasPracy.utworzono < do]
+    if firmy is not None:
+        warunki.append(CzasPracy.tenant_id.in_(firmy or ["-"]))
+    if technicy is not None:
+        warunki.append(CzasPracy.technik_id.in_(technicy or ["-"]))
+
+    wiersze = db.execute(
+        select(
+            CzasPracy.technik_id,
+            func.coalesce(PortalUser.full_name, PortalUser.email),
+            CzasPracy.tenant_id,
+            func.sum(CzasPracy.minuty),
+        )
+        .join(PortalUser, PortalUser.id == CzasPracy.technik_id)
+        .where(*warunki)
+        .group_by(CzasPracy.technik_id, PortalUser.full_name, PortalUser.email,
+                  CzasPracy.tenant_id)
+    ).all()
+
+    nazwy = dict(db.execute(select(Tenant.id, Tenant.name)).all())
+    zebrane: dict[str, WierszPodsumowania] = {}
+    sumy_firm: dict[str, int] = {}
+    uzyte_firmy: set[str] = set()
+
+    for technik_id, nazwa, tenant_id, minuty in wiersze:
+        minuty = int(minuty)
+        wiersz = zebrane.setdefault(
+            technik_id, WierszPodsumowania(technik_id, nazwa, 0, [])
+        )
+        wiersz.minuty += minuty
+        wiersz.firmy.append((tenant_id, minuty))
+        sumy_firm[tenant_id] = sumy_firm.get(tenant_id, 0) + minuty
+        uzyte_firmy.add(tenant_id)
+
+    # Firmy w kolumnach tylko te, w ktorych ktos w tym miesiacu pracowal -
+    # pusta kolumna niczego nie mowi, a rozpycha tabele.
+    kolumny = sorted(
+        ((identyfikator, nazwy.get(identyfikator, identyfikator))
+         for identyfikator in uzyte_firmy),
+        key=lambda para: para[1].lower(),
+    )
+    lista = sorted(zebrane.values(), key=lambda w: (-w.minuty, w.nazwa.lower()))
+    return Podsumowanie(
+        okres=opis,
+        nazwy_firm=kolumny,
+        technicy=lista,
+        sumy_firm=sumy_firm,
+        suma=sum(w.minuty for w in lista),
+    )
+
+
+def podsumowanie_do_raportu(dane: Podsumowanie) -> Raport:
+    """Podsumowanie w postaci, ktora rozumie eksport CSV/XLSX."""
+    grupy = [
+        Grupa(
+            id=wiersz.technik_id, nazwa=wiersz.nazwa, minuty=wiersz.minuty,
+            zgloszenia=[
+                PozycjaZgloszenia(
+                    numer="", temat=dict(dane.nazwy_firm).get(tenant_id, tenant_id),
+                    status="", minuty=minuty,
+                )
+                for tenant_id, minuty in sorted(wiersz.firmy, key=lambda para: -para[1])
+            ],
+        )
+        for wiersz in dane.technicy
+    ]
+    return Raport(
+        tytul="Czas techników", podtytul=dane.okres,
+        suma=dane.suma, grupy=grupy,
+    )
+
+
 # --- eksport ----------------------------------------------------------------
 
 NAGLOWKI = ("Grupa", "Zgłoszenie", "Temat", "Status", "Minuty", "Czas")

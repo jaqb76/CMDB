@@ -819,6 +819,13 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   color: var(--accent); border-color: transparent;
 }
 
+/* Zrzut ekranu w watku. Ograniczony, zeby jeden obrazek nie zepchnal reszty
+   rozmowy pod ekran - pelny rozmiar jest pod klknieciem. */
+.hd-podglad {
+  display: block; margin: 8px 0; max-width: 100%; max-height: 320px;
+  width: auto; border: 1px solid var(--border); border-radius: 6px;
+}
+
 /* --- helpdesk: tablica zgloszen ------------------------------------------ */
 /* Kolumny statusow czyta sie wzrokiem z gory na dol, wiec karta ma byc niska
    i miec zawsze te same trzy wiersze: numer, temat, kto i kiedy. */

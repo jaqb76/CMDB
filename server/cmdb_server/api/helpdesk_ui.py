@@ -13,6 +13,7 @@ czytajacej zgloszenie po samym identyfikatorze.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
@@ -34,6 +35,7 @@ from ..models import (
     TYPY_ZGLOSZENIA,
     WPIS_DO_KLIENTA,
     WPIS_WEWNETRZNY,
+    ZRODLA_RECZNE,
     Asset,
     CzasPracy,
     HelpdeskDostep,
@@ -48,9 +50,11 @@ from ..models import (
     Zgloszenie,
     utcnow,
 )
-from ..services import helpdesk, helpdesk_imap, helpdesk_raporty, helpdesk_wysylka, sekrety
+from ..services import (
+    helpdesk, helpdesk_imap, helpdesk_raporty, helpdesk_wysylka, sekrety, slowniki,
+)
 from ..services import helpdesk_poczta as poczta
-from ..services.auth import client_ip, require_user, verify_csrf
+from ..services.auth import client_ip, require_user, tenant_context_for, verify_csrf
 from ..services.scoping import TenantContext, audit
 from .ui import render, resolve_tenant
 
@@ -193,6 +197,132 @@ def lista_zgloszen(
     )
 
 
+# --- zgloszenie zakladane recznie -------------------------------------------
+
+def _formularz_nowego(
+    request: Request, user: PortalUser, ctx: TenantContext, db: Session,
+    dane: dict, blad: str = "",
+) -> Response:
+    """Formularz zakladania - ten sam przy wejsciu i po odrzuceniu danych.
+
+    Po bledzie wracaja WPISANE wartosci, a nie puste pola: technik ma tu caly
+    opis rozmowy, ktora wlasnie skonczyl, i literowka w adresie nie moze go
+    skasowac.
+    """
+    firmy = _firmy(db, user)
+    wybrana = dane.get("tenant_id", "")
+    return render(
+        request, "helpdesk_nowe.html", user, ctx, db,
+        nazwy_firm=_nazwy_firm(db, firmy),
+        dane=dane,
+        wybrana_firma=wybrana if wybrana in firmy else (firmy[0] if len(firmy) == 1 else ""),
+        typy=TYPY_ZGLOSZENIA, zrodla=ZRODLA_RECZNE,
+        skrzynka=helpdesk_wysylka.ustawienia(db),
+        blad=blad,
+    )
+
+
+@router.get("/helpdesk/nowe", response_class=HTMLResponse)
+def formularz_nowego(
+    request: Request,
+    firma: str = Query("", max_length=36),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zgloszenie z telefonu: technik zapisuje je w imieniu klienta."""
+    return _formularz_nowego(
+        request, user, ctx, db,
+        {"tenant_id": firma, "zrodlo": "telefon",
+         "przypisz_do_mnie": True, "powiadom_klienta": True},
+    )
+
+
+@router.post("/helpdesk/nowe")
+def zaloz_zgloszenie(
+    request: Request,
+    tenant_id: str = Form(""),
+    zglaszajacy_email: str = Form("", max_length=320),
+    zglaszajacy_nazwa: str = Form("", max_length=200),
+    temat: str = Form("", max_length=500),
+    tresc: str = Form("", max_length=20000),
+    typ: str = Form(""),
+    zrodlo: str = Form("telefon"),
+    przypisz_do_mnie: bool = Form(False),
+    powiadom_klienta: bool = Form(False),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zaklada zgloszenie wpisane recznie i opcjonalnie zawiadamia klienta.
+
+    Firme wybiera tu technik, a nie domena nadawcy - wiec tylko tutaj trzeba
+    pilnowac, zeby adres nie nalezal do innej firmy. Reszta drogi jest ta sama
+    co przy poczcie: numer, pierwszy wpis w watku, slad w historii.
+    """
+    firmy = _firmy(db, user)
+    verify_csrf(request, user, csrf_token)
+
+    dane = {
+        "tenant_id": tenant_id, "zglaszajacy_email": zglaszajacy_email.strip(),
+        "zglaszajacy_nazwa": zglaszajacy_nazwa.strip(), "temat": temat.strip(),
+        "tresc": tresc.strip(), "typ": typ, "zrodlo": zrodlo,
+        "przypisz_do_mnie": przypisz_do_mnie, "powiadom_klienta": powiadom_klienta,
+    }
+
+    def odrzuc(powod: str) -> Response:
+        return _formularz_nowego(request, user, ctx, db, dane, powod)
+
+    if tenant_id not in firmy:
+        return odrzuc("Wskaż firmę, którą obsługujesz.")
+    adres = zglaszajacy_email.strip().lower()
+    if "@" not in adres or "." not in helpdesk.domena_adresu(adres):
+        return odrzuc("Adres zgłaszającego jest potrzebny - bez niego nie ma jak odpisać.")
+    if not temat.strip():
+        return odrzuc("Temat jest wymagany.")
+    if not tresc.strip():
+        return odrzuc("Opisz, z czym dzwonił klient.")
+
+    obca = helpdesk.obca_firma_adresu(db, adres, tenant_id)
+    if obca is not None:
+        return odrzuc(
+            f"Domena adresu {adres} należy do firmy {obca.name} - "
+            "wybierz tę firmę albo popraw adres."
+        )
+
+    zgloszenie = helpdesk.utworz_zgloszenie(
+        db, tenant_id=tenant_id, temat=temat.strip(), tresc=tresc.strip(),
+        zglaszajacy_email=adres, zglaszajacy_nazwa=zglaszajacy_nazwa.strip() or None,
+        typ=typ if typ in TYPY_ZGLOSZENIA else None,
+        technik_id=user.id if przypisz_do_mnie else None,
+        zrodlo=ZRODLA_RECZNE.get(zrodlo, ZRODLA_RECZNE["inne"]).lower(),
+        autor=helpdesk.opis_osoby(user),
+    )
+    if przypisz_do_mnie:
+        # Technik wlasnie rozmawia z klientem, wiec sprawa jest w toku, a nie
+        # czeka w pierwszej kolumnie na kogos, kto ja przeczyta.
+        helpdesk.zmien_status(
+            db, zgloszenie, STATUS_W_TRAKCIE, autor=helpdesk.opis_osoby(user)
+        )
+
+    komunikat = f"Zgłoszenie {zgloszenie.numer_pelny} założone."
+    if powiadom_klienta:
+        wpis = helpdesk_wysylka.wyslij_potwierdzenie(db, zgloszenie)
+        if wpis is None:
+            komunikat += " Skrzynka jest wyłączona, więc klient nie dostał numeru."
+        elif wpis.blad_wysylki:
+            komunikat += f" Potwierdzenie NIE wyszło: {wpis.blad_wysylki}"
+        else:
+            komunikat += f" Klient dostał numer na {adres}."
+
+    audit(db, None, action="helpdesk.zgloszenie.reczne", target=zgloszenie.numer_pelny,
+          detail={"firma": tenant_id, "zrodlo": zrodlo},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return _wroc(f"/helpdesk/zgloszenie/{zgloszenie.id}", komunikat)
+
+
 # --- karta zgloszenia -------------------------------------------------------
 
 @router.get("/helpdesk/zgloszenie/{zgloszenie_id}", response_class=HTMLResponse)
@@ -224,14 +354,41 @@ def karta_zgloszenia(
         .order_by(CzasPracy.utworzono)
     ).scalars())
 
+    # Zrzut ekranu z bledem bywa cala trescia zgloszenia, wiec sprawdzamy od
+    # razu, ktore pliki wolno pokazac - szablon ma tylko zapytac o gotowa liste.
+    podglady = set()
+    for lista in zalaczniki.values():
+        for zalacznik in lista:
+            if (zalacznik.typ_mime or "") in poczta.TYPY_PODGLADU:
+                podglady.add(zalacznik.id)
+
+    # Kim jest zglaszajacy: kartoteka firmy zna jego telefon i lokalizacje,
+    # a technik nie musi ich szukac w drugim module. Kontekst budujemy dla
+    # firmy ZGLOSZENIA, bo technik moze miec przelaczona inna.
+    firma = db.get(Tenant, zgloszenie.tenant_id)
+    ctx_firmy = tenant_context_for(user, firma, helpdesk=True)
+    osoba = helpdesk.osoba_o_adresie(db, zgloszenie.tenant_id, zgloszenie.zglaszajacy_email)
+
+    # Zgloszenie moze nalezec do kogos spoza listy technikow firmy - superadmin
+    # nie ma przydzielonych firm, a zgloszenie z telefonu zaklada zwykle on.
+    # Bez dopisania go select pokazywalby "nieprzypisany" przy przypisanej sprawie.
+    technicy = _technicy(db, [zgloszenie.tenant_id])
+    if zgloszenie.technik_id and not any(t.id == zgloszenie.technik_id for t in technicy):
+        wlasciciel = db.get(PortalUser, zgloszenie.technik_id)
+        if wlasciciel is not None:
+            technicy = [wlasciciel, *technicy]
+
     return render(
         request, "helpdesk_zgloszenie.html", user, ctx, db,
         zgloszenie=zgloszenie,
-        firma=db.get(Tenant, zgloszenie.tenant_id),
+        firma=firma,
+        osoba=osoba,
+        osoba_pola=slowniki.szczegoly(db, ctx_firmy, osoba),
+        podglady=podglady,
         wpisy=wpisy, zalaczniki=zalaczniki,
         suma_czasu=suma, udzialy=udzialy, wpisy_czasu=wpisy_czasu,
         osoby={u.id: helpdesk.opis_osoby(u) for u in db.execute(select(PortalUser)).scalars()},
-        technicy=_technicy(db, [zgloszenie.tenant_id]),
+        technicy=technicy,
         statusy=STATUSY_ZGLOSZENIA, typy=TYPY_ZGLOSZENIA,
         sprzet=helpdesk.sprzet_zgloszenia(db, zgloszenie.id),
         kandydaci=helpdesk.sprzet_zglaszajacego(
@@ -377,19 +534,30 @@ def dodaj_czas(
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Dopisuje czas pracy. Zawsze SWOJ - czasu kolegi nikt za niego nie wpisze."""
+    """Dopisuje czas pracy. Zawsze SWOJ - czasu kolegi nikt za niego nie wpisze.
+
+    Minus na poczatku znaczy korekte ("-15"). Liczbe wyjmujemy z napisu, bo
+    ludzie pisza "30", "30 min" i "0:30" - ale znaku nie da sie zgubic razem
+    z reszta znakow, bo to on odroznia dopisanie od odjecia.
+    """
     zgloszenie = _zgloszenie(db, user, zgloszenie_id)
     verify_csrf(request, user, csrf_token)
 
+    surowe = minuty.strip()
+    cyfry = "".join(znak for znak in surowe if znak.isdigit())
     try:
-        ile = int("".join(znak for znak in minuty if znak.isdigit()) or 0)
+        ile = int(cyfry or 0)
+        if surowe.startswith("-"):
+            ile = -ile
         helpdesk.dodaj_czas(db, zgloszenie, user, ile, opis.strip() or None)
     except (ValueError, helpdesk.BladHelpdesku) as blad:
         raise HTTPException(status_code=400, detail=str(blad) or "podaj liczbe minut") from blad
     db.commit()
+
+    czynnosc = "Dopisano" if ile > 0 else "Odjęto"
     return _wroc(
         f"/helpdesk/zgloszenie/{zgloszenie.id}",
-        f"Dopisano {helpdesk.formatuj_czas(ile)}. Wpisu nie da sie juz zmienic.",
+        f"{czynnosc} {helpdesk.formatuj_czas(abs(ile))}. Wpisu nie da się już zmienić.",
     )
 
 
@@ -434,16 +602,58 @@ def pobierz_zalacznik(
         raise HTTPException(status_code=404, detail="nie znaleziono zalacznika")
     _zgloszenie(db, user, zalacznik.zgloszenie_id)
 
-    sciezka = (poczta.katalog_zalacznikow() / zalacznik.sciezka).resolve()
-    korzen = poczta.katalog_zalacznikow().resolve()
-    if korzen not in sciezka.parents or not sciezka.is_file():
-        raise HTTPException(status_code=404, detail="pliku nie ma juz na dysku")
+    sciezka = _plik_zalacznika(zalacznik)
     # Zawsze jako plik do pobrania: tresc przyszla od klienta, wiec nie ma
     # prawa wykonac sie w przegladarce technika.
     return FileResponse(
         sciezka, filename=zalacznik.nazwa, media_type="application/octet-stream",
         headers={"X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.get("/helpdesk/zalacznik/{zalacznik_id}/podglad")
+def podglad_zalacznika(
+    zalacznik_id: str,
+    user: PortalUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Obrazek pokazywany wprost w watku.
+
+    Klienci przysylaja zrzuty ekranu z komunikatem bledu i to jest czesto cala
+    tresc zgloszenia - pobieranie kazdego z osobna, zeby go obejrzec, robi
+    z jednej sprawy kilkanascie klikniec.
+
+    Podglad dostaja tylko formaty, ktore niczego nie wykonuja, i tylko wtedy,
+    gdy poczatek pliku zgadza sie z deklarowanym typem (do_podgladu). Reszta
+    zostaje przy pobieraniu.
+    """
+    zalacznik = db.get(ZalacznikWpisu, zalacznik_id)
+    if zalacznik is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono zalacznika")
+    _zgloszenie(db, user, zalacznik.zgloszenie_id)
+
+    sciezka = _plik_zalacznika(zalacznik)
+    with sciezka.open("rb") as plik:
+        typ = poczta.do_podgladu(zalacznik.typ_mime, plik.read(16))
+    if typ is None:
+        raise HTTPException(status_code=404, detail="ten plik nie ma podgladu")
+
+    return FileResponse(
+        sciezka, media_type=typ,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": "inline",
+        },
+    )
+
+
+def _plik_zalacznika(zalacznik: ZalacznikWpisu) -> Path:
+    """Sciezka na dysku, pilnujac, zeby nie wyszla poza katalog zalacznikow."""
+    sciezka = (poczta.katalog_zalacznikow() / zalacznik.sciezka).resolve()
+    korzen = poczta.katalog_zalacznikow().resolve()
+    if korzen not in sciezka.parents or not sciezka.is_file():
+        raise HTTPException(status_code=404, detail="pliku nie ma juz na dysku")
+    return sciezka
 
 
 # --- nierozpoznana poczta (superadmin) --------------------------------------
@@ -905,6 +1115,40 @@ def raport_technika(
         wybrany=technik, okres=okres or helpdesk_raporty.ostatnie_miesiace(1)[0][0],
         miesiace=helpdesk_raporty.ostatnie_miesiace(),
         naglowek_grupy="Firma",
+    )
+
+
+@router.get("/helpdesk/raporty/podsumowanie", response_class=HTMLResponse)
+def podsumowanie_czasu(
+    request: Request,
+    okres: str = Query("", max_length=7),
+    eksport: str = Query("", max_length=8),
+    user: PortalUser = Depends(require_user),
+    ctx: TenantContext = Depends(resolve_tenant),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Caly miesiac na jednym ekranie: technicy w wierszach, firmy w kolumnach.
+
+    Odpowiedz na "ile kto zrobil w tym miesiacu" wymagala dotad otwarcia
+    raportu osobno dla kazdego technika. Superadmin widzi tu wszystkich;
+    technik - wlasny wiersz i tylko firmy, ktore obsluguje, bo suma godzin
+    kolegi nie jest jego sprawa.
+    """
+    firmy = _firmy(db, user)
+    caly = helpdesk.prowadzi_helpdesk(user)
+    dane = helpdesk_raporty.podsumowanie(
+        db, okres,
+        firmy=None if caly else firmy,
+        technicy=None if caly else [user.id],
+    )
+    if eksport:
+        return _plik(helpdesk_raporty.podsumowanie_do_raportu(dane), eksport)
+
+    return render(
+        request, "helpdesk_podsumowanie.html", user, ctx, db,
+        dane=dane, okres=okres or helpdesk_raporty.ostatnie_miesiace(1)[0][0],
+        miesiace=helpdesk_raporty.ostatnie_miesiace(),
+        wszyscy=caly,
     )
 
 

@@ -1193,6 +1193,15 @@ TYPY_ZGLOSZENIA: dict[str, str] = {
     "inne": "Inne",
 }
 
+# Skad wzielo sie zgloszenie zakladane recznie. Wartosc trafia do sladu
+# w historii ("zgloszenie utworzone (telefon) jako BON-12"), wiec jest napisem
+# do czytania, a nie kluczem obcym - zgloszenia z poczty maja tu "e-mail".
+ZRODLA_RECZNE: dict[str, str] = {
+    "telefon": "Telefon",
+    "osobiscie": "Osobiście",
+    "inne": "Inne",
+}
+
 # Rodzaje wpisow w watku. Wszystkie leza w jednej tabeli, bo zgloszenie ma byc
 # jedna chronologiczna rozmowa - trzy osobne listy trzeba by scalac przy
 # kazdym wyswietleniu i przy kazdym scalaniu mozna sie pomylic o kolejnosc.
@@ -1533,7 +1542,11 @@ class CzasPracy(Base):
 
     __tablename__ = "helpdesk_czas"
     __table_args__ = (
-        CheckConstraint("minuty > 0", name="ck_czas_dodatni"),
+        # Zero nie jest czasem pracy. Minus JEST - to korekta pomylki, bo wpisu
+        # nie da sie poprawic ani skasowac. Ze suma zgloszenia nie schodzi
+        # ponizej zera, pilnuje services/helpdesk.dodaj_czas: tego jednym
+        # warunkiem na wierszu sprawdzic sie nie da.
+        CheckConstraint("minuty <> 0", name="ck_czas_niezerowy"),
         Index("ix_czas_firma_data", "tenant_id", "utworzono"),
         Index("ix_czas_technik_data", "technik_id", "utworzono"),
     )

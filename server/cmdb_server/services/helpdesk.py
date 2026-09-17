@@ -82,6 +82,21 @@ def firma_dla_adresu(db: Session, email: str) -> Tenant | None:
     return None if wpis is None else db.get(Tenant, wpis.tenant_id)
 
 
+def obca_firma_adresu(db: Session, email: str, tenant_id: str) -> Tenant | None:
+    """Firma, do ktorej nalezy domena adresu, gdy to NIE jest wskazana firma.
+
+    Sluzy zgloszeniom zakladanym recznie: tam firme wybiera technik, a nie
+    domena, wiec da sie wpisac adres z cudzej domeny. Taka pomylka nie zostaje
+    w jednym zgloszeniu - odpowiedz z tego adresu wroci poczta i zalozy sprawe
+    tej drugiej firmie, wiec lepiej zatrzymac ja przy zakladaniu.
+
+    Adres z domeny, ktorej nikt nie zglosil (prywatna skrzynka pracownika),
+    nie jest pomylka - zwracamy None i zgloszenie powstaje.
+    """
+    firma = firma_dla_adresu(db, email)
+    return None if firma is None or firma.id == tenant_id else firma
+
+
 def dodaj_domene(db: Session, tenant_id: str, domena: str, dodal: str | None = None) -> HelpdeskDomena:
     """Przypisuje domene do firmy.
 
@@ -488,16 +503,30 @@ def dodaj_czas(
     db: Session, zgloszenie: Zgloszenie, technik: PortalUser, minuty: int,
     opis: str | None = None,
 ) -> CzasPracy:
-    """Dopisuje czas jednego technika.
+    """Dopisuje czas jednego technika; wartosc ujemna prostuje pomylke.
 
     Zgloszenie ma jednego wlasciciela, ale pracowac przy nim moze kilka osob -
     kazda dopisuje swoje minuty i kazda widnieje w raporcie osobno. Wpisu nie
     da sie pozniej zmienic ani skasowac, bo te minuty ida na fakture.
+
+    Skoro wpisu nie da sie poprawic, jedyna droga do naprawienia pomylki jest
+    wpis ujemny ("-15"). Rejestr zostaje rejestrem: widac i blad, i korekte,
+    zamiast cichej podmiany liczby. Dlatego korekta MUSI miec opis - na
+    fakturze ma byc widac, skad sie wziela - i nie moze zejsc ponizej zera,
+    bo ujemny czas pracy nic nie znaczy.
     """
-    if minuty <= 0:
-        raise BladHelpdesku("czas pracy musi byc dodatni")
+    if minuty == 0:
+        raise BladHelpdesku("podaj liczbe minut")
     if not ma_dostep(db, technik, zgloszenie.tenant_id):
         raise BladHelpdesku(f"{technik.email} nie ma dostepu do firmy tego zgloszenia")
+    if minuty < 0:
+        if not (opis or "").strip():
+            raise BladHelpdesku("korekta na minus wymaga opisu - napisz, co prostujesz")
+        juz, _ = czas_zgloszenia(db, zgloszenie.id)
+        if juz + minuty < 0:
+            raise BladHelpdesku(
+                f"na zgloszeniu jest {formatuj_czas(juz)}, wiec nie da sie odjac wiecej"
+            )
 
     wpis = CzasPracy(
         zgloszenie_id=zgloszenie.id,
@@ -510,8 +539,8 @@ def dodaj_czas(
     zgloszenie.ostatnia_aktywnosc = utcnow()
     zdarzenie(
         db, zgloszenie,
-        f"{opis_osoby(technik)} dopisał {formatuj_czas(minuty)}"
-        + (f" - {opis}" if opis else ""),
+        f"{opis_osoby(technik)} {'dopisał' if minuty > 0 else 'odjął'} "
+        f"{formatuj_czas(abs(minuty))}" + (f" - {opis}" if opis else ""),
         autor=opis_osoby(technik), autor_id=technik.id,
     )
     return wpis
@@ -542,13 +571,19 @@ def czas_zgloszenia(db: Session, zgloszenie_id: str) -> tuple[int, list[UdzialTe
 
 
 def formatuj_czas(minuty: int | None) -> str:
-    """Minuty jako "1 h 35 min". Zero to kreska, a nie "0 min"."""
+    """Minuty jako "1 h 35 min". Zero to kreska, a nie "0 min".
+
+    Znak wyciagamy przed dzielenie, bo divmod(-15, 60) daje (-1, 45) - czyli
+    "-1 h 45 min" zamiast "-15 min". Korekty sa ujemne, wiec ta droga jest
+    przechodzona naprawde, a nie tylko teoretycznie.
+    """
     if not minuty:
         return "-"
-    godziny, reszta = divmod(int(minuty), 60)
+    znak = "-" if minuty < 0 else ""
+    godziny, reszta = divmod(abs(int(minuty)), 60)
     if not godziny:
-        return f"{reszta} min"
-    return f"{godziny} h {reszta:02d} min"
+        return f"{znak}{reszta} min"
+    return f"{znak}{godziny} h {reszta:02d} min"
 
 
 def czas_okresu(

@@ -15,12 +15,21 @@
     </p>
   </div>
   <div class="head-actions">
-    <a class="btn {{ 'btn-primary' if widok == 'tablica' else '' }}"
-       href="/helpdesk?widok=tablica&szukaj={{ szukaj }}&firma={{ firma }}&technik={{ technik }}&stan={{ stan }}">Tablica</a>
-    <a class="btn {{ 'btn-primary' if widok == 'lista' else '' }}"
-       href="/helpdesk?widok=lista&szukaj={{ szukaj }}&firma={{ firma }}&technik={{ technik }}&stan={{ stan }}">Lista</a>
+    <a class="btn btn-primary" href="/helpdesk/nowe">Nowe zgłoszenie</a>
   </div>
 </div>
+
+{#
+  Tablica i lista to ten sam zbior ogladany inaczej, a nie dwie akcje - stad
+  podzakladki, a nie przyciski. Przyciskiem zostaje tylko zakladanie zgloszenia,
+  zeby bylo widac, ktory element cos robi, a ktory tylko przelacza widok.
+#}
+<nav class="podzakladki">
+  <a class="{{ 'is-active' if widok == 'tablica' }}"
+     href="/helpdesk?widok=tablica&szukaj={{ szukaj }}&firma={{ firma }}&technik={{ technik }}&stan={{ stan }}">Tablica</a>
+  <a class="{{ 'is-active' if widok == 'lista' }}"
+     href="/helpdesk?widok=lista&szukaj={{ szukaj }}&firma={{ firma }}&technik={{ technik }}&stan={{ stan }}">Lista</a>
+</nav>
 
 {% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
 

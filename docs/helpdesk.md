@@ -106,6 +106,32 @@ pliku od klienta jest wyłącznie opisem — ścieżkę budujemy z identyfikator
 więc `..\..\etc\passwd` nie dotknie systemu plików. Pliki serwujemy zawsze jako
 pobranie, nigdy do wyświetlenia w przeglądarce.
 
+## Zgłoszenie z telefonu
+
+Nie każda sprawa przychodzi mailem. **Helpdesk → Zgłoszenia → Nowe zgłoszenie**
+zakłada zgłoszenie w imieniu klienta: technik wybiera firmę, wpisuje adres
+i nazwisko zgłaszającego, temat i to, z czym klient dzwonił. Dalej droga jest
+ta sama co przy poczcie — numer firmy, pierwszy wpis w wątku, ślad w historii
+(`zgłoszenie utworzone (telefon) jako BON-12`).
+
+Dwie rzeczy różnią ten formularz od poczty:
+
+**Firmę wybiera technik, nie domena.** Dlatego tylko tutaj trzeba pilnować, żeby
+adres nie należał do innej firmy — zgłoszenie z adresem `@klepsydra.pl`
+założone firmie Bongo wyglądałoby dobrze do pierwszej odpowiedzi klienta:
+ta wróciłaby pocztą i po domenie założyła **drugą** sprawę Klepsydrze. Taki
+adres jest odrzucany z nazwą firmy, do której należy. Adres z domeny, której
+nikt nie zgłosił (prywatna skrzynka pracownika), przechodzi — to nie pomyłka.
+
+**Adres jest wymagany.** Bez niego nie ma jak odpisać ani wysłać wiadomości
+o zakończeniu, a zgłoszenie żyłoby tylko w panelu.
+
+Domyślnie zgłoszenie trafia do technika, który je zakłada, i od razu jest
+„W trakcie" — skoro właśnie rozmawia z klientem, sprawa nie czeka w pierwszej
+kolumnie na kogoś, kto ją przeczyta. Oba zachowania są checkboxami: dyżurny
+przyjmujący telefony może zostawić zgłoszenie nieprzypisane, a potwierdzenie
+z numerem odznaczyć, gdy rozmowa wszystko załatwiła.
+
 ## Status idzie za pocztą
 
 Kolumna, w której stoi zgłoszenie, ma odpowiadać na jedno pytanie: **czyj jest
@@ -136,6 +162,32 @@ samego statusu niczego nie wysyła. Wysyłka nie może przewrócić zamknięcia 
 jeśli SMTP nie odpowiada, zgłoszenie i tak się zamyka, a błąd widać przy wpisie
 w wątku.
 
+## Kto zgłasza i czym pracuje
+
+Adres nadawcy to nie tylko skrzynka zwrotna — to klucz do kartoteki. Karta
+zgłoszenia pokazuje **Zgłaszającego**: rekord osoby z kartoteki tej firmy
+(`kategoria = "osoba"`, dopasowanie po polu `email`) razem ze wszystkim, co
+firma o nim trzyma — telefon, dział, lokalizacja — plus jego sprzęt. Wszystko
+z linkiem w jedno kliknięcie, bez przechodzenia do drugiego modułu i szukania
+po nazwisku.
+
+Dopasowanie idzie po adresie, a nie po imieniu i nazwisku: przy dwóch
+Kowalskich zgadywanie po nazwisku kończy się podpięciem cudzego laptopa.
+Gdy adresu nie ma w kartotece, panel mówi to wprost i podaje link do jej
+uzupełnienia — przy kolejnym zgłoszeniu osoba rozpozna się sama.
+
+Linki do CMDB niosą `?tenant=<slug>` firmy zgłoszenia. Technik obsługuje kilka
+firm i może mieć przełączoną inną niż ta, w której właśnie czyta zgłoszenie.
+
+**Załączniki i zrzuty ekranu.** Wszystko, co przyszło mailem, ląduje na dysku
+i w wątku. Obrazki (PNG, JPEG, GIF, WEBP) pokazują się od razu jako podgląd —
+zrzut ekranu z komunikatem błędu bywa całą treścią zgłoszenia, a pobieranie
+każdego z osobna robi z jednej sprawy kilkanaście kliknięć. Podgląd dostaje
+plik tylko wtedy, gdy jego **początek zgadza się z deklarowanym typem**: typ
+deklaruje nadawca, więc sam nagłówek nie wystarcza. SVG zostaje przy pobieraniu
+mimo że jest obrazkiem — potrafi nieść skrypty. Reszta plików to zwykłe
+pobranie, zawsze jako `application/octet-stream` z `nosniff`.
+
 ## Czas pracy
 
 Każdy technik dopisuje **swoje** minuty; jedno zgłoszenie zbiera czas kilku
@@ -143,7 +195,23 @@ osób i każda widnieje w rozbiciu osobno. Wpisu nie da się zmienić ani usuną
 te minuty idą na fakturę, więc są rejestrem zdarzeń, a nie polem, które ktoś
 poprawi przed końcem miesiąca. Pomyłkę prostuje kolejny wpis.
 
-Dwa raporty to jedno zestawienie oglądane z dwóch stron:
+**Pomyłkę prostuje wpis na minus.** Skoro wpisu nie da się poprawić ani
+skasować, jedyną drogą jest wpisanie `-15` — system odejmie 15 minut. Rejestr
+zostaje rejestrem: widać i błąd, i korektę, zamiast cichej podmiany liczby.
+Dlatego korekta **wymaga opisu** (na fakturze ma być widać, skąd się wzięła)
+i nie może zejść poniżej zera — ujemny czas pracy nic nie znaczy. W bazie
+pilnuje tego warunek `minuty <> 0`; że suma nie spadnie poniżej zera, pilnuje
+`dodaj_czas`, bo jednym warunkiem na wierszu tego sprawdzić się nie da.
+
+Trzy raporty to jedno zestawienie oglądane z trzech stron:
+
+- **Podsumowanie** — wszyscy technicy za miesiąc w jednej tabeli: wiersz to
+  technik, kolumna to firma, ostatnia kolumna jego suma. Odpowiada na „ile kto
+  zrobił w tym miesiącu" bez otwierania raportu po jednym. Superadmin widzi
+  wszystkich; technik swój wiersz i tylko firmy, które obsługuje — suma godzin
+  kolegi nie jest jego sprawą.
+
+Dwa pozostałe schodzą do pojedynczych zgłoszeń:
 
 - **Firma → technik → zgłoszenie** — ile czasu poszło na tę firmę i kto go zużył,
 - **Technik → firma → zgłoszenie** — ile czasu ten technik oddał każdej firmie.

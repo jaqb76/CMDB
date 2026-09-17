@@ -297,12 +297,14 @@ trafia do swojej sprawy, a nie zakłada drugiej.
 |---|---|
 | Odbiór | IMAP, jedna skrzynka, pętla co 2 minuty; wiadomości nie są kasowane |
 | Rozpoznanie | wątek (`In-Reply-To`, `References`, numer w temacie) → domena → firma |
+| Z telefonu | technik zakłada zgłoszenie w imieniu klienta; dalej idzie tą samą drogą co mail |
 | Nierozpoznane | poczta z obcej domeny czeka na decyzję operatora; nikt nie dostaje odpowiedzi |
 | Wątek | wiadomości, odpowiedzi, komentarze wewnętrzne i zdarzenia w jednej rozmowie |
 | Status | idzie za pocztą: odpowiedź do klienta → „Oczekuje", jego odpowiedź → „W trakcie" |
 | Zamknięcie | wysyła klientowi wiadomość o zakończeniu, z podsumowaniem technika |
-| Czas pracy | każdy technik dopisuje swoje minuty; wpisu nie da się zmienić ani usunąć |
-| Raporty | firma → technik → zgłoszenie i technik → firma, eksport CSV i XLSX |
+| Czas pracy | każdy technik dopisuje swoje minuty; pomyłkę prostuje wpis na minus (`-15`) |
+| Zgłaszający | adres z maila wiąże zgłoszenie z osobą z kartoteki — telefon, lokalizacja, jej sprzęt |
+| Raporty | podsumowanie wszystkich techników za miesiąc plus rozbicia per firma i per technik, eksport CSV i XLSX |
 | Sprzęt | zgłoszenie wiąże się z maszyną z CMDB — to jest jej karta napraw |
 
 Technik nie należy do żadnej firmy: obsługuje te, które przypisze mu
