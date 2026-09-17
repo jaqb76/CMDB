@@ -579,6 +579,46 @@ def test_zalacznik_pobiera_tylko_technik_tej_firmy(client, tenant_a, tenant_b, m
     assert client.get(f"/helpdesk/zalacznik/{zalacznik_id}").status_code == 404
 
 
+@pytest.mark.parametrize("odpowiedz", [False, True])
+def test_wklejony_obraz_trafia_z_maila_do_podgladu_zgloszenia(
+    client, tenant_a, monkeypatch, tmp_path, odpowiedz,
+):
+    from cmdb_server.models import ZalacznikWpisu
+    from cmdb_server.services import helpdesk_poczta as poczta
+    from .test_helpdesk_zalaczniki import PNG, _mail_z_obrazem
+
+    monkeypatch.setattr(poczta, "katalog_zalacznikow", lambda: tmp_path)
+    _firma(tenant_a["id"])
+    _technik("technik@operator.pl", [tenant_a["id"]])
+    mail = _mail_z_obrazem()
+    if odpowiedz:
+        zgloszenie_id = _zgloszenie(tenant_a["id"])
+        with SessionLocal() as db:
+            mail["In-Reply-To"] = helpdesk.pierwszy_wpis(db, zgloszenie_id).message_id
+
+    with SessionLocal() as db:
+        wynik = poczta.przyjmij(db, poczta.przeczytaj(mail.as_bytes()))
+        assert wynik.decyzja == (poczta.DECYZJA_DOPISZ if odpowiedz else poczta.DECYZJA_NOWE)
+        db.commit()
+        if odpowiedz:
+            assert wynik.zgloszenie.id == zgloszenie_id
+        zgloszenie_id = wynik.zgloszenie.id
+        zalacznik = db.execute(select(ZalacznikWpisu)).scalars().one()
+        zalacznik_id = zalacznik.id
+        assert zalacznik.zgloszenie_id == zgloszenie_id
+        assert (tmp_path / zalacznik.sciezka).read_bytes() == PNG
+
+    _login(client, "technik@operator.pl", HASLO)
+    karta = client.get(f"/helpdesk/zgloszenie/{zgloszenie_id}")
+    assert karta.status_code == 200
+    assert "blad.png" in karta.text
+    assert f'src="/helpdesk/zalacznik/{zalacznik_id}/podglad"' in karta.text
+    obraz = client.get(f"/helpdesk/zalacznik/{zalacznik_id}/podglad")
+    assert obraz.status_code == 200
+    assert obraz.headers["content-type"] == "image/png"
+    assert obraz.content == PNG
+
+
 # --- ekrany superadmina -----------------------------------------------------
 
 def _nierozpoznana(nadawca="anna@gmail.com", temat="Prosba o pomoc") -> str:

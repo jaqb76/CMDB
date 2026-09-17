@@ -207,7 +207,19 @@ def _zalaczniki(wiadomosc: EmailMessage) -> tuple[Zalacznik, ...]:
 
     limit = get_settings().helpdesk_zalacznik_mb * 1024 * 1024
     zebrane: list[Zalacznik] = []
-    for czesc in wiadomosc.iter_attachments():
+    # Obraz wklejony w HTML lezy zwykle w multipart/related wewnatrz
+    # multipart/alternative. iter_attachments() widzi tylko jeden poziom
+    # i pomija te galezie jako tresc wiadomosci, razem z ich obrazami.
+    pozostale = list(reversed(list(wiadomosc.iter_parts())))
+    while pozostale:
+        czesc = pozostale.pop()
+        if czesc.get_content_maintype() == "multipart":
+            pozostale.extend(reversed(list(czesc.iter_parts())))
+            continue
+        if (czesc.get_content_type() in ("text/plain", "text/html")
+                and not czesc.get_filename()
+                and czesc.get_content_disposition() != "attachment"):
+            continue
         dane = czesc.get_payload(decode=True)
         if not dane:
             continue
