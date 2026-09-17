@@ -10,12 +10,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Administracja - CMDB{% endblock %}</title>
+  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block title %}Administracja - CMDB{% endblock %}</title>
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
 </head>
 <body class="admin-scope">
+{% if instancja %}
+{#
+  Oznaczenie instancji. Pusta etykieta znaczy produkcje i wtedy nie ma tu nic.
+  Barwa jest KLASA, nie stylem: Content-Security-Policy ma style-src 'self',
+  wiec atrybut style="" przegladarka odrzuca.
+#}
+<div class="pasek-instancji pasek-{{ instancja_barwa }}">{{ instancja }}</div>
+{% endif %}
+
 <header class="topbar topbar-admin">
   <div class="brand"><a href="/admin">CMDB <span class="brand-tag">administracja</span></a></div>
   <nav class="mainnav">
@@ -25,6 +34,7 @@
     <a href="/admin/wersje" {% if strona == 'wersje' %}class="is-active"{% endif %}>Wersje agentów</a>
     <a href="/admin/podatnosci" {% if strona == 'podatnosci' %}class="is-active"{% endif %}>Podatności</a>
     <a href="/admin/audyt" {% if strona == 'audyt' %}class="is-active"{% endif %}>Audyt</a>
+    <a href="/admin/kopie" {% if strona == 'kopie' %}class="is-active"{% endif %}>Kopie</a>
     <a href="/pomoc">Pomoc</a>
   </nav>
   <div class="userbox">

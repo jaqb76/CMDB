@@ -30,7 +30,7 @@
           {% else %}
           <form method="post" action="/helpdesk/firmy/{{ f.tenant.id }}/wlacz" class="row-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div style="min-width: 90px;">
+            <div class="pole-waskie">
               <input name="skrot" value="{{ f.propozycja }}" maxlength="8" aria-label="Skrót firmy">
             </div>
             <div><button type="submit" class="btn btn-small">Włącz do helpdesku</button></div>
@@ -63,14 +63,14 @@
       {% endfor %}
     </tbody>
   </table>
-  <p class="muted small" style="margin-top: 10px;">
+  <p class="muted small odstep-s">
     Usunięcie domeny nie rusza starych zgłoszeń — zamyka drogę nowym.
   </p>
 </section>
 
 <section class="panel tabela-przewijana">
   <h2>Kto obsługuje którą firmę</h2>
-  <p class="muted small" style="max-width: 82ch;">
+  <p class="muted small kolumna-tekstu">
     Zakładanie kont, role i usuwanie znajdziesz w
     <a href="/admin/konta">administracji → Konta i role</a>; tutaj przydzielasz firmy.
     Dostęp nadaje <b>wyłącznie superadmin</b>, bo przypisanie firmy otwiera technikowi

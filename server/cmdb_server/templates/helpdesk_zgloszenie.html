@@ -62,7 +62,7 @@
               </div>
               <div class="hd-tresc">{{ w.tresc }}</div>
               {% if w.dw %}<div class="muted small">DW: {{ w.dw | join(', ') }}</div>{% endif %}
-              {% if w.blad_wysylki %}<div class="small" style="color: var(--danger-fg);">{{ w.blad_wysylki }}</div>{% endif %}
+              {% if w.blad_wysylki %}<div class="small tekst-blad">{{ w.blad_wysylki }}</div>{% endif %}
               {% for z in zalaczniki.get(w.id, []) %}
                 <div class="small">📎 <a href="/helpdesk/zalacznik/{{ z.id }}">{{ z.nazwa }}</a>
                   <span class="muted">({{ z.rozmiar | bytes }})</span></div>
@@ -92,11 +92,11 @@
         <label for="tresc">Treść</label>
         <textarea id="tresc" name="tresc" rows="5" required
                   placeholder="Napisz wiadomość…"></textarea>
-        <label class="kolumna-wybor" style="margin-top: 10px;">
+        <label class="kolumna-wybor odstep-s">
           <input type="checkbox" name="zostaw_w_trakcie" value="1">
           Zostaw w trakcie — na tę wiadomość nie czekam na odpowiedź
         </label>
-        <div class="rzad-akcji" style="margin-top: 12px;">
+        <div class="rzad-akcji odstep-m">
           <button type="submit" name="rodzaj" value="wewnetrzny" class="btn btn-wewn">
             Zapisz komentarz wewnętrzny
           </button>
@@ -104,7 +104,7 @@
             Wyślij do klienta
           </button>
         </div>
-        <p class="muted small" style="margin-top: 10px;">
+        <p class="muted small odstep-s">
           Komentarz wewnętrzny zostaje w zgłoszeniu i <b>nie wychodzi</b> na żaden adres.
           Odpowiedź idzie na {{ zgloszenie.zglaszajacy_email }} z tematem
           <b>Re: [{{ zgloszenie.numer_pelny }}] {{ zgloszenie.temat }}</b>, a kopia wraca
@@ -164,7 +164,7 @@
         </div>
       </form>
 
-      <dl class="kv" style="margin-top: 14px;">
+      <dl class="kv odstep-m">
         <dt>Firma</dt><dd>{{ firma.name }}</dd>
         <dt>Typ</dt><dd>{{ typy.get(zgloszenie.typ, '—') }}</dd>
         <dt>Aktywność</dt><dd>{{ zgloszenie.ostatnia_aktywnosc | dt }}</dd>
@@ -191,7 +191,7 @@
         </p>
       {% endif %}
       {% if kandydaci %}
-        <p class="muted small" style="margin-top: 10px;">Sprzęt tej osoby:</p>
+        <p class="muted small odstep-s">Sprzęt tej osoby:</p>
         <ul class="tight small">
           {% for a in kandydaci %}
             <li><a href="/assets/{{ a.id }}?tenant={{ firma.slug }}">{{ a.hostname }}</a>
@@ -203,7 +203,7 @@
 
     <section class="panel">
       <h2>Czas pracy</h2>
-      <p><b style="font-size: 24px;">{{ suma_czasu | czas }}</b>
+      <p><b class="liczba-duza">{{ suma_czasu | czas }}</b>
         <span class="muted small">łącznie, {{ udzialy | length }} techników</span></p>
       <ul class="tight small">
         {% for u in udzialy %}<li>{{ u.nazwa }} — <b>{{ u.minuty | czas }}</b></li>{% endfor %}
@@ -216,7 +216,7 @@
       </ul>
       <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/czas" class="row-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div style="min-width: 90px;">
+        <div class="pole-waskie">
           <label for="minuty">Minuty</label>
           <input id="minuty" name="minuty" placeholder="30" required>
         </div>
@@ -226,7 +226,7 @@
         </div>
         <div><button type="submit" class="btn">Dodaj czas</button></div>
       </form>
-      <p class="muted small" style="margin-top: 8px;">
+      <p class="muted small odstep-s">
         Wpis jest Twój i nie da się go zmienić ani usunąć. Pomyłkę prostuje wpis
         na minus: <b>-15</b> odejmie 15 minut i zostanie w historii razem z tym,
         co prostuje — dlatego korekta wymaga opisu.
@@ -236,10 +236,10 @@
     <section class="panel">
       <h2>Sprzęt, którego dotyczy</h2>
       {% for asset, wiazanie in sprzet %}
-      <div class="rzad-akcji" style="padding: 4px 0;">
+      <div class="rzad-akcji rzad-luzny">
         <a href="/assets/{{ asset.id }}?tenant={{ firma.slug }}">{{ asset.hostname }}</a>
         <span class="muted small">{{ 'rozpoznany po zgłaszającym' if wiazanie.zrodlo == 'automat' else 'dopięty ręcznie' }}</span>
-        <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/sprzet" class="inline-form" style="margin-left: auto;">
+        <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/sprzet" class="inline-form do-prawej">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="asset_id" value="{{ asset.id }}">
           <input type="hidden" name="akcja" value="odepnij">
@@ -251,9 +251,9 @@
       {% endfor %}
 
       {% if kandydaci %}
-      <p class="muted small" style="margin-top: 10px;">Sprzęt zgłaszającego:</p>
+      <p class="muted small odstep-s">Sprzęt zgłaszającego:</p>
       {% endif %}
-      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/sprzet" class="stack" style="margin-top: 8px;">
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/sprzet" class="stack odstep-s">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="pole-z-podgladem">
           <select name="asset_id" aria-label="Sprzęt do podpięcia">
@@ -267,7 +267,7 @@
           <button type="submit" class="btn btn-small">Podepnij</button>
         </div>
       </form>
-      <p class="muted small" style="margin-top: 8px;">
+      <p class="muted small odstep-s">
         Każde powiązanie trafia na kartę napraw tego sprzętu — po niej widać,
         ile razy się psuł i ile czasu na niego poszło.
       </p>

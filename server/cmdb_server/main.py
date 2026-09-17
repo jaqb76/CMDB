@@ -211,8 +211,15 @@ def create_app() -> FastAPI:
         #    to kilkaset kB tekstu, a agent spakowany PyInstallerem ~30 MB.
         content_length = request.headers.get("content-length")
         if content_length and content_length.isdigit():
-            wgrywanie = request.url.path.startswith("/admin/releases")
-            limit = settings.max_release_bytes if wgrywanie else settings.max_report_bytes
+            sciezka = request.url.path
+            if sciezka.startswith("/admin/releases"):
+                limit = settings.max_release_bytes
+            elif sciezka == "/admin/kopie/przywroc":
+                # Archiwum kopii to zrzut calej bazy razem z zalacznikami -
+                # bywa wielokrotnie wieksze od pliku agenta.
+                limit = settings.max_kopia_bytes
+            else:
+                limit = settings.max_report_bytes
             if int(content_length) > limit:
                 return JSONResponse(
                     {"detail": "zadanie przekracza dozwolony rozmiar"},

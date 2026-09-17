@@ -163,7 +163,10 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 .row-form-filtry { margin-bottom: 18px; }
 .row-form { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
 .row-form > div { flex: 1; min-width: 200px; }
-.row-form > div:last-child { flex: 0; }
+/* Ostatnia kolumna to zwykle przycisk. "flex: 0" dawalo mu bazowa szerokosc
+   zero, wiec dluzsza etykieta ("Przygotuj przywrocenie") lamala sie na dwie
+   linie zamiast rozepchnac kolumne. */
+.row-form > div:last-child { flex: 0 0 auto; }
 .table-filter { margin-bottom: 10px; max-width: 320px; }
 /* Kompaktowy formularz wersji docelowej w tabeli firm. */
 .cel-form { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; white-space: nowrap; }
@@ -792,6 +795,24 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 }
 
 
+/* --- kopie zapasowe ------------------------------------------------------ */
+/* Panel, ktory ma sie roznic od reszty: jedna operacja na tym ekranie zastepuje
+   caly stan instalacji, a druga wynosi go poza serwer. */
+.panel-uwaga { border-left: 4px solid var(--accent); }
+.panel-ostrzezenie { border-left: 4px solid var(--danger-fg); }
+
+/* Polecenie do przepisania do terminala - do zaznaczenia myszka, wiec bez
+   zawijania i z wlasnym przewijaniem. */
+.polecenie {
+  font-family: var(--mono); font-size: 13px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; margin: 10px 0;
+  overflow-x: auto; white-space: pre;
+}
+
+.mono { font-family: var(--mono); }
+
 /* --- helpdesk: drobne elementy wspolne ----------------------------------- */
 /* Numer zgloszenia czyta sie jak identyfikator, nie jak zdanie: czcionka
    o stalej szerokosci ustawia BON-7 pod BON-12 i widac, ze to ta sama firma. */
@@ -904,3 +925,167 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   font-size: 12.5px; color: var(--muted); padding: 2px 4px 2px 13px;
 }
 .btn-wewn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-fg); }
+
+/* --- klasy zastepujace atrybut style ------------------------------------- */
+/* Content-Security-Policy tej aplikacji ma style-src 'self' - bez
+   'unsafe-inline'. Przegladarka ODRZUCA wtedy atrybut style="" i kilkadziesiat
+   miejsc w szablonach nie robilo nic: duza liczba byla zwyklej wielkosci,
+   pasek dostepnosci stal pusty, a przycisk nie dosuwal sie do prawej.
+   Nizej sa te same wartosci w postaci, ktora polityka przepuszcza.
+
+   Blok stoi na koncu arkusza swiadomie: klasy maja te sama specyficznosc co
+   .page-head czy .kv, wiec o wyniku decyduje kolejnosc. */
+
+.odstep-xs { margin-top: 6px; }
+.odstep-s { margin-top: 10px; }
+.odstep-m { margin-top: 14px; }
+.odstep-l { margin-top: 18px; }
+.odstep-dol-s { margin-bottom: 10px; }
+.odstep-dol-m { margin-bottom: 14px; }
+.bez-marginesu { margin: 0; }
+.naglowek-luzny { margin: 18px 0 12px; }
+
+.kolumna-tekstu { max-width: 82ch; }
+.formularz-waski { max-width: 760px; }
+.pole-waskie { min-width: 90px; }
+.pole-srednie { max-width: 280px; }
+.kol-200 { width: 200px; }
+.kol-220 { width: 220px; }
+.kol-330 { width: 330px; }
+
+.liczba-duza { font-size: 24px; }
+.liczba-srednia { font-size: 18px; }
+.tekst-drobny { font-size: 11px; }
+.tekst-blad { color: var(--danger-fg); }
+.tekst-uwaga { color: var(--warn-fg); }
+
+.do-prawej { margin-left: auto; }
+.rzad-luzny { padding: 4px 0; }
+
+/* Wypelnienie paska dostepnosci. Szerokosc jest DANA - zalezy od wyliczonego
+   procentu - wiec jako jedyna nie da sie jej zapisac jedna klasa. Sto jeden
+   klas jest brzydkie, ale dziala pod scisla polityka; alternatywa bylo
+   dopuszczenie stylow inline w calej aplikacji dla jednego paska. */
+.meter-p0 { width: 0%; }
+.meter-p1 { width: 1%; }
+.meter-p2 { width: 2%; }
+.meter-p3 { width: 3%; }
+.meter-p4 { width: 4%; }
+.meter-p5 { width: 5%; }
+.meter-p6 { width: 6%; }
+.meter-p7 { width: 7%; }
+.meter-p8 { width: 8%; }
+.meter-p9 { width: 9%; }
+.meter-p10 { width: 10%; }
+.meter-p11 { width: 11%; }
+.meter-p12 { width: 12%; }
+.meter-p13 { width: 13%; }
+.meter-p14 { width: 14%; }
+.meter-p15 { width: 15%; }
+.meter-p16 { width: 16%; }
+.meter-p17 { width: 17%; }
+.meter-p18 { width: 18%; }
+.meter-p19 { width: 19%; }
+.meter-p20 { width: 20%; }
+.meter-p21 { width: 21%; }
+.meter-p22 { width: 22%; }
+.meter-p23 { width: 23%; }
+.meter-p24 { width: 24%; }
+.meter-p25 { width: 25%; }
+.meter-p26 { width: 26%; }
+.meter-p27 { width: 27%; }
+.meter-p28 { width: 28%; }
+.meter-p29 { width: 29%; }
+.meter-p30 { width: 30%; }
+.meter-p31 { width: 31%; }
+.meter-p32 { width: 32%; }
+.meter-p33 { width: 33%; }
+.meter-p34 { width: 34%; }
+.meter-p35 { width: 35%; }
+.meter-p36 { width: 36%; }
+.meter-p37 { width: 37%; }
+.meter-p38 { width: 38%; }
+.meter-p39 { width: 39%; }
+.meter-p40 { width: 40%; }
+.meter-p41 { width: 41%; }
+.meter-p42 { width: 42%; }
+.meter-p43 { width: 43%; }
+.meter-p44 { width: 44%; }
+.meter-p45 { width: 45%; }
+.meter-p46 { width: 46%; }
+.meter-p47 { width: 47%; }
+.meter-p48 { width: 48%; }
+.meter-p49 { width: 49%; }
+.meter-p50 { width: 50%; }
+.meter-p51 { width: 51%; }
+.meter-p52 { width: 52%; }
+.meter-p53 { width: 53%; }
+.meter-p54 { width: 54%; }
+.meter-p55 { width: 55%; }
+.meter-p56 { width: 56%; }
+.meter-p57 { width: 57%; }
+.meter-p58 { width: 58%; }
+.meter-p59 { width: 59%; }
+.meter-p60 { width: 60%; }
+.meter-p61 { width: 61%; }
+.meter-p62 { width: 62%; }
+.meter-p63 { width: 63%; }
+.meter-p64 { width: 64%; }
+.meter-p65 { width: 65%; }
+.meter-p66 { width: 66%; }
+.meter-p67 { width: 67%; }
+.meter-p68 { width: 68%; }
+.meter-p69 { width: 69%; }
+.meter-p70 { width: 70%; }
+.meter-p71 { width: 71%; }
+.meter-p72 { width: 72%; }
+.meter-p73 { width: 73%; }
+.meter-p74 { width: 74%; }
+.meter-p75 { width: 75%; }
+.meter-p76 { width: 76%; }
+.meter-p77 { width: 77%; }
+.meter-p78 { width: 78%; }
+.meter-p79 { width: 79%; }
+.meter-p80 { width: 80%; }
+.meter-p81 { width: 81%; }
+.meter-p82 { width: 82%; }
+.meter-p83 { width: 83%; }
+.meter-p84 { width: 84%; }
+.meter-p85 { width: 85%; }
+.meter-p86 { width: 86%; }
+.meter-p87 { width: 87%; }
+.meter-p88 { width: 88%; }
+.meter-p89 { width: 89%; }
+.meter-p90 { width: 90%; }
+.meter-p91 { width: 91%; }
+.meter-p92 { width: 92%; }
+.meter-p93 { width: 93%; }
+.meter-p94 { width: 94%; }
+.meter-p95 { width: 95%; }
+.meter-p96 { width: 96%; }
+.meter-p97 { width: 97%; }
+.meter-p98 { width: 98%; }
+.meter-p99 { width: 99%; }
+.meter-p100 { width: 100%; }
+
+/* --- oznaczenie instancji ------------------------------------------------ */
+/* Pasek na kazdej stronie instalacji, ktora nie jest produkcja. Na produkcji
+   etykieta jest pusta i tego elementu nie ma w ogole - zero kosztu.
+
+   Barwa jest klasa z zamknietej listy, a nie wartoscia z konfiguracji wstawiona
+   w styl: style-src 'self' w Content-Security-Policy nie przepuszcza atrybutu
+   style="", wiec wstrzykniety kolor i tak zostalby odrzucony.
+
+   Pasek jest przyklejony do gory i ma wlasna warstwe, bo menu boczne panelu
+   tez jest pozycjonowane - bez tego chowalby sie pod nim. */
+.pasek-instancji {
+  position: sticky; top: 0; z-index: 60;
+  padding: 5px 16px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; text-align: center;
+  color: #fff;
+}
+.pasek-bursztyn { background: #b45309; }
+.pasek-czerwony { background: #a52222; }
+.pasek-fiolet { background: #6d28d9; }
+.pasek-zielony { background: #1c6b34; }

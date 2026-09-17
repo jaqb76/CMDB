@@ -29,7 +29,7 @@
        data-slownik='{{ slownik_edytora }}'
        data-uzycia='{{ uzycia_json }}'
        data-limity='{{ limity_json }}'>
-    <div class="page-head" style="margin-bottom:10px">
+    <div class="page-head odstep-dol-s">
       <nav class="podzakladki">
         <button type="button" class="is-active" data-widok="formularz">Formularz</button>
         <button type="button" data-widok="json">Edycja zaawansowana</button>
@@ -50,7 +50,7 @@
   <textarea id="definicja" name="definicja" rows="20" spellcheck="false"
             class="kod-edytor" data-panel-widok="json" hidden>{{ definicja }}</textarea>
 
-  <div class="row-form" style="margin-top:16px">
+  <div class="row-form odstep-l">
     <div><button type="submit" class="btn btn-primary">Zapisz pola</button></div>
     <div><a class="btn btn-ghost" href="/rodzaje/{{ klucz }}/pola">Odrzuć zmiany</a></div>
   </div>

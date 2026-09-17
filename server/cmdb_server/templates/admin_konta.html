@@ -70,7 +70,7 @@
             <button type="submit" class="btn btn-small">Zapisz rodzaj</button>
           </form>
           {% if w.niespojne %}
-          <p class="small" style="color: var(--warn-fg); margin-top: 6px;">
+          <p class="small tekst-uwaga odstep-xs">
             To konto ma jednocześnie firmy helpdesku i uprawnienie audytora, które
             zabrania zapisu — firmy nic mu nie dają. Zmień rodzaj na technika
             albo odbierz firmy.
@@ -96,7 +96,7 @@
               <span class="chip">{{ nazwa }}<button type="submit" class="btn-link" title="Odbierz firmę">×</button></span>
             </form>
             {% endfor %}
-            <form method="post" action="/admin/users/{{ k.id }}/helpdesk" class="row-form" style="margin-top: 6px;">
+            <form method="post" action="/admin/users/{{ k.id }}/helpdesk" class="row-form odstep-xs">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="akcja" value="nadaj">
               <div>
@@ -140,7 +140,7 @@
       {% endfor %}
     </tbody>
   </table>
-  <p class="muted small" style="margin-top: 10px;">
+  <p class="muted small odstep-s">
     Własnego konta nie da się wyłączyć ani usunąć — zawsze zostaje przynajmniej jeden
     czynny superadmin. Konto z zapisanym czasem pracy da się wyłączyć, ale nie usunąć:
     te minuty są podstawą faktur i nie mogą zniknąć razem z kontem.
@@ -192,8 +192,8 @@
       </div>
       <div><button type="submit" class="btn btn-primary">Załóż konto</button></div>
     </div>
-    <p class="muted small" data-konto-opis style="margin: 0;">{{ opisy_zakresu['technik'] }}</p>
-    <p class="muted small" style="margin-top: 10px;">
+    <p class="muted small bez-marginesu" data-konto-opis>{{ opisy_zakresu['technik'] }}</p>
+    <p class="muted small odstep-s">
       Hasło konto zmieni samo pod <code>/konto</code>; tutaj ustawiasz pierwsze.
     </p>
   </form>

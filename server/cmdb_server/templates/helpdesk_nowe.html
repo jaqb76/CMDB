@@ -18,7 +18,7 @@
 
 {% if blad %}<div class="alert alert-error">{{ blad }}</div>{% endif %}
 
-<form method="post" action="/helpdesk/nowe" class="stack" style="max-width: 760px;">
+<form method="post" action="/helpdesk/nowe" class="stack formularz-waski">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
   <section class="panel">
@@ -112,7 +112,7 @@
         <a href="/helpdesk/skrzynka">Ustaw ją</a>, żeby wysyłać potwierdzenia.
       {% endif %}
     </p>
-    <div class="rzad-akcji" style="margin-top: 12px;">
+    <div class="rzad-akcji odstep-m">
       <button type="submit" class="btn btn-primary">Załóż zgłoszenie</button>
       <a class="btn btn-ghost" href="/helpdesk">Anuluj</a>
     </div>

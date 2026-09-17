@@ -1,0 +1,145 @@
+{% extends "base_admin.html" %}
+{% block title %}Kopie zapasowe - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Kopie zapasowe</h1>
+    <p class="muted">
+      Jedno archiwum obejmuje bazę, wgrane wersje agenta i załączniki zgłoszeń.
+      <b>Nie obejmuje pliku <code>.env</code></b> — kluczem z niego odszyfrowuje się
+      hasła skrzynki zapisane w bazie, więc klucz w tym samym pliku co zrzut byłby
+      kompletem do odczytania wszystkiego. Przy przenosinach skopiuj
+      <code>CMDB_SECRET_KEY</code> osobno.
+    </p>
+  </div>
+  <div class="head-actions">
+    <form method="post" action="/admin/kopie" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-primary">Zrób kopię teraz</button>
+    </form>
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+{% if blad %}<div class="alert alert-error">{{ blad }}</div>{% endif %}
+
+{% if uzbrojone %}
+<section class="panel panel-uwaga">
+  <h2>Przywrócenie czeka na restart</h2>
+  <p>
+    Archiwum <b>{{ uzbrojone.zrodlo }}</b> zostało przygotowane przez
+    {{ uzbrojone.uzbroil }}. Kopia pochodzi z
+    {{ uzbrojone.manifest.utworzono[:16] | replace('T', ' ') }}, wersja portalu
+    {{ uzbrojone.manifest.wersja }}, instancja {{ uzbrojone.manifest.instancja }}.
+  </p>
+  <p>
+    Baza zostanie zastąpiona przy najbliższym starcie kontenera. Uruchom na serwerze:
+  </p>
+  <pre class="polecenie">docker compose -f deploy/docker-compose.yml restart server</pre>
+  <p class="muted small">
+    Panel nie robi tego sam: uvicorn chodzi w kilku workerach, każdy trzyma
+    połączenia do bazy, a <code>pg_restore</code> musiałby usunąć tabele, które te
+    sesje trzymają otwarte. Przy starcie kontenera nie ma jeszcze żadnego z nich.
+  </p>
+  <form method="post" action="/admin/kopie/odwolaj" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-danger">Odwołaj przywrócenie</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="panel tabela-przewijana">
+  <h2>Na dysku</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Kiedy</th><th>Rodzaj</th><th class="lp">Rozmiar</th>
+        <th>Wersja portalu</th><th>Plik</th><th>Co zrobić</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for k in kopie %}
+      <tr>
+        <td>{{ k.utworzono | dt }}</td>
+        <td><span class="badge{{ ' badge-akcent' if k.rodzaj == 'reczna' }}">{{ k.rodzaj }}</span></td>
+        <td class="lp">{{ k.rozmiar | bytes }}</td>
+        <td class="small muted">{{ k.wersja_portalu }}</td>
+        <td class="small mono">{{ k.nazwa }}</td>
+        <td>
+          <div class="rzad-akcji">
+            <a class="btn btn-small" href="/admin/kopie/{{ k.nazwa }}/pobierz">Pobierz</a>
+            <form method="post" action="/admin/kopie/{{ k.nazwa }}/sprawdz" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-small">Sprawdź</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">
+        Nie ma jeszcze żadnej kopii. Nocne zadanie zakłada je o 3:00 — albo zrób
+        pierwszą teraz.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">
+    „Sprawdź” odtwarza kopię do bazy pomocniczej i liczy, co w niej jest —
+    działającej instalacji nie rusza. Kopia, której nikt nigdy nie odtworzył,
+    to nie kopia, tylko plik.
+  </p>
+  <p class="muted small">
+    Wolne miejsce: <b>{{ wolne_bajty | bytes }}</b>, ostatnia kopia
+    {{ ostatnia_bajty | bytes }}. Kopie dzienne i tygodniowe rotują się same;
+    ręczne zostają, dopóki ich nie skasujesz.
+  </p>
+</section>
+
+<section class="panel panel-ostrzezenie">
+  <h2>Przywróć z kopii</h2>
+  <p>
+    Przywrócenie <b>zastępuje całą bazę wszystkich firm</b> oraz pliki zgłoszeń
+    i wydań agenta. Zrzut Postgresa nie jest biernym plikiem z danymi — przy
+    odtwarzaniu wykonuje SQL jako właściciel bazy. Dlatego pytam o hasło jeszcze
+    raz, mimo że jesteś zalogowany.
+  </p>
+
+  <form method="post" action="/admin/kopie/przywroc" enctype="multipart/form-data" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="row-form">
+      <div>
+        <label for="nazwa">Kopia z listy</label>
+        <select id="nazwa" name="nazwa">
+          <option value="">— nie z listy —</option>
+          {% for k in kopie %}
+            <option value="{{ k.nazwa }}">{{ k.utworzono | dt }} · {{ k.rodzaj }} · {{ k.rozmiar | bytes }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="plik">albo wgraj archiwum</label>
+        <input id="plik" type="file" name="plik" accept=".gz,.tar.gz,application/gzip">
+      </div>
+    </div>
+
+    <div class="row-form">
+      <div>
+        <label for="haslo">Twoje hasło</label>
+        <input id="haslo" type="password" name="haslo" required autocomplete="current-password">
+      </div>
+      <div>
+        <button type="submit" class="btn btn-danger">Przygotuj przywrócenie</button>
+      </div>
+    </div>
+  </form>
+
+  <p class="muted small">
+    Wgrane archiwum musi mieć manifest zapisany przez ten system — plik sprzed roku
+    albo ucięty transfer zostanie odrzucony. Formularz przyjmuje do
+    {{ limit_wgrania | bytes }}; przy większej kopii skopiuj ją przez <code>scp</code>
+    i użyj <code>python -m cmdb_server.cli przywroc</code>.
+  </p>
+</section>
+{% endblock %}

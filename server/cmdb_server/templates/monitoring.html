@@ -122,7 +122,7 @@
           {% if d and d.procent is not none %}
             {{ d.procent }}%
             <div class="meter {% if d.procent < 95 %}meter-danger{% elif d.procent < 99.5 %}meter-warn{% endif %}">
-              <span class="meter-fill" style="width: {{ d.procent }}%"></span>
+              <span class="meter-fill meter-p{{ [d.procent | round | int, 100] | min }}"></span>
             </div>
             <span class="muted">{{ d.udanych }} / {{ d.sond }} sond{% if d.przerw %}, {{ d.przerw }} przerw{% endif %}</span>
           {% else %}
@@ -299,7 +299,7 @@
   <table class="table">
     <tbody>
       <tr>
-        <th style="width:220px">Sprawdza agent, nie serwer</th>
+        <th class="kol-220">Sprawdza agent, nie serwer</th>
         <td class="small">
           Usługa żyje w Twojej sieci, za NAT-em i firewallem — serwer CMDB
           zwykle jej nie widzi, a gdyby widział sieci wszystkich firm naraz,
