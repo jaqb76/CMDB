@@ -1,5 +1,10 @@
 # Obraz serwera CMDB.
-FROM python:3.12-slim AS base
+#
+# Wersja Debiana jest przypieta swiadomie. Tag "python:3.12-slim" bez
+# przyrostka wedruje na najnowszego stabilnego Debiana i tak wlasnie
+# wywrocilo sie budowanie: baza przeskoczyla na trixie (Debian 13), gdzie nie
+# ma juz biblioteki libldap-2.5-0, ktorej zada libpq5 z repozytorium PGDG.
+FROM python:3.12-slim-bookworm AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -12,6 +17,10 @@ WORKDIR /app
 # od siebie, a Debian bookworm ma w swoich repozytoriach dopiero 15 - stad
 # repozytorium PGDG.
 #
+# Nazwe wydania Debiana bierzemy z /etc/os-release, a nie wpisujemy na sztywno:
+# gdy kiedys podniesiemy obraz bazowy, repozytorium PGDG pojdzie za nim samo,
+# zamiast po cichu wskazywac na wydanie sprzed zmiany.
+#
 # Alternatywa byloby wolanie "docker exec db pg_dump" z kontenera aplikacji,
 # co wymaga podmontowania gniazda dockera - czyli dania aplikacji webowej
 # roota na hoscie. Kilkanascie megabajtow w obrazie jest tanszym rozwiazaniem.
@@ -19,7 +28,8 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y curl ca-certificates gnupg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
         | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+    && . /etc/os-release \
+    && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
         > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install --no-install-recommends -y postgresql-client-16 \
