@@ -55,8 +55,16 @@ kazdy zapis jest ponownie autoryzowany i audytowany przez API.
 
 ### Instalacja testowa
 
-W GitHub Actions otwórz najnowszy udany przebieg `CMDB Android build`, pobierz
-artefakt `CMDB-Mobile-debug-<run_id>`, rozpakuj i zainstaluj `app-debug.apk`.
+Gotowy APK leży w wydaniach repozytorium: otwórz
+[Releases](https://github.com/jaqb76/CMDB/releases), znajdź wydanie
+`CMDB Mobile <wersja>` i pobierz plik `CMDB-Mobile-<wersja>-debug.apk`.
+Wydanie powstaje automatycznie po wejściu zmian aplikacji do gałęzi głównej;
+ten sam numer wersji zbudowany ponownie podmienia plik w tym samym wydaniu.
+
+Plik idzie do wydania, a nie do artefaktów przebiegu, bo artefakty mają limit
+miejsca na koncie — po kilkunastu buildach wysyłka kończyła się błędem
+„Artifact storage quota has been hit”, czyli APK był zbudowany, ale nie było
+jak go pobrać.
 Backend musi zawierać drugi etap API — samo zainstalowanie APK nie aktualizuje serwera.
 Po wdrożeniu backendu zaloguj się kontem portalu. Telefon musi mieć dostęp sieciowy
 oraz ufać certyfikatowi HTTPS serwera. To nadal wydanie testowe, nie publikacja w sklepie.
