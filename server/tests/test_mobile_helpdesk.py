@@ -450,3 +450,63 @@ def test_zbyt_duzy_plik_nie_zaklada_zgloszenia(client, tenant_a, zalaczniki, mon
     with SessionLocal() as db:
         # Odrzucony plik nie zostawia zgloszenia zalozonego w polowie.
         assert db.execute(select(Zgloszenie)).first() is None
+
+
+# --- firmy technika w aplikacji ---------------------------------------------
+
+def test_technik_bez_wlasnej_firmy_widzi_firmy_z_helpdesku(client, tenant_a, tenant_b):
+    """Technik nie nalezy do zadnej firmy - jego uprawnienie to dostepy helpdesku.
+
+    Bez tego aplikacja pokazywala mu "Wybierz firmę / Brak dostępnych firm"
+    i nie dalo sie z tego ekranu wyjsc, mimo nadanego dostepu.
+    """
+    _firma(tenant_a["id"], "BON", ("bongo.pl",))
+    _firma(tenant_b["id"], "KOT", ("kotki.pl",))
+    _technik("technik@mojadomena.pl", [tenant_a["id"]])
+    naglowki = _naglowki(client, "technik@mojadomena.pl")
+
+    firmy = client.get("/api/v1/mobile/tenants", headers=naglowki)
+    ja = client.get("/api/v1/mobile/me", headers=naglowki)
+
+    assert firmy.status_code == 200
+    assert [pozycja["id"] for pozycja in firmy.json()] == [tenant_a["id"]]
+    # Jedyna firma wybiera sie sama, wiec aplikacja pomija ekran wyboru.
+    assert ja.json()["tenant"]["id"] == tenant_a["id"]
+    # Technik pracuje w swojej firmie z prawami administratora firmy.
+    assert ja.json()["can_write"] is True
+
+
+def test_technik_pracuje_w_firmie_wskazanej_naglowkiem(client, tenant_a, tenant_b):
+    _firma(tenant_a["id"], "BON", ("bongo.pl",))
+    _firma(tenant_b["id"], "KOT", ("kotki.pl",))
+    _technik("technik@mojadomena.pl", [tenant_a["id"], tenant_b["id"]])
+    naglowki = _naglowki(client, "technik@mojadomena.pl")
+
+    with SessionLocal() as db:
+        db.add(Asset(tenant_id=tenant_b["id"], machine_id="b-1", hostname="KOT-SRV"))
+        db.add(Asset(tenant_id=tenant_a["id"], machine_id="a-1", hostname="BON-SRV"))
+        db.commit()
+
+    obie = client.get("/api/v1/mobile/tenants", headers=naglowki).json()
+    maszyny = client.get(
+        "/api/v1/mobile/assets", headers={**naglowki, "X-CMDB-Tenant": tenant_b["slug"]}
+    )
+
+    assert len(obie) == 2
+    # Ewidencja idzie za wybrana firma, w odroznieniu od zgloszen, ktore
+    # obejmuja wszystkie firmy technika naraz.
+    assert [m["hostname"] for m in maszyny.json()["items"]] == ["KOT-SRV"]
+
+
+def test_konto_bez_firmy_i_bez_helpdesku_dostaje_jasna_odmowe(client, tenant_a):
+    # Konto bez wlasnej firmy i bez ani jednego dostepu helpdesku - czyli
+    # technik, ktoremu nikt jeszcze nic nie nadal.
+    _technik("nikt@mojadomena.pl", [])
+    naglowki = _naglowki(client, "nikt@mojadomena.pl")
+
+    firmy = client.get("/api/v1/mobile/tenants", headers=naglowki)
+    pulpit = client.get("/api/v1/mobile/dashboard", headers=naglowki)
+
+    assert firmy.json() == []
+    assert pulpit.status_code == 403
+    assert "nie jest przypisane" in pulpit.json()["detail"]

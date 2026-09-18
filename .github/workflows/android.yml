@@ -82,9 +82,10 @@ jobs:
             opis=$(cat <<TEKST
           Wydanie testowe aplikacji Android (build debug, przebieg $GITHUB_RUN_ID).
 
-          Podpis debugowy rozni sie miedzy przebiegami CI. Jezeli Android odmowi
-          aktualizacji, odinstaluj poprzedni APK - usunie to lokalna sesje - i
-          zainstaluj nowy. Backend musi miec wdrozona te sama wersje API.
+          Wydania od 0.5.1 sa podpisane tym samym kluczem debugowym, wiec instaluja
+          sie na wierzch poprzedniej wersji. Przejscie z wersji starszej wymaga
+          jednorazowego odinstalowania (usunie to zapisana sesje). Backend musi
+          miec wdrozona te sama wersje API.
           TEKST
           )
             gh release create "$tag" "$PLIK" \
