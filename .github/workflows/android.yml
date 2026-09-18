@@ -19,6 +19,13 @@ jobs:
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Gotowy APK idzie do wydania GitHuba, a nie do artefaktow przebiegu:
+    # artefakty maja limit miejsca na koncie i po kilkunastu buildach wysylka
+    # konczy sie bledem "Artifact storage quota has been hit" - APK jest
+    # zbudowany, ale nie da sie go pobrac. Plik wydania nie liczy sie do tego
+    # limitu i ma staly adres, ktory da sie komus podac.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -38,15 +45,52 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: gradle --no-daemon :app:assembleDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: CMDB-Mobile-debug-${{ github.run_id }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          # Kazdy APK to ~19 MB, a domyslnie lezy 90 dni. Przy kilkunastu
-          # przebiegach konto wyczerpuje limit miejsca na artefakty i wysylka
-          # konczy sie bledem "Artifact storage quota has been hit" - APK
-          # zbudowany, ale nie do pobrania. Dwa tygodnie wystarczaja na test
-          # wydania, a stare buildy przestaja zajmowac miejsce same.
-          retention-days: 14
+      - name: Name the APK after the app version
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          plik=android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$plik"
+          wersja=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' android/app/build.gradle.kts | head -n 1)
+          test -n "$wersja"
+          nazwa="CMDB-Mobile-$wersja-debug.apk"
+          cp "$plik" "$nazwa"
+          echo "wersja=$wersja" >> "$GITHUB_OUTPUT"
+          echo "plik=$nazwa" >> "$GITHUB_OUTPUT"
+      # Wydanie powstaje wylacznie z galezi glownej tego repozytorium.
+      # Przebieg z pull requesta buduje APK jako sprawdzenie i niczego nie
+      # publikuje - token takiego przebiegu i tak nie ma prawa zapisu.
+      - name: Publish the APK as a GitHub release
+        if: >
+          github.event_name != 'pull_request' &&
+          github.repository == 'jaqb76/CMDB' &&
+          github.ref == 'refs/heads/claude/os-data-collection-agent-gfz2o8'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WERSJA: ${{ steps.apk.outputs.wersja }}
+          PLIK: ${{ steps.apk.outputs.plik }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="android-v$WERSJA"
+          # Ten sam numer wersji budowany drugi raz podmienia plik w istniejacym
+          # wydaniu - inaczej poprawka wymagalaby recznego kasowania tagu.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$PLIK" --clobber
+          else
+            opis=$(cat <<TEKST
+          Wydanie testowe aplikacji Android (build debug, przebieg $GITHUB_RUN_ID).
 
+          Podpis debugowy rozni sie miedzy przebiegami CI. Jezeli Android odmowi
+          aktualizacji, odinstaluj poprzedni APK - usunie to lokalna sesje - i
+          zainstaluj nowy. Backend musi miec wdrozona te sama wersje API.
+          TEKST
+          )
+            gh release create "$tag" "$PLIK" \
+              --title "CMDB Mobile $WERSJA" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --notes "$opis"
+          fi
+          echo "APK: $(gh release view "$tag" --json url --jq .url)" >> "$GITHUB_STEP_SUMMARY"
