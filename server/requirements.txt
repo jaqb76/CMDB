@@ -12,6 +12,11 @@ psycopg[binary]>=3.2
 # podania hasla przy kazdym polaczeniu.
 cryptography>=42.0
 
+# Kody QR na stronie instalacji (adres APK aplikacji Android). Czysty Python
+# bez zaleznosci - portal pracuje takze w sieciach bez dostepu do internetu,
+# wiec rysowanie kodu skryptem z CDN nie wchodzilo w gre.
+segno>=1.6
+
 # Eksport raportow helpdesku do XLSX. CSV robimy sami, ale arkusz to plik
 # ZIP z kilkoma dokumentami XML - wlasna implementacja bylaby biblioteka.
 openpyxl>=3.1

@@ -63,7 +63,7 @@ from ..security import (
     verify_password,
 )
 from ..services.auth import client_ip, require_superadmin
-from ..services import architektura, cve, pakiet, ustawienia
+from ..services import architektura, cve, mobilna, pakiet, ustawienia
 from ..services import upgrades
 from ..services.scoping import audit
 from .ui import MIN_DLUGOSC_HASLA, motyw_z_ciasteczka, templates
@@ -777,6 +777,7 @@ def widok_wersji(
         # wykonywalny, wiec nie ma go w magazynie wydan. Bez pokazania go
         # tutaj strona sugerowalaby, ze zadnego agenta dla Linuksa nie ma.
         paczka_zrodel=pakiet.opis(pakiet.katalog_paczki()),
+        aplikacja=mobilna.opis(),
     )
 
 
@@ -1047,6 +1048,86 @@ def ustaw_oficjalna(
     db.commit()
     log.info("superadmin %s uczynil %s oficjalna dla %s",
              user.email, wydanie.version, wydanie.os_family)
+    return RedirectResponse("/admin/wersje", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# --- aplikacja Android ------------------------------------------------------
+
+@router.post("/mobilna")
+async def wgraj_aplikacje(
+    request: Request,
+    version: str = Form(""),
+    plik: UploadFile = File(...),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Wgrywa APK, ktore portal wydaje technikom kodem QR.
+
+    Czytamy strumieniowo i liczymy skrot po drodze - dwudziestomegabajtowy plik
+    nie ma powodu ladowac w calosci do pamieci. Numer wersji bierzemy z pola
+    formularza, a gdy jest puste, z nazwy pliku ("CMDB-Mobile-0.5.0-debug.apk"):
+    w samym APK numer siedzi w skompilowanym manifescie i jego rozbieranie
+    byloby osobna biblioteka.
+    """
+    sprawdz_csrf(user, csrf_token)
+    settings = get_settings()
+
+    wersja_apk = version.strip() or mobilna.wersja_z_nazwy(plik.filename)
+    if not wersja_apk:
+        raise HTTPException(status_code=400, detail="podaj numer wersji - nie ma go w nazwie pliku")
+    if len(wersja_apk) > 32:
+        raise HTTPException(status_code=400, detail="numer wersji jest za dlugi")
+
+    katalog = mobilna.katalog()
+    tymczasowy = katalog / f".wgrywanie-{utcnow().timestamp()}"
+    skrot = hashlib.sha256()
+    rozmiar = 0
+    try:
+        with tymczasowy.open("wb") as wyjscie:
+            while fragment := await plik.read(1024 * 1024):
+                rozmiar += len(fragment)
+                if rozmiar > settings.max_release_bytes:
+                    raise HTTPException(status_code=413, detail="plik przekracza dozwolony rozmiar")
+                skrot.update(fragment)
+                wyjscie.write(fragment)
+        if rozmiar == 0:
+            raise HTTPException(status_code=400, detail="pusty plik")
+
+        try:
+            aplikacja = mobilna.przyjmij(
+                tymczasowy, wersja=wersja_apk, sha256=skrot.hexdigest(), wgral=user.email,
+            )
+        except mobilna.BladAplikacji as blad:
+            raise HTTPException(status_code=400, detail=str(blad)) from blad
+    finally:
+        tymczasowy.unlink(missing_ok=True)
+
+    audit(db, None, action="aplikacja.wgrana", target=aplikacja.wersja,
+          detail={"sha256": aplikacja.sha256, "rozmiar": aplikacja.rozmiar},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    log.info("superadmin %s wgral aplikacje Android %s (%d B)",
+             user.email, aplikacja.wersja, aplikacja.rozmiar)
+    return RedirectResponse("/admin/wersje", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/mobilna/usun")
+def usun_aplikacje(
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zdejmuje APK z portalu - kod QR znika razem z plikiem."""
+    sprawdz_csrf(user, csrf_token)
+    poprzednia = mobilna.opis()
+    if not mobilna.usun():
+        raise HTTPException(status_code=404, detail="na tym serwerze nie ma pliku aplikacji")
+    audit(db, None, action="aplikacja.usunieta",
+          target=poprzednia.wersja if poprzednia else "?",
+          ip=client_ip(request), actor=user.email)
+    db.commit()
     return RedirectResponse("/admin/wersje", status_code=status.HTTP_303_SEE_OTHER)
 
 

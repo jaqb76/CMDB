@@ -101,6 +101,55 @@
 </section>
 
 <section class="panel">
+  <h2>Aplikacja na telefon</h2>
+  {% if aplikacja %}
+  <div class="apk-pobranie">
+    <div class="apk-kod">
+      {{ kod_qr }}
+      <p class="muted small">Zeskanuj aparatem telefonu</p>
+    </div>
+    <div class="apk-opis">
+      <p class="muted small">
+        Aplikacja pokazuje pulpit, maszyny i zgłoszenia helpdesku. Loguje się
+        tym samym kontem co portal — po instalacji wpisz w niej adres
+        <code>{{ adres_serwera }}</code>.
+      </p>
+      <table class="table">
+        <tbody>
+          <tr><th>Wersja</th><td><code class="strong">{{ aplikacja.wersja }}</code></td></tr>
+          <tr><th>Rozmiar</th><td>{{ aplikacja.rozmiar | bytes }}</td></tr>
+          <tr><th>SHA-256</th><td class="small"><code>{{ aplikacja.sha256 }}</code></td></tr>
+        </tbody>
+      </table>
+      <p><a class="btn btn-primary" href="{{ adres_apk }}">Pobierz APK</a></p>
+      <p class="muted small">
+        Adres w kodzie jest ważny <b>30 minut</b> i wystawiony na Twoje konto —
+        nie jest publicznym odnośnikiem do pliku. Po tym czasie odśwież tę
+        stronę, żeby dostać nowy kod.
+      </p>
+      <p class="muted small">
+        Android pyta wtedy o zgodę na instalację plików spoza sklepu — to
+        oczekiwane, APK nie jest publikowany w Google Play. Aplikacja wymaga
+        Androida 8 lub nowszego i połączenia HTTPS z tym serwerem.
+      </p>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warn">
+    Na tym serwerze nie ma pliku aplikacji, więc nie ma czego zeskanować.
+    {% if user.is_superadmin %}
+    Wgraj APK w administracji, w sekcji
+    <a href="/admin/wersje">Wersje agentów</a> — plik zbudowany przez CI leży
+    w wydaniach repozytorium.
+    {% else %}
+    Poproś administratora, żeby wgrał APK w administracji — plik nie jest
+    częścią serwera i trzeba go tam wskazać.
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
   <h2>Odinstalowanie agenta</h2>
   <p class="muted small">
     Kto zainstalował agenta jednym poleceniem, musi umieć go usunąć tak samo.
