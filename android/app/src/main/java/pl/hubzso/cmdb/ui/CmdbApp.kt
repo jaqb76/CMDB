@@ -507,9 +507,22 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Wybrane pliki jako kawalki multipartu.
+     *
+     * Plik, ktorego nie da sie odczytac, PRZERYWA wysylke zamiast wypasc po
+     * cichu z listy: telefon traci prawo do pliku po zamknieciu wyboru, a
+     * wiadomosc "w zalaczeniu zdjecie" bez zdjecia wyglada w watku na wyslana.
+     * Ten sam powod ma przerwanie po stronie serwera, gdy nie da sie odczytac
+     * zapisanego zalacznika odpowiedzi.
+     */
     private fun czesciPlikow(pliki: List<WybranyPlik>): List<MultipartBody.Part> {
         val context = getApplication<Application>()
-        return pliki.mapNotNull { context.czescPliku(it) }
+        return pliki.map { plik ->
+            context.czescPliku(plik) ?: throw IllegalStateException(
+                "Nie udało się odczytać pliku ${plik.nazwa}. Wybierz go ponownie.",
+            )
+        }
     }
 
     private fun czescDanych(tekst: String): RequestBody =
