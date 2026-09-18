@@ -38,6 +38,8 @@
 <a href="#scenariusze">Scenariusze użytkowe</a>
 <a href="#faq">FAQ</a>
 <a href="#checklista">Checklista nowego użytkownika</a>
+<div class="navgroup">Telefon</div>
+<a href="#aplikacja">Aplikacja na Androida</a>
 </nav>
 </aside>
 <main>
@@ -730,8 +732,49 @@ BI       → VM-BI-01      → HV-02 → CLUSTER-PROD</pre>
 <label><input type="checkbox"/> Umiem zainstalować agenta na Linux.</label>
 <label><input type="checkbox"/> Umiem zweryfikować pierwszy raport w portalu.</label>
 <label><input type="checkbox"/> Rozumiem różnicę między użytkownikiem sprzętu a opiekunem.</label>
+<label><input type="checkbox"/> Umiem zainstalować aplikację na telefonie z kodu QR.</label>
 </div>
-<div class="callout" id="progress">Postęp: 0 / 10</div>
+<div class="callout" id="progress">Postęp: 0 / 11</div>
+</section>
+<section class="guide" data-search="aplikacja android telefon apk kod qr mobilna instalacja helpdesk zgłoszenia" id="aplikacja">
+<div class="section-head"><div><h2>23. Aplikacja na Androida</h2><p class="muted">Pulpit, maszyny i zgłoszenia helpdesku w telefonie.</p></div><span class="badge">Android</span></div>
+<p>Aplikacja loguje się <b>tym samym kontem co portal</b> i pokazuje te same dane — nie jest osobnym systemem ani osobnym hasłem. Wymaga Androida 8 lub nowszego i połączenia HTTPS z serwerem CMDB.</p>
+
+<h3>Instalacja z kodu QR</h3>
+<div class="steps">
+<div class="step"><div>Na komputerze otwórz w portalu zakładkę <b>Instalacja agenta</b> i zjedź do sekcji <b>Aplikacja na telefon</b>.</div></div>
+<div class="step"><div>Zeskanuj kod QR aparatem telefonu i otwórz odnośnik.</div></div>
+<div class="step"><div>Android zapyta o zgodę na instalację pliku spoza sklepu — to oczekiwane, aplikacja nie jest publikowana w Google Play.</div></div>
+<div class="step"><div>Po instalacji uruchom aplikację, wpisz adres serwera (np. <code>https://cmdb.firma.pl</code>) i zaloguj się kontem portalu.</div></div>
+</div>
+<div class="callout"><b>Kod jest ważny 30 minut</b> i wystawiony na Twoje konto — nie jest publicznym odnośnikiem do pliku. Po tym czasie odśwież stronę, żeby dostać nowy. Adres przepisany komuś innemu przestanie działać, a zmiana hasła unieważnia go od razu.</div>
+<div class="callout warn"><b>Nie widzisz kodu QR?</b> Oznacza to, że na serwerze nie ma jeszcze pliku aplikacji. Wgrywa go administrator główny w administracji, w sekcji <b>Wersje agentów → Aplikacja Android</b>.</div>
+
+<h3>Co aplikacja potrafi</h3>
+<div class="grid2">
+<div class="scenario">
+<h3>Ewidencja</h3>
+<ol>
+<li>Pulpit z licznikami i rozkładem systemów.</li>
+<li>Wyszukiwanie maszyn po nazwie, IP i numerze seryjnym.</li>
+<li>Karta urządzenia z danymi agenta.</li>
+<li>Zmiana opiekuna, użytkownika i lokalizacji.</li>
+</ol>
+</div>
+<div class="scenario">
+<h3>Helpdesk</h3>
+<ol>
+<li>Lista zgłoszeń wszystkich obsługiwanych firm.</li>
+<li>Karta zgłoszenia: status, sprzęt, czas pracy.</li>
+<li>Rozmowa z klientem i notatki wewnętrzne.</li>
+<li>Nowe zgłoszenie ze zdjęciem z aparatu.</li>
+</ol>
+</div>
+</div>
+<details><summary>Dlaczego nie widzę zakładki „Helpdesk”?</summary><div>Zgłoszenia są osobnym uprawnieniem. Zakładka pojawia się tylko na kontach, którym administrator główny nadał firmy helpdesku — pozostałe konta jej nie zobaczą, zamiast dostawać odmowę po wejściu.</div></details>
+<details><summary>Czy aplikacja pokazuje priorytet i termin SLA?</summary><div>Nie, bo CMDB ich nie prowadzi. Zgłoszenie ma status, rodzaj sprawy i historię wiadomości. Zamiast priorytetu widać rodzaj sprawy, a zamiast licznika SLA to, co system naprawdę wie: od kiedy zgłoszenie czeka na naszą odpowiedź, czyli od ostatniej wiadomości klienta bez odpowiedzi.</div></details>
+<details><summary>Czy aplikacja omija uprawnienia portalu?</summary><div>Nie. Każdy zapis jest ponownie sprawdzany i zapisywany w audycie po stronie serwera — konto tylko do odczytu pozostaje tylko do odczytu, a granica firm obowiązuje tak samo jak w portalu.</div></details>
+<div class="callout warn"><b>Aktualizacja aplikacji:</b> kolejne wydania są podpisywane innym kluczem testowym, więc Android potrafi odmówić aktualizacji. Wtedy odinstaluj poprzednią wersję (usunie to zapisaną sesję) i zainstaluj nową.</div>
 </section>
 <footer>
       Podręcznik przygotowany na podstawie aktualnej struktury portalu CMDB. Główne menu aplikacji obejmuje m.in. Pulpit, Maszyny, Zmiany, Relacje, Wykrywanie sieci, Jakość danych, Osoby, Słowniki, Tokeny agentów, Instalację agenta, Raporty i Audyt.
