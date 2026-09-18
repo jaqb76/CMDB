@@ -101,6 +101,31 @@ def load_session(raw: str) -> dict | None:
         return None
 
 
+# Jak dlugo wazny jest klucz z kodu QR. Tyle, zeby zdazyc zeskanowac kod
+# i zaczac pobieranie - a nie tyle, zeby wklejony komus adres dzialal jutro.
+KLUCZ_POBRANIA_MAX_AGE = 30 * 60
+
+
+def sign_download_key(user_id: str, session_version: int) -> str:
+    """Klucz jednorazowego pobrania wstawiany w adres kodu QR.
+
+    Telefon, ktory skanuje kod, nie ma sesji portalu, a przekierowanie na
+    logowanie i tak nie wrocilo by pod ten adres - wiec zamiast sesji adres
+    niesie podpisany, krotko wazny klucz wystawiony osobie, ktora ten kod
+    ogladala. Zmiana hasla podbija ``session_version`` i uniewaznia klucz
+    razem z sesjami tego konta.
+    """
+    return _serializer("cmdb-pobranie").dumps({"uid": user_id, "sv": session_version})
+
+
+def load_download_key(raw: str) -> dict | None:
+    try:
+        dane = _serializer("cmdb-pobranie").loads(raw, max_age=KLUCZ_POBRANIA_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+    return dane if isinstance(dane, dict) and dane.get("uid") else None
+
+
 def issue_csrf_token(session_id: str) -> str:
     return _serializer("cmdb-csrf").dumps(session_id)
 

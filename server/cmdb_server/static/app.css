@@ -1126,3 +1126,15 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 }
 .hd-karta-czeka { box-shadow: 0 0 0 2px var(--accent); }
 .wiersz-czeka > td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+
+/* Kod QR z aplikacja na telefon (strona instalacji). Kod stoi obok opisu na
+   monitorze, a pod nim na waskim ekranie - na telefonie i tak skanuje sie go
+   z drugiego urzadzenia, wiec nie ma sensu scisniecie go w kolumne. */
+.apk-pobranie { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+.apk-kod { flex: 0 0 auto; text-align: center; }
+/* Biale tlo takze w ciemnym motywie: czytnik szuka kontrastu miedzy ciemnym
+   a jasnym modulem, a kod na granatowym tle czesc telefonow pomija. */
+.apk-kod svg { background: #fff; padding: 8px; border-radius: 10px; display: block; }
+.apk-kod p { margin: 8px 0 0; }
+.apk-opis { flex: 1; min-width: 280px; }
+@media (max-width: 720px) { .apk-pobranie { gap: 16px; } }

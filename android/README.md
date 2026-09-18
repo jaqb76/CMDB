@@ -65,6 +65,28 @@ Plik idzie do wydania, a nie do artefaktów przebiegu, bo artefakty mają limit
 miejsca na koncie — po kilkunastu buildach wysyłka kończyła się błędem
 „Artifact storage quota has been hit”, czyli APK był zbudowany, ale nie było
 jak go pobrać.
+
+### Rozdanie aplikacji technikom (kod QR w portalu)
+
+Repozytorium jest prywatne, więc telefon technika nie pobierze APK z wydania
+bez konta na GitHubie. Portal wydaje więc ten sam plik samodzielnie:
+
+1. Pobierz `CMDB-Mobile-<wersja>-debug.apk` z wydania.
+2. W portalu, w administracji → **Wersje agentów** → **Aplikacja Android**,
+   wgraj plik. Zawartość jest sprawdzana — plik, który nie jest APK, nie
+   przejdzie. Numer wersji odczytujemy z nazwy pliku (w samym APK siedzi
+   w skompilowanym manifeście).
+3. Zakładka **Instalacja agenta** pokazuje od tej chwili kod QR. Technik
+   skanuje go aparatem telefonu i pobiera aplikację.
+
+Adres w kodzie QR niesie podpisany klucz wystawiony osobie, która ten kod
+ogląda: jest ważny 30 minut i unieważnia go zmiana hasła tego konta. To nie
+jest publiczny odnośnik do pliku — telefon nie musi mieć sesji portalu, ale
+adres przepisany komuś innemu przestaje działać po pół godzinie.
+
+APK leży w podkatalogu katalogu wydań agenta (`releases/mobilna`), czyli na
+wolumenie, który już jest w `docker compose` i wchodzi do kopii zapasowej —
+plik przeżywa odtworzenie kontenera.
 Backend musi zawierać drugi etap API — samo zainstalowanie APK nie aktualizuje serwera.
 Po wdrożeniu backendu zaloguj się kontem portalu. Telefon musi mieć dostęp sieciowy
 oraz ufać certyfikatowi HTTPS serwera. To nadal wydanie testowe, nie publikacja w sklepie.

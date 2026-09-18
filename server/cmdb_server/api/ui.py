@@ -19,7 +19,13 @@ from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.templating import Jinja2Templates
 from jinja2 import ChainableUndefined, Undefined
 from sqlalchemy import case, func, or_, select
@@ -53,12 +59,14 @@ from ..security import (
     generate_token,
     hash_password,
     issue_csrf_token,
+    load_download_key,
+    sign_download_key,
     sign_session,
     verify_password,
 )
 from ..services import (
-    changes, cve, duplicates, logowanie, monitoring, pakiet, rodzaje, scoping, slowniki,
-    upgrades, ustawienia,
+    changes, cve, duplicates, logowanie, mobilna, monitoring, pakiet, qr, rodzaje, scoping,
+    slowniki, upgrades, ustawienia,
 )
 from ..services import schemat as definicje_pol
 from ..services.auth import (
@@ -2006,11 +2014,64 @@ def strona_pobierania(
     jawna pokazujemy raz, przy wydaniu. Zamiast tego jest miejsce na wklejenie
     i odsylacz do strony tokenow.
     """
+    adres_serwera = download.adres_publiczny(request)
+    aplikacja = mobilna.opis()
+    # Adres w kodzie QR niesie podpisany klucz wystawiony osobie, ktora ten kod
+    # oglada: telefon nie ma sesji portalu, a przekierowanie na logowanie i tak
+    # nie wrocilo by pod adres pliku.
+    adres_apk = (
+        f"{adres_serwera}/pobierz/aplikacja.apk"
+        f"?klucz={quote(sign_download_key(user.id, user.session_version))}"
+        if aplikacja is not None else ""
+    )
     return render(
         request, "pobierz.html", user, ctx, db,
-        adres_serwera=download.adres_publiczny(request),
+        adres_serwera=adres_serwera,
         paczka_linux=pakiet.opis(pakiet.katalog_paczki()),
         wydanie_windows=upgrades.wersja_dla_firmy(db, ctx.tenant_id, "windows"),
+        aplikacja=aplikacja,
+        adres_apk=adres_apk,
+        kod_qr=Markup(qr.svg(adres_apk)) if adres_apk else "",
+    )
+
+
+@router.get("/pobierz/aplikacja.apk")
+def pobierz_aplikacje(
+    request: Request,
+    klucz: str = Query("", max_length=500),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Plik aplikacji Android - z sesji portalu albo z klucza z kodu QR.
+
+    Dwie drogi, bo sa dwa urzadzenia: komputer, na ktorym ktos jest zalogowany
+    w portalu, i telefon, ktory wlasnie zeskanowal kod. Klucz jest podpisany,
+    wazny pol godziny i przypisany do konta - wiec nie jest to publiczny adres
+    pliku, tylko krotkie przeniesienie uprawnienia na drugi ekran.
+    """
+    konto = current_user(request, db)
+    if konto is None and klucz:
+        dane = load_download_key(klucz)
+        if dane is not None:
+            kandydat = db.get(PortalUser, dane["uid"])
+            if (kandydat is not None and kandydat.is_active
+                    and dane.get("sv") == kandydat.session_version):
+                konto = kandydat
+    if konto is None:
+        raise LoginRequired()
+
+    aplikacja = mobilna.opis()
+    sciezka = mobilna.plik()
+    if aplikacja is None or not sciezka.is_file():
+        raise HTTPException(status_code=404, detail="na tym serwerze nie ma pliku aplikacji")
+
+    audit(db, None, action="aplikacja.pobrana", target=aplikacja.wersja,
+          ip=client_ip(request), actor=konto.email)
+    db.commit()
+    return FileResponse(
+        sciezka,
+        filename=aplikacja.nazwa_pobrania,
+        media_type="application/vnd.android.package-archive",
+        headers={"X-Content-Type-Options": "nosniff"},
     )
 
 

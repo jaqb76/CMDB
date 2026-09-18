@@ -235,6 +235,56 @@
   {% endif %}
 </section>
 
+<section class="panel">
+  <h2>Aplikacja Android</h2>
+  {% if aplikacja %}
+  <p class="muted small">
+    Ten plik portal wydaje technikom na stronie
+    <a href="/pobierz">Instalacja agenta</a> — razem z kodem QR do zeskanowania
+    telefonem. Wgranie nowego pliku podmienia poprzedni.
+  </p>
+  <table class="table">
+    <tbody>
+      <tr><th>Wersja</th><td><code class="strong">{{ aplikacja.wersja }}</code></td></tr>
+      <tr><th>Rozmiar</th><td>{{ aplikacja.rozmiar | bytes }}</td></tr>
+      <tr><th>SHA-256</th><td class="small"><code>{{ aplikacja.sha256 }}</code></td></tr>
+      <tr><th>Wgrał</th><td class="small">{{ aplikacja.wgral or '—' }}, {{ aplikacja.wgrano | dt }}</td></tr>
+    </tbody>
+  </table>
+  <form method="post" action="/admin/mobilna/usun" class="inline-form"
+        onsubmit="return confirm('Zdjąć aplikację z portalu? Kod QR przestanie działać.')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-small btn-danger">Zdejmij z portalu</button>
+  </form>
+  {% else %}
+  <p class="muted small">
+    Na tym serwerze nie ma pliku aplikacji, więc strona instalacji nie pokazuje
+    kodu QR. APK zbudowany przez CI leży w wydaniach repozytorium
+    (<code>CMDB-Mobile-&lt;wersja&gt;-debug.apk</code>) — pobierz go tam i wgraj
+    tutaj, żeby technicy mogli go zainstalować bez konta na GitHubie.
+  </p>
+  {% endif %}
+
+  <form method="post" action="/admin/mobilna" class="row-form" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div>
+      <label for="apk">Plik APK</label>
+      <input id="apk" name="plik" type="file" accept=".apk,application/vnd.android.package-archive" required>
+    </div>
+    <div>
+      <label for="apk_wersja">Numer wersji</label>
+      <input id="apk_wersja" name="version" maxlength="32" placeholder="odczytamy z nazwy pliku">
+    </div>
+    <div><button type="submit" class="btn btn-primary">Wgraj aplikację</button></div>
+  </form>
+  <p class="muted small">
+    Zawartość pliku jest sprawdzana — plik, który nie jest APK, nie przejdzie.
+    Numeru wersji nie da się odczytać z samego APK (siedzi w skompilowanym
+    manifeście), więc bierzemy go z nazwy pliku albo z pola obok; jest opisem,
+    a nie faktem wyciągniętym z bajtów.
+  </p>
+</section>
+
 {% if not import_enabled %}<section class="panel">
   <h2>Wgraj nowa wersje</h2>
   <form method="post" action="/admin/releases" class="row-form" enctype="multipart/form-data">
