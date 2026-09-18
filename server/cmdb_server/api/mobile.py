@@ -36,6 +36,8 @@ from ..services import logowanie, raporty, rodzaje, scoping, slowniki, ustawieni
 from ..services.auth import (
     authenticate_user,
     client_ip,
+    firmy_helpdesku,
+    firmy_konta,
     tenant_context_for,
     widzi_wszystkie_firmy,
 )
@@ -92,20 +94,54 @@ def mobile_user(request: Request, db: Session = Depends(get_db)) -> PortalUser:
     return user
 
 
+def kontekst_firmy(
+    db: Session, user: PortalUser, tenant_slug: str | None
+) -> TenantContext | None:
+    """Firma, w ktorej pracuje to zapytanie - albo None, gdy nie da sie jej wskazac.
+
+    Trzy przypadki, te same co w panelu (``ui.resolve_tenant``): konto globalne
+    wskazuje firme naglowkiem, technik helpdesku wybiera z firm, ktore dostal,
+    a zwykle konto ma swoja firme na sztywno. Naglowek spoza listy konta nie
+    jest bledem, tylko wraca do pierwszej dozwolonej firmy - tak samo jak
+    parametr w adresie panelu.
+
+    Technik helpdesku czesto NIE NALEZY do zadnej firmy: jego uprawnienie to
+    wpisy w helpdesk_dostepy. Bez tej sciezki aplikacja pokazywala mu pusta
+    liste firm i nie dalo sie z niej wyjsc.
+    """
+    if widzi_wszystkie_firmy(user):
+        if not tenant_slug:
+            return None
+        tenant = db.execute(
+            select(Tenant).where(Tenant.slug == tenant_slug)
+        ).scalar_one_or_none()
+        if tenant is None or not tenant.is_active:
+            return None
+        return tenant_context_for(user, tenant)
+
+    firmy = firmy_konta(db, user)
+    if not firmy:
+        return None
+    wybrana = next((t for t in firmy if t.slug == tenant_slug), None) if tenant_slug else None
+    wybrana = wybrana or firmy[0]
+    return tenant_context_for(
+        user, wybrana, helpdesk=wybrana.id in firmy_helpdesku(db, user)
+    )
+
+
 def mobile_context(
     user: PortalUser = Depends(mobile_user),
     tenant_slug: Annotated[str | None, Header(alias="X-CMDB-Tenant")] = None,
     db: Session = Depends(get_db),
 ) -> TenantContext:
-    if widzi_wszystkie_firmy(user):
-        if not tenant_slug:
-            raise HTTPException(400, "konto globalne musi wskazac naglowek X-CMDB-Tenant")
-        tenant = db.execute(select(Tenant).where(Tenant.slug == tenant_slug)).scalar_one_or_none()
-    else:
-        tenant = db.get(Tenant, user.tenant_id) if user.tenant_id else None
-    if tenant is None or not tenant.is_active:
-        raise HTTPException(404, "firma nie istnieje albo jest nieaktywna")
-    return tenant_context_for(user, tenant)
+    if widzi_wszystkie_firmy(user) and not tenant_slug:
+        raise HTTPException(400, "konto globalne musi wskazac naglowek X-CMDB-Tenant")
+    ctx = kontekst_firmy(db, user, tenant_slug)
+    if ctx is not None:
+        return ctx
+    if not widzi_wszystkie_firmy(user) and not firmy_konta(db, user):
+        raise HTTPException(403, "konto nie jest przypisane do zadnej firmy")
+    raise HTTPException(404, "firma nie istnieje albo jest nieaktywna")
 
 
 def require_write(ctx: TenantContext) -> None:
@@ -192,22 +228,30 @@ def _user_item(user: PortalUser, tenant: Tenant | None, ctx: TenantContext | Non
 @router.get("/me")
 def me(user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db),
        tenant_slug: Annotated[str | None, Header(alias="X-CMDB-Tenant")] = None) -> dict:
-    if tenant_slug and widzi_wszystkie_firmy(user):
-        ctx = mobile_context(user, tenant_slug, db)
-        tenant = db.get(Tenant, ctx.tenant_id)
-    else:
-        tenant = db.get(Tenant, user.tenant_id) if user.tenant_id else None
-    ctx = tenant_context_for(user, tenant) if tenant else None
+    """Konto razem z firma, w ktorej wlasnie pracuje.
+
+    Firme wyznacza ta sama droga co dla reszty API, wiec technik helpdesku
+    dostaje tu firme, ktora wybral w aplikacji, a nie puste pole - i razem
+    z nia prawo do zapisu wyliczone dla tej firmy.
+    """
+    ctx = kontekst_firmy(db, user, tenant_slug)
+    tenant = db.get(Tenant, ctx.tenant_id) if ctx else None
     return _user_item(user, tenant, ctx)
 
 
 @router.get("/tenants")
 def tenants(user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db)) -> list[dict]:
-    stmt = select(Tenant).where(Tenant.is_active.is_(True))
-    if not widzi_wszystkie_firmy(user):
-        stmt = stmt.where(Tenant.id == user.tenant_id)
+    """Firmy, miedzy ktorymi to konto moze sie przelaczac.
+
+    Ta sama lista co w pasku panelu (``auth.firmy_konta``): wlasna firma konta
+    ORAZ firmy nadane w helpdesku. Technik bez wlasnej firmy widzi tu te,
+    ktore obsluguje - wczesniej dostawal pusta liste i utykal na wyborze firmy.
+
+    Nieaktywne firmy odpadaja takze kontu globalnemu: w aplikacji lista sluzy
+    do wyboru, a wybranie nieaktywnej firmy skonczyloby sie bledem.
+    """
     return [{"id": row.id, "name": row.name, "slug": row.slug}
-            for row in db.execute(stmt.order_by(Tenant.name)).scalars()]
+            for row in firmy_konta(db, user) if row.is_active]
 
 
 @router.get("/dashboard")

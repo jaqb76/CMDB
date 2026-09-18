@@ -13,8 +13,26 @@ android {
         applicationId = "pl.hubzso.cmdb"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.5.0"
+        versionCode = 9
+        versionName = "0.5.1"
+    }
+
+    // Kazdy przebieg CI generowal wlasny, losowy klucz debugowy, wiec Android
+    // odmawial aktualizacji ("konflikt z istniejacym pakietem") i trzeba bylo
+    // odinstalowac aplikacje razem z zapisana sesja. Klucz w repozytorium
+    // sprawia, ze kolejne wydania maja ten sam podpis i instaluja sie na
+    // wierzch.
+    //
+    // To jest klucz DEBUGOWY i celowo nie jest tajny - ma haslo domyslne dla
+    // Androida. Nie wolno nim podpisac wydania do sklepu; do tego sluzy osobny
+    // klucz, ktory nie ma prawa lezec w repozytorium.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/cmdb-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildFeatures { compose = true }

@@ -91,8 +91,12 @@ Backend musi zawierać drugi etap API — samo zainstalowanie APK nie aktualizuj
 Po wdrożeniu backendu zaloguj się kontem portalu. Telefon musi mieć dostęp sieciowy
 oraz ufać certyfikatowi HTTPS serwera. To nadal wydanie testowe, nie publikacja w sklepie.
 
-Buildy debug z różnych uruchomień CI mogą mieć różne podpisy. Jeżeli Android odmówi
-aktualizacji, odinstaluj poprzedni APK (usunie lokalną sesję) i zainstaluj nowy.
+Od wersji 0.5.1 wszystkie wydania są podpisane tym samym kluczem debugowym
+(`android/keystore/cmdb-debug.keystore`), więc instalują się na wierzch
+poprzedniej wersji. Przejście z wersji zbudowanej **wcześniej** wymaga jednego
+odinstalowania — tamte APK miały losowy podpis z przebiegu CI i Android odmawia
+aktualizacji („konflikt z istniejącym pakietem”). Odinstalowanie kasuje zapisaną
+sesję, więc po instalacji trzeba zalogować się ponownie.
 
 ### Test ręczny przed szerszym wdrożeniem
 
@@ -158,6 +162,30 @@ i historię wiadomości. Zamiast priorytetu aplikacja pokazuje rodzaj sprawy
 (incydent, prośba, inne), a w miejscu licznika SLA to, co system naprawdę wie:
 od kiedy sprawa czeka na NASZĄ odpowiedź. Wymyślony licznik wyglądałby jak
 zobowiązanie, którego nikt nie podjął.
+
+## Wydanie 0.5.1 — aktualizacja bez odinstalowania
+
+- Wszystkie wydania są podpisane jednym kluczem debugowym z repozytorium, więc
+  kolejny APK instaluje się na wierzch poprzedniego. Wcześniej każdy przebieg
+  CI generował własny klucz i Android odmawiał aktualizacji.
+- Technik helpdesku widzi w aplikacji firmy, które mu nadano. Wcześniej konto
+  bez własnej firmy (a tak wygląda konto technika) utykało na ekranie „Wybierz
+  firmę — brak dostępnych firm”, mimo nadanego dostępu.
+- Plik, którego telefon nie potrafi odczytać, przerywa wysyłkę z komunikatem
+  zamiast wypaść po cichu z załączników.
+
+### O kluczu debugowym
+
+Klucz leży w repozytorium i **celowo nie jest tajny** — ma hasło domyślne dla
+Androida (`android`). Służy wyłącznie do budowania wersji testowych: nie da się
+nim opublikować aplikacji w sklepie ani dostać do serwera CMDB. Cena jest taka,
+że ktoś z dostępem do repozytorium może zbudować APK, które Android przyjmie
+jako aktualizację tej aplikacji — żeby to wykorzystać, musiałby i tak namówić
+kogoś na instalację swojego pliku.
+
+Jeśli ta cena jest za wysoka, klucz można trzymać jako sekret repozytorium
+(`base64` w `secrets`) i odtwarzać go w workflow przed budowaniem — wtedy nie
+ma go w historii gita, ale wydania nadal mają ten sam podpis.
 
 ## Błąd 429 podczas logowania
 
