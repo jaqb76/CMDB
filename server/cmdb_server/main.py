@@ -214,7 +214,10 @@ def create_app() -> FastAPI:
         content_length = request.headers.get("content-length")
         if content_length and content_length.isdigit():
             sciezka = request.url.path
-            if sciezka.startswith("/admin/releases"):
+            if sciezka.startswith("/admin/releases") or sciezka == "/admin/mobilna":
+                # APK aplikacji Android podlega temu samemu limitowi co plik
+                # agenta - wersja debug ma kilkadziesiat MB, a limit raportu
+                # (8 MB) odrzucal ja kodem 413.
                 limit = settings.max_release_bytes
             elif sciezka == "/admin/kopie/przywroc":
                 # Archiwum kopii to zrzut calej bazy razem z zalacznikami -
