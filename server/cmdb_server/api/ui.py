@@ -77,6 +77,7 @@ from ..services.auth import (
     firmy_helpdesku,
     firmy_konta,
     naive_utc,
+    require_superadmin,
     require_user,
     tenant_context_for,
     verify_csrf,
@@ -2167,7 +2168,10 @@ def token_revoke(
 @router.get("/audit", response_class=HTMLResponse)
 def audit_view(
     request: Request,
-    user: PortalUser = Depends(require_user),
+    # Dziennik mowi, kto, kiedy i skad zmienil co w firmie - lacznie z adresami
+    # IP i kontami. To material dla administratora glownego, nie dla kazdego,
+    # kto ma dostep do firmy (przeglad, technik helpdesku).
+    user: PortalUser = Depends(require_superadmin),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
 ) -> Response:

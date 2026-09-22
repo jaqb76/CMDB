@@ -649,7 +649,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
 }
 .app-sidebar {
-  position: sticky; top: 0; z-index: 30; height: 100vh; min-width: 0;
+  position: sticky; top: 0; z-index: 30; height: 100vh; height: 100dvh; min-width: 0;
   display: flex; flex-direction: column; overflow: hidden;
   padding: 10px 8px 12px; background: #102641; color: #d8e3f2;
   box-shadow: 1px 0 0 rgb(255 255 255 / .06);
@@ -683,7 +683,19 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
 .sidebar-toggle:hover { background: rgb(255 255 255 / .12); }
-.app-nav { margin-top: 4px; }
+/* Pozycji w menu przybywa szybciej niz wysokosci ekranu. Przewija sie wiec
+   sama lista, a logo, przycisk zwijania i dolny pasek (klasyczny widok,
+   administracja, pomoc) zostaja na miejscu - na niskim ekranie nie znikaja
+   pod krawedzia okna. min-height: 0 jest konieczne, inaczej element flex
+   nie skurczy sie ponizej swojej tresci i nie bedzie czego przewijac. */
+.app-nav {
+  flex: 1 1 auto; min-height: 0; margin-top: 4px;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .22) transparent;
+}
+.app-nav::-webkit-scrollbar { width: 6px; }
+.app-nav::-webkit-scrollbar-thumb { background: rgb(255 255 255 / .22); border-radius: 3px; }
+.sidebar-brand, .sidebar-toggle, .sidebar-bottom { flex: none; }
 .nav-group-label {
   height: 20px; margin: 10px 9px 2px; overflow: hidden; white-space: nowrap;
   color: #8196b4; font-size: 9px; font-weight: 700; letter-spacing: .12em;
@@ -794,6 +806,14 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
   .app-layout .motyw { display: none; }
 }
 
+
+/* Bardzo niski ekran (telefon poziomo): na przewijana liste zostaloby kilka
+   pikseli, wiec przewija sie cale menu razem z dolnym paskiem. */
+@media (max-height: 460px) {
+  .app-sidebar { overflow-y: auto; overscroll-behavior: contain; }
+  .app-nav { flex: none; overflow: visible; }
+  .sidebar-bottom { margin-top: 12px; }
+}
 
 /* --- kopie zapasowe ------------------------------------------------------ */
 /* Panel, ktory ma sie roznic od reszty: jedna operacja na tym ekranie zastepuje
@@ -1080,11 +1100,23 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
    tez jest pozycjonowane - bez tego chowalby sie pod nim. */
 .pasek-instancji {
   position: sticky; top: 0; z-index: 60;
-  padding: 5px 16px;
+  height: var(--pasek-instancji); box-sizing: border-box; line-height: 16px;
+  padding: 5px 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-family: var(--mono); font-size: 11.5px; font-weight: 600;
   letter-spacing: 0.12em; text-transform: uppercase; text-align: center;
   color: #fff;
 }
+/* Pasek stoi przyklejony nad wszystkim, wiec menu i gorny pasek przyklejaja
+   sie tuz pod nim, a menu jest o niego nizsze. Bez tego gorna czesc menu
+   chowala sie pod paskiem, a dolna (pomoc, administracja) za krawedzia
+   ekranu - na niskim oknie nie dalo sie do niej dojsc. */
+:root { --pasek-instancji: 26px; }
+.pasek-instancji ~ .app-shell .app-sidebar {
+  top: var(--pasek-instancji);
+  height: calc(100vh - var(--pasek-instancji));
+  height: calc(100dvh - var(--pasek-instancji));
+}
+.pasek-instancji ~ .app-shell .topbar { top: var(--pasek-instancji); }
 .pasek-bursztyn { background: #b45309; }
 .pasek-czerwony { background: #a52222; }
 .pasek-fiolet { background: #6d28d9; }

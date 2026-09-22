@@ -446,7 +446,11 @@ def change_list(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=
 
 
 @router.get("/audit")
-def audit_list(ctx: TenantContext = Depends(mobile_context), db: Session = Depends(get_db)) -> list[dict]:
+def audit_list(user: PortalUser = Depends(mobile_user), ctx: TenantContext = Depends(mobile_context),
+               db: Session = Depends(get_db)) -> list[dict]:
+    # Te same zasady co w panelu (/audit): dziennik tylko dla administratora glownego.
+    if not user.is_superadmin:
+        raise HTTPException(403, "audyt jest dostepny tylko dla administratora glownego")
     rows = db.execute(select(AuditLog).where(AuditLog.tenant_id == ctx.tenant_id).order_by(AuditLog.created_at.desc()).limit(200)).scalars().all()
     return [{"id": row.id, "actor": row.actor, "action": row.action, "target": row.target,
              "detail": row.detail, "ip": row.ip, "created_at": _iso(row.created_at)} for row in rows]

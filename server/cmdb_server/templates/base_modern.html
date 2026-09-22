@@ -66,7 +66,9 @@
 
       <div class="nav-group-label">Analiza</div>
       <a class="app-nav-link{{ akt('/raporty') }}" href="/raporty" title="Raporty"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Raporty</span></a>
+      {% if user.is_superadmin %}
       <a class="app-nav-link{{ akt('/audit') }}" href="/audit" title="Audyt operacji"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Audyt operacji</span></a>
+      {% endif %}
 
       <div class="nav-group-label">Agenty</div>
       <a class="app-nav-link{{ akt('/tokens') }}" href="/tokens" title="Tokeny agentów"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Tokeny agentów</span></a>

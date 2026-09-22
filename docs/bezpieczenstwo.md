@@ -247,7 +247,8 @@ nie może podmienić tego, co zadanie uruchamia.
 tokenu, rejestrację agenta, wycofanie poświadczenia, zmianę opiekuna,
 dodanie i usunięcie opiekuna oraz dodanie, zmianę i usunięcie celu
 monitorowania — z adresem IP i znacznikiem czasu.
-Podgląd w panelu: zakładka **Audyt**.
+Podgląd w panelu: zakładka **Audyt** — wyłącznie dla administratora głównego
+(pojedyncza firma w portalu, wszystkie firmy w `/admin/audyt`).
 
 ## Serwer wystawiony do internetu
 

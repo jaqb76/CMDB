@@ -189,11 +189,15 @@ def test_mobile_tenant_selection_respects_roles(client, tenant_a, tenant_b, make
 def test_audit_excludes_other_tenants_and_global_events(client, tenant_a, tenant_b, make_user):
     from cmdb_server.models import AuditLog
     make_user(tenant_a['id'], 'admin@a.pl', 'bardzo-dlugie-haslo')
+    make_user(None, 'super@example.pl', 'bardzo-dlugie-haslo')
     with SessionLocal() as db:
         db.add_all([AuditLog(tenant_id=t, actor='test', action='test', target=label)
                     for t, label in [(tenant_a['id'], 'own'), (tenant_b['id'], 'foreign'), (None, 'global')]])
         db.commit()
-    events = client.get('/api/v1/mobile/audit', headers=_login(client)).json()
+    # Audyt jest tylko dla administratora glownego - konto firmy dostaje 403.
+    assert client.get('/api/v1/mobile/audit', headers=_login(client)).status_code == 403
+    headers = {**_login(client, 'super@example.pl'), 'X-CMDB-Tenant': tenant_a['slug']}
+    events = client.get('/api/v1/mobile/audit', headers=headers).json()
     assert {e['target'] for e in events} == {'own'}
 
 

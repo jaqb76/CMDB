@@ -114,6 +114,9 @@
         link.setAttribute("aria-current", "page");
         return;
       }
+      // Link "#" (przelacznik ukladu) to przycisk, nie strona - jego adres
+      // rozwiazuje sie do biezacej strony i swiecilby zawsze jako aktywny.
+      if (link.getAttribute("href").charAt(0) === "#") { return; }
       var href = new URL(link.href, window.location.origin).pathname.replace(/\/$/, "") || "/";
       var exact = link.hasAttribute("data-nav-exact");
       if ((exact && path === href) || (!exact && href !== "/" && (path === href || path.indexOf(href + "/") === 0))) {
@@ -121,6 +124,17 @@
         link.setAttribute("aria-current", "page");
       }
     });
+
+    // Na niskim ekranie aktywna pozycja moze lezec ponizej widocznej czesci
+    // przewijanej listy - pokazujemy ja, zeby bylo widac, gdzie jestesmy.
+    // Liczymy recznie zamiast scrollIntoView: to przewijaloby takze cala
+    // strone, a na telefonie menu stoi poza ekranem.
+    var lista = document.querySelector(".app-nav");
+    var aktywna = lista && lista.querySelector(".app-nav-link.is-active");
+    if (aktywna) {
+      var dol = aktywna.offsetTop - lista.offsetTop + aktywna.offsetHeight;
+      if (dol > lista.clientHeight) { lista.scrollTop = dol - lista.clientHeight + 12; }
+    }
   })();
 
   // Zakladki na karcie maszyny.
