@@ -17,6 +17,9 @@ import segno
 # gorzej skanuje go starszy telefon z zabrudzonym obiektywem.
 KOREKCJA = "m"
 
+# Pusty pas wokol kodu w modulach. Specyfikacja wymaga co najmniej czterech.
+MARGINES = 4
+
 
 def svg(adres: str, *, skala: int = 5, ciemny: str = "#0B3C6E") -> str:
     """Kod QR z adresem jako gotowy fragment SVG.
@@ -24,6 +27,15 @@ def svg(adres: str, *, skala: int = 5, ciemny: str = "#0B3C6E") -> str:
     Jasne pola zostaja biale takze w ciemnym motywie: czytnik szuka kontrastu
     miedzy ciemnym a jasnym modulem, a kod narysowany na granatowym tle strony
     czesc telefonow po prostu pomija.
+
+    Rozmiar ustala CSS (``.apk-kod svg``), nie atrybuty: SVG ma sam
+    ``viewBox``, wiec skaluje sie do pudelka. Ze sztywnymi width/height
+    i paddingiem z CSS (``box-sizing: border-box``) przegladarka ucinala prawy
+    i dolny brzeg kodu, a takiego kodu zaden telefon nie odczytal.
+
+    Margines to 4 moduly - minimum ze specyfikacji QR. Przy 2 czesc czytnikow
+    nie znajdowala kodu, a kazde przyciecie od razu zjadalo jego krawedz.
     """
     kod = segno.make(adres, error=KOREKCJA)
-    return kod.svg_inline(scale=skala, border=2, dark=ciemny, light="#ffffff")
+    return kod.svg_inline(scale=skala, border=MARGINES, dark=ciemny, light="#ffffff",
+                          omitsize=True)

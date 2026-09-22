@@ -1224,7 +1224,13 @@ button.nav-group-label:focus-visible { outline: 2px solid var(--accent); outline
 .apk-kod { flex: 0 0 auto; text-align: center; }
 /* Biale tlo takze w ciemnym motywie: czytnik szuka kontrastu miedzy ciemnym
    a jasnym modulem, a kod na granatowym tle czesc telefonow pomija. */
-.apk-kod svg { background: #fff; padding: 8px; border-radius: 10px; display: block; }
+/* Rozmiar nadaje CSS - SVG ma sam viewBox i skaluje sie do tej szerokosci.
+   Bez paddingu: bialy margines (4 moduly) jest czescia samego kodu. Padding
+   przy sztywnym rozmiarze SVG ucinal prawy i dolny brzeg kodu. */
+.apk-kod svg {
+  display: block; width: 300px; max-width: calc(100vw - 64px); height: auto;
+  background: #fff; border-radius: 10px;
+}
 .apk-kod p { margin: 8px 0 0; }
 .apk-opis { flex: 1; min-width: 280px; }
 @media (max-width: 720px) { .apk-pobranie { gap: 16px; } }
