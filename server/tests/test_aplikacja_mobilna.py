@@ -247,3 +247,27 @@ def test_nginx_przepuszcza_duze_apk(plik):
     tresc = (Path(__file__).resolve().parents[2] / "deploy" / "nginx" / plik).read_text(encoding="utf-8")
     blok = tresc.split("location = /admin/mobilna {")[1].split("}")[0]
     assert int(re.search(r"client_max_body_size\s+(\d+)m", blok).group(1)) >= 64
+
+
+# --- wyglad kodu QR -----------------------------------------------------------
+#
+# SVG mial sztywne width/height bez viewBox, a CSS dokladal padding przy
+# box-sizing: border-box - przegladarka ucinala prawy i dolny brzeg kodu
+# i zaden telefon go nie odczytal.
+
+def test_kod_qr_skaluje_sie_i_ma_pelny_margines():
+    import re
+    from pathlib import Path
+
+    from cmdb_server.services import qr
+
+    kod = qr.svg("https://cmdb.example.pl/pobierz/aplikacja.apk?klucz=abc")
+    otwarcie = kod.split(">", 1)[0]
+    assert "viewBox=" in otwarcie
+    assert not re.search(r'\s(width|height)="', otwarcie), "rozmiar ma ustalac CSS, nie atrybut"
+    assert qr.MARGINES >= 4, "specyfikacja QR wymaga marginesu co najmniej 4 modulow"
+
+    styl = (Path(__file__).resolve().parents[1] / "cmdb_server" / "static" / "app.css").read_text(encoding="utf-8")
+    regula = styl.split(".apk-kod svg {")[1].split("}")[0]
+    assert "padding" not in regula
+    assert "height: auto" in regula
