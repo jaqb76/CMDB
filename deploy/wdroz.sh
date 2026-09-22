@@ -24,6 +24,17 @@ echo "==> Wersja do wpisania w obraz: $CMDB_WERSJA"
 echo "==> Buduje i uruchamiam"
 docker compose -f deploy/docker-compose.yml up -d --build
 
+# Konfiguracja nginx jest zamontowana z repozytorium, a "up -d" nie rusza
+# kontenera, ktorego definicja sie nie zmienila - nowe limity i adresy
+# (np. wgrywanie APK) nie weszlyby w zycie. Najpierw sprawdzamy skladnie:
+# blad w pliku nie moze polozyc jedynego wejscia z zewnatrz.
+echo "==> Przeladowuje konfiguracje nginx"
+if docker compose -f deploy/docker-compose.yml exec -T proxy nginx -t -q; then
+    docker compose -f deploy/docker-compose.yml exec -T proxy nginx -s reload
+else
+    echo "==> UWAGA: bledna konfiguracja nginx - zostaje poprzednia." >&2
+fi
+
 echo "==> Sprawdzam, co serwer o sobie mowi"
 # Pytamy pod adresem wewnetrznym: to samo, co widzi swiat, ale bez zaleznosci
 # od DNS i certyfikatu.

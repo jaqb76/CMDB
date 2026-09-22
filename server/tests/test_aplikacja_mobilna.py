@@ -215,3 +215,35 @@ def test_zdjecie_aplikacji_zabiera_plik_i_kod(client, tenant_a, magazyn):
     assert odpowiedz.status_code == 303
     assert mobilna.opis() is None
     assert client.get("/pobierz/aplikacja.apk", follow_redirects=False).status_code == 404
+
+
+# --- limit rozmiaru -----------------------------------------------------------
+#
+# APK wersji debug ma kilkadziesiat MB. Adres wgrywania nie mial wyjatku od
+# limitu raportu (8 MB w aplikacji, 12 MB w nginx), wiec plik odbijal sie
+# kodem 413 Request Entity Too Large, zanim portal go w ogole zobaczyl.
+
+def test_apk_wiekszy_niz_limit_raportu_przechodzi(client, tenant_a, magazyn):
+    import os
+
+    from cmdb_server.config import get_settings
+
+    _superadmin()
+    _login(client, "szef@cmdb.pl", HASLO)
+    duzy = _apk(os.urandom(get_settings().max_report_bytes + 2 * 1024 * 1024))
+    assert len(duzy) > get_settings().max_report_bytes
+
+    odpowiedz = _wgraj(client, tresc=duzy)
+
+    assert odpowiedz.status_code == 303, odpowiedz.text
+    assert mobilna.plik().stat().st_size == len(duzy)
+
+
+@pytest.mark.parametrize("plik", ["cmdb.conf", "cmdb-dev.conf"])
+def test_nginx_przepuszcza_duze_apk(plik):
+    import re
+    from pathlib import Path
+
+    tresc = (Path(__file__).resolve().parents[2] / "deploy" / "nginx" / plik).read_text(encoding="utf-8")
+    blok = tresc.split("location = /admin/mobilna {")[1].split("}")[0]
+    assert int(re.search(r"client_max_body_size\s+(\d+)m", blok).group(1)) >= 64
