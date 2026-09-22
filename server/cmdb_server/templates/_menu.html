@@ -1,0 +1,51 @@
+{# Wspolne klocki menu nowego ukladu - portal firmowy i panel administratora.
+   Import "with context", bo makra czytaja ciasteczka z request i konto z user. #}
+
+{#
+  Zwijana grupa pozycji menu. Zwiniete grupy pamieta ciasteczko
+  cmdb_menu_zwiniete (klucze rozdzielone kropka), wiec serwer od razu rysuje
+  menu w tym samym stanie - bez rozwijania po wczytaniu skryptu. Grupa
+  z aktywna pozycja jest zawsze otwarta: zwiniecie nie moze schowac miejsca,
+  w ktorym akurat jestesmy. Aktywnosc poznajemy po wyrenderowanej tresci
+  grupy, zeby nie powtarzac tu warunkow z makra akt().
+#}
+{% macro grupa(klucz, etykieta) -%}
+{%- set tresc = caller() -%}
+{%- set zwiniete = (request.cookies.get('cmdb_menu_zwiniete') or '').split('.') -%}
+{%- set zwinieta = klucz in zwiniete and ' is-active' not in tresc -%}
+<div class="nav-group{% if zwinieta %} is-zwinieta{% endif %}" data-nav-group="{{ klucz }}">
+  <button type="button" class="nav-group-label" data-nav-group-toggle
+          aria-expanded="{{ 'false' if zwinieta else 'true' }}" aria-controls="grupa-{{ klucz }}">
+    <span class="nav-group-nazwa">{{ etykieta }}</span><span class="nav-group-strzalka" aria-hidden="true">▾</span>
+  </button>
+  <div class="nav-group-items" id="grupa-{{ klucz }}">{{ tresc }}</div>
+</div>
+{%- endmacro %}
+
+{#
+  Menu konta w gornym pasku: konto, pomoc, zmiana ukladu i wylogowanie.
+  Zwykly <details>, wiec otwiera sie takze bez skryptu; skrypt doklada tylko
+  zamykanie klikiem obok i klawiszem Esc. Adres e-mail w przycisku znika na
+  wezszym ekranie, inicjal zostaje - droga do "Moje konto" jest zawsze.
+#}
+{% macro konto_menu() -%}
+<details class="konto-menu" data-konto-menu>
+  <summary class="konto-przycisk" title="Konto: {{ user.email }}" aria-label="Menu konta {{ user.email }}">
+    <span class="konto-inicjal" aria-hidden="true">{{ (user.full_name or user.email)[:1] | upper }}</span>
+    <span class="konto-email">{{ user.email }}</span>
+    <span class="konto-strzalka" aria-hidden="true">▾</span>
+  </summary>
+  <div class="konto-lista">
+    <div class="konto-naglowek">
+      {% if user.full_name %}<strong>{{ user.full_name }}</strong>{% endif %}
+      <span>{{ user.email }}</span>
+    </div>
+    <a class="konto-pozycja" href="/konto"><span aria-hidden="true">☺</span>Moje konto i hasło</a>
+    <a class="konto-pozycja" href="/pomoc"><span aria-hidden="true">?</span>Pomoc i podręcznik</a>
+    <a class="konto-pozycja" href="#" data-layout-switch="classic" title="Przełącz na klasyczny układ"><span aria-hidden="true">↶</span>Klasyczny widok</a>
+    <form method="post" action="/logout" class="konto-wyloguj">
+      <button type="submit" class="konto-pozycja"><span aria-hidden="true">⏻</span>Wyloguj</button>
+    </form>
+  </div>
+</details>
+{%- endmacro %}

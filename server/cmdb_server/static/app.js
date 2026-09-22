@@ -114,6 +114,9 @@
         link.setAttribute("aria-current", "page");
         return;
       }
+      // Link "#" (przelacznik ukladu) to przycisk, nie strona - jego adres
+      // rozwiazuje sie do biezacej strony i swiecilby zawsze jako aktywny.
+      if (link.getAttribute("href").charAt(0) === "#") { return; }
       var href = new URL(link.href, window.location.origin).pathname.replace(/\/$/, "") || "/";
       var exact = link.hasAttribute("data-nav-exact");
       if ((exact && path === href) || (!exact && href !== "/" && (path === href || path.indexOf(href + "/") === 0))) {
@@ -121,6 +124,17 @@
         link.setAttribute("aria-current", "page");
       }
     });
+
+    // Na niskim ekranie aktywna pozycja moze lezec ponizej widocznej czesci
+    // przewijanej listy - pokazujemy ja, zeby bylo widac, gdzie jestesmy.
+    // Liczymy recznie zamiast scrollIntoView: to przewijaloby takze cala
+    // strone, a na telefonie menu stoi poza ekranem.
+    var lista = document.querySelector(".app-nav");
+    var aktywna = lista && lista.querySelector(".app-nav-link.is-active");
+    if (aktywna) {
+      var dol = aktywna.offsetTop - lista.offsetTop + aktywna.offsetHeight;
+      if (dol > lista.clientHeight) { lista.scrollTop = dol - lista.clientHeight + 12; }
+    }
   })();
 
   // Zakladki na karcie maszyny.
@@ -561,6 +575,67 @@
       var layout = button.getAttribute("data-layout-switch") === "classic" ? "classic" : "modern";
       document.cookie = "cmdb_layout=" + layout + "; Path=/; Max-Age=31536000; SameSite=Lax";
       window.location.reload();
+    });
+  });
+})();
+
+// Zwijane grupy menu. Zwiniete grupy jada w ciasteczku, zeby serwer rysowal
+// menu od razu w tym samym stanie (patrz _menu.html). Zapisujemy stan
+// wszystkich grup widocznych na stronie, a klucze grup z drugiego ukladu
+// (portal / panel administratora) przepisujemy bez zmian.
+(function () {
+  "use strict";
+  var klucz = "cmdb_menu_zwiniete";
+  var grupy = document.querySelectorAll("[data-nav-group]");
+  if (!grupy.length) { return; }
+
+  function zapisane() {
+    var wpisy = document.cookie ? document.cookie.split("; ") : [];
+    for (var i = 0; i < wpisy.length; i++) {
+      var para = wpisy[i].split("=");
+      if (para[0] === klucz) { return para.slice(1).join("=").split(".").filter(Boolean); }
+    }
+    return [];
+  }
+
+  function zapisz() {
+    var tutaj = {};
+    var zwiniete = [];
+    grupy.forEach(function (g) {
+      var k = g.getAttribute("data-nav-group");
+      tutaj[k] = true;
+      if (g.classList.contains("is-zwinieta")) { zwiniete.push(k); }
+    });
+    zapisane().forEach(function (k) { if (!tutaj[k]) { zwiniete.push(k); } });
+    document.cookie = klucz + "=" + zwiniete.join(".") + "; Path=/; Max-Age=31536000; SameSite=Lax";
+  }
+
+  grupy.forEach(function (g) {
+    var przycisk = g.querySelector("[data-nav-group-toggle]");
+    if (!przycisk) { return; }
+    przycisk.addEventListener("click", function () {
+      var zwinieta = g.classList.toggle("is-zwinieta");
+      przycisk.setAttribute("aria-expanded", zwinieta ? "false" : "true");
+      zapisz();
+    });
+  });
+})();
+
+// Menu konta w gornym pasku: <details> otwiera sie sam, tutaj tylko
+// zamykanie klikiem poza menu i klawiszem Esc.
+(function () {
+  "use strict";
+  var menu = document.querySelectorAll("[data-konto-menu]");
+  if (!menu.length) { return; }
+  document.addEventListener("click", function (event) {
+    menu.forEach(function (m) {
+      if (m.open && !m.contains(event.target)) { m.open = false; }
+    });
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") { return; }
+    menu.forEach(function (m) {
+      if (m.open) { m.open = false; m.querySelector("summary").focus(); }
     });
   });
 })();

@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from cmdb_server.db import SessionLocal
 from cmdb_server.models import (AgentCredential, Asset, AssetCurrentReport, AssetRelation,
-                                AssetChange, InventorySnapshot, PortalUser, ReportReceipt, utcnow)
+                                AssetChange, AuditLog, InventorySnapshot, PortalUser, ReportReceipt, utcnow)
 from cmdb_server.security import issue_csrf_token
 from cmdb_server.services import quality
 from cmdb_server.services.scoping import TenantContext
@@ -179,7 +179,9 @@ def test_relations_create_list_delete_and_audit(client, tenant_a, make_user):
         assert len(rows) == 3
         rid = rows[0].id
     assert client.post(f"/relacje/{rid}/delete", data={"csrf_token": csrf}, follow_redirects=False).status_code == 303
-    assert "asset.relation_added" in client.get("/audit").text
+    with SessionLocal() as db:
+        akcje = set(db.execute(select(AuditLog.action)).scalars())
+    assert "asset.relation_added" in akcje
 
 
 def test_relations_reject_cross_tenant_self_wrong_types_and_csrf(client, tenant_a, tenant_b, make_user):

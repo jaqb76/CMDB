@@ -29,7 +29,8 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+
+from sqlalchemy.engine import make_url
 
 from ..config import get_settings
 from .. import wersja
@@ -81,20 +82,29 @@ def _parametry_bazy() -> tuple[list[str], dict[str, str], str]:
 
     Haslo idzie przez PGPASSWORD, a nie przez argument: lista argumentow
     procesu jest widoczna w ``ps`` dla kazdego na maszynie.
+
+    Adres czyta ten sam parser, ktorym laczy sie aplikacja (SQLAlchemy),
+    a nie ``urllib``. Haslo z ``openssl rand -base64`` potrafi zawierac ``/``,
+    a reczne - ``#`` albo ``?``; ``urlparse`` bierze je za poczatek sciezki,
+    fragmentu lub zapytania i gubi nazwe bazy, choc sama aplikacja laczy sie
+    bez problemu. Kopia musi rozumiec adres dokladnie tak jak polaczenie.
     """
-    adres = urlparse(get_settings().database_url.replace("+psycopg", ""))
-    baza = unquote(adres.path.lstrip("/"))
+    try:
+        adres = make_url(get_settings().database_url)
+    except Exception as blad:  # noqa: BLE001 - kazdy blad parsera to zly adres
+        raise BladKopii("CMDB_DATABASE_URL nie jest poprawnym adresem bazy") from blad
+    baza = adres.database or ""
     if not baza:
         raise BladKopii("CMDB_DATABASE_URL nie wskazuje nazwy bazy")
 
-    argumenty = ["--host", adres.hostname or "localhost",
+    argumenty = ["--host", adres.host or "localhost",
                  "--port", str(adres.port or 5432)]
     if adres.username:
-        argumenty += ["--username", unquote(adres.username)]
+        argumenty += ["--username", adres.username]
 
     srodowisko = dict(os.environ)
     if adres.password:
-        srodowisko["PGPASSWORD"] = unquote(adres.password)
+        srodowisko["PGPASSWORD"] = str(adres.password)
     return argumenty, srodowisko, baza
 
 

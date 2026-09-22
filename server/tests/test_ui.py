@@ -28,10 +28,15 @@ def test_all_pages_render(client, tenant_a, make_user):
     make_user(tenant_a["id"], "admin@firma-a.pl", "bardzo-dlugie-haslo")
     _login(client, "admin@firma-a.pl", "bardzo-dlugie-haslo")
 
-    for path in ("/", "/assets", "/owners", "/tokens", "/audit", f"/assets/{asset_id}"):
+    for path in ("/", "/assets", "/owners", "/tokens", f"/assets/{asset_id}"):
         response = client.get(path)
         assert response.status_code == 200, f"{path} -> {response.status_code}"
         assert "Traceback" not in response.text
+
+    # Audyt operacji widzi tylko administrator glowny - konto firmy nie ma
+    # go w menu i nie wejdzie pod adres wpisany recznie.
+    assert 'href="/audit"' not in client.get("/").text
+    assert client.get("/audit").status_code == 403
 
     detail = client.get(f"/assets/{asset_id}").text
     # Dane ze wszystkich sekcji raportu trafiaja do widoku.
