@@ -24,15 +24,26 @@ echo "==> Wersja do wpisania w obraz: $CMDB_WERSJA"
 echo "==> Buduje i uruchamiam"
 docker compose -f deploy/docker-compose.yml up -d --build
 
-# Konfiguracja nginx jest zamontowana z repozytorium, a "up -d" nie rusza
-# kontenera, ktorego definicja sie nie zmienila - nowe limity i adresy
-# (np. wgrywanie APK) nie weszlyby w zycie. Najpierw sprawdzamy skladnie:
-# blad w pliku nie moze polozyc jedynego wejscia z zewnatrz.
-echo "==> Przeladowuje konfiguracje nginx"
-if docker compose -f deploy/docker-compose.yml exec -T proxy nginx -t -q; then
-    docker compose -f deploy/docker-compose.yml exec -T proxy nginx -s reload
+# Konfiguracja nginx jest zamontowana z repozytorium jako POJEDYNCZY PLIK.
+# "git pull" nie nadpisuje pliku w miejscu, tylko tworzy nowy - a dzialajacy
+# kontener widzi dalej stary. "nginx -s reload" czytal wiec stara konfiguracje
+# (tak przetrwal blad 413 przy wgrywaniu APK), a "up -d" kontenera nie rusza,
+# bo jego definicja sie nie zmienila. Dlatego proxy odtwarzamy.
+#
+# Najpierw sprawdzamy nowy plik w osobnym, jednorazowym kontenerze: blad
+# w konfiguracji nie moze polozyc jedynego wejscia z zewnatrz. Nazwy
+# zaplecza podmieniamy na localhost - nginx musi je rozwiazac przy starcie,
+# a jednorazowy kontener nie stoi w ich sieci.
+echo "==> Sprawdzam konfiguracje nginx"
+if docker run --rm \
+        --add-host server:127.0.0.1 --add-host cmdb-dev:127.0.0.1 \
+        -v "$PWD/deploy/nginx/cmdb.conf:/etc/nginx/conf.d/default.conf:ro" \
+        -v "$PWD/deploy/certs:/etc/nginx/certs:ro" \
+        nginx:1.27-alpine nginx -t -q; then
+    echo "==> Odtwarzam proxy z nowa konfiguracja"
+    docker compose -f deploy/docker-compose.yml up -d --force-recreate --no-deps proxy
 else
-    echo "==> UWAGA: bledna konfiguracja nginx - zostaje poprzednia." >&2
+    echo "==> UWAGA: bledna konfiguracja nginx - proxy zostaje na poprzedniej." >&2
 fi
 
 echo "==> Sprawdzam, co serwer o sobie mowi"
