@@ -86,6 +86,42 @@ code { font-family: var(--mono); font-size: 0.9em; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 @media (max-width: 1200px) { .user-email { display: none; } }
+/* Menu konta w gornym pasku: konto, pomoc, uklad, wylogowanie. */
+.konto-menu { position: relative; }
+.konto-przycisk {
+  display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 3px 8px 3px 3px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  color: var(--text); cursor: pointer; list-style: none; user-select: none;
+}
+.konto-przycisk::-webkit-details-marker { display: none; }
+.konto-przycisk:hover, .konto-menu[open] .konto-przycisk { border-color: var(--accent); }
+.konto-inicjal {
+  width: 26px; height: 26px; display: grid; place-items: center; flex: none;
+  border-radius: 50%; background: var(--accent); color: var(--accent-contrast);
+  font-size: 12px; font-weight: 700;
+}
+.konto-email { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.konto-strzalka { font-size: 10px; color: var(--muted); }
+@media (max-width: 1200px) { .konto-email { display: none; } }
+.konto-lista {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 70; min-width: 230px;
+  padding: 6px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); box-shadow: 0 10px 28px rgb(0 0 0 / .18);
+}
+.konto-naglowek {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.konto-naglowek strong { color: var(--text); font-size: 13px; }
+.konto-pozycja {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 0; border-radius: 7px; background: none; color: var(--text);
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.konto-pozycja > span { width: 16px; text-align: center; color: var(--muted); }
+.konto-pozycja:hover { background: var(--bg, rgb(0 0 0 / .05)); text-decoration: none; }
+.konto-wyloguj { margin: 4px 0 0; padding-top: 4px; border-top: 1px solid var(--border); }
 .tenant-name { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; }
 .tenant-select { max-width: 150px; min-width: 0; padding: 5px 7px; }
 
@@ -156,6 +192,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; font-weight: 600; }
 .stack label:first-child { margin-top: 0; }
 .inline-form { display: inline; }
+/* Atrybut hidden musi wygrywac z display: z klas przyciskow (.btn) - inaczej
+   schowany przez skrypt przycisk zapasowy zostawal na ekranie. */
+[hidden] { display: none !important; }
+.filtr-audytu { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filtr-audytu select { width: auto; min-width: 200px; max-width: 100%; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .filters input, .filters select { width: auto; min-width: 160px; }
 /* Pasek filtrow z podpisami pol - .filters jest bez podpisow i przy czterech
@@ -728,6 +769,23 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 .sidebar-collapsed .nav-group-label {
   height: 1px; margin: 8px 8px 5px; background: rgb(255 255 255 / .1);
   color: transparent; opacity: 1;
+}
+/* Zwijane grupy. Etykieta grupy jest przyciskiem; strzalka obraca sie przy
+   zwinieciu. W waskim menu (same ikony) grup nie ma czego zwijac - etykieta
+   jest tam kreska, a pozycje zawsze widac, patrz media ponizej. */
+button.nav-group-label {
+  width: calc(100% - 18px); display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; padding: 0; border: 0; background: none; font-family: inherit; cursor: pointer;
+  text-align: left;
+}
+button.nav-group-label:hover { color: #c1cee0; }
+button.nav-group-label:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.nav-group-strzalka { font-size: 10px; letter-spacing: 0; transition: transform .15s ease; }
+.nav-group.is-zwinieta .nav-group-strzalka { transform: rotate(-90deg); }
+.nav-group.is-zwinieta .nav-group-items { display: none; }
+@media (min-width: 761px) {
+  .sidebar-collapsed button.nav-group-label { pointer-events: none; }
+  .sidebar-collapsed .nav-group.is-zwinieta .nav-group-items { display: block; }
 }
 .sidebar-collapsed .sidebar-toggle,
 .sidebar-collapsed .app-nav-link { justify-content: flex-start; }

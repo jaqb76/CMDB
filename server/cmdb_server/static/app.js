@@ -579,6 +579,67 @@
   });
 })();
 
+// Zwijane grupy menu. Zwiniete grupy jada w ciasteczku, zeby serwer rysowal
+// menu od razu w tym samym stanie (patrz _menu.html). Zapisujemy stan
+// wszystkich grup widocznych na stronie, a klucze grup z drugiego ukladu
+// (portal / panel administratora) przepisujemy bez zmian.
+(function () {
+  "use strict";
+  var klucz = "cmdb_menu_zwiniete";
+  var grupy = document.querySelectorAll("[data-nav-group]");
+  if (!grupy.length) { return; }
+
+  function zapisane() {
+    var wpisy = document.cookie ? document.cookie.split("; ") : [];
+    for (var i = 0; i < wpisy.length; i++) {
+      var para = wpisy[i].split("=");
+      if (para[0] === klucz) { return para.slice(1).join("=").split(".").filter(Boolean); }
+    }
+    return [];
+  }
+
+  function zapisz() {
+    var tutaj = {};
+    var zwiniete = [];
+    grupy.forEach(function (g) {
+      var k = g.getAttribute("data-nav-group");
+      tutaj[k] = true;
+      if (g.classList.contains("is-zwinieta")) { zwiniete.push(k); }
+    });
+    zapisane().forEach(function (k) { if (!tutaj[k]) { zwiniete.push(k); } });
+    document.cookie = klucz + "=" + zwiniete.join(".") + "; Path=/; Max-Age=31536000; SameSite=Lax";
+  }
+
+  grupy.forEach(function (g) {
+    var przycisk = g.querySelector("[data-nav-group-toggle]");
+    if (!przycisk) { return; }
+    przycisk.addEventListener("click", function () {
+      var zwinieta = g.classList.toggle("is-zwinieta");
+      przycisk.setAttribute("aria-expanded", zwinieta ? "false" : "true");
+      zapisz();
+    });
+  });
+})();
+
+// Menu konta w gornym pasku: <details> otwiera sie sam, tutaj tylko
+// zamykanie klikiem poza menu i klawiszem Esc.
+(function () {
+  "use strict";
+  var menu = document.querySelectorAll("[data-konto-menu]");
+  if (!menu.length) { return; }
+  document.addEventListener("click", function (event) {
+    menu.forEach(function (m) {
+      if (m.open && !m.contains(event.target)) { m.open = false; }
+    });
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") { return; }
+    menu.forEach(function (m) {
+      if (m.open) { m.open = false; m.querySelector("summary").focus(); }
+    });
+  });
+})();
+
 // Formularz monitorowanej uslugi: pola zalezne od sposobu sprawdzenia.
 // Sciezka HTTP nie ma sensu przy sprawdzeniu TCP, a nazwa w certyfikacie
 // przy protokole bez TLS - pokazywanie ich zawsze kaze wypelniac pola,

@@ -3,9 +3,18 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Audyt</h1>
-    <p class="muted">Ostatnie 300 zdarzeń że wszystkich firm.</p>
+    <h1>Audyt{% if wybrana %} — {{ wybrana.name }}{% endif %}</h1>
+    <p class="muted">Ostatnie 300 zdarzeń{% if wybrana %} firmy {{ wybrana.name }}{% elif firma == systemowe %} bez przypisanej firmy (logowania administratora, operacje globalne){% elif firma %} — nie ma firmy „{{ firma }}”{% else %} ze wszystkich firm{% endif %}.</p>
   </div>
+  <form method="get" action="/admin/audyt" class="inline-form filtr-audytu">
+    <label for="audyt-firma" class="small muted">Firma</label>
+    <select id="audyt-firma" name="firma" data-autosubmit>
+      <option value="">Wszystkie firmy</option>
+      <option value="{{ systemowe }}"{% if firma == systemowe %} selected{% endif %}>Bez firmy (systemowe)</option>
+      {% for f in firmy %}<option value="{{ f.slug }}"{% if wybrana and f.id == wybrana.id %} selected{% endif %}>{{ f.name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn btn-small" data-zapasowy>Pokaż</button>
+  </form>
 </div>
 
 <section class="panel">

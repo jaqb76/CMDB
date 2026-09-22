@@ -2,6 +2,7 @@
    samym stanie co poprzednia - menu nie zwija sie i nie rozwija przy kazdym
    przejsciu. #}
 {% set menu_rozwiniete = request.cookies.get('cmdb_sidebar') == 'rozwiniete' %}
+{% from "_menu.html" import grupa, konto_menu with context %}
 {# Osobny układ administratora głównego: funkcje systemowe nie mieszają się
    z codzienną obsługą zasobów pojedynczej firmy. #}
 <!doctype html>
@@ -38,27 +39,27 @@
     </button>
 
     <nav class="app-nav">
-      <div class="nav-group-label">Start</div>
       <a class="app-nav-link{% if strona == 'przeglad' %} is-active{% endif %}" href="/admin" title="Przegląd" data-nav-exact><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">Przegląd</span></a>
 
-      <div class="nav-group-label">Zarządzanie systemem</div>
+      {% call grupa('admin-system', 'Zarządzanie systemem') %}
       <a class="app-nav-link{% if strona == 'firmy' %} is-active{% endif %}" href="/admin/firmy" title="Firmy i konta"><span class="nav-icon" aria-hidden="true">▦</span><span class="nav-label">Firmy i konta</span></a>
       <a class="app-nav-link{% if strona == 'konta' %} is-active{% endif %}" href="/admin/konta" title="Konta i role"><span class="nav-icon" aria-hidden="true">☺</span><span class="nav-label">Konta i role</span></a>
       <a class="app-nav-link{% if strona == 'wersje' %} is-active{% endif %}" href="/admin/wersje" title="Wydania agentów"><span class="nav-icon" aria-hidden="true">↥</span><span class="nav-label">Wydania agentów</span></a>
       <a class="app-nav-link{% if strona == 'podatnosci' %} is-active{% endif %}" href="/admin/podatnosci" title="Podatności"><span class="nav-icon" aria-hidden="true">!</span><span class="nav-label">Podatności</span></a>
+      {% endcall %}
 
-      <div class="nav-group-label">Nadzór</div>
-      <a class="app-nav-link{% if strona == 'audyt' %} is-active{% endif %}" href="/admin/audyt" title="Pełny audyt"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Pełny audyt</span></a>
+      {% call grupa('admin-nadzor', 'Nadzór') %}
+      <a class="app-nav-link{% if strona == 'audyt' %} is-active{% endif %}" href="/admin/audyt" title="Audyt operacji"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Audyt operacji</span></a>
       <a class="app-nav-link{% if strona == 'kopie' %} is-active{% endif %}" href="/admin/kopie" title="Kopie zapasowe"><span class="nav-icon" aria-hidden="true">⛁</span><span class="nav-label">Kopie zapasowe</span></a>
+      {% endcall %}
     </nav>
 
     <nav class="sidebar-bottom" aria-label="Nawigacja dodatkowa">
       {# Droga powrotna w to samo miejsce, w ktorym portal firmowy trzyma
          przejscie do administracji - inaczej jedynym wyjsciem stad byl adres
-         wpisany z reki albo klikniecie we wlasny e-mail. #}
+         wpisany z reki albo klikniecie we wlasny e-mail. Klasyczny widok
+         i pomoc sa w menu konta w gornym pasku. #}
       <a class="app-nav-link nav-powrot" href="/" title="Wróć do portalu firmowego"><span class="nav-icon" aria-hidden="true">←</span><span class="nav-label">Portal firmowy</span></a>
-      <a class="app-nav-link" href="#" data-layout-switch="classic" title="Przełącz na klasyczny układ"><span class="nav-icon" aria-hidden="true">↶</span><span class="nav-label">Klasyczny widok</span></a>
-      <a class="app-nav-link" href="/pomoc" title="Pomoc i podręcznik"><span class="nav-icon" aria-hidden="true">?</span><span class="nav-label">Pomoc i podręcznik</span></a>
     </nav>
   </aside>
 
@@ -76,8 +77,7 @@
         <button type="button" class="motyw" data-motyw title="Motyw: automatyczny / jasny / ciemny">
           <span class="motyw-ikona motyw-auto">auto</span><span class="motyw-ikona motyw-jasny">jasny</span><span class="motyw-ikona motyw-ciemny">ciemny</span>
         </button>
-        <a class="user-email" href="/konto" title="Moje konto i zmiana hasła">{{ user.email }}</a>
-        <form method="post" action="/logout" class="inline-form"><button type="submit" class="btn btn-small btn-ghost">Wyloguj</button></form>
+        {{ konto_menu() }}
       </div>
     </header>
     <main class="content">{% block content %}{% endblock %}</main>

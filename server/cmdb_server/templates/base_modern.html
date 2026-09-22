@@ -4,6 +4,7 @@
 {% set menu_rozwiniete = request.cookies.get('cmdb_sidebar') == 'rozwiniete' %}
 {# Zaznaczenie aktywnej pozycji liczy serwer, wiec nie przeskakuje ono juz po
    wczytaniu skryptu. #}
+{% from "_menu.html" import grupa, konto_menu with context %}
 {% set sciezka = request.url.path.rstrip('/') or '/' %}
 {% macro akt(href, dokladnie=False) %}{% if (dokladnie and sciezka == href) or (not dokladnie and href != '/' and (sciezka == href or sciezka.startswith(href + '/'))) %} is-active{% endif %}{% endmacro %}
 <!doctype html>
@@ -40,15 +41,15 @@
     </button>
 
     <nav class="app-nav">
-      <div class="nav-group-label">Start</div>
       <a class="app-nav-link{{ akt('/', True) }}" href="/" title="Pulpit" data-nav-exact><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-label">Pulpit</span></a>
 
-      <div class="nav-group-label">Zasoby</div>
+      {% call grupa('zasoby', 'Zasoby') %}
       <a class="app-nav-link{{ akt('/assets') }}" href="/assets" title="Wszystkie zasoby"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Wszystkie zasoby</span></a>
       <a class="app-nav-link{{ akt('/relacje') }}" href="/relacje" title="Relacje i zależności"><span class="nav-icon" aria-hidden="true">⇄</span><span class="nav-label">Relacje i zależności</span></a>
+      {% endcall %}
 
       {% if helpdesk_widoczny %}
-      <div class="nav-group-label">Helpdesk</div>
+      {% call grupa('helpdesk', 'Helpdesk') %}
       <a class="app-nav-link{{ akt('/helpdesk') }}" href="/helpdesk" title="Zgłoszenia klientów"><span class="nav-icon" aria-hidden="true">✉</span><span class="nav-label">Zgłoszenia</span></a>
       {% if user.is_superadmin %}
       <a class="app-nav-link{{ akt('/helpdesk/nierozpoznane') }}" href="/helpdesk/nierozpoznane" title="Nierozpoznane wiadomości"><span class="nav-icon" aria-hidden="true">◐</span><span class="nav-label">Nierozpoznane</span></a>
@@ -56,38 +57,44 @@
       <a class="app-nav-link{{ akt('/helpdesk/skrzynka') }}" href="/helpdesk/skrzynka" title="Skrzynka helpdesku"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Skrzynka</span></a>
       {% endif %}
       <a class="app-nav-link{{ akt('/helpdesk/raporty') }}" href="/helpdesk/raporty/podsumowanie" title="Czas pracy"><span class="nav-icon" aria-hidden="true">◔</span><span class="nav-label">Czas pracy</span></a>
+      {% endcall %}
       {% endif %}
 
-      <div class="nav-group-label">Monitorowanie</div>
+      {# Monitorowanie i analiza w jednej grupie: po przeniesieniu audytu do
+         panelu administratora "Analiza" miala dla wiekszosci kont jedna pozycje. #}
+      {% call grupa('monitorowanie', 'Monitorowanie i raporty') %}
       <a class="app-nav-link{{ akt('/zmiany') }}" href="/zmiany" title="Ostatnie zmiany"><span class="nav-icon" aria-hidden="true">↻</span><span class="nav-label">Ostatnie zmiany</span></a>
       <a class="app-nav-link{{ akt('/wykrywanie') }}" href="/wykrywanie" title="Wykrywanie sieci"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Wykrywanie sieci</span></a>
       <a class="app-nav-link{{ akt('/monitoring') }}" href="/monitoring" title="Monitorowanie usług i certyfikatów"><span class="nav-icon" aria-hidden="true">◉</span><span class="nav-label">Monitorowanie usług</span></a>
       <a class="app-nav-link{{ akt('/jakosc') }}" href="/jakosc" title="Jakość danych"><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-label">Jakość danych</span></a>
-
-      <div class="nav-group-label">Analiza</div>
       <a class="app-nav-link{{ akt('/raporty') }}" href="/raporty" title="Raporty"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Raporty</span></a>
-      {% if user.is_superadmin %}
-      <a class="app-nav-link{{ akt('/audit') }}" href="/audit" title="Audyt operacji"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Audyt operacji</span></a>
+      {% if user.is_superadmin and ctx %}
+      {# Audyt zyje w panelu administratora; stad prowadzi od razu na zdarzenia
+         biezacej firmy. #}
+      <a class="app-nav-link nav-system" href="/admin/audyt?firma={{ ctx.tenant_slug | urlencode }}" title="Audyt operacji tej firmy (panel administratora)"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Audyt operacji</span></a>
       {% endif %}
+      {% endcall %}
 
-      <div class="nav-group-label">Agenty</div>
+      {% call grupa('agenty', 'Agenty') %}
       <a class="app-nav-link{{ akt('/tokens') }}" href="/tokens" title="Tokeny agentów"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Tokeny agentów</span></a>
       <a class="app-nav-link{{ akt('/pobierz') }}" href="/pobierz" title="Instalacja agenta"><span class="nav-icon" aria-hidden="true">↓</span><span class="nav-label">Instalacja agenta</span></a>
       {% if ctx and ctx.can_write %}
       <a class="app-nav-link{{ akt('/wersje-agentow') }}" href="/wersje-agentow" title="Wersje agentów"><span class="nav-icon" aria-hidden="true">↥</span><span class="nav-label">Wersje agentów</span></a>
       {% endif %}
+      {% endcall %}
 
-      <div class="nav-group-label">Konfiguracja</div>
+      {% call grupa('konfiguracja', 'Konfiguracja') %}
       <a class="app-nav-link{{ akt('/slowniki') }}" href="/slowniki" title="Słowniki"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">Słowniki</span></a>
+      {% endcall %}
     </nav>
 
+    {# Klasyczny widok i pomoc sa w menu konta w gornym pasku - na dole
+       zostaje tylko przejscie do panelu administratora. #}
+    {% if user.is_superadmin %}
     <nav class="sidebar-bottom" aria-label="Nawigacja dodatkowa">
-      <a class="app-nav-link" href="#" data-layout-switch="classic" title="Przełącz na klasyczny układ"><span class="nav-icon" aria-hidden="true">↶</span><span class="nav-label">Klasyczny widok</span></a>
-      {% if user.is_superadmin %}
       <a class="app-nav-link nav-system" href="/admin" title="Administracja główna"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Administracja główna</span></a>
-      {% endif %}
-      <a class="app-nav-link{{ akt('/pomoc') }}" href="/pomoc" title="Pomoc i podręcznik"><span class="nav-icon" aria-hidden="true">?</span><span class="nav-label">Pomoc i podręcznik</span></a>
     </nav>
+    {% endif %}
   </aside>
 
   <button type="button" class="sidebar-backdrop" data-sidebar-close aria-label="Zamknij menu"></button>
@@ -125,8 +132,7 @@
           </form>
         {% endif %}
         {% if user.is_global_viewer %}<span class="badge badge-warn" title="Konto widzi wszystkie firmy, ale niczego w nich nie zmienia">tylko odczyt</span>{% endif %}
-        <a class="user-email" href="/konto" title="Moje konto i zmiana hasła">{{ user.email }}</a>
-        <form method="post" action="/logout" class="inline-form"><button type="submit" class="btn btn-small btn-ghost">Wyloguj</button></form>
+        {{ konto_menu() }}
       </div>
     </header>
     <main class="content">{% block content %}{% endblock %}</main>

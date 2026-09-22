@@ -46,7 +46,6 @@ from ..models import (
     AgentCredential,
     Asset,
     AssetChange,
-    AuditLog,
     EnrollmentToken,
     InventorySnapshot,
     MonitorUslugi,
@@ -2165,23 +2164,17 @@ def token_revoke(
 
 # --- audyt i eksport --------------------------------------------------------
 
-@router.get("/audit", response_class=HTMLResponse)
+@router.get("/audit")
 def audit_view(
-    request: Request,
-    # Dziennik mowi, kto, kiedy i skad zmienil co w firmie - lacznie z adresami
-    # IP i kontami. To material dla administratora glownego, nie dla kazdego,
-    # kto ma dostep do firmy (przeglad, technik helpdesku).
+    # Audyt ma jedno miejsce: panel administratora glownego. Ten adres zostaje
+    # dla starych zakladek i od razu ustawia filtr na biezaca firme. Dziennik
+    # mowi, kto, kiedy i skad zmienil co w firmie - lacznie z adresami IP -
+    # wiec pozostale konta dostaja 403, jak w calym /admin.
     user: PortalUser = Depends(require_superadmin),
     ctx: TenantContext = Depends(resolve_tenant),
-    db: Session = Depends(get_db),
 ) -> Response:
-    entries = db.execute(
-        select(AuditLog)
-        .where(or_(AuditLog.tenant_id == ctx.tenant_id, AuditLog.tenant_id.is_(None)))
-        .order_by(AuditLog.created_at.desc())
-        .limit(200)
-    ).scalars().all()
-    return render(request, "audit.html", user, ctx, db, entries=entries)
+    return RedirectResponse(f"/admin/audyt?firma={quote(ctx.tenant_slug)}",
+                            status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/export/assets.json")

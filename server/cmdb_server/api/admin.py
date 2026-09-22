@@ -32,7 +32,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
-from sqlalchemy import func, select
+from sqlalchemy import false, func, select
 from sqlalchemy.orm import Session
 
 from .. import wersja
@@ -1549,18 +1549,40 @@ def zmien_firmy_technika(
 
 # --- audyt globalny ---------------------------------------------------------
 
+# Podkreslnik nie moze zaczynac sluga firmy (SLUG_RE), wiec wartosc nie koliduje.
+AUDYT_SYSTEMOWE = "_systemowe"
+
+
 @router.get("/audyt", response_class=HTMLResponse)
 def widok_audytu(
     request: Request,
+    # Pusta wartosc - wszystkie firmy, SYSTEMOWE - zdarzenia bez firmy
+    # (logowania superadmina, operacje globalne), inaczej slug firmy.
+    # Portal firmowy kieruje tu z filtrem ustawionym na biezaca firme.
+    firma: str = Query("", max_length=100),
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> Response:
+    firmy = list(db.execute(select(Tenant).order_by(Tenant.name)).scalars())
+    zapytanie = select(AuditLog)
+    wybrana = None
+    if firma == AUDYT_SYSTEMOWE:
+        zapytanie = zapytanie.where(AuditLog.tenant_id.is_(None))
+    elif firma:
+        wybrana = next((f for f in firmy if f.slug == firma), None)
+        if wybrana is None:
+            # Nieznana firma to pusty wynik, nie "wszystkie" - inaczej literowka
+            # w adresie po cichu pokazalaby zdarzenia wszystkich firm.
+            zapytanie = zapytanie.where(false())
+        else:
+            zapytanie = zapytanie.where(AuditLog.tenant_id == wybrana.id)
     wpisy = db.execute(
-        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(300)
+        zapytanie.order_by(AuditLog.created_at.desc()).limit(300)
     ).scalars().all()
-    nazwy_firm = {f.id: f.name for f in db.execute(select(Tenant)).scalars()}
     return render_admin(
-        request, "admin_audyt.html", user, "audyt", wpisy=wpisy, nazwy_firm=nazwy_firm
+        request, "admin_audyt.html", user, "audyt", wpisy=wpisy,
+        nazwy_firm={f.id: f.name for f in firmy}, firmy=firmy, firma=firma,
+        wybrana=wybrana, systemowe=AUDYT_SYSTEMOWE,
     )
 
 

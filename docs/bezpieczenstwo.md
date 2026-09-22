@@ -247,8 +247,10 @@ nie może podmienić tego, co zadanie uruchamia.
 tokenu, rejestrację agenta, wycofanie poświadczenia, zmianę opiekuna,
 dodanie i usunięcie opiekuna oraz dodanie, zmianę i usunięcie celu
 monitorowania — z adresem IP i znacznikiem czasu.
-Podgląd w panelu: zakładka **Audyt** — wyłącznie dla administratora głównego
-(pojedyncza firma w portalu, wszystkie firmy w `/admin/audyt`).
+Podgląd: `/admin/audyt` — wyłącznie dla administratora głównego, z filtrem
+firmy (`?firma=<slug>`, `?firma=_systemowe` dla zdarzeń bez firmy). Pozycja
+„Audyt operacji” w portalu i stary adres `/audit` prowadzą tam z filtrem
+ustawionym na bieżącą firmę.
 
 ## Serwer wystawiony do internetu
 
