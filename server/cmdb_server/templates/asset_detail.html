@@ -70,7 +70,7 @@
 </form>
 {% endif %}</div>
 {% endif %}
-<p><a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakość danych</a>{% if asset.zrodlo == 'agent' %} · <a href="/assets/{{ asset.id }}?funkcja=skaner#agent">Skaner sieci</a>{% endif %}</p>
+<p><a href="/relacje/mapa?zasob={{ asset.id }}">Pokaż na mapie relacji</a> · <a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakość danych</a>{% if asset.zrodlo == 'agent' %} · <a href="/assets/{{ asset.id }}?funkcja=skaner#agent">Skaner sieci</a>{% endif %}</p>
 {% if collector_errors %}
   <div class="alert alert-warn">
     <b>Kolektory zgłosiły błędy ({{ collector_errors | length }}):</b>

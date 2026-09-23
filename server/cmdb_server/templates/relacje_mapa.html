@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Mapa relacji - CMDB{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Mapa relacji</h1><a class="btn" href="/relacje">Tabela relacji</a></div>
+<p class="muted">
+  Kliknij dowolny zasób, żeby zobaczyć, co na nim stoi (↓), na czym on stoi (↑), albo jedno i drugie.
+  Łańcuch: klaster → host → maszyna wirtualna / serwer → aplikacja. Relacje dodaje się i usuwa w tabeli.
+</p>
+
+{% if not dane_mapy.wezly %}
+<section class="panel">
+  <p>Nie ma jeszcze żadnych relacji.</p>
+  <p class="muted">Powstają same z odczytu Nutanix Prism Central (Agent → Dodatkowe funkcjonalności)
+    albo można je dodać ręcznie w <a href="/relacje">tabeli relacji</a>.</p>
+</section>
+{% else %}
+<section class="panel mapa" data-mapa
+         data-mapa-zrodlo="/relacje/mapa.json?zasob={{ dane_mapy.zasob | urlencode }}&amp;kierunek={{ dane_mapy.kierunek }}">
+  <div class="mapa-pasek">
+    <label for="mapa-zasob" class="muted small">Zasób</label>
+    <select id="mapa-zasob" data-mapa-wybor></select>
+    <div class="mapa-kierunek" role="group" aria-label="Kierunek">
+      <button type="button" data-kierunek="w-dol" title="Co stoi na tym zasobie">↓ Co na nim stoi</button>
+      <button type="button" data-kierunek="w-gore" title="Na czym ten zasób stoi">↑ Na czym stoi</button>
+      <button type="button" data-kierunek="oba">↕ Oba kierunki</button>
+    </div>
+    <label class="mapa-tylko small"><input type="checkbox" data-mapa-tylko checked> tylko powiązane</label>
+  </div>
+  <div class="mapa-sciezka small muted" data-mapa-sciezka></div>
+  <div class="mapa-uklad">
+    <div class="mapa-plotno" data-mapa-plotno></div>
+    <aside class="mapa-bok" data-mapa-bok aria-live="polite"></aside>
+  </div>
+  <div class="mapa-legenda small muted">
+    <span><i class="typ-0"></i>Klaster</span>
+    <span><i class="typ-1"></i>Host</span>
+    <span><i class="typ-2"></i>Maszyna wirtualna / serwer</span>
+    <span><i class="typ-3"></i>Aplikacja</span>
+    <span>⚠ maszyna bez agenta CMDB</span>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+{% block skrypty %}<script src="{{ zasob('mapa.js') }}"></script>{% endblock %}
