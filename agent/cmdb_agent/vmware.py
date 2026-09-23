@@ -56,6 +56,24 @@ class _BezPrzekierowan(urllib.request.HTTPRedirectHandler):
         raise BladVcenter(f"vCenter przekierowuje na {newurl} - podaj docelowy adres w konfiguracji")
 
 
+def _opis_bledu(exc: urllib.error.HTTPError) -> str:
+    """Nazwa bledu z tresci odpowiedzi - VI/JSON zglasza kazdy blad jako HTTP 500
+    z typem w tresci (np. InvalidLogin, NoPermission), REST - jako error_type."""
+    try:
+        dane = json.loads(exc.read(4096).decode("utf-8", "replace") or "{}")
+    except Exception:
+        return ""
+    if not isinstance(dane, dict):
+        return ""
+    typ = dane.get("_typeName") or dane.get("error_type")
+    komunikat = dane.get("faultMessage") or dane.get("messages") or dane.get("localizedMessage")
+    if isinstance(komunikat, list):
+        komunikat = "; ".join(str(_z(m, "default_message", "message") or m) for m in komunikat[:2]
+                              if isinstance(m, (dict, str)))
+    tekst = ": ".join(str(x) for x in (typ, komunikat) if x)
+    return f" ({tekst[:300]})" if tekst else ""
+
+
 class VCenter:
     """Minimalny klient REST: sesja z Basic, potem GET z naglowkiem sesji."""
 
@@ -68,6 +86,7 @@ class VCenter:
         # pamieci tylko do konca tego odczytu.
         self._konto = (uzytkownik, haslo)
         self._vi: str | None | bool = None  # None - jeszcze nie probowano, False - niedostepne
+        self._vi_wspolna = False
         kontekst = ssl.create_default_context(cadata=ca_pem or None)
         kontekst.minimum_version = ssl.TLSVersion.TLSv1_2
         kontekst.check_hostname = True
@@ -90,7 +109,8 @@ class VCenter:
         return self
 
     def __exit__(self, *exc) -> None:
-        if isinstance(self._vi, str):
+        # Wspolnej sesji nie zamykamy osobno - zamyka ja DELETE /api/session.
+        if isinstance(self._vi, str) and not self._vi_wspolna:
             try:
                 self._zadanie("POST", f"{VI_JSON}/SessionManager/SessionManager/Logout",
                               naglowki={"vmware-api-session-id": self._vi})
@@ -123,21 +143,32 @@ class VCenter:
         a odczyt idzie dalej z tym, co dal REST.
         """
         if self._vi is None:
-            uzytkownik, haslo = self._konto
-            try:
-                _, naglowki = self._zadanie(
-                    "POST", f"{VI_JSON}/SessionManager/SessionManager/Login",
-                    tresc={"userName": uzytkownik, "password": haslo}, z_naglowkami=True)
-                self._vi = naglowki.get("vmware-api-session-id") or False
-            except BladVcenter as exc:
-                log.info("VI/JSON niedostepne (%s) - hosty tylko z REST API", exc)
-                self._vi = False
+            self._vi = self._sesja_vi(sciezka)
         if not self._vi:
             return None
         try:
             return self._zadanie("GET", f"{VI_JSON}/{sciezka}", naglowki={"vmware-api-session-id": self._vi})
         except BladVcenter:
             return None
+
+    def _sesja_vi(self, sciezka: str) -> str | bool:
+        """Sesja VI/JSON: najpierw ta sama co REST (vCenter 8 ja przyjmuje),
+        a gdy nie - osobne logowanie tym samym kontem."""
+        try:
+            self._zadanie("GET", f"{VI_JSON}/{sciezka}")
+            self._vi_wspolna = True
+            return self._sesja or False
+        except BladVcenter as exc:
+            log.debug("VI/JSON nie przyjmuje sesji REST: %s", exc)
+        uzytkownik, haslo = self._konto
+        try:
+            _, naglowki = self._zadanie(
+                "POST", f"{VI_JSON}/SessionManager/SessionManager/Login",
+                tresc={"userName": uzytkownik, "password": haslo}, z_naglowkami=True)
+            return naglowki.get("vmware-api-session-id") or False
+        except BladVcenter as exc:
+            log.info("VI/JSON niedostepne (%s) - hosty tylko z REST API", exc)
+            return False
 
     def _zadanie(self, metoda: str, sciezka: str, parametry: dict | None = None,
                  naglowki: dict | None = None, tresc: dict | None = None, z_naglowkami: bool = False):
@@ -168,7 +199,8 @@ class VCenter:
             if exc.code == 404 and sciezka == "/api/session":
                 raise BladVcenter("vCenter nie zna /api/session (HTTP 404) - wymagany vSphere 7.0 U2"
                                   " lub nowszy") from None
-            raise BladVcenter(f"vCenter odpowiedzial bledem HTTP {exc.code} dla {sciezka}") from None
+            raise BladVcenter(f"vCenter odpowiedzial bledem HTTP {exc.code} dla {sciezka}"
+                              f"{_opis_bledu(exc)}") from None
         except urllib.error.URLError as exc:
             powod = exc.reason
             if isinstance(powod, ssl.SSLCertVerificationError):
