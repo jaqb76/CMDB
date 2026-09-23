@@ -68,7 +68,8 @@
       <tr class="wirt-host">
         <td colspan="7">
           {% if h.asset %}<a href="/assets/{{ h.asset.id }}">{{ h.obiekt.nazwa }}</a>{% else %}{{ h.obiekt.nazwa }}{% endif %}
-          <span class="muted small">{% if hd.model %}· {{ hd.model }} {% endif %}{% if hd.ram_bajty %}· {{ hd.ram_bajty | bytes }} {% endif %}· {{ h.vm | length }} VM</span>
+          {% if hd.tryb_serwisowy %}<span class="badge badge-warn">tryb serwisowy</span>{% endif %}
+          <span class="muted small">{% if hd.model %}· {{ hd.model }} {% endif %}{% if hd.numer_seryjny %}· s/n {{ hd.numer_seryjny }} {% endif %}{% if hd.ram_bajty %}· {{ hd.ram_bajty | bytes }} {% endif %}· {{ h.vm | length }} VM</span>
         </td>
       </tr>
       {% for v in h.vm %}{{ wiersz_vm(v) }}{% endfor %}

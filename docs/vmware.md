@@ -56,6 +56,7 @@ Znikanie obiektów ocenia wyłącznie to połączenie, które je widziało.
 | `GET /api/appliance/system/version` | wersja vCenter do opisu testu (opcjonalne) |
 | `GET /api/vcenter/cluster` | klastry |
 | `GET /api/vcenter/host?clusters=…`, `GET /api/vcenter/host` | hosty, ich przynależność do klastrów, hosty samodzielne |
+| VI/JSON: logowanie `SessionManager/Login`, `GET /sdk/vim25/8.0.1.0/HostSystem/{host}/summary` i `…/config` | sprzęt hosta, numer seryjny, wersja ESXi, adres zarządzania, tryb serwisowy (vSphere 8.0 U1+, opcjonalne) |
 | `GET /api/vcenter/vm?hosts=…` | VM dla każdego hosta osobno, co omija limit długości listy vCenter |
 | `GET /api/vcenter/vm/{vm}` | vCPU, RAM, dyski, karty, **UUID z BIOS-u** |
 | `GET /api/vcenter/vm/{vm}/guest/identity`, `…/guest/networking/interfaces` | system i adresy IP według VMware Tools, tylko dla włączonych maszyn |
@@ -65,7 +66,11 @@ Znikanie obiektów ocenia wyłącznie to połączenie, które je widziało.
 | Z vCenter | W CMDB |
 |---|---|
 | klaster | zasób „Klaster”: liczba hostów, producent VMware |
-| host ESXi | zasób „Host wirtualizacji”: nazwa, adres (gdy host dodano po IP) + relacja do klastra |
+| host ESXi | zasób „Host wirtualizacji”: producent, model, numer seryjny (Service Tag), procesor (gniazda, rdzenie, wątki), RAM, wersja i build ESXi, adres interfejsu zarządzania, tryb serwisowy, czas uruchomienia + relacja do klastra |
+
+Szczegóły hostów pochodzą z VI/JSON API (vSphere 8.0 U1 i nowsze), bo REST API
+podaje o hostach tylko nazwę i stan. Na starszym vCenter host ma tylko nazwę
+(i adres, jeśli host dodano po IP), a reszta odczytu działa normalnie.
 | maszyna wirtualna | zasób „Maszyna wirtualna”: stan, vCPU, RAM, dyski (z nazwą datastore), karty z siecią i adresami, VMware Tools, system + relacja do hosta |
 
 Wpisy mają źródło **„vmware”** (na liście sprzętu: „z VMware”). Identyfikatory

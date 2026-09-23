@@ -5,9 +5,14 @@ nie serwer; konto wystarczy z rola Read-only; haslo tylko w pamieci;
 certyfikat weryfikowany zawsze; ksztalt API zostaje w tym pliku, a serwer
 dostaje te same plaskie pola co z Nutanixa.
 
-Jedyny zapis po stronie vCenter to sesja: POST /api/session zaklada ja
-(to wymog API - bez niej nie ma odczytu), DELETE /api/session ja zamyka.
+Jedyny zapis po stronie vCenter to sesje: POST /api/session i logowanie
+VI/JSON zakladaja je (to wymog API - bez nich nie ma odczytu), na koncu
+obie sa zamykane.
 Wszystko pozostale to GET.
+
+Hosty uzupelnia VI/JSON API (vSphere 8.0 U1+): REST podaje o nich tylko
+nazwe i stan, a sprzet, numer seryjny i wersja ESXi sa tylko tam. Gdy
+VI/JSON nie ma (starszy vCenter), hosty zostaja z samym REST - bez bledu.
 
 Kolejnosc odczytu omija limity list vCenter (lista VM odmawia powyzej
 kilku tysiecy wynikow): klastry, hosty kazdego klastra, a VM - osobno
@@ -37,6 +42,9 @@ LIMIT_CZASU = 30
 MAKS_VM = 20000  # ten sam limit przyjmuje serwer
 
 STANY = {"POWERED_ON": "ON", "POWERED_OFF": "OFF", "SUSPENDED": "SUSPENDED"}
+# VI/JSON API: najstarsza wersja z tym API (8.0 U1) - nowsze vCentry ja obsluguja.
+VI_JSON = "/sdk/vim25/8.0.1.0"
+_TYPY_SERIALA = ("SerialNumberTag", "ServiceTag", "EnclosureSerialNumberTag")
 
 
 class BladVcenter(BladPrism):
@@ -56,6 +64,10 @@ class VCenter:
         self.adres = adres.rstrip("/")
         self._basic = "Basic " + base64.b64encode(
             f"{uzytkownik}:{haslo}".encode("utf-8")).decode("ascii")
+        # VI/JSON (szczegoly hostow) ma wlasne logowanie - dane zostaja w
+        # pamieci tylko do konca tego odczytu.
+        self._konto = (uzytkownik, haslo)
+        self._vi: str | None | bool = None  # None - jeszcze nie probowano, False - niedostepne
         kontekst = ssl.create_default_context(cadata=ca_pem or None)
         kontekst.minimum_version = ssl.TLSVersion.TLSv1_2
         kontekst.check_hostname = True
@@ -74,11 +86,18 @@ class VCenter:
         if not isinstance(wynik, str) or not wynik:
             raise BladVcenter("vCenter nie zwrocil identyfikatora sesji")
         self._sesja = wynik
-        # Hasla nie trzymamy dluzej niz to konieczne.
         self._basic = ""
         return self
 
     def __exit__(self, *exc) -> None:
+        if isinstance(self._vi, str):
+            try:
+                self._zadanie("POST", f"{VI_JSON}/SessionManager/SessionManager/Logout",
+                              naglowki={"vmware-api-session-id": self._vi})
+            except Exception:
+                pass
+        self._vi = False
+        self._konto = ("", "")
         if self._sesja:
             try:
                 self._zadanie("DELETE", "/api/session")
@@ -97,8 +116,31 @@ class VCenter:
                 return None
             raise
 
+    def vi_json(self, sciezka: str):
+        """GET w VI/JSON API (vSphere 8.0 U1+) - dane, ktorych REST nie ma.
+
+        Zawsze opcjonalne: starszy vCenter albo brak uprawnien daje None,
+        a odczyt idzie dalej z tym, co dal REST.
+        """
+        if self._vi is None:
+            uzytkownik, haslo = self._konto
+            try:
+                _, naglowki = self._zadanie(
+                    "POST", f"{VI_JSON}/SessionManager/SessionManager/Login",
+                    tresc={"userName": uzytkownik, "password": haslo}, z_naglowkami=True)
+                self._vi = naglowki.get("vmware-api-session-id") or False
+            except BladVcenter as exc:
+                log.info("VI/JSON niedostepne (%s) - hosty tylko z REST API", exc)
+                self._vi = False
+        if not self._vi:
+            return None
+        try:
+            return self._zadanie("GET", f"{VI_JSON}/{sciezka}", naglowki={"vmware-api-session-id": self._vi})
+        except BladVcenter:
+            return None
+
     def _zadanie(self, metoda: str, sciezka: str, parametry: dict | None = None,
-                 naglowki: dict | None = None):
+                 naglowki: dict | None = None, tresc: dict | None = None, z_naglowkami: bool = False):
         adres = self.adres + sciezka
         if parametry:
             adres += "?" + urllib.parse.urlencode(parametry, doseq=True)
@@ -106,11 +148,16 @@ class VCenter:
         if self._sesja:
             wszystkie["vmware-api-session-id"] = self._sesja
         wszystkie.update(naglowki or {})
-        zadanie = urllib.request.Request(adres, method=metoda, headers=wszystkie)
+        dane = None
+        if tresc is not None:
+            dane = json.dumps(tresc).encode("utf-8")
+            wszystkie["Content-Type"] = "application/json"
+        zadanie = urllib.request.Request(adres, data=dane, method=metoda, headers=wszystkie)
         try:
             with self._opener.open(zadanie, timeout=self.limit_czasu) as odpowiedz:
-                tresc = odpowiedz.read().decode("utf-8")
-                return json.loads(tresc) if tresc.strip() else None
+                surowe = odpowiedz.read().decode("utf-8")
+                wynik = json.loads(surowe) if surowe.strip() else None
+                return (wynik, odpowiedz.headers) if z_naglowkami else wynik
         except urllib.error.HTTPError as exc:
             if exc.code == 401:
                 raise BladVcenter("vCenter odrzucil dane logowania (HTTP 401) - sprawdz uzytkownika"
@@ -170,6 +217,57 @@ def host(d: dict, klaster_id: str | None) -> dict:
         # vCenter zna host po nazwie albo adresie, z ktorym go dodano.
         "ip": nazwa if _czy_ip(nazwa) else None,
     }
+
+
+def szczegoly_hosta(vc: VCenter, ident: str) -> dict:
+    """Sprzet i ESXi hosta z VI/JSON. Pusty slownik, gdy API niedostepne."""
+    ident = urllib.parse.quote(ident, safe="")
+    podsumowanie = vc.vi_json(f"HostSystem/{ident}/summary")
+    if not isinstance(podsumowanie, dict):
+        return {}
+    sprzet = podsumowanie.get("hardware") or {}
+    seryjny = None
+    for wpis in sprzet.get("otherIdentifyingInfo") or []:
+        typ = _z(wpis, "identifierType.key") if isinstance(wpis, dict) else None
+        wartosc = _tekst(wpis.get("identifierValue"), 128) if isinstance(wpis, dict) else None
+        if typ in _TYPY_SERIALA and wartosc and wartosc.lower() not in ("none", "unknown", "0"):
+            seryjny = seryjny if (seryjny and typ != "SerialNumberTag") else wartosc
+    wynik = {
+        "producent": _tekst(sprzet.get("vendor")),
+        "model": _tekst(sprzet.get("model")),
+        "numer_seryjny": seryjny,
+        "cpu_model": _tekst(sprzet.get("cpuModel")),
+        "gniazda": _liczba(sprzet.get("numCpuPkgs")),
+        "rdzenie": _liczba(sprzet.get("numCpuCores")),
+        "watki": _liczba(sprzet.get("numCpuThreads")),
+        "ram_bajty": _liczba(sprzet.get("memorySize")),
+        "hipernadzorca": _tekst(_z(podsumowanie, "config.product.fullName")) or "VMware ESXi",
+        "tryb_serwisowy": _z(podsumowanie, "runtime.inMaintenanceMode"),
+        "uruchomiony_o": _tekst(_z(podsumowanie, "runtime.bootTime"), 64),
+    }
+    ip = _adres_zarzadzania(vc.vi_json(f"HostSystem/{ident}/config"))
+    if ip:
+        wynik["ip"] = ip
+    return {k: v for k, v in wynik.items() if v is not None}
+
+
+def _adres_zarzadzania(konfiguracja) -> str | None:
+    """IP interfejsu zarzadzania (vmk z ruchem "management", zwykle vmk0)."""
+    if not isinstance(konfiguracja, dict):
+        return None
+    karty = [k for k in (_z(konfiguracja, "network.vnic") or []) if isinstance(k, dict)]
+    zarzadzanie = set()
+    for wpis in _z(konfiguracja, "virtualNicManagerInfo.netConfig") or []:
+        if isinstance(wpis, dict) and wpis.get("nicType") == "management":
+            zarzadzanie.update(str(x).rsplit("-", 1)[-1] for x in wpis.get("selectedVnic") or [])
+    karty.sort(key=lambda k: (str(k.get("key", "")).rsplit("-", 1)[-1] not in zarzadzanie,
+                              "management" not in str(k.get("portgroup", "")).lower(),
+                              k.get("device") != "vmk0"))
+    for karta in karty:
+        adres = _tekst(_z(karta, "spec.ip.ipAddress"), 64)
+        if adres:
+            return adres
+    return None
 
 
 def _magazyn(plik: str | None) -> str | None:
@@ -275,7 +373,10 @@ def wykonaj(vc: VCenter, rodzaj: str) -> dict:
                 for h in czlonkowie:
                     klaster_hosta[h.get("host")] = k.get("cluster")
             for h in vc.lista("/api/vcenter/host"):
-                hosty.append(host(h, klaster_hosta.get(h.get("host"))))
+                wpis = host(h, klaster_hosta.get(h.get("host")))
+                if wpis["ext_id"]:
+                    wpis.update(szczegoly_hosta(vc, wpis["ext_id"]))
+                hosty.append(wpis)
             for h in _bez_pustych(hosty):
                 for podsumowanie in vc.lista("/api/vcenter/vm", {"hosts": h["ext_id"]}):
                     if not podsumowanie.get("vm"):
