@@ -1,11 +1,13 @@
 {#
-  Dane z Nutanix Prism Central na karcie zasobu. Przy maszynie z agentem
+  Dane z Nutanix Prism Central albo VMware vCenter na karcie zasobu. Przy maszynie z agentem
   to druga, niezalezna perspektywa: agent mowi, co jest w srodku, hypervisor
   - na czym to stoi i ile dostalo.
 #}
 {% set d = wirtualizacja.dane or {} %}
+{% set vmw = wirtualizacja.dostawca == 'vmware' %}
+{% set producent = 'VMware' if vmw else 'Nutanix' %}
 <div class="panel">
-  <h2>Wirtualizacja <span class="badge">Nutanix</span></h2>
+  <h2>Wirtualizacja <span class="badge">{{ producent }}</span></h2>
   <dl class="kv">
     {% if wirtualizacja.rodzaj == 'vm' %}
       <dt>Stan</dt><dd>{% if d.stan == 'ON' %}<span class="badge badge-ok">włączona</span>{% elif d.stan == 'OFF' %}<span class="badge">wyłączona</span>{% elif d.stan %}<span class="badge">{{ d.stan | lower }}</span>{% else %}—{% endif %}</dd>
@@ -13,8 +15,8 @@
       {% if d.ram_bajty %}<dt>RAM</dt><dd>{{ d.ram_bajty | bytes }}</dd>{% endif %}
       {% if d.dyski %}<dt>Dyski</dt><dd>{% for dysk in d.dyski %}{{ dysk.rozmiar_bajty | bytes if dysk.rozmiar_bajty else '?' }}{% if dysk.magistrala %} <span class="muted">{{ dysk.magistrala }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
       {% if d.karty %}<dt>Karty sieciowe</dt><dd>{% for k in d.karty %}{{ k.mac or '?' }}{% if k.ip %} — {{ k.ip | join(', ') }}{% endif %}{% if k.siec %} <span class="muted">{{ k.siec }}</span>{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}
-      {% if d.ngt is not none %}<dt>Nutanix Guest Tools</dt><dd>{{ 'zainstalowane' if d.ngt else 'brak' }}</dd>{% endif %}
-      {% if d.system %}<dt>System wg Nutanix</dt><dd>{{ d.system }}</dd>{% endif %}
+      {% if d.ngt is not none %}<dt>{{ 'VMware Tools' if vmw else 'Nutanix Guest Tools' }}</dt><dd>{{ 'zainstalowane' if d.ngt else 'brak' }}</dd>{% endif %}
+      {% if d.system %}<dt>System wg {{ producent }}</dt><dd>{{ d.system }}</dd>{% endif %}
     {% elif wirtualizacja.rodzaj == 'host' %}
       {% if d.model %}<dt>Model</dt><dd>{{ d.model }}</dd>{% endif %}
       {% if d.numer_seryjny %}<dt>Numer seryjny</dt><dd>{{ d.numer_seryjny }}</dd>{% endif %}
@@ -24,11 +26,11 @@
       {% if d.ip %}<dt>Adres</dt><dd>{{ d.ip }}</dd>{% endif %}
       {% if d.ipmi_ip %}<dt>IPMI</dt><dd>{{ d.ipmi_ip }}</dd>{% endif %}
     {% else %}
-      {% if d.wersja %}<dt>Wersja AOS</dt><dd>{{ d.wersja }}</dd>{% endif %}
+      {% if d.wersja %}<dt>Wersja {{ 'vSphere' if vmw else 'AOS' }}</dt><dd>{{ d.wersja }}</dd>{% endif %}
       {% if d.hipernadzorca %}<dt>Hypervisor</dt><dd>{{ d.hipernadzorca }}</dd>{% endif %}
       {% if d.liczba_hostow is not none %}<dt>Liczba hostów</dt><dd>{{ d.liczba_hostow }}</dd>{% endif %}
     {% endif %}
-    <dt>Identyfikator w Prism</dt><dd><code>{{ wirtualizacja.ext_id }}</code></dd>
+    <dt>Identyfikator w {{ 'vCenter' if vmw else 'Prism' }}</dt><dd><code>{{ wirtualizacja.ext_id.split('/')[-1] }}</code></dd>
     <dt>Odczytano</dt><dd>{{ wirtualizacja.widziany_o | ago }}{% if asset.zrodlo == 'agent' %} · <span class="badge badge-ok">połączono z raportem agenta po UUID</span>{% endif %}</dd>
   </dl>
   <p class="small"><a href="/relacje?asset_id={{ asset.id }}">Host i klaster w relacjach</a> · <a href="/wirtualizacja">Cała wirtualizacja</a></p>

@@ -1,6 +1,6 @@
-"""Wynik odczytu Prism Central przysylany przez agenta.
+"""Wynik odczytu platformy wirtualizacji (Prism Central, vCenter) od agenta.
 
-Agent sprowadza odpowiedzi API v4 do tej plaskiej postaci, zanim cokolwiek
+Agent sprowadza odpowiedzi API (Prism v4, vCenter REST) do tej plaskiej postaci, zanim cokolwiek
 wysle: serwer nie musi znac ksztaltu API Nutanixa, a zmiana po stronie
 Prism konczy sie poprawka jednego pliku w agencie. Limity chronia baze
 przed raportem, ktory urosl z bledu, a nie z wielkosci instalacji.
@@ -30,6 +30,7 @@ class Host(_Model):
     ext_id: str = Field(min_length=1, max_length=64)
     nazwa: str = Field(default="", max_length=_TEKST)
     klaster_id: str | None = Field(default=None, max_length=64)
+    producent: str | None = Field(default=None, max_length=_TEKST)
     model: str | None = Field(default=None, max_length=_TEKST)
     numer_seryjny: str | None = Field(default=None, max_length=128)
     cpu_model: str | None = Field(default=None, max_length=_TEKST)

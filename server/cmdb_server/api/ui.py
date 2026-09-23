@@ -1109,14 +1109,14 @@ def asset_detail(
         ).scalars().all(),
         dni_do_konca=monitoring.dni_do_konca,
         **_zakladka_agenta(db, ctx, asset, payload, funkcja),
-        nutanix_komunikat=_komunikat_nutanix(nutanix_komunikat),
+        nutanix_komunikat=_komunikat_nutanix(nutanix_komunikat, funkcja),
         wirtualizacja=nutanix.obiekt_zasobu(db, asset),
     )
 
 
-def _komunikat_nutanix(kod: str) -> str:
-    from .nutanix_ui import KOMUNIKATY
-    return KOMUNIKATY.get(kod, "")
+def _komunikat_nutanix(kod: str, funkcja: str) -> str:
+    from .nutanix_ui import komunikat
+    return komunikat(kod, funkcja)
 
 
 def _zakladka_agenta(db: Session, ctx: TenantContext, asset: Asset, payload: dict,
@@ -1146,11 +1146,18 @@ def _zakladka_agenta(db: Session, ctx: TenantContext, asset: Asset, payload: dic
         # None: raport nie niesie listy (agent zbiera ja wylaczona albo jest
         # starszy); lista, takze pusta: zbierana.
         "liczba_procesow": len(procesy) if isinstance(procesy, list) else None,
-        "nutanix_ustawienia": nutanix.ustawienia(db, asset),
-        "nutanix_test_oczekuje": nutanix.test_oczekuje(nutanix.ustawienia(db, asset)),
-        "nutanix_odczyt_oczekuje": nutanix.odczyt_oczekuje(nutanix.ustawienia(db, asset)),
-        "nutanix_interwaly": nutanix.INTERWALY_MINUT,
+        "wirt": _wirtualizacja_agenta(db, asset, wybrana),
     }
+
+
+def _wirtualizacja_agenta(db: Session, asset: Asset, wybrana: str) -> dict | None:
+    """Podzakladka Prism Central / vCenter - jeden szablon dla obu dostawcow."""
+    if wybrana not in nutanix.DOSTAWCY:
+        return None
+    row = nutanix.ustawienia(db, asset, wybrana)
+    return {"dostawca": wybrana, "opis": nutanix.DOSTAWCY[wybrana], "ustawienia": row,
+            "test_oczekuje": nutanix.test_oczekuje(row), "odczyt_oczekuje": nutanix.odczyt_oczekuje(row),
+            "interwaly": nutanix.INTERWALY_MINUT}
 
 
 @router.post("/assets/{asset_id}/owner")

@@ -48,6 +48,9 @@ ZRODLO_RECZNE = "reczne"
 # "bez kontaktu" - ale tez nie jest do recznej edycji, bo nadpisalby ja
 # kolejny odczyt.
 ZRODLO_NUTANIX = "nutanix"
+# To samo dla VMware vCenter.
+ZRODLO_VMWARE = "vmware"
+ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE)
 
 # Rodzaj sprzetu. Maszyny z agentem sa komputerami; reszte wybiera czlowiek.
 TYP_KOMPUTER = "komputer"
@@ -887,22 +890,15 @@ class OdbiorFunkcjiAgenta(Base):
     odebrano: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
-class NutanixUstawienia(Base):
-    """Konfiguracja odczytu Prism Central wykonywanego przez tego agenta.
+class _UstawieniaWirtualizacji:
+    """Wspolne kolumny konfiguracji odczytu platformy wirtualizacji.
 
-    Laczy sie AGENT, nie serwer: to on stoi w sieci, w ktorej jest Prism,
-    a serwer CMDB nie musi jej widziec. Haslo lezy tu zaszyfrowane i trafia
-    wylacznie do tego agenta, w swiezej odpowiedzi waznej 60 sekund.
+    Laczy sie AGENT, nie serwer: to on stoi w sieci, w ktorej jest Prism
+    albo vCenter, a serwer CMDB nie musi jej widziec. Haslo lezy tu
+    zaszyfrowane i trafia wylacznie do tego agenta, w swiezej odpowiedzi
+    waznej 60 sekund.
     """
 
-    __tablename__ = "nutanix_ustawienia"
-
-    asset_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     wlaczona: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     adres: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     uzytkownik: Mapped[str] = mapped_column(String(128), nullable=False, default="")
@@ -931,8 +927,37 @@ class NutanixUstawienia(Base):
     odczyt_liczby: Mapped[dict | None] = mapped_column(JSONType, default=dict)
 
 
+class NutanixUstawienia(_UstawieniaWirtualizacji, Base):
+    """Konfiguracja odczytu Nutanix Prism Central wykonywanego przez tego agenta."""
+
+    __tablename__ = "nutanix_ustawienia"
+
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+
+class VmwareUstawienia(_UstawieniaWirtualizacji, Base):
+    """Konfiguracja odczytu VMware vCenter wykonywanego przez tego agenta."""
+
+    __tablename__ = "vmware_ustawienia"
+
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+
 class NutanixObiekt(Base):
-    """Klaster, host albo VM widziana w Prism Central.
+    """Klaster, host albo VM widziana w Prism Central albo w vCenter.
+
+    Nazwa tabeli zostala z pierwszej integracji; kolumna dostawca mowi, skad
+    obiekt pochodzi.
 
     asset_id wskazuje wpis w ewidencji. Dla VM z agentem to maszyna agenta -
     jedna karta z danymi z obu zrodel - a dla pozostalych wpis zalozony
@@ -949,6 +974,9 @@ class NutanixObiekt(Base):
     tenant_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # nutanix | vmware - identyfikatory VMware maja przedrostek adresu vCenter,
+    # bo "vm-123" powtarza sie w kazdym vCenter.
+    dostawca: Mapped[str] = mapped_column(String(16), nullable=False, default="nutanix")
     # klaster | host | vm
     rodzaj: Mapped[str] = mapped_column(String(16), nullable=False)
     ext_id: Mapped[str] = mapped_column(String(64), nullable=False)

@@ -77,7 +77,7 @@
       </td>
       <td class="small">
         {{ typy.get(a.typ, a.typ) }}
-        {% if a.zrodlo == 'reczne' %}<div class="muted">wpis ręczny</div>{% elif a.zrodlo == 'nutanix' %}<div class="muted">z Nutanix</div>{% endif %}
+        {% if a.zrodlo == 'reczne' %}<div class="muted">wpis ręczny</div>{% elif a.zrodlo == 'nutanix' %}<div class="muted">z Nutanix</div>{% elif a.zrodlo == 'vmware' %}<div class="muted">z VMware</div>{% endif %}
       </td>
       <td>
         {{ a.os_name or a.os_family or '-' }}
@@ -100,9 +100,9 @@
         {% if a.zrodlo == 'reczne' %}
           <span class="muted">bez agenta</span>
           <div class="muted">dodano {{ a.first_seen | dt }}</div>
-        {% elif a.zrodlo == 'nutanix' %}
+        {% elif a.zrodlo in ('nutanix', 'vmware') %}
           <span class="muted">bez agenta</span>
-          <div class="muted">Nutanix, odczyt {{ a.last_seen | ago }}</div>
+          <div class="muted">{{ 'VMware' if a.zrodlo == 'vmware' else 'Nutanix' }}, odczyt {{ a.last_seen | ago }}</div>
         {% else %}
           {{ a.last_seen | ago }}
           {% if f.collector_errors %}<span class="badge badge-warn" title="błędy kolektorow">{{ f.collector_errors }}</span>{% endif %}

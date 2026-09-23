@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Wirtualizacja - CMDB{% endblock %}
 {% block content %}
+{% set producent = {'nutanix': 'Nutanix', 'vmware': 'VMware'} %}
 <h1>Wirtualizacja</h1>
 <p class="muted">
-  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central przez agentów
-  z włączoną funkcją „Nutanix Prism Central” (karta maszyny → Agent → Dodatkowe funkcjonalności).
+  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central i VMware vCenter przez agentów
+  z włączoną funkcją „Nutanix Prism Central” albo „VMware vCenter” (karta maszyny → Agent → Dodatkowe funkcjonalności).
   Kolumna „Agent CMDB” pokazuje, które maszyny wirtualne nie są objęte inwentaryzacją oprogramowania.
 </p>
 
@@ -12,11 +13,12 @@
 <section class="panel">
   <h2>Źródła odczytu</h2>
   <table class="table">
-    <thead><tr><th>Agent</th><th>Prism Central</th><th>Stan</th><th>Ostatni odczyt</th></tr></thead>
+    <thead><tr><th>Agent</th><th>Platforma</th><th>Adres</th><th>Stan</th><th>Ostatni odczyt</th></tr></thead>
     <tbody>
     {% for c in czytniki %}{% set u = c.ustawienia %}
       <tr>
-        <td><a href="/assets/{{ c.asset.id }}?funkcja=nutanix#agent">{{ c.asset.hostname }}</a></td>
+        <td><a href="/assets/{{ c.asset.id }}?funkcja={{ c.dostawca }}#agent">{{ c.asset.hostname }}</a></td>
+        <td class="small">{{ c.opis.nazwa }}</td>
         <td class="small">{{ u.adres or '—' }}</td>
         <td>
           {% if not u.wlaczona %}<span class="badge">wyłączony</span>
@@ -34,9 +36,9 @@
 
 {% if not drzewo %}
 <section class="panel">
-  <p>Nie ma jeszcze danych z Prism Central.</p>
-  <p class="muted">Włącz odczyt na karcie maszyny, która widzi Prism Central:
-    <b>Agent → Dodatkowe funkcjonalności → Nutanix Prism Central</b>.
+  <p>Nie ma jeszcze danych z Prism Central ani z vCenter.</p>
+  <p class="muted">Włącz odczyt na karcie maszyny, która widzi Prism Central albo vCenter:
+    <b>Agent → Dodatkowe funkcjonalności → Nutanix Prism Central / VMware vCenter</b>.
     Pierwszy odczyt pojawi się po najbliższym sprawdzeniu konfiguracji przez agenta.</p>
 </section>
 {% endif %}
@@ -45,7 +47,7 @@
   <tr class="wirt-vm">
     <td>{% if v.asset %}<a href="/assets/{{ v.asset.id }}">{{ v.obiekt.nazwa or v.obiekt.ext_id }}</a>{% else %}{{ v.obiekt.nazwa }}{% endif %}</td>
     <td>{% if d.stan == 'ON' %}<span class="badge badge-ok">włączona</span>{% elif d.stan == 'OFF' %}<span class="badge">wyłączona</span>{% elif d.stan %}<span class="badge">{{ d.stan | lower }}</span>{% endif %}</td>
-    <td class="small">{% if v.z_agentem %}{{ v.asset.os_name or d.system or '' }}{% else %}{{ d.system or '' }}{% if d.system %} <span class="muted">(wg Nutanix)</span>{% endif %}{% endif %}</td>
+    <td class="small">{% if v.z_agentem %}{{ v.asset.os_name or d.system or '' }}{% else %}{{ d.system or '' }}{% if d.system %} <span class="muted">(wg {{ producent.get(v.obiekt.dostawca, 'Nutanix') }})</span>{% endif %}{% endif %}</td>
     <td class="num">{% if d.gniazda or d.rdzenie_na_gniazdo %}{{ (d.gniazda or 1) * (d.rdzenie_na_gniazdo or 1) }}{% endif %}</td>
     <td class="num">{{ d.ram_bajty | bytes if d.ram_bajty else '' }}</td>
     <td>{% if v.z_agentem %}<span class="badge badge-ok">jest</span>{% else %}<span class="badge badge-warn">brak</span>{% endif %}</td>
@@ -56,7 +58,8 @@
 {% for k in drzewo %}
 <section class="panel">
   <h2>{% if k.obiekt %}{% if k.asset %}<a href="/assets/{{ k.asset.id }}">{{ k.obiekt.nazwa }}</a>{% else %}{{ k.obiekt.nazwa }}{% endif %}
-      {% if k.obiekt.dane.wersja %}<span class="muted small">AOS {{ k.obiekt.dane.wersja }}</span>{% endif %}
+      <span class="badge">{{ producent.get(k.obiekt.dostawca, 'Nutanix') }}</span>
+      {% if k.obiekt.dane.wersja %}<span class="muted small">{{ 'vSphere' if k.obiekt.dostawca == 'vmware' else 'AOS' }} {{ k.obiekt.dane.wersja }}</span>{% endif %}
     {% else %}Bez przypisanego klastra{% endif %}</h2>
   <table class="table wirt-drzewo">
     <thead><tr><th>Nazwa</th><th>Stan</th><th>System</th><th class="num">vCPU</th><th class="num">RAM</th><th>Agent CMDB</th><th>Opiekun</th></tr></thead>

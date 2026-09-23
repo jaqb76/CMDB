@@ -22,12 +22,14 @@ from sqlalchemy.orm import Session
 
 from ..discovery_policy import ScanPolicy
 from ..models import (
-    Asset, DiscoveryPolicy, MonitorUslugi, NutanixUstawienia, OdbiorFunkcjiAgenta, utcnow,
+    Asset, DiscoveryPolicy, MonitorUslugi, NutanixUstawienia, OdbiorFunkcjiAgenta,
+    VmwareUstawienia, utcnow,
 )
 
 SKANER = "skaner"
 MONITOROWANIE = "monitorowanie"
 NUTANIX = "nutanix"
+VMWARE = "vmware"
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,8 @@ KATALOG: tuple[Funkcja, ...] = (
             "Sprawdza z tej maszyny dostępność usług i ważność certyfikatów."),
     Funkcja(NUTANIX, "Nutanix Prism Central", "Wirtualizacja",
             "Odczytuje z Prism Central klastry, hosty i maszyny wirtualne (tylko odczyt, API v4)."),
+    Funkcja(VMWARE, "VMware vCenter", "Wirtualizacja",
+            "Odczytuje z vCenter klastry, hosty ESXi i maszyny wirtualne (tylko odczyt, REST API)."),
 )
 KLUCZE = {f.klucz for f in KATALOG}
 
@@ -182,18 +186,19 @@ def stan(db: Session, asset: Asset) -> list[StanFunkcji]:
     ))
 
     from . import nutanix
-    nx = nutanix.ustawienia(db, asset)
-    if nx is not None and nx.wlaczona:
-        liczby = nx.odczyt_liczby or {}
-        if nx.odczyt_ok and liczby:
-            podsumowanie = (f"{nx.adres} · klastry {liczby.get('klastry', 0)}, "
-                            f"hosty {liczby.get('hosty', 0)}, VM {liczby.get('vm', 0)}")
+    for klucz in (NUTANIX, VMWARE):
+        nx = nutanix.ustawienia(db, asset, klucz)
+        if nx is not None and nx.wlaczona:
+            liczby = nx.odczyt_liczby or {}
+            if nx.odczyt_ok and liczby:
+                podsumowanie = (f"{nx.adres} · klastry {liczby.get('klastry', 0)}, "
+                                f"hosty {liczby.get('hosty', 0)}, VM {liczby.get('vm', 0)}")
+            else:
+                podsumowanie = nx.adres
         else:
-            podsumowanie = nx.adres
-    else:
-        podsumowanie = ""
-    wynik.append(StanFunkcji(funkcja(NUTANIX), bool(nx and nx.wlaczona), podsumowanie,
-                             nutanix.wersja(nx), *_odb(NUTANIX)))
+            podsumowanie = ""
+        wynik.append(StanFunkcji(funkcja(klucz), bool(nx and nx.wlaczona), podsumowanie,
+                                 nutanix.wersja(nx), *_odb(klucz)))
     return wynik
 
 
@@ -219,9 +224,10 @@ def warunek_filtra(klucz: str):
             MonitorUslugi.wykonawca_id == Asset.id,
             MonitorUslugi.aktywny.is_(True),
         )
-    if klucz == NUTANIX:
+    if klucz in (NUTANIX, VMWARE):
+        model = NutanixUstawienia if klucz == NUTANIX else VmwareUstawienia
         return exists().where(
-            NutanixUstawienia.asset_id == Asset.id,
-            NutanixUstawienia.wlaczona.is_(True),
+            model.asset_id == Asset.id,
+            model.wlaczona.is_(True),
         )
     return None

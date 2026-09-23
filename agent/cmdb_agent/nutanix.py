@@ -66,29 +66,33 @@ def _teraz() -> datetime:
 
 # --- konfiguracja z serwera --------------------------------------------------
 
-def pobierz_polityke(client, state) -> dict:
-    """Swieza, zwiazana z jednorazowa wartoscia konfiguracja odczytu."""
+def pobierz_polityke(client, state, sciezka: str = "/api/v1/agent/nutanix-policy",
+                     nazwa: str = "Nutanix") -> dict:
+    """Swieza, zwiazana z jednorazowa wartoscia konfiguracja odczytu.
+
+    Wspolna dla Prism Central i vCenter - rozni je tylko adres konfiguracji.
+    """
     if client is None or not state.is_enrolled:
         raise ValueError("brak uwierzytelnionego polaczenia z CMDB")
     nonce = secrets.token_hex(16)
-    payload = client.get("/api/v1/agent/nutanix-policy?nonce=" + nonce, state.agent_token)
+    payload = client.get(sciezka + "?nonce=" + nonce, state.agent_token)
     if (not isinstance(payload, dict) or payload.get("protocol") != 1 or
             payload.get("nonce") != nonce or payload.get("asset_id") != state.asset_id or
             payload.get("machine_id") != state.machine_id):
-        raise ValueError("niezgodna odpowiedz konfiguracji Nutanix")
+        raise ValueError(f"niezgodna odpowiedz konfiguracji {nazwa}")
     wygasa = datetime.fromisoformat(str(payload["expires_at"]).replace("Z", "+00:00"))
     if wygasa.tzinfo is None or not 0 < (wygasa - _teraz()).total_seconds() <= 65:
-        raise ValueError("wygasla lub niepoprawna waznosc konfiguracji Nutanix")
+        raise ValueError(f"wygasla lub niepoprawna waznosc konfiguracji {nazwa}")
     polityka = payload.get("policy")
     if not isinstance(polityka, dict):
-        raise ValueError("niepoprawny format konfiguracji Nutanix")
+        raise ValueError(f"niepoprawny format konfiguracji {nazwa}")
     wynik = {"enabled": bool(polityka.get("enabled")), "test": bool(polityka.get("test")),
              "odczyt_teraz": bool(polityka.get("odczyt_teraz")),
              "revision": str(payload.get("revision") or "")}
     if wynik["enabled"] or wynik["test"]:
         adres = str(polityka.get("adres") or "")
         if not adres.startswith("https://"):
-            raise ValueError("adres Prism Central musi byc po https")
+            raise ValueError(f"adres {nazwa} musi byc po https")
         wynik.update(
             adres=adres.rstrip("/"),
             uzytkownik=str(polityka.get("uzytkownik") or ""),
@@ -313,12 +317,20 @@ def wykonaj(prism: PrismCentral, rodzaj: str) -> dict:
 # --- praca w petli monitora -------------------------------------------------
 
 class CzytnikNutanix:
-    """Pilnuje konfiguracji i uruchamia odczyty. Wolany z petli monitora."""
+    """Pilnuje konfiguracji i uruchamia odczyty. Wolany z petli monitora.
 
-    def __init__(self, client, state, fabryka=PrismCentral):
+    Ten sam czytnik obsluguje vCenter (vmware.CzytnikVmware) - dostawca
+    wnosi tylko adresy w CMDB, klienta platformy i funkcje odczytu.
+    """
+
+    nazwa = "Nutanix"
+    sciezka_polityki = "/api/v1/agent/nutanix-policy"
+    sciezka_wyniku = "/api/v1/agent/nutanix"
+
+    def __init__(self, client, state, fabryka=None):
         self.client = client
         self.state = state
-        self.fabryka = fabryka
+        self.fabryka = fabryka or PrismCentral
         self.nastepna_polityka = 0.0
         self.nastepny_odczyt = 0.0
         self.revision = ""
@@ -335,9 +347,9 @@ class CzytnikNutanix:
             return
         self.nastepna_polityka = teraz + ODSTEP_POLITYKI
         try:
-            polityka = pobierz_polityke(self.client, self.state)
+            polityka = pobierz_polityke(self.client, self.state, self.sciezka_polityki, self.nazwa)
         except Exception as exc:
-            log.warning("konfiguracja Nutanix niedostepna: %s", exc)
+            log.warning("konfiguracja %s niedostepna: %s", self.nazwa, exc)
             return
         if polityka["revision"] != self.revision:
             # Nowa konfiguracja (np. inny adres) - czytamy od razu, a nie po
@@ -353,7 +365,7 @@ class CzytnikNutanix:
 
     def _uruchom(self, polityka: dict, rodzaj: str) -> None:
         self.watek = threading.Thread(target=self._przebieg, args=(polityka, rodzaj),
-                                      name=f"nutanix-{rodzaj}", daemon=True)
+                                      name=f"{self.nazwa.lower()}-{rodzaj}", daemon=True)
         self.watek.start()
 
     def _przebieg(self, polityka: dict, rodzaj: str) -> None:
@@ -361,30 +373,34 @@ class CzytnikNutanix:
         try:
             prism = self.fabryka(polityka["adres"], polityka["uzytkownik"], polityka["haslo"],
                                  polityka.get("ca_pem", ""))
-            tresc.update(wykonaj(prism, rodzaj))
+            tresc.update(self.wykonaj(prism, rodzaj))
             self.ostatni_blad = ""
-            log.info("Nutanix %s: klastry %d, hosty %d, VM %d w %d ms", rodzaj,
+            log.info("%s %s: klastry %d, hosty %d, VM %d w %d ms", self.nazwa, rodzaj,
                      len(tresc["klastry"]), len(tresc.get("hosty", [])), len(tresc.get("vm", [])),
                      tresc["czas_ms"])
         except BladPrism as exc:
             tresc.update(rodzaj=rodzaj, ok=False, blad=str(exc)[:2000])
             self.ostatni_blad = str(exc)
-            log.warning("Nutanix %s nieudany: %s", rodzaj, exc)
+            log.warning("%s %s nieudany: %s", self.nazwa, rodzaj, exc)
             if rodzaj == "odczyt":
                 self.nastepny_odczyt = min(self.nastepny_odczyt,
                                            time.monotonic() + PONOWIENIE_PO_BLEDZIE)
         except Exception as exc:  # nieznany ksztalt odpowiedzi nie moze zabic monitora
             tresc.update(rodzaj=rodzaj, ok=False, blad=f"blad agenta: {type(exc).__name__}: {exc}"[:2000])
             self.ostatni_blad = tresc["blad"]
-            log.exception("Nutanix %s: blad agenta", rodzaj)
+            log.exception("%s %s: blad agenta", self.nazwa, rodzaj)
         finally:
             polityka.pop("haslo", None)
         try:
-            self.client.post("/api/v1/agent/nutanix", token=self.state.agent_token, payload=tresc)
+            self.client.post(self.sciezka_wyniku, token=self.state.agent_token, payload=tresc)
             if rodzaj == "odczyt" and tresc.get("ok"):
                 self.ostatni_odczyt_o = _teraz().isoformat(timespec="seconds")
         except Exception as exc:
-            log.warning("nie udalo sie wyslac wyniku Nutanix: %s", exc)
+            log.warning("nie udalo sie wyslac wyniku %s: %s", self.nazwa, exc)
+
+    @staticmethod
+    def wykonaj(klient, rodzaj: str) -> dict:
+        return wykonaj(klient, rodzaj)
 
     def status(self) -> dict:
         return {"wlaczony": self.wlaczony, "ostatni_odczyt_o": self.ostatni_odczyt_o,
