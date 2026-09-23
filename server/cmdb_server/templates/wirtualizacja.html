@@ -19,7 +19,7 @@
       <tr>
         <td><a href="/assets/{{ c.asset.id }}?funkcja={{ c.dostawca }}#agent">{{ c.asset.hostname }}</a></td>
         <td class="small">{{ c.opis.nazwa }}</td>
-        <td class="small">{{ u.adres or '—' }}</td>
+        <td class="small">{% if u.nazwa %}<b>{{ u.nazwa }}</b> {% endif %}{{ u.adres or '—' }}</td>
         <td>
           {% if not u.wlaczona %}<span class="badge">wyłączony</span>
           {% elif u.odczyt_o and not u.odczyt_ok %}<span class="badge badge-danger">błąd</span>

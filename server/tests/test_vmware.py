@@ -2,10 +2,10 @@
 from sqlalchemy import select
 
 from cmdb_server.db import SessionLocal
-from cmdb_server.models import Asset, AssetRelation, AuditLog, NutanixObiekt, VmwareUstawienia
+from cmdb_server.models import Asset, AssetRelation, AuditLog, NutanixObiekt
 from .test_monitoring import zaloguj
 from .test_nutanix import formularz, naglowki, odczyt as odczyt_nutanix, polityka as polityka_nutanix
-from .test_nutanix import wlacz as wlacz_nutanix, wyslij as wyslij_nutanix, zarejestruj
+from .test_nutanix import ustawienia_agenta, wlacz as wlacz_nutanix, wyslij as wyslij_nutanix, zarejestruj
 
 # vCenter UUID z BIOS-u raportuje w kolejnosci bajtow SMBIOS - agent w
 # maszynie widzi te same bajty, czasem odwrocone.
@@ -69,12 +69,13 @@ def test_konfiguracja_vmware_jest_osobna_od_nutanix(client, tenant_a, make_user)
     # Nutanix na tej samej maszynie dalej wylaczony.
     assert polityka_nutanix(client, enrolled)["policy"] == {"enabled": False, "test": False}
     with SessionLocal() as db:
-        assert db.get(VmwareUstawienia, enrolled["asset_id"]).haslo
+        assert ustawienia_agenta(db, enrolled["asset_id"], "vmware").haslo
         assert db.scalars(select(AuditLog).where(AuditLog.action == "vmware.config_changed")).one()
 
     strona = client.get(f"/assets/{enrolled['asset_id']}?funkcja=vmware").text
     assert "Odczytuj vCenter z tej maszyny" in strona and 'action="/assets/' in strona
     assert f'/assets/{enrolled["asset_id"]}/vmware/test' in strona
+    assert f'/assets/{enrolled["asset_id"]}/vmware/odczyt' in strona  # takze przy wlaczonym odczycie
 
     blad = client.post(f"/assets/{enrolled['asset_id']}/vmware",
                        data=formularz(csrf, revision=p["revision"], adres="http://vc"),
@@ -100,7 +101,7 @@ def test_odczyt_vcenter_zaklada_drzewo_i_laczy_vm_z_agentem(client, tenant_a, ma
         assert (agent.hostname, "vm_host", "esx01.firma.pl", "vmware") in relacje
         assert ("db-01", "vm_host", "esx02.firma.pl", "vmware") in relacje
         assert ("esx01.firma.pl", "host_cluster", "RCHO-VSAN-01", "vmware") in relacje
-        assert db.get(VmwareUstawienia, enrolled["asset_id"]).odczyt_liczby["vm_z_agentem"] == 1
+        assert ustawienia_agenta(db, enrolled["asset_id"], "vmware").odczyt_liczby["vm_z_agentem"] == 1
 
     strona = client.get("/wirtualizacja").text
     assert "VMware vCenter" in strona and "RCHO-VSAN-01" in strona and "db-01" in strona

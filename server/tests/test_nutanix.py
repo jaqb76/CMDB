@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from cmdb_server.db import SessionLocal
 from cmdb_server.models import (
-    Asset, AssetChange, AssetRelation, AuditLog, NutanixObiekt, NutanixUstawienia,
+    Asset, AssetChange, AssetRelation, AuditLog, NutanixObiekt, WirtualizacjaPolaczenie,
 )
 from cmdb_server.services import nutanix
 from .test_monitoring import zaloguj
@@ -14,6 +14,12 @@ VM_BEZ_AGENTA = "11111111-2222-3333-4444-555555555555"
 KLASTER = "00061c8e-aaaa-bbbb-cccc-000000000001"
 HOST_A = "aaaaaaaa-0000-0000-0000-00000000000a"
 HOST_B = "bbbbbbbb-0000-0000-0000-00000000000b"
+
+
+def ustawienia_agenta(db, asset_id, dostawca="nutanix"):
+    """Jedyne polaczenie agenta z platforma (None, gdy nie ma)."""
+    return db.scalar(select(WirtualizacjaPolaczenie).where(
+        WirtualizacjaPolaczenie.asset_id == asset_id, WirtualizacjaPolaczenie.dostawca == dostawca))
 
 
 def naglowki(enrolled):
@@ -28,6 +34,11 @@ def zarejestruj(client, tenant, machine="bastion-1", uuid=None, hostname="bastio
         report["hardware"]["system"]["serial_number"] = uuid.upper()
     assert send(client, enrolled, report).status_code == 200
     return enrolled
+
+
+def ustawienia_rewizja(enrolled):
+    with SessionLocal() as db:
+        return ustawienia_agenta(db, enrolled["asset_id"]).revision
 
 
 def formularz(csrf, revision="unassigned", **extra):
@@ -91,7 +102,7 @@ def test_zapis_konfiguracji_szyfruje_haslo_i_trafia_do_audytu(client, tenant_a, 
     odp = wlacz(client, csrf, enrolled["asset_id"])
     assert odp.headers["location"].endswith("?funkcja=nutanix#agent")
     with SessionLocal() as db:
-        row = db.get(NutanixUstawienia, enrolled["asset_id"])
+        row = ustawienia_agenta(db, enrolled["asset_id"])
         assert row.adres == "https://prism.firma.pl:9440"
         assert row.haslo and "tajne" not in row.haslo
         wpis = db.scalars(select(AuditLog).where(AuditLog.action == "nutanix.config_changed")).one()
@@ -120,11 +131,14 @@ def test_bledny_adres_i_konflikt_rewizji(client, tenant_a, make_user):
     obcy = client.get(f"/assets/{enrolled['asset_id']}?funkcja=nutanix&nutanix_komunikat=zadzwon").text
     assert "zadzwon" not in obcy.split('data-panel="agent"')[1]
     with SessionLocal() as db:
-        assert db.get(NutanixUstawienia, enrolled["asset_id"]) is None
+        assert ustawienia_agenta(db, enrolled["asset_id"]) is None
     wlacz(client, csrf, enrolled["asset_id"])
-    assert client.post(f"/assets/{enrolled['asset_id']}/nutanix", data=formularz(csrf)).status_code == 409
+    # Nieaktualna rewizja (ktos zapisal w miedzyczasie) - odmowa zamiast nadpisania.
     assert client.post(f"/assets/{enrolled['asset_id']}/nutanix",
-                       data=formularz(csrf, interwal_minut="1")).status_code in (409, 422)
+                       data=formularz(csrf, revision="00000000-0000-0000-0000-000000000000")).status_code == 409
+    assert client.post(f"/assets/{enrolled['asset_id']}/nutanix",
+                       data=formularz(csrf, revision=ustawienia_rewizja(enrolled),
+                                      interwal_minut="1")).status_code == 422
 
 
 def test_widz_i_obca_firma_nie_zmieniaja_konfiguracji(client, tenant_a, tenant_b, make_user):
@@ -136,7 +150,7 @@ def test_widz_i_obca_firma_nie_zmieniaja_konfiguracji(client, tenant_a, tenant_b
     _, csrf = zaloguj(client, tenant_a, make_user, email="admin2@example.com")
     assert client.post(f"/assets/{b['asset_id']}/nutanix", data=formularz(csrf)).status_code == 404
     with SessionLocal() as db:
-        assert db.scalar(select(NutanixUstawienia)) is None
+        assert db.scalar(select(WirtualizacjaPolaczenie)) is None
 
 
 def test_test_polaczenia_jedzie_do_agenta_i_wraca_z_wynikiem(client, tenant_a, make_user):
@@ -184,7 +198,7 @@ def test_odczyt_zaklada_klaster_hosty_i_vm_oraz_laczy_z_agentem(client, tenant_a
             ("NTNX-A", "RCHO-AHV-01", "host_cluster"), ("NTNX-B", "RCHO-AHV-01", "host_cluster"),
             ("bastionjps", "NTNX-A", "vm_host"), ("sql01", "NTNX-A", "vm_host"),
         }
-        row = db.get(NutanixUstawienia, enrolled["asset_id"])
+        row = ustawienia_agenta(db, enrolled["asset_id"])
         assert row.odczyt_ok and row.odczyt_liczby["vm_z_agentem"] == 1 and row.odczyt_liczby["vm"] == 2
 
     karta = client.get(f"/assets/{enrolled['asset_id']}").text
@@ -242,7 +256,7 @@ def test_nieudany_odczyt_niczego_nie_wycofuje(client, tenant_a, make_user):
                               "blad": "HTTP 401: nieprawidlowe dane logowania"})
     with SessionLocal() as db:
         assert db.scalar(select(Asset).where(Asset.hostname == "sql01")).lifecycle == "aktywny"
-        row = db.get(NutanixUstawienia, enrolled["asset_id"])
+        row = ustawienia_agenta(db, enrolled["asset_id"])
         assert row.odczyt_ok is False and "401" in row.odczyt_blad
 
 
@@ -321,3 +335,89 @@ def test_widz_nie_zleca_odczytu(client, tenant_a, make_user):
     _, csrf = zaloguj(client, tenant_a, make_user, role="viewer")
     assert client.post(f"/assets/{enrolled['asset_id']}/nutanix/odczyt",
                        data={"csrf_token": csrf}).status_code == 403
+
+
+def test_kilka_polaczen_jednego_agenta(client, tenant_a, make_user):
+    """Agent czyta dwa Prism Central: osobne wyniki, osobne znikanie, usuwanie."""
+    enrolled = _wlaczony(client, tenant_a, make_user)[0]
+    _, csrf = zaloguj(client, tenant_a, make_user, email="drugi@example.com")
+    wlacz(client, csrf, enrolled["asset_id"], adres="prism2.firma.pl", nazwa="DR")
+    p = polityka(client, enrolled, nonce="e" * 32)
+    assert len(p["polaczenia"]) == 2
+    pierwsze, drugie = p["polaczenia"]
+    assert drugie["nazwa"] == "DR" and drugie["adres"] == "https://prism2.firma.pl:9440"
+    assert pierwsze["id"] != drugie["id"]
+
+    inny_klaster = "00061c8e-aaaa-bbbb-cccc-000000000002"
+    wyslij(client, enrolled, odczyt(pierwsze["revision"], polaczenie_id=pierwsze["id"]))
+    wyslij(client, enrolled, {
+        "protocol": 1, "revision": drugie["revision"], "polaczenie_id": drugie["id"], "rodzaj": "odczyt",
+        "ok": True, "klastry": [{"ext_id": inny_klaster, "nazwa": "DR-AHV"}], "hosty": [],
+        "vm": [{"ext_id": "22222222-0000-0000-0000-000000000001", "nazwa": "dr-vm", "klaster_id": inny_klaster}],
+    })
+    # Kolejny odczyt pierwszego nie wycofuje maszyn drugiego.
+    wyslij(client, enrolled, odczyt(pierwsze["revision"], polaczenie_id=pierwsze["id"]))
+    with SessionLocal() as db:
+        assert db.scalar(select(Asset).where(Asset.hostname == "dr-vm")).lifecycle == "aktywny"
+        assert db.scalar(select(Asset).where(Asset.hostname == "sql01")).lifecycle == "aktywny"
+
+    strona = client.get(f"/assets/{enrolled['asset_id']}?funkcja=nutanix").text
+    assert strona.count('name="polaczenie_id" value="' + drugie["id"]) >= 3
+    assert "Dodaj kolejne połączenie" in strona
+
+    # Zlecenia trafiaja do wskazanego polaczenia.
+    client.post(f"/assets/{enrolled['asset_id']}/nutanix/odczyt",
+                data={"csrf_token": csrf, "polaczenie_id": drugie["id"]})
+    zlecone = {w["id"]: w["odczyt_teraz"] for w in polityka(client, enrolled, nonce="f" * 32)["polaczenia"]}
+    assert zlecone == {pierwsze["id"]: False, drugie["id"]: True}
+
+    # Usuniecie polaczenia wycofuje tylko jego maszyny.
+    odp = client.post(f"/assets/{enrolled['asset_id']}/nutanix/usun",
+                      data={"csrf_token": csrf, "polaczenie_id": drugie["id"]}, follow_redirects=False)
+    assert odp.status_code == 303
+    with SessionLocal() as db:
+        dr = db.scalar(select(Asset).where(Asset.hostname == "dr-vm"))
+        assert dr.lifecycle == "wycofany" and "usunięto połączenie" in dr.retired_reason
+        assert db.scalar(select(Asset).where(Asset.hostname == "sql01")).lifecycle == "aktywny"
+        assert db.scalar(select(AuditLog).where(AuditLog.action == "nutanix.connection_deleted"))
+    assert len(polityka(client, enrolled, nonce="9" * 32)["polaczenia"]) == 1
+
+
+def test_polaczenie_innego_agenta_nie_do_ruszenia(client, tenant_a, make_user):
+    a = zarejestruj(client, tenant_a, machine="maszyna-a-1")
+    b = zarejestruj(client, tenant_a, machine="maszyna-b-1", hostname="inny")
+    _, csrf = zaloguj(client, tenant_a, make_user)
+    wlacz(client, csrf, a["asset_id"])
+    pid = polityka(client, a)["polaczenia"][0]["id"]
+    for koncowka in ("test", "odczyt", "usun"):
+        assert client.post(f"/assets/{b['asset_id']}/nutanix/{koncowka}",
+                           data={"csrf_token": csrf, "polaczenie_id": pid}).status_code == 404
+    # Wynik z cudzym polaczeniem jest pomijany.
+    assert wyslij(client, b, odczyt("x", polaczenie_id=pid)) == "pominieto"
+
+
+def test_dawna_konfiguracja_przechodzi_do_polaczen(client, tenant_a, make_user):
+    """Serwer sprzed wielu polaczen: wiersz nutanix_ustawienia/vmware_ustawienia
+    staje sie polaczeniem z ta sama rewizja, a obiekty dostaja jego wskazanie."""
+    from cmdb_server import db as baza
+    from cmdb_server.models import NutanixUstawienia, VmwareUstawienia
+
+    enrolled = zarejestruj(client, tenant_a)
+    with SessionLocal() as db:
+        asset = db.get(Asset, enrolled["asset_id"])
+        db.add(VmwareUstawienia(asset_id=asset.id, tenant_id=asset.tenant_id, wlaczona=True,
+                                adres="https://vc.firma.pl:443", uzytkownik="u", revision="rev-stara"))
+        db.add(NutanixUstawienia(asset_id=asset.id, tenant_id=asset.tenant_id, adres="https://p:9440",
+                                 revision="rev-nx"))
+        db.add(NutanixObiekt(tenant_id=asset.tenant_id, dostawca="vmware", rodzaj="vm", ext_id="abc/vm-1",
+                             czytnik_id=asset.id))
+        db.commit()
+    baza._przenies_polaczenia_wirtualizacji()
+    baza._przenies_polaczenia_wirtualizacji()  # drugi start niczego nie dubluje
+    with SessionLocal() as db:
+        vc = ustawienia_agenta(db, enrolled["asset_id"], "vmware")
+        assert vc.revision == "rev-stara" and vc.wlaczona and vc.adres == "https://vc.firma.pl:443"
+        assert ustawienia_agenta(db, enrolled["asset_id"], "nutanix").revision == "rev-nx"
+        assert db.scalar(select(NutanixObiekt)).polaczenie_id == vc.id
+        assert db.scalar(select(VmwareUstawienia)) is None and db.scalar(select(NutanixUstawienia)) is None
+    assert polityka(client, enrolled)["revision"] == "rev-nx"

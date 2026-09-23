@@ -363,12 +363,17 @@ def _wypisz_monitorowanie(monitoring: dict) -> None:
         print(f"blad monitorowania   : {monitoring['ostatni_blad']}")
     for klucz, nazwa in (("nutanix", "Nutanix"), ("vmware", "VMware")):
         czytnik = monitoring.get(klucz) or {}
-        if czytnik.get("wlaczony") or czytnik.get("ostatni_blad"):
-            odczyt = czytnik.get("ostatni_odczyt_o")
-            print(f"{'odczyt ' + nazwa:<21}: "
+        # Kilka polaczen - wiersz na kazde; jedno (albo starszy status) - jak dotad.
+        wpisy = czytnik.get("polaczenia") or [czytnik]
+        for wpis in wpisy:
+            if not (wpis.get("wlaczony") or wpis.get("ostatni_blad")):
+                continue
+            etykieta = nazwa + (f" {wpis['nazwa']}" if len(wpisy) > 1 and wpis.get("nazwa") else "")
+            odczyt = wpis.get("ostatni_odczyt_o")
+            print(f"{'odczyt ' + etykieta:<21}: "
                   f"{status.format_local(odczyt) + ' (' + status.format_relative(odczyt) + ')' if odczyt else '-'}")
-            if czytnik.get("ostatni_blad"):
-                print(f"{'blad odczytu ' + nazwa:<21}: {czytnik['ostatni_blad']}")
+            if wpis.get("ostatni_blad"):
+                print(f"{'blad odczytu ' + etykieta:<21}: {wpis['ostatni_blad']}")
 
     lista = monitoring.get("lista") or []
     if not lista:

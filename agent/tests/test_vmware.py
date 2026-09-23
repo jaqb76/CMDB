@@ -185,3 +185,25 @@ def test_czytnik_vmware_wysyla_wynik_na_wlasny_adres(tmp_path):
     assert sciezka == "/api/v1/agent/vmware"
     assert tresc["ok"] and len(tresc["vm"]) == 2 and "tajne" not in json.dumps(tresc)
     assert czytnik.status()["wlaczony"] is True
+
+
+def test_czytnik_obsluguje_kilka_vcenter_naraz(tmp_path):
+    with falszywy_vcenter(tmp_path) as (adres, pem, _, _s):
+        wspolne = {"enabled": True, "test": False, "adres": adres, "uzytkownik": "cmdb-ro@vsphere.local",
+                   "haslo": "tajne", "ca_pem": pem, "interwal_sekund": 3600}
+        polaczenia = [dict(wspolne, id="p1", revision="r1", nazwa="POD01"),
+                      dict(wspolne, id="p2", revision="r2", nazwa="POD02", enabled=False, test=True)]
+        klient = KlientPolityki(lambda n: odpowiedz(n, {"enabled": False, "test": False},
+                                                    polaczenia=[dict(p) for p in polaczenia]))
+        czytnik = vmware.CzytnikVmware(klient, STAN)
+        przebieg(czytnik, 1000.0)
+    wyniki = {t["polaczenie_id"]: t for _, t in klient.wyslane}
+    assert wyniki["p1"]["rodzaj"] == "odczyt" and wyniki["p1"]["revision"] == "r1"
+    assert wyniki["p2"]["rodzaj"] == "test" and wyniki["p2"]["revision"] == "r2"
+    assert {p["nazwa"] for p in czytnik.status()["polaczenia"]} == {"POD01", "POD02"}
+
+    # Polaczenie usuniete w panelu znika ze stanu czytnika.
+    klient.odpowiedz_dla = lambda n: odpowiedz(n, {"enabled": False, "test": False},
+                                               polaczenia=[dict(polaczenia[0], enabled=False)])
+    czytnik.krok(1000.0 + 300)
+    assert set(czytnik.stany) == {"p1"}

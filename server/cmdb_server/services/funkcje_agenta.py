@@ -22,8 +22,7 @@ from sqlalchemy.orm import Session
 
 from ..discovery_policy import ScanPolicy
 from ..models import (
-    Asset, DiscoveryPolicy, MonitorUslugi, NutanixUstawienia, OdbiorFunkcjiAgenta,
-    VmwareUstawienia, utcnow,
+    Asset, DiscoveryPolicy, MonitorUslugi, OdbiorFunkcjiAgenta, WirtualizacjaPolaczenie, utcnow,
 )
 
 SKANER = "skaner"
@@ -187,18 +186,24 @@ def stan(db: Session, asset: Asset) -> list[StanFunkcji]:
 
     from . import nutanix
     for klucz in (NUTANIX, VMWARE):
-        nx = nutanix.ustawienia(db, asset, klucz)
-        if nx is not None and nx.wlaczona:
-            liczby = nx.odczyt_liczby or {}
-            if nx.odczyt_ok and liczby:
-                podsumowanie = (f"{nx.adres} · klastry {liczby.get('klastry', 0)}, "
-                                f"hosty {liczby.get('hosty', 0)}, VM {liczby.get('vm', 0)}")
-            else:
-                podsumowanie = nx.adres
+        lista = nutanix.polaczenia(db, asset, klucz)
+        wlaczone = [r for r in lista if r.wlaczona]
+        if len(lista) == 1 and wlaczone:
+            r = lista[0]
+            liczby = r.odczyt_liczby or {}
+            podsumowanie = r.adres
+            if r.odczyt_ok and liczby:
+                podsumowanie += (f" · klastry {liczby.get('klastry', 0)}, "
+                                 f"hosty {liczby.get('hosty', 0)}, VM {liczby.get('vm', 0)}")
+        elif len(lista) > 1:
+            vm = sum((r.odczyt_liczby or {}).get("vm", 0) for r in wlaczone if r.odczyt_ok)
+            podsumowanie = f"połączenia: {len(lista)} (włączone: {len(wlaczone)})"
+            if vm:
+                podsumowanie += f" · VM {vm}"
         else:
             podsumowanie = ""
-        wynik.append(StanFunkcji(funkcja(klucz), bool(nx and nx.wlaczona), podsumowanie,
-                                 nutanix.wersja(nx), *_odb(klucz)))
+        wynik.append(StanFunkcji(funkcja(klucz), bool(wlaczone), podsumowanie,
+                                 nutanix.wersja_zbiorcza(lista), *_odb(klucz)))
     return wynik
 
 
@@ -225,9 +230,9 @@ def warunek_filtra(klucz: str):
             MonitorUslugi.aktywny.is_(True),
         )
     if klucz in (NUTANIX, VMWARE):
-        model = NutanixUstawienia if klucz == NUTANIX else VmwareUstawienia
         return exists().where(
-            model.asset_id == Asset.id,
-            model.wlaczona.is_(True),
+            WirtualizacjaPolaczenie.asset_id == Asset.id,
+            WirtualizacjaPolaczenie.dostawca == klucz,
+            WirtualizacjaPolaczenie.wlaczona.is_(True),
         )
     return None

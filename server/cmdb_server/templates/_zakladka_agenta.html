@@ -148,80 +148,119 @@
         {% endif %}
 
         {% elif wirt %}
-        {% set nx = wirt.ustawienia %}
         {% set pl = wirt.opis.platforma %}
         <p class="small muted">
           Z {{ pl }} łączy się agent na tej maszynie — adres ma być widoczny
           <b>z niej</b>, nie z serwera CMDB. Wystarczy konto {{ wirt.opis.konto | safe }}:
-          odczyt nie zmienia niczego w środowisku. Wyniki: <a href="/wirtualizacja">Wirtualizacja</a>.
+          odczyt nie zmienia niczego w środowisku. Jeden agent może czytać dowolnie wiele
+          instalacji {{ pl }}. Wyniki: <a href="/wirtualizacja">Wirtualizacja</a>.
         </p>
         {% if nutanix_komunikat %}<div class="alert alert-error">{{ nutanix_komunikat }}</div>{% endif %}
-        {% if nx and nx.odczyt_o %}
-        <div class="alert {{ 'alert-ok' if nx.odczyt_ok else 'alert-error' }}">
-          <b>Ostatni odczyt {{ nx.odczyt_o | ago }}:</b>
-          {% if nx.odczyt_ok %}
-            {% set l = nx.odczyt_liczby or {} %}
-            klastry {{ l.klastry or 0 }}, hosty {{ l.hosty or 0 }}, maszyny wirtualne {{ l.vm or 0 }}
-            (z agentem CMDB: {{ l.vm_z_agentem or 0 }}{% if l.nowe %}, nowe wpisy: {{ l.nowe }}{% endif %}{% if l.wycofane %}, wycofane: {{ l.wycofane }}{% endif %})
-          {% else %}{{ nx.odczyt_blad }}{% endif %}
-        </div>
-        {% endif %}
-        {% if wirt.odczyt_oczekuje %}
-        <div class="alert alert-warn" data-nutanix-odczyt>
-          <b>Odczyt zlecony {{ nx.odczyt_zlecony_o | ago }}</b> — agent wykona go przy najbliższym
-          sprawdzeniu konfiguracji (do 5 minut) i wynik pojawi się powyżej.
-        </div>
-        {% endif %}
-        {% if nx and (nx.test_o or wirt.test_oczekuje) %}
-        <div class="alert {% if wirt.test_oczekuje %}alert-warn{% elif nx.test_ok %}alert-ok{% else %}alert-error{% endif %}" data-nutanix-test>
-          {% if wirt.test_oczekuje %}
-            <b>Test zlecony {{ nx.test_zlecony_o | ago }}</b> — agent wykona go przy najbliższym
-            sprawdzeniu konfiguracji (co 5 minut, jeśli działa usługa monitorowania agenta).
-          {% else %}
-            <b>Test {{ nx.test_o | ago }}:</b> {{ nx.test_opis }}
-          {% endif %}
-        </div>
-        {% endif %}
-        {% if nx %}<p class="small muted">Ostatnia zmiana: {{ nx.updated_by }}, {{ nx.updated_at | dt }}</p>{% endif %}
+
+        {% macro formularz(p, nr) %}{% set nx = p.row if p else none %}
         <form method="post" action="/assets/{{ asset.id }}/{{ wirt.dostawca }}" class="stack">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="polaczenie_id" value="{{ nx.id if nx else '' }}">
           <input type="hidden" name="revision" value="{{ nx.revision if nx else 'unassigned' }}">
           <fieldset {% if not ctx.can_write %}disabled{% endif %}>
-            <p><label><input type="checkbox" name="wlaczona" value="true" {% if nx and nx.wlaczona %}checked{% endif %}> Odczytuj {{ pl }} z tej maszyny</label></p>
+            <p><label><input type="checkbox" name="wlaczona" value="true" {% if nx and nx.wlaczona %}checked{% endif %}> Odczytuj {{ wirt.opis.platforma }} z tej maszyny</label></p>
             <div class="row-form">
-              <div><label for="nx-adres">Adres {{ pl }}</label>
-                <input id="nx-adres" name="adres" maxlength="255" value="{{ nx.adres if nx else '' }}" placeholder="{{ wirt.opis.przyklad }}"></div>
-              <div><label for="nx-odstep">Odczyt co</label>
-                <select id="nx-odstep" name="interwal_minut">
+              <div><label for="nx-adres-{{ nr }}">Adres {{ wirt.opis.platforma }}</label>
+                <input id="nx-adres-{{ nr }}" name="adres" maxlength="255" value="{{ nx.adres if nx else '' }}" placeholder="{{ wirt.opis.przyklad }}"></div>
+              <div><label for="nx-nazwa-{{ nr }}">Nazwa (opcjonalnie)</label>
+                <input id="nx-nazwa-{{ nr }}" name="nazwa" maxlength="100" value="{{ nx.nazwa if nx else '' }}" placeholder="np. POD01"></div>
+              <div><label for="nx-odstep-{{ nr }}">Odczyt co</label>
+                <select id="nx-odstep-{{ nr }}" name="interwal_minut">
                   {% for m in wirt.interwaly %}<option value="{{ m }}" {% if (nx.interwal_minut if nx else 60) == m %}selected{% endif %}>{% if m < 60 %}{{ m }} min{% else %}{{ m // 60 }} h{% endif %}</option>{% endfor %}
                 </select></div>
             </div>
             <div class="row-form">
-              <div><label for="nx-user">Użytkownik</label>
-                <input id="nx-user" name="uzytkownik" maxlength="128" autocomplete="off" value="{{ nx.uzytkownik if nx else '' }}" placeholder="{{ wirt.opis.przyklad_konta }}"></div>
-              <div><label for="nx-haslo">Hasło</label>
-                <input id="nx-haslo" name="haslo" type="password" maxlength="512" autocomplete="new-password"
-                       placeholder="{% if nx and nx.haslo %}zapisane — puste pole = bez zmian{% else %}hasło konta w {{ pl }}{% endif %}"></div>
+              <div><label for="nx-user-{{ nr }}">Użytkownik</label>
+                <input id="nx-user-{{ nr }}" name="uzytkownik" maxlength="128" autocomplete="off" value="{{ nx.uzytkownik if nx else '' }}" placeholder="{{ wirt.opis.przyklad_konta }}"></div>
+              <div><label for="nx-haslo-{{ nr }}">Hasło</label>
+                <input id="nx-haslo-{{ nr }}" name="haslo" type="password" maxlength="512" autocomplete="new-password"
+                       placeholder="{% if nx and nx.haslo %}zapisane — puste pole = bez zmian{% else %}hasło konta w {{ wirt.opis.platforma }}{% endif %}"></div>
             </div>
-            <div><label for="nx-ca">Certyfikat CA {{ pl }} (opcjonalnie, PEM)</label>
-              <textarea id="nx-ca" name="ca_pem" rows="3" placeholder="Puste = zaufane urzędy systemu tej maszyny (np. firmowe CA dodane do systemu)">{{ nx.ca_pem if nx and nx.ca_pem else '' }}</textarea>
+            <div><label for="nx-ca-{{ nr }}">Certyfikat CA {{ wirt.opis.platforma }} (opcjonalnie, PEM)</label>
+              <textarea id="nx-ca-{{ nr }}" name="ca_pem" rows="3" placeholder="Puste = zaufane urzędy systemu tej maszyny (np. firmowe CA dodane do systemu)">{{ nx.ca_pem if nx and nx.ca_pem else '' }}</textarea>
               <div class="muted small">Weryfikacji certyfikatu nie da się wyłączyć.</div></div>
-            {% if ctx.can_write %}<p><button class="btn btn-primary" type="submit">Zapisz</button></p>{% endif %}
+            {% if ctx.can_write %}<p><button class="btn btn-primary" type="submit">{{ 'Zapisz' if nx else 'Dodaj połączenie' }}</button></p>{% endif %}
           </fieldset>
         </form>
-        {% if ctx.can_write and nx and nx.adres and nx.haslo %}
-        <div class="btn-row">
-          <form method="post" action="/assets/{{ asset.id }}/{{ wirt.dostawca }}/test" class="inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-small" type="submit">Testuj połączenie</button>
-          </form>
-          {% if nx.wlaczona %}
-          <form method="post" action="/assets/{{ asset.id }}/{{ wirt.dostawca }}/odczyt" class="inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-small" type="submit" {% if wirt.odczyt_oczekuje %}disabled{% endif %}>Odczytaj teraz</button>
-          </form>
+        {% endmacro %}
+
+        {% for p in wirt.polaczenia %}{% set nx = p.row %}
+        <details class="panel wirt-polaczenie" data-polaczenie="{{ nx.id }}" {% if wirt.polaczenia | length == 1 or not nx.adres %}open{% endif %}>
+          <summary>
+            <b>{{ p.nazwa }}</b>
+            {% if nx.nazwa and nx.adres %}<span class="muted small">{{ nx.adres }}</span>{% endif %}
+            {% if not nx.wlaczona %}<span class="badge">wyłączone</span>
+            {% elif nx.odczyt_o and not nx.odczyt_ok %}<span class="badge badge-danger">błąd odczytu</span>
+            {% elif nx.odczyt_ok %}<span class="badge badge-ok">VM {{ (nx.odczyt_liczby or {}).vm or 0 }}</span>
+            {% else %}<span class="badge badge-warn">czeka na odczyt</span>{% endif %}
+          </summary>
+          {% if nx.odczyt_o %}
+          <div class="alert {{ 'alert-ok' if nx.odczyt_ok else 'alert-error' }}">
+            <b>Ostatni odczyt {{ nx.odczyt_o | ago }}:</b>
+            {% if nx.odczyt_ok %}
+              {% set l = nx.odczyt_liczby or {} %}
+              klastry {{ l.klastry or 0 }}, hosty {{ l.hosty or 0 }}, maszyny wirtualne {{ l.vm or 0 }}
+              (z agentem CMDB: {{ l.vm_z_agentem or 0 }}{% if l.nowe %}, nowe wpisy: {{ l.nowe }}{% endif %}{% if l.wycofane %}, wycofane: {{ l.wycofane }}{% endif %})
+            {% else %}{{ nx.odczyt_blad }}{% endif %}
+          </div>
           {% endif %}
-        </div>
+          {% if p.odczyt_oczekuje %}
+          <div class="alert alert-warn" data-nutanix-odczyt>
+            <b>Odczyt zlecony {{ nx.odczyt_zlecony_o | ago }}</b> — agent wykona go przy najbliższym
+            sprawdzeniu konfiguracji (do 5 minut) i wynik pojawi się powyżej.
+          </div>
+          {% endif %}
+          {% if nx.test_o or p.test_oczekuje %}
+          <div class="alert {% if p.test_oczekuje %}alert-warn{% elif nx.test_ok %}alert-ok{% else %}alert-error{% endif %}" data-nutanix-test>
+            {% if p.test_oczekuje %}
+              <b>Test zlecony {{ nx.test_zlecony_o | ago }}</b> — agent wykona go przy najbliższym
+              sprawdzeniu konfiguracji (co 5 minut, jeśli działa usługa monitorowania agenta).
+            {% else %}
+              <b>Test {{ nx.test_o | ago }}:</b> {{ nx.test_opis }}
+            {% endif %}
+          </div>
+          {% endif %}
+          <p class="small muted">Ostatnia zmiana: {{ nx.updated_by }}, {{ nx.updated_at | dt }}</p>
+          {{ formularz(p, loop.index) }}
+          {% if ctx.can_write %}
+          <div class="btn-row">
+            {% if nx.adres and nx.haslo %}
+            <form method="post" action="/assets/{{ asset.id }}/{{ wirt.dostawca }}/test" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="polaczenie_id" value="{{ nx.id }}">
+              <button class="btn btn-small" type="submit">Testuj połączenie</button>
+            </form>
+            {# Widoczny zawsze: przy wylaczonym odczycie serwer odpowie, co zaznaczyc. #}
+            <form method="post" action="/assets/{{ asset.id }}/{{ wirt.dostawca }}/odczyt" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="polaczenie_id" value="{{ nx.id }}">
+              <button class="btn btn-small" type="submit" {% if p.odczyt_oczekuje %}disabled{% endif %}
+                      {% if not nx.wlaczona %}title="Odczyt jest wyłączony - najpierw zaznacz „Odczytuj {{ pl }} z tej maszyny” i zapisz"{% endif %}>Odczytaj teraz</button>
+            </form>
+            {% endif %}
+            <form method="post" action="/assets/{{ asset.id }}/{{ wirt.dostawca }}/usun" class="inline-form"
+                  data-confirm="Usunąć połączenie {{ p.nazwa }}? Jego maszyny bez agenta zostaną wycofane z ewidencji (wrócą po ponownym dodaniu).">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="polaczenie_id" value="{{ nx.id }}">
+              <button class="btn btn-small btn-danger" type="submit">Usuń połączenie</button>
+            </form>
+          </div>
+          {% endif %}
+        </details>
+        {% endfor %}
+
+        {% if ctx.can_write %}
+        <details class="panel wirt-polaczenie" data-nowe-polaczenie {% if not wirt.polaczenia %}open{% endif %}>
+          <summary><b>+ Dodaj {{ 'połączenie' if not wirt.polaczenia else 'kolejne połączenie' }} z {{ pl }}</b></summary>
+          {{ formularz(none, 0) }}
+        </details>
+        {% elif not wirt.polaczenia %}
+        <p class="muted">Brak połączeń.</p>
         {% endif %}
         {% endif %}
       </div>

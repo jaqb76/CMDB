@@ -121,7 +121,7 @@ def test_polityka_odrzuca_niezgodna_odpowiedz(zmiana):
 
 def test_polityka_wylaczona_nie_niesie_hasla():
     klient = KlientPolityki(lambda n: odpowiedz(n, {"enabled": False, "test": False}))
-    assert "haslo" not in nutanix.pobierz_polityke(klient, STAN)
+    assert "haslo" not in nutanix.pobierz_polityke(klient, STAN)[0]
 
 
 # --- czytnik w petli monitora -------------------------------------------------
@@ -144,8 +144,8 @@ class OdmowaPrism(FalszywyPrism):
 
 def przebieg(czytnik, teraz):
     czytnik.krok(teraz)
-    if czytnik.watek:
-        czytnik.watek.join(timeout=5)
+    for watek in czytnik.watki():
+        watek.join(timeout=5)
 
 
 def test_czytnik_wykonuje_odczyt_i_nie_powtarza_go_przed_czasem():

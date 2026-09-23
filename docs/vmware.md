@@ -41,7 +41,12 @@ Karta maszyny → **Agent** → **Dodatkowe funkcjonalności** → **VMware vCen
 4. zaznacz **Odczytuj vCenter z tej maszyny** i zapisz. **Odczytaj teraz**
    zleca pełny odczyt bez czekania na odstęp.
 
-Na jednej maszynie mogą działać jednocześnie odczyt Nutanix i odczyt vCenter.
+Jeden agent może czytać **dowolnie wiele** vCenter (i Prism Central). Każde
+połączenie ma własny adres, konto, odstęp, test, „Odczytaj teraz” i opcjonalną
+nazwę (np. „POD01”). Kolejne dodaje się przyciskiem **+ Dodaj kolejne połączenie**.
+**Usuń połączenie** wycofuje z ewidencji maszyny bez agenta, które widziało tylko ono.
+Po ponownym dodaniu połączenia pierwszy odczyt przywraca je do ewidencji.
+Znikanie obiektów ocenia wyłącznie to połączenie, które je widziało.
 
 ## Co agent pyta
 

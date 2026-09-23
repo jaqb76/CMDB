@@ -83,12 +83,24 @@ def pobierz_polityke(client, state, sciezka: str = "/api/v1/agent/nutanix-policy
     wygasa = datetime.fromisoformat(str(payload["expires_at"]).replace("Z", "+00:00"))
     if wygasa.tzinfo is None or not 0 < (wygasa - _teraz()).total_seconds() <= 65:
         raise ValueError(f"wygasla lub niepoprawna waznosc konfiguracji {nazwa}")
-    polityka = payload.get("policy")
-    if not isinstance(polityka, dict):
+    # Serwer z wieloma polaczeniami wysyla liste; starszy - jedno "policy".
+    surowe = payload.get("polaczenia")
+    if surowe is None:
+        polityka = payload.get("policy")
+        if not isinstance(polityka, dict):
+            raise ValueError(f"niepoprawny format konfiguracji {nazwa}")
+        surowe = [dict(polityka, id="", revision=payload.get("revision"))]
+    if not isinstance(surowe, list) or not all(isinstance(p, dict) for p in surowe):
         raise ValueError(f"niepoprawny format konfiguracji {nazwa}")
-    wynik = {"enabled": bool(polityka.get("enabled")), "test": bool(polityka.get("test")),
+    return [_polaczenie(p, nazwa) for p in surowe]
+
+
+def _polaczenie(polityka: dict, nazwa: str) -> dict:
+    wynik = {"id": str(polityka.get("id") or ""),
+             "nazwa": str(polityka.get("nazwa") or ""),
+             "enabled": bool(polityka.get("enabled")), "test": bool(polityka.get("test")),
              "odczyt_teraz": bool(polityka.get("odczyt_teraz")),
-             "revision": str(payload.get("revision") or "")}
+             "revision": str(polityka.get("revision") or "")}
     if wynik["enabled"] or wynik["test"]:
         adres = str(polityka.get("adres") or "")
         if not adres.startswith("https://"):
@@ -100,6 +112,8 @@ def pobierz_polityke(client, state, sciezka: str = "/api/v1/agent/nutanix-policy
             ca_pem=str(polityka.get("ca_pem") or ""),
             interwal_sekund=max(900, min(86400, int(polityka.get("interwal_sekund") or 3600))),
         )
+        if not wynik["nazwa"]:
+            wynik["nazwa"] = urllib.parse.urlsplit(wynik["adres"]).hostname or wynik["adres"]
     return wynik
 
 
@@ -316,11 +330,25 @@ def wykonaj(prism: PrismCentral, rodzaj: str) -> dict:
 
 # --- praca w petli monitora -------------------------------------------------
 
+class _StanPolaczenia:
+    def __init__(self):
+        self.revision = ""
+        self.nastepny_odczyt = 0.0
+        self.watek: threading.Thread | None = None
+        self.nazwa = ""
+        self.wlaczony = False
+        self.ostatni_odczyt_o = ""
+        self.ostatni_blad = ""
+
+
 class CzytnikNutanix:
     """Pilnuje konfiguracji i uruchamia odczyty. Wolany z petli monitora.
 
-    Ten sam czytnik obsluguje vCenter (vmware.CzytnikVmware) - dostawca
-    wnosi tylko adresy w CMDB, klienta platformy i funkcje odczytu.
+    Agent moze czytac kilka instalacji naraz - kazde polaczenie ma wlasny
+    odstep, wlasne zlecenia z panelu i wlasny watek; wolny odczyt jednego
+    nie wstrzymuje drugiego. Ten sam czytnik obsluguje vCenter
+    (vmware.CzytnikVmware) - dostawca wnosi tylko adresy w CMDB, klienta
+    platformy i funkcje odczytu.
     """
 
     nazwa = "Nutanix"
@@ -332,76 +360,96 @@ class CzytnikNutanix:
         self.state = state
         self.fabryka = fabryka or PrismCentral
         self.nastepna_polityka = 0.0
-        self.nastepny_odczyt = 0.0
-        self.revision = ""
+        self.stany: dict[str, _StanPolaczenia] = {}
+        # Ostatnio uruchomiony watek - dla testow i diagnostyki.
         self.watek: threading.Thread | None = None
-        self.ostatni_odczyt_o = ""
-        self.ostatni_blad = ""
-        self.wlaczony = False
+
+    def watki(self) -> list[threading.Thread]:
+        return [st.watek for st in self.stany.values() if st.watek is not None]
 
     def krok(self, teraz: float | None = None) -> None:
         teraz = time.monotonic() if teraz is None else teraz
-        if self.watek is not None and self.watek.is_alive():
-            return
         if teraz < self.nastepna_polityka:
             return
         self.nastepna_polityka = teraz + ODSTEP_POLITYKI
         try:
-            polityka = pobierz_polityke(self.client, self.state, self.sciezka_polityki, self.nazwa)
+            lista = pobierz_polityke(self.client, self.state, self.sciezka_polityki, self.nazwa)
         except Exception as exc:
             log.warning("konfiguracja %s niedostepna: %s", self.nazwa, exc)
             return
-        if polityka["revision"] != self.revision:
-            # Nowa konfiguracja (np. inny adres) - czytamy od razu, a nie po
-            # odstepie liczonym od odczytu starej.
-            self.revision = polityka["revision"]
-            self.nastepny_odczyt = 0.0
-        self.wlaczony = polityka["enabled"]
-        if polityka["test"]:
-            self._uruchom(polityka, "test")
-        elif polityka["enabled"] and (polityka["odczyt_teraz"] or teraz >= self.nastepny_odczyt):
-            self.nastepny_odczyt = teraz + polityka["interwal_sekund"]
-            self._uruchom(polityka, "odczyt")
+        obecne = set()
+        for polityka in lista:
+            obecne.add(polityka["id"])
+            st = self.stany.setdefault(polityka["id"], _StanPolaczenia())
+            st.nazwa = polityka["nazwa"] or st.nazwa
+            if st.watek is not None and st.watek.is_alive():
+                continue
+            if polityka["revision"] != st.revision:
+                # Nowa konfiguracja (np. inny adres) - czytamy od razu, a nie
+                # po odstepie liczonym od odczytu starej.
+                st.revision = polityka["revision"]
+                st.nastepny_odczyt = 0.0
+            st.wlaczony = polityka["enabled"]
+            if polityka["test"]:
+                self._uruchom(st, polityka, "test")
+            elif polityka["enabled"] and (polityka["odczyt_teraz"] or teraz >= st.nastepny_odczyt):
+                st.nastepny_odczyt = teraz + polityka["interwal_sekund"]
+                self._uruchom(st, polityka, "odczyt")
+        # Usuniete w panelu polaczenia znikaja tez ze stanu (watek, jesli
+        # jeszcze trwa, dokonczy - serwer odrzuci jego wynik).
+        for klucz in list(self.stany):
+            if klucz not in obecne:
+                del self.stany[klucz]
 
-    def _uruchom(self, polityka: dict, rodzaj: str) -> None:
-        self.watek = threading.Thread(target=self._przebieg, args=(polityka, rodzaj),
-                                      name=f"{self.nazwa.lower()}-{rodzaj}", daemon=True)
-        self.watek.start()
+    def _uruchom(self, st: _StanPolaczenia, polityka: dict, rodzaj: str) -> None:
+        st.watek = threading.Thread(target=self._przebieg, args=(st, polityka, rodzaj),
+                                    name=f"{self.nazwa.lower()}-{rodzaj}", daemon=True)
+        self.watek = st.watek
+        st.watek.start()
 
-    def _przebieg(self, polityka: dict, rodzaj: str) -> None:
+    def _przebieg(self, st: _StanPolaczenia, polityka: dict, rodzaj: str) -> None:
         tresc = {"protocol": 1, "revision": polityka["revision"]}
+        if polityka["id"]:
+            tresc["polaczenie_id"] = polityka["id"]
+        etykieta = f"{self.nazwa} {polityka['nazwa']}".strip()
         try:
-            prism = self.fabryka(polityka["adres"], polityka["uzytkownik"], polityka["haslo"],
-                                 polityka.get("ca_pem", ""))
-            tresc.update(self.wykonaj(prism, rodzaj))
-            self.ostatni_blad = ""
-            log.info("%s %s: klastry %d, hosty %d, VM %d w %d ms", self.nazwa, rodzaj,
+            klient = self.fabryka(polityka["adres"], polityka["uzytkownik"], polityka["haslo"],
+                                  polityka.get("ca_pem", ""))
+            tresc.update(self.wykonaj(klient, rodzaj))
+            st.ostatni_blad = ""
+            log.info("%s %s: klastry %d, hosty %d, VM %d w %d ms", etykieta, rodzaj,
                      len(tresc["klastry"]), len(tresc.get("hosty", [])), len(tresc.get("vm", [])),
                      tresc["czas_ms"])
         except BladPrism as exc:
             tresc.update(rodzaj=rodzaj, ok=False, blad=str(exc)[:2000])
-            self.ostatni_blad = str(exc)
-            log.warning("%s %s nieudany: %s", self.nazwa, rodzaj, exc)
+            st.ostatni_blad = str(exc)
+            log.warning("%s %s nieudany: %s", etykieta, rodzaj, exc)
             if rodzaj == "odczyt":
-                self.nastepny_odczyt = min(self.nastepny_odczyt,
-                                           time.monotonic() + PONOWIENIE_PO_BLEDZIE)
+                st.nastepny_odczyt = min(st.nastepny_odczyt, time.monotonic() + PONOWIENIE_PO_BLEDZIE)
         except Exception as exc:  # nieznany ksztalt odpowiedzi nie moze zabic monitora
             tresc.update(rodzaj=rodzaj, ok=False, blad=f"blad agenta: {type(exc).__name__}: {exc}"[:2000])
-            self.ostatni_blad = tresc["blad"]
-            log.exception("%s %s: blad agenta", self.nazwa, rodzaj)
+            st.ostatni_blad = tresc["blad"]
+            log.exception("%s %s: blad agenta", etykieta, rodzaj)
         finally:
             polityka.pop("haslo", None)
         try:
             self.client.post(self.sciezka_wyniku, token=self.state.agent_token, payload=tresc)
             if rodzaj == "odczyt" and tresc.get("ok"):
-                self.ostatni_odczyt_o = _teraz().isoformat(timespec="seconds")
+                st.ostatni_odczyt_o = _teraz().isoformat(timespec="seconds")
         except Exception as exc:
-            log.warning("nie udalo sie wyslac wyniku %s: %s", self.nazwa, exc)
+            log.warning("nie udalo sie wyslac wyniku %s: %s", etykieta, exc)
 
     @staticmethod
     def wykonaj(klient, rodzaj: str) -> dict:
         return wykonaj(klient, rodzaj)
 
     def status(self) -> dict:
-        return {"wlaczony": self.wlaczony, "ostatni_odczyt_o": self.ostatni_odczyt_o,
-                "ostatni_blad": self.ostatni_blad}
+        stany = list(self.stany.values())
+        bledy = [f"{st.nazwa}: {st.ostatni_blad}" if st.nazwa and len(stany) > 1 else st.ostatni_blad
+                 for st in stany if st.ostatni_blad]
+        return {"wlaczony": any(st.wlaczony for st in stany),
+                "ostatni_odczyt_o": max((st.ostatni_odczyt_o for st in stany), default=""),
+                "ostatni_blad": "; ".join(bledy),
+                "polaczenia": [{"nazwa": st.nazwa, "wlaczony": st.wlaczony,
+                                "ostatni_odczyt_o": st.ostatni_odczyt_o, "ostatni_blad": st.ostatni_blad}
+                               for st in stany]}
