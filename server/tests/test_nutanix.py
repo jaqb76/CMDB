@@ -288,3 +288,36 @@ def test_filtr_listy_i_czeka_na_odebranie(client, tenant_a, make_user):
     assert "data-funkcje-czekaja" not in client.get(f"/assets/{enrolled['asset_id']}").text
     lista = client.get("/assets?funkcja=nutanix").text
     assert "bastionjps" in lista and ">inna<" not in lista
+
+
+def test_odczytaj_teraz_zleca_odczyt_az_do_wyniku(client, tenant_a, make_user):
+    enrolled = zarejestruj(client, tenant_a)
+    _, csrf = zaloguj(client, tenant_a, make_user)
+    wlacz(client, csrf, enrolled["asset_id"], wlaczona="false")
+    # Przy wylaczonym odczycie nie ma czego zlecac.
+    odp = client.post(f"/assets/{enrolled['asset_id']}/nutanix/odczyt",
+                      data={"csrf_token": csrf}, follow_redirects=False)
+    assert odp.headers["location"].endswith("nutanix_komunikat=wylaczona#agent")
+
+    rewizja = polityka(client, enrolled)["revision"]
+    wlacz(client, csrf, enrolled["asset_id"], revision=rewizja, haslo="")
+    p = polityka(client, enrolled, nonce="b" * 32)
+    assert p["policy"]["odczyt_teraz"] is False
+    assert "Odczytaj teraz" in client.get(f"/assets/{enrolled['asset_id']}?funkcja=nutanix").text
+
+    assert client.post(f"/assets/{enrolled['asset_id']}/nutanix/odczyt",
+                       data={"csrf_token": csrf}, follow_redirects=False).status_code == 303
+    assert polityka(client, enrolled, nonce="c" * 32)["policy"]["odczyt_teraz"] is True
+    assert "Odczyt zlecony" in client.get(f"/assets/{enrolled['asset_id']}?funkcja=nutanix").text
+
+    wyslij(client, enrolled, odczyt(p["revision"]))
+    assert polityka(client, enrolled, nonce="d" * 32)["policy"]["odczyt_teraz"] is False
+    with SessionLocal() as db:
+        assert db.scalar(select(AuditLog).where(AuditLog.action == "nutanix.read_requested")) is not None
+
+
+def test_widz_nie_zleca_odczytu(client, tenant_a, make_user):
+    enrolled = zarejestruj(client, tenant_a)
+    _, csrf = zaloguj(client, tenant_a, make_user, role="viewer")
+    assert client.post(f"/assets/{enrolled['asset_id']}/nutanix/odczyt",
+                       data={"csrf_token": csrf}).status_code == 403

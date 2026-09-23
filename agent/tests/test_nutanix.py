@@ -166,6 +166,18 @@ def test_czytnik_wykonuje_odczyt_i_nie_powtarza_go_przed_czasem():
     assert len(klient.wyslane) == 2
 
 
+def test_odczyt_zlecony_z_panelu_nie_czeka_na_odstep():
+    zlecony = {"teraz": False}
+    klient = KlientPolityki(lambda n: odpowiedz(n, dict(POLITYKA, odczyt_teraz=zlecony["teraz"])))
+    czytnik = nutanix.CzytnikNutanix(klient, STAN, fabryka=FalszywyPrism)
+    przebieg(czytnik, 1000.0)
+    przebieg(czytnik, 1000.0 + nutanix.ODSTEP_POLITYKI)
+    assert len(klient.wyslane) == 1  # zwykly odstep jeszcze nie minal
+    zlecony["teraz"] = True
+    przebieg(czytnik, 1000.0 + 2 * nutanix.ODSTEP_POLITYKI)
+    assert len(klient.wyslane) == 2 and klient.wyslane[1][1]["rodzaj"] == "odczyt"
+
+
 def test_zlecony_test_czyta_tylko_klastry():
     klient = KlientPolityki(lambda n: odpowiedz(n, dict(POLITYKA, enabled=False, test=True)))
     czytnik = nutanix.CzytnikNutanix(klient, STAN, fabryka=FalszywyPrism)

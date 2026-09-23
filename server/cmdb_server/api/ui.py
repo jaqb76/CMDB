@@ -1148,6 +1148,7 @@ def _zakladka_agenta(db: Session, ctx: TenantContext, asset: Asset, payload: dic
         "liczba_procesow": len(procesy) if isinstance(procesy, list) else None,
         "nutanix_ustawienia": nutanix.ustawienia(db, asset),
         "nutanix_test_oczekuje": nutanix.test_oczekuje(nutanix.ustawienia(db, asset)),
+        "nutanix_odczyt_oczekuje": nutanix.odczyt_oczekuje(nutanix.ustawienia(db, asset)),
         "nutanix_interwaly": nutanix.INTERWALY_MINUT,
     }
 
