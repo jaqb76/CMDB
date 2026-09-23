@@ -67,6 +67,17 @@ Wszystko widać w menu **Wirtualizacja**: drzewo klaster → host → VM z kolum
 „Agent CMDB”, która pokazuje maszyny wirtualne bez inwentaryzacji
 oprogramowania. Karta każdej maszyny ma sekcję **Wirtualizacja**.
 
+## Mapa relacji
+
+**Relacje i zależności → Pokaż na mapie** (albo „Pokaż na mapie relacji” na karcie
+zasobu) rysuje łańcuch klaster → host → VM/serwer → aplikacja. Kliknięcie
+dowolnego elementu przenosi na niego punkt widzenia, a przełącznik kierunku
+pokazuje, co na nim stoi (↓), na czym on stoi (↑) albo jedno i drugie. Panel
+obok liczy zasięg awarii — ile VM i aplikacji ucierpi, gdy ten element padnie —
+i oznacza ⚠ maszyny bez agenta CMDB. Adres zawiera wybrany zasób i kierunek,
+więc widok da się komuś wysłać. Mapa tylko pokazuje: relacje dodaje się
+i usuwa w tabeli.
+
 ## Maszyna wirtualna z agentem: jedna karta, nie dwie
 
 Na AHV identyfikator VM w Prism jest tym samym UUID, który agent odczytuje
