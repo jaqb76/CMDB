@@ -1154,10 +1154,11 @@ def _wirtualizacja_agenta(db: Session, asset: Asset, wybrana: str) -> dict | Non
     """Podzakladka Prism Central / vCenter - jeden szablon dla obu dostawcow."""
     if wybrana not in nutanix.DOSTAWCY:
         return None
-    row = nutanix.ustawienia(db, asset, wybrana)
-    return {"dostawca": wybrana, "opis": nutanix.DOSTAWCY[wybrana], "ustawienia": row,
-            "test_oczekuje": nutanix.test_oczekuje(row), "odczyt_oczekuje": nutanix.odczyt_oczekuje(row),
-            "interwaly": nutanix.INTERWALY_MINUT}
+    return {"dostawca": wybrana, "opis": nutanix.DOSTAWCY[wybrana], "interwaly": nutanix.INTERWALY_MINUT,
+            "polaczenia": [{"row": r, "nazwa": nutanix.nazwa_polaczenia(r),
+                            "test_oczekuje": nutanix.test_oczekuje(r),
+                            "odczyt_oczekuje": nutanix.odczyt_oczekuje(r)}
+                           for r in nutanix.polaczenia(db, asset, wybrana)]}
 
 
 @router.post("/assets/{asset_id}/owner")

@@ -927,8 +927,35 @@ class _UstawieniaWirtualizacji:
     odczyt_liczby: Mapped[dict | None] = mapped_column(JSONType, default=dict)
 
 
+class WirtualizacjaPolaczenie(_UstawieniaWirtualizacji, Base):
+    """Jedno polaczenie agenta z Prism Central albo vCenter.
+
+    Agent moze czytac dowolnie wiele platform obu rodzajow - kazda ma
+    wlasny adres, konto, test i odczyt. Znikniecie obiektow ocenia sie
+    w obrebie polaczenia, ktore je widzialo.
+    """
+
+    __tablename__ = "wirtualizacja_polaczenia"
+    __table_args__ = (Index("ix_wirt_polaczenie_asset", "asset_id", "dostawca"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
+    )
+    # nutanix | vmware
+    dostawca: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Wlasna nazwa w panelu, np. "POD01"; pusta = adres.
+    nazwa: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class NutanixUstawienia(_UstawieniaWirtualizacji, Base):
-    """Konfiguracja odczytu Nutanix Prism Central wykonywanego przez tego agenta."""
+    """Dawna konfiguracja (jedno polaczenie na agenta) - tylko do przeniesienia
+    do wirtualizacja_polaczenia przy starcie, patrz db._przenies_polaczenia_wirtualizacji.
+    """
 
     __tablename__ = "nutanix_ustawienia"
 
@@ -941,7 +968,7 @@ class NutanixUstawienia(_UstawieniaWirtualizacji, Base):
 
 
 class VmwareUstawienia(_UstawieniaWirtualizacji, Base):
-    """Konfiguracja odczytu VMware vCenter wykonywanego przez tego agenta."""
+    """Dawna konfiguracja vCenter - jak NutanixUstawienia, tylko do przeniesienia."""
 
     __tablename__ = "vmware_ustawienia"
 
@@ -984,6 +1011,11 @@ class NutanixObiekt(Base):
     dane: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
     asset_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("assets.id", ondelete="SET NULL")
+    )
+    # Polaczenie, ktorego odczyt ostatnio widzial obiekt - ono jedno ocenia
+    # jego znikniecie.
+    polaczenie_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("wirtualizacja_polaczenia.id", ondelete="SET NULL"), index=True
     )
     # Agent, ktorego odczyt ostatnio widzial obiekt. Znikniecie ocenia
     # wylacznie ten sam czytnik - drugi agent czytajacy inny Prism nie

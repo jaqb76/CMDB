@@ -303,15 +303,14 @@ def _polityka_wirtualizacji(dostawca: str, response: Response, nonce: str, db: S
     asset = db.get(Asset, credential.asset_id)
     if asset is None or asset.tenant_id != ctx.tenant_id:
         raise HTTPException(404, "maszyna nie istnieje")
-    row = nutanix.ustawienia(db, asset, dostawca)
     polityka = nutanix.polityka_dla_agenta(db, asset, dostawca)
-    funkcje_agenta.zapisz_odbior(db, asset, dostawca, nutanix.wersja(row))
+    funkcje_agenta.zapisz_odbior(db, asset, dostawca, polityka["wersja"])
     db.commit()
     response.headers["Cache-Control"] = "no-store"
     return {"protocol": 1, "nonce": nonce, "asset_id": asset.id, "machine_id": asset.machine_id,
-            "revision": nutanix.wersja(row),
+            "revision": polityka["revision"],
             "expires_at": (utcnow() + timedelta(seconds=60)).isoformat(),
-            "policy": polityka}
+            "policy": polityka["policy"], "polaczenia": polityka["polaczenia"]}
 
 
 def _wynik_wirtualizacji(dostawca: str, wynik: WynikNutanix, db: Session,

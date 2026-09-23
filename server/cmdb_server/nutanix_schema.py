@@ -74,6 +74,8 @@ class Vm(_Model):
 class WynikNutanix(_Model):
     protocol: Literal[1]
     revision: str = Field(max_length=36)
+    # Od agenta z wieloma polaczeniami; starszy agent go nie wysyla.
+    polaczenie_id: str | None = Field(default=None, max_length=36)
     rodzaj: Literal["test", "odczyt"]
     ok: bool
     blad: str | None = Field(default=None, max_length=2000)

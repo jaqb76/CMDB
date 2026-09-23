@@ -37,8 +37,7 @@ from ..models import (
     AssetCurrentReport,
     AssetRelation,
     NutanixObiekt,
-    NutanixUstawienia,
-    VmwareUstawienia,
+    WirtualizacjaPolaczenie,
     utcnow,
 )
 from ..nutanix_schema import WynikNutanix
@@ -53,11 +52,11 @@ INTERWALY_MINUT = (15, 30, 60, 120, 240, 720, 1440)
 # Wszystko, czym dostawcy sie roznia. retired_by/created_by = klucz dostawcy:
 # odroznia wycofanie i relacje z odczytu od decyzji czlowieka.
 DOSTAWCY = {
-    NUTANIX: {"model": NutanixUstawienia, "nazwa": "Nutanix Prism Central", "platforma": "Prism Central",
+    NUTANIX: {"nazwa": "Nutanix Prism Central", "platforma": "Prism Central",
               "port": 9440, "producent": "Nutanix", "model_vm": "AHV", "system_klastra": "AOS",
               "przyklad": "https://prism.firma.pl:9440", "przyklad_konta": "cmdb-ro",
               "konto": "z rolą <b>Viewer</b>"},
-    VMWARE: {"model": VmwareUstawienia, "nazwa": "VMware vCenter", "platforma": "vCenter",
+    VMWARE: {"nazwa": "VMware vCenter", "platforma": "vCenter",
              "port": 443, "producent": "VMware", "model_vm": "vSphere", "system_klastra": "vSphere",
              "przyklad": "https://vcenter.firma.pl", "przyklad_konta": "cmdb-ro@vsphere.local",
              "konto": "z rolą <b>Read-only</b> nadaną na poziomie vCenter (z propagacją)"},
@@ -68,41 +67,62 @@ _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 # --- konfiguracja -----------------------------------------------------------
 
-def ustawienia(db: Session, asset: Asset, dostawca: str = NUTANIX):
-    row = db.get(DOSTAWCY[dostawca]["model"], asset.id)
-    if row is not None and row.tenant_id != asset.tenant_id:
+def polaczenia(db: Session, asset: Asset, dostawca: str) -> list[WirtualizacjaPolaczenie]:
+    """Polaczenia agenta z platformami danego rodzaju, w kolejnosci dodania."""
+    return list(db.execute(select(WirtualizacjaPolaczenie).where(
+        WirtualizacjaPolaczenie.tenant_id == asset.tenant_id,
+        WirtualizacjaPolaczenie.asset_id == asset.id,
+        WirtualizacjaPolaczenie.dostawca == dostawca,
+    ).order_by(WirtualizacjaPolaczenie.utworzono, WirtualizacjaPolaczenie.id)).scalars())
+
+
+def polaczenie(db: Session, asset: Asset, dostawca: str, polaczenie_id: str):
+    row = db.get(WirtualizacjaPolaczenie, polaczenie_id) if polaczenie_id else None
+    if row is None or row.tenant_id != asset.tenant_id or row.asset_id != asset.id or row.dostawca != dostawca:
         return None
     return row
 
 
-def wersja(row: NutanixUstawienia | None) -> str:
+def wersja_zbiorcza(lista: list[WirtualizacjaPolaczenie]) -> str:
+    """Jedna wersja wszystkich polaczen - do "czeka na odebranie"."""
+    if not lista:
+        return "unassigned"
+    if len(lista) == 1:
+        return lista[0].revision
+    tresc = ",".join(sorted(f"{r.id}:{r.revision}" for r in lista))
+    return hashlib.sha256(tresc.encode()).hexdigest()[:32]
+
+
+def nazwa_polaczenia(row: WirtualizacjaPolaczenie) -> str:
+    return row.nazwa or urlsplit(row.adres or "").hostname or "nowe połączenie"
+
+
+def wersja(row: WirtualizacjaPolaczenie | None) -> str:
     return row.revision if row else "unassigned"
 
 
-def test_oczekuje(row: NutanixUstawienia | None) -> bool:
+def test_oczekuje(row: WirtualizacjaPolaczenie | None) -> bool:
     if row is None or row.test_zlecony_o is None:
         return False
     return row.test_o is None or row.test_o < row.test_zlecony_o
 
 
-def odczyt_oczekuje(row: NutanixUstawienia | None) -> bool:
+def odczyt_oczekuje(row: WirtualizacjaPolaczenie | None) -> bool:
     if row is None or not row.wlaczona or row.odczyt_zlecony_o is None:
         return False
     return row.odczyt_o is None or row.odczyt_o < row.odczyt_zlecony_o
 
 
-def polityka_dla_agenta(db: Session, asset: Asset, dostawca: str = NUTANIX) -> dict:
-    """Konfiguracja odczytu dla tej maszyny - albo "wylaczone".
+def polityka_polaczenia(row: WirtualizacjaPolaczenie, aktywna: bool) -> dict:
+    """Konfiguracja jednego polaczenia dla agenta - albo "wylaczone".
 
     Haslo jedzie wylacznie tu, wylacznie do maszyny, ktorej je przypisano,
-    i wylacznie wtedy, gdy funkcja jest wlaczona. Test polaczenia dostaje
-    konfiguracje nawet przy wylaczonym odczycie - inaczej nie dalo by sie
+    i wylacznie wtedy, gdy odczyt jest wlaczony albo zlecono test. Test
+    dostaje konfiguracje nawet przy wylaczonym odczycie - inaczej nie da sie
     sprawdzic ustawien przed wlaczeniem.
     """
-    row = ustawienia(db, asset, dostawca)
-    aktywna = bool(asset.is_active and not asset.enrollment_blocked)
     test = aktywna and test_oczekuje(row)
-    if row is None or not aktywna or not (row.wlaczona or test):
+    if not aktywna or not (row.wlaczona or test):
         return {"enabled": False, "test": False}
     haslo = sekrety.odszyfruj(row.haslo)
     if not row.adres or not row.uzytkownik or haslo is None:
@@ -117,6 +137,27 @@ def polityka_dla_agenta(db: Session, asset: Asset, dostawca: str = NUTANIX) -> d
         "ca_pem": row.ca_pem or "",
         "interwal_sekund": row.interwal_minut * 60,
     }
+
+
+def polityka_dla_agenta(db: Session, asset: Asset, dostawca: str = NUTANIX) -> dict:
+    """Wszystkie polaczenia agenta z platformami danego rodzaju.
+
+    "polaczenia" czyta agent od wersji z wieloma polaczeniami. "policy"
+    i "revision" to pierwsze aktywne polaczenie w dawnym ksztalcie - dla
+    agenta, ktory jeszcze sie nie zaktualizowal.
+    """
+    lista = polaczenia(db, asset, dostawca)
+    aktywna = bool(asset.is_active and not asset.enrollment_blocked)
+    wpisy = [{"id": r.id, "revision": r.revision, "nazwa": nazwa_polaczenia(r),
+              **polityka_polaczenia(r, aktywna)} for r in lista]
+    pierwsza = next((w for w in wpisy if w["enabled"] or w["test"]), None)
+    if pierwsza is None:
+        polityka, revision = {"enabled": False, "test": False}, wersja_zbiorcza(lista)
+    else:
+        polityka = {k: v for k, v in pierwsza.items() if k not in ("id", "revision", "nazwa")}
+        revision = pierwsza["revision"]
+    return {"policy": polityka, "revision": revision, "polaczenia": wpisy,
+            "wersja": wersja_zbiorcza(lista)}
 
 
 def normalizuj_adres(adres: str, port: int = 9440) -> str:
@@ -148,8 +189,15 @@ def sprawdz_ca(pem: str) -> str | None:
 # --- przyjecie wyniku -------------------------------------------------------
 
 def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix, dostawca: str = NUTANIX) -> str:
-    """Zapisuje wynik testu albo odczytu. Zwraca "przyjeto" / "pominieto"."""
-    row = ustawienia(db, czytnik, dostawca)
+    """Zapisuje wynik testu albo odczytu. Zwraca "przyjeto" / "pominieto".
+
+    Polaczenie wskazuje polaczenie_id; agent sprzed wielu polaczen go nie
+    wysyla, wiec wtedy szukamy po rewizji, ktora i tak jest unikalna.
+    """
+    if wynik.polaczenie_id:
+        row = polaczenie(db, czytnik, dostawca, wynik.polaczenie_id)
+    else:
+        row = next((r for r in polaczenia(db, czytnik, dostawca) if r.revision == wynik.revision), None)
     if row is None:
         return "pominieto"
     teraz = utcnow()
@@ -158,8 +206,8 @@ def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix, dostawca: str = N
         row.test_opis = (_opis_testu(wynik, dostawca) if wynik.ok else (wynik.blad or "nieznany blad"))[:2000]
         return "przyjeto"
 
-    # Odczyt wykonany na starej konfiguracji (np. innym adresie Prism) nie
-    # moze niczego wycofac ani przepiac - opisuje nie to, co jest ustawione.
+    # Odczyt wykonany na starej konfiguracji (np. innym adresie) nie moze
+    # niczego wycofac ani przepiac - opisuje nie to, co jest ustawione.
     if not row.wlaczona or wynik.revision != row.revision:
         return "pominieto"
     row.odczyt_o, row.odczyt_ok = teraz, wynik.ok
@@ -167,8 +215,27 @@ def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix, dostawca: str = N
         row.odczyt_blad = (wynik.blad or "nieznany blad")[:2000]
         return "przyjeto"
     row.odczyt_blad = None
-    row.odczyt_liczby = synchronizuj(db, czytnik, wynik, dostawca, _przestrzen(row, dostawca))
+    row.odczyt_liczby = synchronizuj(db, czytnik, wynik, dostawca, _przestrzen(row, dostawca), row)
     return "przyjeto"
+
+
+def usun_polaczenie(db: Session, czytnik: Asset, row: WirtualizacjaPolaczenie) -> int:
+    """Usuwa polaczenie; jego obiekty znikaja tak, jakby zniknely z platformy.
+
+    Bez tego wpisy z usunietego vCenter wisialyby w ewidencji jako aktywne,
+    choc nikt ich juz nie odswieza. Wycofanie jest odwracalne: po ponownym
+    dodaniu polaczenia pierwszy odczyt je cofnie.
+    """
+    teraz = utcnow()
+    liczby = {"wycofane": 0}
+    powod = f"usunięto połączenie z {DOSTAWCY[row.dostawca]['platforma']} w CMDB"
+    for o in db.execute(select(NutanixObiekt).where(
+            NutanixObiekt.tenant_id == czytnik.tenant_id, NutanixObiekt.polaczenie_id == row.id,
+            NutanixObiekt.zniknal_o.is_(None))).scalars().all():
+        _zniknij(db, czytnik.tenant_id, o, row.dostawca, teraz, powod, liczby)
+    db.delete(row)
+    db.flush()
+    return liczby["wycofane"]
 
 
 def _przestrzen(row, dostawca: str) -> str:
@@ -234,7 +301,8 @@ def _maszyny_agentow(db: Session, tenant_id: str, uuidy: set[str]) -> dict[str, 
 
 
 def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
-                 dostawca: str = NUTANIX, przestrzen: str = "") -> dict:
+                 dostawca: str = NUTANIX, przestrzen: str = "",
+                 pol: WirtualizacjaPolaczenie | None = None) -> dict:
     """Przeklada udany, pelny odczyt na obiekty, zasoby i relacje."""
     tenant_id = czytnik.tenant_id
     teraz = utcnow()
@@ -265,6 +333,8 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
             db.add(o)
             istniejace[klucz] = o
         o.nazwa, o.dane, o.czytnik_id = nazwa[:255], dane, czytnik.id
+        if pol is not None:
+            o.polaczenie_id = pol.id
         o.widziany_o, o.zniknal_o = teraz, None
         return o
 
@@ -333,23 +403,34 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
         _ustaw_relacje(db, tenant_id, asset, host, "vm_host", dostawca, zapisz_zmiane=True)
         liczby["vm"] += 1
 
-    # Znikniecie oceniamy tylko dla obiektow widzianych dotad przez TEN
-    # czytnik - i tylko po udanym, pelnym odczycie, bo tylko taki mowi,
-    # czego na platformie nie ma.
+    # Znikniecie oceniamy tylko dla obiektow widzianych dotad przez TO
+    # polaczenie (obiekty sprzed wielu polaczen: przez tego agenta) - i tylko
+    # po udanym, pelnym odczycie, bo tylko taki mowi, czego na platformie nie ma.
+    powod = f"zniknęła z {opis['platforma']}"
     for klucz, o in istniejace.items():
-        if klucz in widziane or o.czytnik_id != czytnik.id or o.zniknal_o is not None:
+        if klucz in widziane or o.zniknal_o is not None:
             continue
-        o.zniknal_o = teraz
-        asset = db.get(Asset, o.asset_id) if o.asset_id else None
-        if asset is None:
+        if o.polaczenie_id is not None:
+            if pol is None or o.polaczenie_id != pol.id:
+                continue
+        elif o.czytnik_id != czytnik.id:
             continue
-        _usun_relacje_odczytu(db, tenant_id, asset, dostawca)
-        if asset.zrodlo == dostawca and asset.lifecycle == LIFECYCLE_AKTYWNY:
-            asset.lifecycle, asset.retired_at = LIFECYCLE_WYCOFANY, teraz
-            asset.retired_by, asset.retired_reason = dostawca, f"zniknęła z {opis['platforma']}"
-            liczby["wycofane"] += 1
+        _zniknij(db, tenant_id, o, dostawca, teraz, powod, liczby)
     db.flush()
     return liczby
+
+
+def _zniknij(db: Session, tenant_id: str, o: NutanixObiekt, dostawca: str, teraz, powod: str,
+             liczby: dict) -> None:
+    o.zniknal_o = teraz
+    asset = db.get(Asset, o.asset_id) if o.asset_id else None
+    if asset is None:
+        return
+    _usun_relacje_odczytu(db, tenant_id, asset, dostawca)
+    if asset.zrodlo == dostawca and asset.lifecycle == LIFECYCLE_AKTYWNY:
+        asset.lifecycle, asset.retired_at = LIFECYCLE_WYCOFANY, teraz
+        asset.retired_by, asset.retired_reason = dostawca, powod
+        liczby["wycofane"] += 1
 
 
 def _pierwsze(*wartosci):
@@ -451,7 +532,7 @@ def drzewo(db: Session, tenant_id: str) -> list[dict]:
     return wynik
 
 
-def czytnik_milczy(row: NutanixUstawienia | None, teraz=None) -> bool:
+def czytnik_milczy(row: WirtualizacjaPolaczenie | None, teraz=None) -> bool:
     """Wlaczony odczyt, a ostatni udany dawniej niz trzy odstepy."""
     if row is None or not row.wlaczona:
         return False

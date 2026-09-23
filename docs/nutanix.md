@@ -53,6 +53,9 @@ Karta maszyny → **Agent** → **Dodatkowe funkcjonalności** → **Nutanix Pri
 Test działa także przy wyłączonym odczycie, więc ustawienia można sprawdzić,
 zanim cokolwiek trafi do ewidencji.
 
+Połączeń może być kilka, np. kilka Prism Central z jednego agenta. Każde ma
+własną konfigurację, test i odczyt; szczegóły w [`vmware.md`](vmware.md).
+
 ## Co trafia do ewidencji
 
 | Z Prism | W CMDB |

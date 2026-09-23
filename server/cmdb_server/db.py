@@ -149,6 +149,7 @@ def _dodaj_brakujace_kolumny() -> None:
     _przenies_osoby_do_slownika()
     _popraw_unikalnosc_schematow()
     _usun_pomiary_monitorow()
+    _przenies_polaczenia_wirtualizacji()
 
 
 def _popraw_ograniczenie_czasu() -> None:
@@ -457,3 +458,39 @@ def _usun_pomiary_monitorow() -> None:
         "usunieto tabele pomiary_monitorow - dostepnosc liczy sie teraz "
         "z okien raportowanych przez agenta"
     )
+
+
+def _przenies_polaczenia_wirtualizacji() -> None:
+    """Jedno polaczenie na agenta -> dowolnie wiele (wirtualizacja_polaczenia).
+
+    Wiersz dawnej tabeli staje sie polaczeniem z tym samym identyfikatorem
+    rewizji - agent nie widzi zmiany konfiguracji, a jego wynik w locie
+    nadal zostanie przyjety. Obiekty widziane przez tego agenta dostaja
+    wskazanie na polaczenie, zeby znikniecie oceniane bylo jak dotad.
+    Przeniesiony wiersz jest kasowany w tej samej transakcji, wiec usuniete
+    pozniej polaczenie nie wraca przy kolejnym starcie.
+    """
+    from sqlalchemy import select, update
+
+    from . import models
+
+    with session_scope() as db:
+        for dostawca, model in (("nutanix", models.NutanixUstawienia), ("vmware", models.VmwareUstawienia)):
+            for stary in db.execute(select(model)).scalars().all():
+                nowe = models.WirtualizacjaPolaczenie(
+                    tenant_id=stary.tenant_id, asset_id=stary.asset_id, dostawca=dostawca,
+                    **{k: getattr(stary, k) for k in (
+                        "wlaczona", "adres", "uzytkownik", "haslo", "ca_pem", "interwal_minut",
+                        "revision", "updated_by", "updated_at", "test_zlecony_o", "test_o",
+                        "test_ok", "test_opis", "odczyt_zlecony_o", "odczyt_o", "odczyt_ok",
+                        "odczyt_blad", "odczyt_liczby")},
+                )
+                db.add(nowe)
+                db.flush()
+                db.execute(update(models.NutanixObiekt).where(
+                    models.NutanixObiekt.czytnik_id == stary.asset_id,
+                    models.NutanixObiekt.dostawca == dostawca,
+                    models.NutanixObiekt.polaczenie_id.is_(None),
+                ).values(polaczenie_id=nowe.id))
+                db.delete(stary)
+                log.info("wirtualizacja: przeniesiono konfiguracje %s agenta %s", dostawca, stary.asset_id)
