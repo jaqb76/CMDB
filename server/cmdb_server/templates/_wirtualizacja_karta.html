@@ -18,13 +18,16 @@
       {% if d.ngt is not none %}<dt>{{ 'VMware Tools' if vmw else 'Nutanix Guest Tools' }}</dt><dd>{{ 'zainstalowane' if d.ngt else 'brak' }}</dd>{% endif %}
       {% if d.system %}<dt>System wg {{ producent }}</dt><dd>{{ d.system }}</dd>{% endif %}
     {% elif wirtualizacja.rodzaj == 'host' %}
+      {% if d.tryb_serwisowy %}<dt>Stan</dt><dd><span class="badge badge-warn">tryb serwisowy</span></dd>{% endif %}
+      {% if d.producent %}<dt>Producent</dt><dd>{{ d.producent }}</dd>{% endif %}
       {% if d.model %}<dt>Model</dt><dd>{{ d.model }}</dd>{% endif %}
       {% if d.numer_seryjny %}<dt>Numer seryjny</dt><dd>{{ d.numer_seryjny }}</dd>{% endif %}
-      {% if d.cpu_model %}<dt>Procesor</dt><dd>{{ d.cpu_model }}{% if d.gniazda %} × {{ d.gniazda }}{% endif %}{% if d.rdzenie %} ({{ d.rdzenie }} rdzeni){% endif %}</dd>{% endif %}
+      {% if d.cpu_model %}<dt>Procesor</dt><dd>{{ d.cpu_model }}{% if d.gniazda %} × {{ d.gniazda }}{% endif %}{% if d.rdzenie %} ({{ d.rdzenie }} rdzeni{% if d.watki %}, {{ d.watki }} wątków{% endif %}){% endif %}</dd>{% endif %}
       {% if d.ram_bajty %}<dt>RAM</dt><dd>{{ d.ram_bajty | bytes }}</dd>{% endif %}
       {% if d.hipernadzorca %}<dt>Hypervisor</dt><dd>{{ d.hipernadzorca }}</dd>{% endif %}
-      {% if d.ip %}<dt>Adres</dt><dd>{{ d.ip }}</dd>{% endif %}
+      {% if d.ip %}<dt>Adres zarządzania</dt><dd>{{ d.ip }}</dd>{% endif %}
       {% if d.ipmi_ip %}<dt>IPMI</dt><dd>{{ d.ipmi_ip }}</dd>{% endif %}
+      {% if d.uruchomiony_o %}<dt>Uruchomiony</dt><dd>{{ d.uruchomiony_o[:16] | replace('T', ' ') }} UTC</dd>{% endif %}
     {% else %}
       {% if d.wersja %}<dt>Wersja {{ 'vSphere' if vmw else 'AOS' }}</dt><dd>{{ d.wersja }}</dd>{% endif %}
       {% if d.hipernadzorca %}<dt>Hypervisor</dt><dd>{{ d.hipernadzorca }}</dd>{% endif %}

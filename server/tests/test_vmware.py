@@ -33,7 +33,10 @@ def odczyt(revision, vm=None, hosty=None):
                      "liczba_hostow": 2}],
         "hosty": hosty if hosty is not None else [
             {"ext_id": "host-10", "nazwa": "esx01.firma.pl", "klaster_id": "domain-c8",
-             "hipernadzorca": "VMware ESXi"},
+             "hipernadzorca": "VMware ESXi 8.0.3 build-24280767", "producent": "Dell Inc.",
+             "model": "PowerEdge R760", "numer_seryjny": "ABC1234", "cpu_model": "Intel Xeon Gold 6430",
+             "gniazda": 2, "rdzenie": 64, "watki": 128, "ram_bajty": 1024 * 2**30, "ip": "10.30.0.11",
+             "tryb_serwisowy": True, "uruchomiony_o": "2026-08-01T10:00:00Z"},
             {"ext_id": "host-11", "nazwa": "esx02.firma.pl", "klaster_id": "domain-c8"},
         ],
         "vm": vm if vm is not None else [
@@ -139,3 +142,18 @@ def test_filtr_listy_po_funkcji_vmware(client, tenant_a, make_user):
     lista = client.get("/assets?funkcja=vmware").text
     assert "bastionjps" in lista
     assert "bastionjps" not in client.get("/assets?funkcja=nutanix").text
+
+
+def test_szczegoly_hosta_esxi_trafiaja_do_ewidencji(client, tenant_a, make_user):
+    enrolled, _, rev = _wlaczony(client, tenant_a, make_user)
+    wyslij(client, enrolled, odczyt(rev))
+    with SessionLocal() as db:
+        esx = db.scalars(select(Asset).where(Asset.hostname == "esx01.firma.pl")).one()
+        assert (esx.manufacturer, esx.model, esx.serial_number) == ("Dell Inc.", "PowerEdge R760", "ABC1234")
+        assert esx.primary_ip == "10.30.0.11" and esx.os_name == "VMware ESXi 8.0.3 build-24280767"
+        # Host bez szczegolow (starszy vCenter) dostaje producenta platformy.
+        assert db.scalars(select(Asset).where(Asset.hostname == "esx02.firma.pl")).one().manufacturer == "VMware"
+    karta = client.get(f"/assets/{esx.id}").text
+    assert "PowerEdge R760" in karta and "128 wątków" in karta and "tryb serwisowy" in karta
+    assert "Adres zarządzania" in karta and "2026-08-01 10:00 UTC" in karta
+    assert "s/n ABC1234" in client.get("/wirtualizacja").text

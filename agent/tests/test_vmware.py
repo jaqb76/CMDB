@@ -46,6 +46,28 @@ SZCZEGOLY = {
                "disks": {}, "nics": {},
                "identity": {"bios_uuid": "4231a8f2-0000-0000-0000-000000000002"}},
 }
+# VI/JSON (vSphere 8.0 U1+): tylko dla host-10; host-11 "nie ma" szczegolow.
+PODSUMOWANIE_HOSTA = {"host-10": {
+    "_typeName": "HostListSummary",
+    "hardware": {"vendor": "Dell Inc.", "model": "PowerEdge R760", "cpuModel": "Intel(R) Xeon(R) Gold 6430",
+                 "numCpuPkgs": 2, "numCpuCores": 64, "numCpuThreads": 128, "memorySize": 1024 * 2**30,
+                 "otherIdentifyingInfo": [
+                     {"identifierValue": "ABC1234", "identifierType": {"key": "ServiceTag"}},
+                     {"identifierValue": "None", "identifierType": {"key": "AssetTag"}}]},
+    "config": {"product": {"fullName": "VMware ESXi 8.0.3 build-24280767"}},
+    "runtime": {"inMaintenanceMode": False, "bootTime": "2026-08-01T10:00:00Z"},
+}}
+KONFIGURACJA_HOSTA = {"host-10": {
+    "network": {"vnic": [
+        {"device": "vmk1", "key": "key-vim.host.VirtualNic-vmk1", "portgroup": "vMotion",
+         "spec": {"ip": {"ipAddress": "10.40.0.11"}}},
+        {"device": "vmk0", "key": "key-vim.host.VirtualNic-vmk0", "portgroup": "Management Network",
+         "spec": {"ip": {"ipAddress": "10.30.0.11"}}}]},
+    "virtualNicManagerInfo": {"netConfig": [
+        {"nicType": "management", "selectedVnic": ["management.key-vim.host.VirtualNic-vmk0"]}]},
+}}
+VI = "/sdk/vim25/8.0.1.0"
+
 TOZSAMOSC = {"vm-101": {"full_name": {"default_message": "Red Hat Enterprise Linux 9 (64-bit)"},
                         "ip_address": "10.30.5.21", "host_name": "app-01"}}
 INTERFEJSY = {"vm-101": [{"mac_address": "00:50:56:AA:BB:01", "ip": {"ip_addresses": [
@@ -74,6 +96,21 @@ def falszywy_vcenter(tmp_path, haslo="tajne"):
 
         def do_POST(self):
             zapytania.append(("POST", urlsplit(self.path).path))
+            if self.path == f"{VI}/SessionManager/SessionManager/Login":
+                dane = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if dane != {"userName": "cmdb-ro@vsphere.local", "password": haslo}:
+                    return self._odpowiedz(401, {"_typeName": "InvalidLogin"})
+                sesje.add("vi-1")
+                tresc = json.dumps({"_typeName": "UserSession"}).encode()
+                self.send_response(200)
+                self.send_header("vmware-api-session-id", "vi-1")
+                self.send_header("Content-Length", str(len(tresc)))
+                self.end_headers()
+                self.wfile.write(tresc)
+                return
+            if self.path == f"{VI}/SessionManager/SessionManager/Logout":
+                sesje.discard(self.headers.get("vmware-api-session-id"))
+                return self._odpowiedz(204)
             oczekiwane = "Basic " + base64.b64encode(f"cmdb-ro@vsphere.local:{haslo}".encode()).decode()
             if self.path != "/api/session" or self.headers.get("Authorization") != oczekiwane:
                 return self._odpowiedz(401, {"error_type": "UNAUTHENTICATED"})
@@ -91,6 +128,12 @@ def falszywy_vcenter(tmp_path, haslo="tajne"):
             zapytania.append(("GET", sciezka))
             if self.headers.get("vmware-api-session-id") not in sesje:
                 return self._odpowiedz(401, {"error_type": "UNAUTHENTICATED"})
+            if sciezka.startswith(VI + "/HostSystem/"):
+                if self.headers.get("vmware-api-session-id") != "vi-1":
+                    return self._odpowiedz(401, {})
+                _, ident, wlasciwosc = sciezka[len(VI) + 1:].split("/")
+                zrodlo = PODSUMOWANIE_HOSTA if wlasciwosc == "summary" else KONFIGURACJA_HOSTA
+                return self._odpowiedz(200, zrodlo[ident]) if ident in zrodlo else self._odpowiedz(404, {})
             if sciezka == "/api/appliance/system/version":
                 return self._odpowiedz(200, {"version": "8.0.3.00300", "build": "24322831"})
             if sciezka == "/api/vcenter/cluster":
@@ -134,7 +177,13 @@ def test_pelny_odczyt_vcenter(tmp_path):
     assert wynik["klastry"] == [{"ext_id": "domain-c8", "nazwa": "RCHO-VSAN-01", "wersja": None,
                                  "hipernadzorca": "ESXi", "liczba_hostow": 2}]
     hosty = {h["ext_id"]: h for h in wynik["hosty"]}
-    assert hosty["host-10"]["klaster_id"] == "domain-c8" and hosty["host-10"]["ip"] is None
+    esx = hosty["host-10"]
+    assert esx["klaster_id"] == "domain-c8"
+    assert (esx["producent"], esx["model"], esx["numer_seryjny"]) == ("Dell Inc.", "PowerEdge R760", "ABC1234")
+    assert (esx["gniazda"], esx["rdzenie"], esx["watki"], esx["ram_bajty"]) == (2, 64, 128, 1024 * 2**30)
+    assert esx["hipernadzorca"] == "VMware ESXi 8.0.3 build-24280767"
+    assert esx["ip"] == "10.30.0.11"  # interfejs zarzadzania, nie vMotion
+    assert esx["tryb_serwisowy"] is False and esx["uruchomiony_o"] == "2026-08-01T10:00:00Z"
     assert hosty["host-11"]["ip"] == "10.30.0.12"
     assert hosty["host-99"]["klaster_id"] is None  # host spoza klastra
     vmy = {v["ext_id"]: v for v in wynik["vm"]}
@@ -147,10 +196,12 @@ def test_pelny_odczyt_vcenter(tmp_path):
     assert app["system"] == "Red Hat Enterprise Linux 9 (64-bit)" and app["ngt"] is True
     db = vmy["vm-102"]
     assert db["stan"] == "OFF" and db["system"] == "WINDOWS SERVER 2021" and db["ngt"] is None
-    # Tylko odczyt: jedyny zapis to zalozenie i zamkniecie sesji.
+    # Tylko odczyt: jedyne zapisy to zalozenie i zamkniecie sesji.
     assert {m for m, _ in zapytania} == {"GET", "POST", "DELETE"}
-    assert [s for m, s in zapytania if m != "GET"] == ["/api/session", "/api/session"]
-    assert not sesje  # sesja zamknieta
+    assert [s for m, s in zapytania if m != "GET"] == [
+        "/api/session", f"{VI}/SessionManager/SessionManager/Login",
+        f"{VI}/SessionManager/SessionManager/Logout", "/api/session"]
+    assert not sesje  # obie sesje zamkniete
     # Wylaczona maszyna nie jest pytana o VMware Tools.
     assert not any(s.startswith("/api/vcenter/vm/vm-102/") for _, s in zapytania)
 
@@ -207,3 +258,13 @@ def test_czytnik_obsluguje_kilka_vcenter_naraz(tmp_path):
                                                polaczenia=[dict(polaczenia[0], enabled=False)])
     czytnik.krok(1000.0 + 300)
     assert set(czytnik.stany) == {"p1"}
+
+
+def test_bez_vi_json_hosty_zostaja_z_rest(tmp_path, monkeypatch):
+    """vCenter 7.x nie ma VI/JSON - odczyt przechodzi, hosty maja podstawowe dane."""
+    monkeypatch.setattr(vmware, "VI_JSON", "/sdk/vim25/nie-ma")
+    with falszywy_vcenter(tmp_path) as (adres, pem, _, sesje):
+        wynik = vmware.wykonaj(vmware.VCenter(adres, "cmdb-ro@vsphere.local", "tajne", pem), "odczyt")
+    esx = {h["ext_id"]: h for h in wynik["hosty"]}["host-10"]
+    assert wynik["ok"] and esx["nazwa"] == "esx01.firma.pl" and "model" not in esx
+    assert not sesje

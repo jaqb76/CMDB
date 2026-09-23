@@ -40,6 +40,9 @@ class Host(_Model):
     hipernadzorca: str | None = Field(default=None, max_length=_TEKST)
     ip: str | None = Field(default=None, max_length=64)
     ipmi_ip: str | None = Field(default=None, max_length=64)
+    watki: int | None = Field(default=None, ge=0, le=100_000)
+    tryb_serwisowy: bool | None = None
+    uruchomiony_o: str | None = Field(default=None, max_length=64)
 
 
 class Dysk(_Model):
