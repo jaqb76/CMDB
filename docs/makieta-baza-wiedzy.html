@@ -1,0 +1,1058 @@
+<title>Makieta Bazy wiedzy CMDB</title>
+<style>
+/* ---------------------------------------------------------------------------
+   Makieta modulu Baza wiedzy. Barwy, promienie i nazwy klas sa przepisane
+   z server/cmdb_server/static/app.css (przez makiete helpdesku), zeby modul
+   wygladal jak reszta panelu. Klasy kb-*, makro-*, regula-* to nowe elementy.
+--------------------------------------------------------------------------- */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --border: #dcdfe4;
+  --text: #1c2024;
+  --muted: #6b7280;
+  --accent: #2f6fd0;
+  --accent-contrast: #ffffff;
+  --ok-bg: #e6f4ea;   --ok-fg: #1c6b34;
+  --warn-bg: #fdf3d8; --warn-fg: #8a6100;
+  --danger-bg: #fbe6e6; --danger-fg: #a52222;
+  --hold-bg: #ece9f7; --hold-fg: #55499a;
+  --wewn-bg: #fdf6e3; --wewn-fg: #7a5c00; --wewn-line: #d9b64a;
+  --sidebar: #102641;
+  --sidebar-text: #c1cee0;
+  --radius: 7px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171c; --surface: #1c2028; --surface-2: #232833; --border: #2e343e;
+    --text: #e6e8ec; --muted: #97a0af; --accent: #5b9bf5; --accent-contrast: #0d1117;
+    --ok-bg: #17331f; --ok-fg: #7fd39a;
+    --warn-bg: #37300f; --warn-fg: #e2c464;
+    --danger-bg: #3a1a1a; --danger-fg: #f08a8a;
+    --hold-bg: #262040; --hold-fg: #b5a8f0;
+    --wewn-bg: #2e2711; --wewn-fg: #e2c464; --wewn-line: #8a6f22;
+    --sidebar: #080f1c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171c; --surface: #1c2028; --surface-2: #232833; --border: #2e343e;
+  --text: #e6e8ec; --muted: #97a0af; --accent: #5b9bf5; --accent-contrast: #0d1117;
+  --ok-bg: #17331f; --ok-fg: #7fd39a;
+  --warn-bg: #37300f; --warn-fg: #e2c464;
+  --danger-bg: #3a1a1a; --danger-fg: #f08a8a;
+  --hold-bg: #262040; --hold-fg: #b5a8f0;
+  --wewn-bg: #2e2711; --wewn-fg: #e2c464; --wewn-line: #8a6f22;
+  --sidebar: #080f1c;
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* --- szkielet aplikacji --- */
+.app-shell { display: grid; grid-template-columns: 238px minmax(0, 1fr); min-height: 100vh; }
+.app-sidebar {
+  position: sticky; top: 0; height: 100vh; min-width: 0; display: flex; flex-direction: column;
+  overflow-y: auto; padding: 10px 8px 12px; background: var(--sidebar); color: #d8e3f2;
+}
+.sidebar-brand { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 8px; margin-bottom: 8px; }
+.sidebar-logo {
+  width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 9px;
+  background: var(--accent); color: var(--accent-contrast); font-size: 17px; font-weight: 800;
+}
+.sidebar-brand-name { color: #f5f8ff; font-size: 14px; font-weight: 700; line-height: 1.15; }
+.sidebar-brand-name span { display: block; color: #8ca0bd; font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.nav-group-label { margin: 12px 9px 2px; color: #8196b4; font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.app-nav { display: flex; flex-direction: column; gap: 1px; }
+.app-nav-link {
+  min-height: 36px; display: flex; align-items: center; gap: 11px; padding: 7px 12px; border: 0;
+  border-radius: 8px; background: none; color: var(--sidebar-text); font-size: 12px; font-weight: 500;
+  text-align: left; width: 100%; cursor: pointer;
+}
+.app-nav-link:hover { background: rgb(255 255 255 / .07); color: #fff; text-decoration: none; }
+.app-nav-link.is-active { background: var(--accent); color: var(--accent-contrast); }
+.app-nav-link.przygaszony { color: #7d8ea6; }
+.nav-icon { width: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+.nav-licznik {
+  margin-left: auto; background: rgb(255 255 255 / .16); border-radius: 999px;
+  padding: 0 7px; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.app-nav-link.is-active .nav-licznik { background: rgb(0 0 0 / .18); }
+.sidebar-bottom { margin-top: auto; padding-top: 9px; border-top: 1px solid rgb(255 255 255 / .09); }
+
+.app-workspace { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 20; min-height: 58px; display: flex; align-items: center;
+  justify-content: space-between; gap: 16px; padding: 9px 18px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-scope { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.topbar-context strong { font-size: 13px; }
+.userbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.content { padding: 20px 22px 8px; flex: 1; }
+.footer { padding: 14px 22px 28px; color: var(--muted); font-size: 12px; }
+
+/* --- elementy wspolne panelu --- */
+h1 { font-size: 22px; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 13px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+h3 { font-size: 14px; margin: 0 0 8px; }
+p { margin: 0 0 8px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.page-head p { max-width: 68ch; }
+.head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 16px;
+}
+.panel-scroll { overflow-x: auto; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; font-weight: 500; cursor: pointer;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: 7px 14px;
+}
+.btn:hover { border-color: var(--accent); text-decoration: none; }
+.btn-small { padding: 4px 10px; font-size: 13px; }
+.btn-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.btn-ghost { background: transparent; }
+.btn-wewn { background: var(--wewn-bg); color: var(--wewn-fg); border-color: var(--wewn-line); }
+
+input, select, textarea {
+  font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 7px 9px; width: 100%;
+}
+textarea { resize: vertical; }
+label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; font-weight: 600; }
+.filtry { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+.filtry > div { min-width: 150px; }
+.filtry input, .filtry select { width: auto; min-width: 150px; }
+.filtry .szukajka { min-width: 260px; }
+
+.badge {
+  display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: var(--bg); border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+}
+.badge-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: transparent; }
+.badge-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: transparent; }
+.badge-danger { background: var(--danger-bg); color: var(--danger-fg); border-color: transparent; }
+.badge-nowy { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); border-color: transparent; }
+.badge-hold { background: var(--hold-bg); color: var(--hold-fg); border-color: transparent; }
+
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+  border-bottom: 1px solid var(--border); padding: 8px 10px; font-weight: 600; white-space: nowrap;
+}
+.table td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.lp { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nr { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+
+.alert { padding: 11px 14px; border-radius: var(--radius); margin-bottom: 16px; border: 1px solid transparent; font-size: 14px; }
+.alert-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.alert-warn { background: var(--warn-bg); color: var(--warn-fg); }
+
+.kafelki { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.kafelek { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: var(--surface); }
+.kafelek-wartosc { font-size: 28px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.kafelek-opis { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+.pasek { display: inline-block; width: 120px; height: 8px; border-radius: 4px; background: var(--border); vertical-align: middle; overflow: hidden; }
+.pasek-wypelnienie { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+
+/* --- pasek makiety --- */
+.makieta-pasek {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px dashed var(--accent); border-radius: var(--radius); padding: 9px 14px; margin-bottom: 18px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent); font-size: 13px;
+}
+.makieta-pasek strong { color: var(--accent); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
+.przelacznik-etapu { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.przelacznik-etapu input { width: auto; }
+
+/* --- ekrany --- */
+.ekran { display: none; }
+.ekran.is-active { display: block; }
+
+/* --- komunikat makiety --- */
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px;
+  font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / .25); z-index: 60;
+}
+.toast[hidden] { display: none; }
+
+
+
+/* --- przejete z makiety helpdesku --- */
+.kv { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 13.5px; }
+.kv dt { color: var(--muted); font-size: 12.5px; }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.wpis { border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; background: var(--surface); }
+.wpis-glowa { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.wpis-godzina { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 11.5px; }
+.wpis-autor { font-weight: 700; color: var(--text); font-size: 13px; }
+.domeny { display: flex; flex-wrap: wrap; gap: 5px; }
+.domena { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; font-size: 12.5px; font-family: var(--mono); background: var(--surface); color: var(--text); }
+.domena button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+.domena-dodaj { border-style: dashed; color: var(--accent); cursor: pointer; font-family: var(--font); }
+
+/* --- baza wiedzy: uklad strony artykulu (drzewo | tresc | dotyczy) --- */
+.kb-uklad { display: grid; grid-template-columns: 250px minmax(0, 1fr) 300px; gap: 18px; align-items: start; }
+.kb-drzewo { position: sticky; top: 72px; font-size: 13px; }
+.kb-drzewo h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+.kb-drzewo ul { list-style: none; margin: 0; padding: 0 0 0 12px; }
+.kb-drzewo > ul { padding-left: 0; }
+.kb-drzewo li { margin: 1px 0; }
+.kb-drzewo a { display: block; padding: 3px 7px; border-radius: 5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-drzewo a:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); text-decoration: none; }
+.kb-drzewo a.is-active { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; }
+.kb-drzewo .folder > a::before { content: "▾ "; color: var(--muted); font-size: 10px; }
+.kb-przestrzen { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); margin-bottom: 12px; }
+.kb-przestrzen-ikona { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; font-weight: 800; font-size: 12px; color: #fff; flex: none; }
+.pr-inf { background: #2f6fd0; } .pr-win { background: #1c7f6b; } .pr-lin { background: #b06a1e; }
+.pr-db { background: #9a4f8e; } .pr-sie { background: #55499a; } .pr-glob { background: #5b6472; }
+
+.okruszki { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.okruszki a { color: var(--muted); }
+.kb-tytul { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.kb-tytul h1 { font-size: 26px; flex: 1 1 320px; }
+.kb-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin: 6px 0 18px; }
+
+.kb-tresc { max-width: 78ch; font-size: 15px; line-height: 1.65; }
+.kb-tresc h2 { font-size: 18px; text-transform: none; letter-spacing: 0; color: var(--text); margin: 26px 0 8px; }
+.kb-tresc h2:first-child { margin-top: 0; }
+.kb-tresc p { margin: 0 0 12px; }
+.kb-tresc ol.kroki { counter-reset: krok; list-style: none; padding: 0; margin: 0 0 14px; }
+.kb-tresc ol.kroki > li { counter-increment: krok; position: relative; padding: 0 0 12px 38px; }
+.kb-tresc ol.kroki > li::before {
+  content: counter(krok); position: absolute; left: 0; top: 1px; width: 25px; height: 25px; border-radius: 999px;
+  display: grid; place-items: center; background: var(--surface-2); border: 1px solid var(--border);
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.kb-tresc code { font-family: var(--mono); font-size: 13px; background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
+.kod { position: relative; margin: 8px 0 12px; }
+.kod pre {
+  margin: 0; padding: 12px 14px; overflow-x: auto; font: 13px/1.55 var(--mono);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+}
+.kod-kopiuj { position: absolute; top: 6px; right: 6px; }
+.zmienna { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); border-radius: 3px; padding: 0 3px; font-weight: 600; }
+.makro { border-radius: 6px; padding: 10px 13px 10px 40px; margin: 0 0 14px; position: relative; font-size: 14px; border: 1px solid transparent; }
+.makro::before { position: absolute; left: 13px; top: 9px; font-weight: 800; font-size: 15px; }
+.makro-info { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.makro-info::before { content: "i"; color: var(--accent); font-family: Georgia, serif; font-style: italic; }
+.makro-uwaga { background: var(--warn-bg); color: var(--warn-fg); }
+.makro-uwaga::before { content: "!"; }
+.makro-stop { background: var(--danger-bg); color: var(--danger-fg); }
+.makro-stop::before { content: "✕"; font-size: 13px; top: 11px; }
+.makro-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.makro-ok::before { content: "✓"; }
+.makro b { display: block; margin-bottom: 2px; }
+.kb-tresc table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 0 0 14px; }
+.kb-tresc th, .kb-tresc td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
+.kb-tresc th { background: var(--surface-2); font-weight: 600; }
+.stopka-artykulu { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--border); margin-top: 22px; padding-top: 14px; font-size: 13px; color: var(--muted); }
+
+.kontekst {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface)); padding: 8px 12px; margin-bottom: 16px;
+}
+.kontekst select { width: auto; padding: 3px 7px; font-size: 13px; }
+
+/* --- panel "Dotyczy" --- */
+.dotyczy h3 { display: flex; align-items: center; gap: 8px; }
+.regula { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.regula:last-of-type { border-bottom: 0; }
+.regula-pole { color: var(--muted); font-size: 12px; min-width: 88px; }
+.wartosc { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; }
+.lacznik { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+.trafienia { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 13px; }
+.trafienia a { display: flex; justify-content: space-between; gap: 8px; }
+.trafienia .muted { font-size: 12px; white-space: nowrap; }
+.licznik-trafien { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.etykiety { display: flex; flex-wrap: wrap; gap: 5px; }
+.etykieta { font-size: 12px; border-radius: 4px; padding: 1px 7px; background: var(--surface-2); border: 1px solid var(--border); }
+.status { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; border-radius: 3px; padding: 2px 6px; }
+.st-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.st-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.st-szkic { background: var(--surface-2); color: var(--muted); border: 1px dashed var(--border); }
+.st-danger { background: var(--danger-bg); color: var(--danger-fg); }
+
+/* --- start --- */
+.przestrzenie { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.przestrzen-karta { display: flex; gap: 11px; align-items: flex-start; border: 1px solid var(--border); border-radius: var(--radius); padding: 13px; background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
+.przestrzen-karta:hover { border-color: var(--accent); text-decoration: none; }
+.przestrzen-karta b { display: block; font-size: 14px; }
+.przestrzen-karta span.muted { font-size: 12.5px; }
+.dwie-kolumny { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.lista-art { list-style: none; margin: 0; padding: 0; }
+.lista-art li { display: flex; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.lista-art li:last-child { border-bottom: 0; }
+.lista-art .muted { margin-left: auto; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rodzaj { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; white-space: nowrap; }
+.rodzaj-runbook { color: var(--danger-fg); border-color: color-mix(in srgb, var(--danger-fg) 40%, transparent); }
+.rodzaj-procedura { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.rodzaj-problem { color: var(--warn-fg); border-color: color-mix(in srgb, var(--warn-fg) 40%, transparent); }
+.rodzaj-opis { color: var(--hold-fg); border-color: color-mix(in srgb, var(--hold-fg) 40%, transparent); }
+
+/* --- edytor --- */
+.edytor-uklad { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.pasek-narzedzi { display: flex; gap: 2px; flex-wrap: wrap; padding: 6px; border: 1px solid var(--border); border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; background: var(--surface-2); }
+.pasek-narzedzi button { border: 1px solid transparent; background: none; color: var(--text); border-radius: 4px; padding: 3px 8px; font-size: 13px; cursor: pointer; }
+.pasek-narzedzi button:hover { background: var(--surface); border-color: var(--border); }
+.pasek-narzedzi .sep { width: 1px; background: var(--border); margin: 3px 4px; }
+.pole-edycji { border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); background: var(--surface); padding: 16px 18px; min-height: 380px; }
+.pole-edycji:focus-within { border-color: var(--accent); }
+.tytul-edycji { font-size: 22px; font-weight: 700; border: 0; background: none; padding: 0; margin-bottom: 14px; }
+.tytul-edycji:focus { outline: none; }
+.edytowalne { outline: none; }
+.regula-edycja { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px; gap: 6px; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--border); }
+.regula-edycja input { grid-column: 1 / 3; }
+.regula-edycja select, .regula-edycja input { padding: 5px 7px; font-size: 13px; }
+.usun { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; }
+.usun:hover { color: var(--danger-fg); }
+.podglad-trafien { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.szablony { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.szablon { border: 1px solid var(--border); border-radius: 6px; padding: 9px 10px; background: var(--bg); text-align: left; cursor: pointer; font-size: 13px; color: var(--text); }
+.szablon.is-active, .szablon:hover { border-color: var(--accent); }
+.szablon b { display: block; font-size: 13px; }
+
+/* --- historia / diff --- */
+.diff { font: 13px/1.6 var(--mono); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; background: var(--surface); }
+.diff div { padding: 1px 12px; white-space: pre; }
+.diff .dod { background: var(--ok-bg); color: var(--ok-fg); }
+.diff .usu { background: var(--danger-bg); color: var(--danger-fg); text-decoration: line-through; text-decoration-thickness: 1px; }
+.diff .kon { color: var(--muted); }
+
+/* --- wyszukiwarka --- */
+.wynik { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.wynik:last-child { border-bottom: 0; }
+.wynik-tytul { font-size: 15.5px; font-weight: 600; }
+.wynik-sciezka { font-size: 12px; color: var(--muted); margin: 1px 0 4px; }
+.wynik-fragment { font-size: 13.5px; }
+mark { background: color-mix(in srgb, var(--warn-fg) 28%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+/* --- karta maszyny --- */
+.tab-buttons { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
+.tab-button { border: 0; background: none; color: var(--muted); padding: 9px 13px; border-bottom: 2px solid transparent; font-size: 13.5px; cursor: default; white-space: nowrap; }
+.tab-button.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.powod { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; white-space: nowrap; }
+.powod b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: 11px; }
+.ikona-wiedzy { display: inline-grid; place-items: center; min-width: 20px; height: 18px; padding: 0 5px; border-radius: 4px; font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); margin-left: 6px; vertical-align: 1px; }
+
+.decyzje { display: grid; gap: 12px; }
+.decyzja { border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 15px; background: var(--surface); }
+.decyzja h3 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.decyzja ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
+.decyzja li { margin-bottom: 4px; }
+
+@media (max-width: 1250px) { .kb-uklad { grid-template-columns: 220px minmax(0, 1fr); } .kb-uklad > .dotyczy-kolumna { grid-column: 1 / -1; } }
+@media (max-width: 1050px) { .edytor-uklad { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .app-shell { display: block; }
+  .app-sidebar { position: static; height: auto; }
+  .app-nav, .sidebar-bottom { flex-direction: row; overflow-x: auto; gap: 4px; }
+  .app-nav-link { width: auto; white-space: nowrap; }
+  .nav-group-label { display: none; }
+  .sidebar-bottom { border-top: 0; }
+  .content { padding: 16px 16px 8px; }
+  .kb-uklad { grid-template-columns: 1fr; }
+  .kb-drzewo { position: static; }
+  .dwie-kolumny { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .kv { grid-template-columns: 1fr; gap: 2px 0; }
+}
+</style>
+
+<div class="app-shell">
+  <aside class="app-sidebar">
+    <div class="sidebar-brand">
+      <span class="sidebar-logo">C</span>
+      <span class="sidebar-brand-name">CMDB Portal<span>Baza wiedzy</span></span>
+    </div>
+
+    <div class="nav-group-label">Baza wiedzy</div>
+    <nav class="app-nav">
+      <button type="button" class="app-nav-link is-active" data-ekran="start"><span class="nav-icon">⌂</span>Start i przestrzenie</button>
+      <button type="button" class="app-nav-link" data-ekran="artykul"><span class="nav-icon">▤</span>Strona artykułu</button>
+      <button type="button" class="app-nav-link" data-ekran="edytor"><span class="nav-icon">✎</span>Edytor i „Dotyczy”</button>
+      <button type="button" class="app-nav-link" data-ekran="historia"><span class="nav-icon">↺</span>Historia wersji</button>
+      <button type="button" class="app-nav-link" data-ekran="szukaj"><span class="nav-icon">⌕</span>Wyszukiwanie</button>
+    </nav>
+
+    <div class="nav-group-label">Powiązanie z CMDB</div>
+    <nav class="app-nav">
+      <button type="button" class="app-nav-link" data-ekran="maszyna"><span class="nav-icon">▣</span>Karta maszyny → Wiedza</button>
+      <button type="button" class="app-nav-link" data-ekran="lista"><span class="nav-icon">☰</span>Lista zasobów</button>
+    </nav>
+
+    <div class="nav-group-label">Makieta</div>
+    <nav class="app-nav">
+      <button type="button" class="app-nav-link" data-ekran="zakres"><span class="nav-icon">✓</span>Zakres i decyzje</button>
+    </nav>
+
+    <nav class="app-nav sidebar-bottom">
+      <span class="app-nav-link przygaszony"><span class="nav-icon">◉</span>Monitorowanie usług</span>
+      <span class="app-nav-link przygaszony"><span class="nav-icon">✉</span>Helpdesk</span>
+    </nav>
+  </aside>
+
+  <div class="app-workspace">
+    <header class="topbar">
+      <div class="topbar-context">
+        <span class="topbar-scope">Firma</span>
+        <strong>Bongo sp. z o.o.</strong>
+      </div>
+      <div class="userbox">
+        <input type="search" id="szybkie-szukanie" placeholder="Szukaj w bazie wiedzy…" style="width: 230px; padding: 5px 9px; font-size: 13px;">
+        <button type="button" class="btn btn-small" id="motyw">motyw</button>
+        <span>admin@bongo.pl</span>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="makieta-pasek">
+        <strong>Makieta</strong>
+        <span>Sam wygląd, bez działającego serwera. Dane są przykładowe. Klikalne: menu, przestrzenie, artykuły, kontekst maszyny, reguły „Dotyczy” w edytorze, wersje w historii.</span>
+      </div>
+
+      <!-- ================= EKRAN: START ================= -->
+      <section class="ekran is-active" id="ekran-start">
+        <div class="page-head">
+          <div>
+            <h1>Baza wiedzy</h1>
+            <p class="muted">Procedury, runbooki i opisy rozwiązań. Każdy artykuł może wskazywać, których maszyn dotyczy: po nazwie hosta, systemie, oprogramowaniu, lokalizacji albo wprost. Na karcie takiej maszyny pojawia się wtedy sam.</p>
+          </div>
+          <div class="head-actions">
+            <button type="button" class="btn" data-ekran-link="szukaj">Szukaj</button>
+            <button type="button" class="btn btn-primary" data-ekran-link="edytor">+ Nowy artykuł</button>
+          </div>
+        </div>
+
+        <div class="kafelki">
+          <div class="kafelek"><div class="kafelek-wartosc">86</div><div class="kafelek-opis">artykułów opublikowanych w 6 przestrzeniach</div></div>
+          <div class="kafelek"><div class="kafelek-wartosc">142 / 163</div><div class="kafelek-opis">aktywne maszyny objęte co najmniej jednym artykułem</div></div>
+          <div class="kafelek"><div class="kafelek-wartosc" style="color: var(--warn-fg);">7</div><div class="kafelek-opis">artykułów po terminie przeglądu, trzeba sprawdzić czy są aktualne</div></div>
+          <div class="kafelek"><div class="kafelek-wartosc">3</div><div class="kafelek-opis">szkice, jeszcze niewidoczne dla innych</div></div>
+        </div>
+
+        <h2>Przestrzenie</h2>
+        <div class="przestrzenie">
+          <button type="button" class="przestrzen-karta" data-ekran-link="artykul"><span class="kb-przestrzen-ikona pr-inf">INF</span><span><b>Infrastruktura</b><span class="muted">24 artykuły · serwerownia, zasilanie, kopie zapasowe</span></span></button>
+          <button type="button" class="przestrzen-karta" data-ekran-link="artykul"><span class="kb-przestrzen-ikona pr-win">WIN</span><span><b>Windows</b><span class="muted">19 artykułów · AD, GPO, aktualizacje</span></span></button>
+          <button type="button" class="przestrzen-karta" data-ekran-link="artykul"><span class="kb-przestrzen-ikona pr-lin">LIN</span><span><b>Linux</b><span class="muted">14 artykułów · Ubuntu, systemd, Raspberry Pi</span></span></button>
+          <button type="button" class="przestrzen-karta" data-ekran-link="artykul"><span class="kb-przestrzen-ikona pr-db">DB</span><span><b>Bazy danych</b><span class="muted">11 artykułów · SQL Server, PostgreSQL</span></span></button>
+          <button type="button" class="przestrzen-karta" data-ekran-link="artykul"><span class="kb-przestrzen-ikona pr-sie">NET</span><span><b>Sieć</b><span class="muted">9 artykułów · VPN, przełączniki, Wi-Fi</span></span></button>
+          <button type="button" class="przestrzen-karta" data-ekran-link="artykul"><span class="kb-przestrzen-ikona pr-glob">★</span><span><b>Wspólna (wszystkie firmy)</b><span class="muted">9 artykułów · prowadzi superadmin, firma tylko czyta</span></span></button>
+        </div>
+
+        <div class="dwie-kolumny">
+          <div class="panel">
+            <h2>Przypięte na dyżur</h2>
+            <ul class="lista-art">
+              <li><span class="rodzaj rodzaj-runbook">Runbook</span><a href="#" data-ekran-link="artykul">Awaria węzła SQL Server AlwaysOn — przełączenie ręczne</a></li>
+              <li><span class="rodzaj rodzaj-runbook">Runbook</span><a href="#" data-ekran-link="artykul">Zanik zasilania w Serwerowni A</a></li>
+              <li><span class="rodzaj rodzaj-procedura">Procedura</span><a href="#" data-ekran-link="artykul">Kontakty eskalacyjne dostawców</a></li>
+              <li><span class="rodzaj rodzaj-runbook">Runbook</span><a href="#" data-ekran-link="artykul">Certyfikat wygasł — odnowienie na nginx</a></li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h2>Ostatnio zmienione</h2>
+            <ul class="lista-art">
+              <li><span class="rodzaj rodzaj-runbook">Runbook</span><a href="#" data-ekran-link="artykul">Awaria węzła SQL Server AlwaysOn</a><span class="muted">dziś 09:14 · ŁM</span></li>
+              <li><span class="rodzaj rodzaj-problem">Problem</span><a href="#" data-ekran-link="artykul">KB5034439 nie instaluje się (0x80070643)</a><span class="muted">wczoraj · EK</span></li>
+              <li><span class="rodzaj rodzaj-opis">Opis</span><a href="#" data-ekran-link="artykul">sql-prod-02 — notatki hosta</a><span class="muted">19.09 · WN</span></li>
+              <li><span class="rodzaj rodzaj-procedura">Procedura</span><a href="#" data-ekran-link="artykul">Dodanie Raspberry Pi do CMDB</a><span class="muted">17.09 · WN</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Do przeglądu</h2>
+          <p class="muted small">Każdy artykuł ma właściciela i termin przeglądu (domyślnie 6 miesięcy). Po terminie dostaje znacznik „do przeglądu”, a właściciel widzi go tutaj i w cotygodniowym raporcie pocztą.</p>
+          <div class="panel-scroll">
+            <table class="table">
+              <thead><tr><th>Artykuł</th><th>Przestrzeń</th><th>Właściciel</th><th class="lp">Ostatni przegląd</th><th>Stan</th></tr></thead>
+              <tbody>
+                <tr><td><a href="#" data-ekran-link="artykul">Odtworzenie kopii Veeam na nowy host</a></td><td>Infrastruktura</td><td>Łukasz Mazur</td><td class="lp">12.02.2026</td><td><span class="status st-warn">po terminie 41 dni</span></td></tr>
+                <tr><td><a href="#" data-ekran-link="artykul">Konfiguracja VPN dla nowego pracownika</a></td><td>Sieć</td><td>Ewa Kruk</td><td class="lp">03.03.2026</td><td><span class="status st-warn">po terminie 20 dni</span></td></tr>
+                <tr><td><a href="#" data-ekran-link="artykul">Windows Server 2012 R2 — wyłączenie SMBv1</a></td><td>Windows</td><td>Władek Nowak</td><td class="lp">08.01.2025</td><td><span class="status st-danger">dotyczy 0 maszyn</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: ARTYKUL ================= -->
+      <section class="ekran" id="ekran-artykul">
+        <div class="kb-uklad">
+          <nav class="kb-drzewo" aria-label="Drzewo stron">
+            <div class="kb-przestrzen"><span class="kb-przestrzen-ikona pr-db">DB</span><b>Bazy danych</b></div>
+            <h3>Strony</h3>
+            <ul>
+              <li class="folder"><a href="#">SQL Server</a>
+                <ul>
+                  <li class="folder"><a href="#">Runbooki</a>
+                    <ul>
+                      <li><a href="#" class="is-active">Awaria węzła AlwaysOn</a></li>
+                      <li><a href="#">Pełny dziennik transakcji</a></li>
+                      <li><a href="#">Blokady i zakleszczenia</a></li>
+                    </ul>
+                  </li>
+                  <li><a href="#">Architektura klastra PROD</a></li>
+                  <li><a href="#">Kopie i odtwarzanie</a></li>
+                  <li><a href="#">Aktualizacje CU</a></li>
+                </ul>
+              </li>
+              <li class="folder"><a href="#">PostgreSQL</a>
+                <ul>
+                  <li><a href="#">Replikacja strumieniowa</a></li>
+                  <li><a href="#">pg_dump i retencja</a></li>
+                </ul>
+              </li>
+              <li><a href="#">Hasła serwisowe — gdzie są</a></li>
+            </ul>
+            <p style="margin-top: 12px;"><button type="button" class="btn btn-small" data-ekran-link="edytor">+ Strona podrzędna</button></p>
+          </nav>
+
+          <article>
+            <div class="okruszki"><a href="#" data-ekran-link="start">Baza wiedzy</a> / <a href="#">Bazy danych</a> / <a href="#">SQL Server</a> / <a href="#">Runbooki</a></div>
+            <div class="kb-tytul">
+              <h1>Awaria węzła SQL Server AlwaysOn — przełączenie ręczne</h1>
+              <div class="head-actions">
+                <button type="button" class="btn btn-small" data-ekran-link="edytor">Edytuj</button>
+                <button type="button" class="btn btn-small" data-ekran-link="historia">Historia</button>
+                <button type="button" class="btn btn-small" data-komunikat="Link skopiowany: /wiedza/a/412">Kopiuj link</button>
+              </div>
+            </div>
+            <div class="kb-meta">
+              <span class="rodzaj rodzaj-runbook">Runbook</span>
+              <span class="status st-ok">aktualny</span>
+              <span>wersja 7 · zmienił <b>Łukasz Mazur</b> dziś 09:14</span>
+              <span>· przegląd do 23.03.2027</span>
+              <span>· 4 min czytania</span>
+            </div>
+
+            <div class="kontekst">
+              <span>Czytasz w kontekście maszyny</span>
+              <select id="kontekst-maszyny">
+                <option value="sql-prod-02" selected>sql-prod-02</option>
+                <option value="sql-prod-01">sql-prod-01</option>
+                <option value="">— bez kontekstu —</option>
+              </select>
+              <span class="muted small">Pola <span class="zmienna">{hostname}</span> w poleceniach wypełniają się danymi z CMDB.</span>
+            </div>
+
+            <div class="kb-tresc">
+              <div class="makro makro-stop"><b>Zanim zaczniesz</b>Przełączenie ręczne tylko wtedy, gdy automatyczne nie zadziałało w ciągu 2 minut. Przy dwóch żywych węzłach grozi rozjazdem danych.</div>
+
+              <h2>Objawy</h2>
+              <p>Monitorowanie zgłasza <code>sql-listener:1433</code> jako niedostępny, a na karcie maszyny <span class="ctx-host">sql-prod-02</span> nie ma raportu od ponad 15 minut. Aplikacje zwracają błąd <code>Login timeout expired</code>.</p>
+
+              <h2>Postępowanie</h2>
+              <ol class="kroki">
+                <li>Sprawdź, który węzeł jest głównym. Zaloguj się na drugi węzeł (<span class="ctx-partner">sql-prod-01</span>) i uruchom:
+                  <div class="kod"><button type="button" class="btn btn-small kod-kopiuj" data-komunikat="Skopiowano polecenie">Kopiuj</button><pre>Get-ClusterGroup -Cluster SQLCL-PROD | ft Name, OwnerNode, State
+Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022</pre></div>
+                </li>
+                <li>Jeśli <span class="ctx-host">sql-prod-02</span> nie odpowiada na porcie 5022, wymuś przełączenie z utratą danych tylko po zgodzie właściciela aplikacji:
+                  <div class="kod"><button type="button" class="btn btn-small kod-kopiuj" data-komunikat="Skopiowano polecenie">Kopiuj</button><pre>ALTER AVAILABILITY GROUP [AG-PROD] FORCE_FAILOVER_ALLOW_DATA_LOSS;</pre></div>
+                </li>
+                <li>Załóż zgłoszenie w helpdesku i powiąż je z maszyną <span class="ctx-host">sql-prod-02</span>. Czas przełączenia wpisz w zgłoszeniu.</li>
+                <li>Po powrocie węzła wznów synchronizację: <code>ALTER DATABASE [Kadry] SET HADR RESUME;</code></li>
+              </ol>
+
+              <div class="makro makro-info"><b>Dane z CMDB</b>
+                <span class="ctx-host">sql-prod-02</span> · Windows Server 2019 Standard (17763) · SQL Server 2019 CU27 · Serwerownia A, szafa R4 · opiekun <b>Łukasz Mazur</b></div>
+
+              <h2>Kontakty</h2>
+              <table>
+                <tr><th>Rola</th><th>Kto</th><th>Kiedy dzwonić</th></tr>
+                <tr><td>Właściciel aplikacji Kadry</td><td>Anna Wiśniewska, 600 123 456</td><td>przed FORCE_FAILOVER</td></tr>
+                <tr><td>Wsparcie Microsoft</td><td>umowa Premier 7731-22</td><td>gdy węzeł nie wraca po 1 h</td></tr>
+              </table>
+
+              <div class="stopka-artykulu">
+                <span>Czy ten artykuł pomógł?</span>
+                <button type="button" class="btn btn-small" data-komunikat="Dziękujemy, zapisane">Tak</button>
+                <button type="button" class="btn btn-small" data-komunikat="Autor dostanie komentarz, co poprawić">Nie, coś jest nieaktualne</button>
+                <span style="margin-left: auto;">Użyty 14 razy w zgłoszeniach · <a href="#">BON-98</a>, <a href="#">BON-121</a></span>
+              </div>
+            </div>
+          </article>
+
+          <aside class="dotyczy-kolumna">
+            <div class="panel dotyczy">
+              <h3>Dotyczy <span class="badge">reguła</span></h3>
+              <div class="regula"><span class="regula-pole">nazwa hosta</span><span class="wartosc">sql-prod-*</span></div>
+              <div class="regula"><span class="lacznik">i</span><span class="regula-pole">oprogramowanie</span><span class="wartosc">Microsoft SQL Server 2019</span></div>
+              <div class="regula"><span class="lacznik">lub wprost</span><span class="wartosc">sql-listener (aplikacja)</span></div>
+              <div class="podglad-trafien">
+                <div style="display: flex; align-items: baseline; gap: 8px;"><span class="licznik-trafien">3</span><span class="muted small">maszyny pasują teraz</span></div>
+                <div class="trafienia">
+                  <a href="#" data-ekran-link="maszyna">sql-prod-01 <span class="muted">reguła</span></a>
+                  <a href="#" data-ekran-link="maszyna">sql-prod-02 <span class="muted">reguła</span></a>
+                  <a href="#" data-ekran-link="maszyna">sql-listener <span class="muted">wprost</span></a>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Szczegóły</h3>
+              <dl class="kv">
+                <dt>Właściciel</dt><dd>Łukasz Mazur</dd>
+                <dt>Przestrzeń</dt><dd>Bazy danych</dd>
+                <dt>Widoczność</dt><dd>cała firma</dd>
+                <dt>Utworzony</dt><dd>04.11.2025, WN</dd>
+                <dt>Przegląd</dt><dd>co 6 mies., do 23.03.2027</dd>
+              </dl>
+              <h3 style="margin-top: 12px;">Etykiety</h3>
+              <div class="etykiety"><span class="etykieta">sql</span><span class="etykieta">klaster</span><span class="etykieta">dyżur</span><span class="etykieta">kadry</span></div>
+            </div>
+
+            <div class="panel">
+              <h3>Załączniki</h3>
+              <ul class="lista-art small">
+                <li><a href="#">schemat-AG-PROD.png</a><span class="muted">212 KB</span></li>
+                <li><a href="#">failover-checklist.pdf</a><span class="muted">88 KB</span></li>
+              </ul>
+            </div>
+
+            <div class="panel">
+              <h3>Komentarze (2)</h3>
+              <div class="wpis" style="margin-bottom: 8px;"><div class="wpis-glowa"><span class="wpis-autor">Ewa Kruk</span><span class="wpis-godzina">18.09 22:40</span></div><div class="small">Krok 4: dla bazy Płace też trzeba wznowić, dopisz proszę.</div></div>
+              <div class="wpis"><div class="wpis-glowa"><span class="wpis-autor">Łukasz Mazur</span><span class="wpis-godzina">dziś 09:14</span></div><div class="small">Dopisane w wersji 7.</div></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: EDYTOR ================= -->
+      <section class="ekran" id="ekran-edytor">
+        <div class="okruszki"><a href="#" data-ekran-link="start">Baza wiedzy</a> / Bazy danych / SQL Server / Runbooki</div>
+        <div class="page-head">
+          <div>
+            <h1>Edycja artykułu</h1>
+            <p class="muted">Szkic zapisuje się sam co kilka sekund i nie jest widoczny dla innych. Opublikowanie tworzy nową wersję z opisem zmiany.</p>
+          </div>
+          <div class="head-actions">
+            <span class="muted small" style="align-self: center;">szkic zapisany 09:13:42</span>
+            <button type="button" class="btn" data-ekran-link="artykul">Anuluj</button>
+            <button type="button" class="btn btn-primary" data-komunikat="Opublikowano wersję 7">Opublikuj</button>
+          </div>
+        </div>
+
+        <div class="edytor-uklad">
+          <div>
+            <div class="pasek-narzedzi" role="toolbar" aria-label="Formatowanie">
+              <button type="button"><b>B</b></button><button type="button"><i>I</i></button><button type="button"><code>kod</code></button>
+              <span class="sep"></span>
+              <button type="button">Nagłówek</button><button type="button">• Lista</button><button type="button">1. Kroki</button><button type="button">Tabela</button>
+              <span class="sep"></span>
+              <button type="button">Blok kodu</button><button type="button">Panel: info</button><button type="button">Panel: uwaga</button>
+              <span class="sep"></span>
+              <button type="button">Link do maszyny</button><button type="button">Pole {hostname}</button><button type="button">Obraz</button>
+              <span class="sep"></span>
+              <button type="button" title="Treść jest też dostępna jako Markdown">Markdown</button>
+            </div>
+            <div class="pole-edycji">
+              <input class="tytul-edycji" id="tytul" value="Awaria węzła SQL Server AlwaysOn — przełączenie ręczne" aria-label="Tytuł">
+              <div class="kb-tresc edytowalne" contenteditable="true">
+                <div class="makro makro-stop"><b>Zanim zaczniesz</b>Przełączenie ręczne tylko wtedy, gdy automatyczne nie zadziałało w ciągu 2 minut.</div>
+                <h2>Objawy</h2>
+                <p>Monitorowanie zgłasza <code>sql-listener:1433</code> jako niedostępny…</p>
+                <h2>Postępowanie</h2>
+                <ol class="kroki">
+                  <li>Sprawdź, który węzeł jest głównym…
+                    <div class="kod"><pre>Test-NetConnection <span class="zmienna">{hostname}</span> -Port 5022</pre></div>
+                  </li>
+                  <li>Po powrocie węzła wznów synchronizację dla baz <b>Kadry</b> i <b>Płace</b>.</li>
+                </ol>
+              </div>
+            </div>
+            <div class="filtry" style="margin-top: 12px;">
+              <div style="flex: 1 1 320px;"><label for="opis-zmiany">Opis zmiany (do historii)</label><input id="opis-zmiany" style="width: 100%;" value="Krok 4: dopisana baza Płace (uwaga Ewy)"></div>
+              <div><label for="drobna">&nbsp;</label><label class="przelacznik-etapu" style="margin: 0;" for="drobna"><input type="checkbox" id="drobna"> drobna poprawka, bez powiadomień</label></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="panel">
+              <h3>Dotyczy</h3>
+              <p class="muted small">Maszyna pasuje, gdy spełnia <b>wszystkie</b> warunki. Reguła działa także dla maszyn dodanych później. Pojedyncze maszyny można dołożyć niżej.</p>
+              <div id="reguly">
+                <div class="regula-edycja">
+                  <select aria-label="pole"><option selected>nazwa hosta</option><option>system</option><option>oprogramowanie</option><option>rodzaj</option><option>lokalizacja</option><option>etykieta zasobu</option><option>opiekun</option></select>
+                  <select aria-label="warunek"><option selected>pasuje do</option><option>równa się</option><option>zawiera</option><option>nie pasuje</option></select>
+                  <input aria-label="wartość" value="sql-prod-*">
+                  <button type="button" class="usun" data-usun aria-label="Usuń warunek">×</button>
+                </div>
+                <div class="regula-edycja">
+                  <select aria-label="pole"><option>nazwa hosta</option><option>system</option><option selected>oprogramowanie</option><option>rodzaj</option><option>lokalizacja</option><option>etykieta zasobu</option><option>opiekun</option></select>
+                  <select aria-label="warunek"><option>pasuje do</option><option>równa się</option><option selected>zawiera</option><option>nie pasuje</option></select>
+                  <input aria-label="wartość" value="Microsoft SQL Server 2019">
+                  <button type="button" class="usun" data-usun aria-label="Usuń warunek">×</button>
+                </div>
+              </div>
+              <button type="button" class="btn btn-small" id="dodaj-regule">+ warunek</button>
+
+              <h3 style="margin-top: 14px;">Wskazane wprost</h3>
+              <div class="domeny">
+                <span class="domena">sql-listener <button type="button" aria-label="usuń">×</button></span>
+                <button type="button" class="domena domena-dodaj">+ maszyna</button>
+              </div>
+
+              <div class="podglad-trafien">
+                <div style="display: flex; align-items: baseline; gap: 8px;"><span class="licznik-trafien" id="licznik-trafien">3</span><span class="muted small" id="opis-trafien">maszyny pasują teraz</span></div>
+                <div class="trafienia" id="lista-trafien">
+                  <a href="#">sql-prod-01 <span class="muted">Win 2019 · SQL 2019</span></a>
+                  <a href="#">sql-prod-02 <span class="muted">Win 2019 · SQL 2019</span></a>
+                  <a href="#">sql-listener <span class="muted">wprost</span></a>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Szablon</h3>
+              <div class="szablony">
+                <button type="button" class="szablon is-active"><b>Runbook</b><span class="muted">objawy, kroki, eskalacja</span></button>
+                <button type="button" class="szablon"><b>Problem</b><span class="muted">błąd, przyczyna, rozwiązanie</span></button>
+                <button type="button" class="szablon"><b>Procedura</b><span class="muted">kiedy, kto, kroki</span></button>
+                <button type="button" class="szablon"><b>Opis</b><span class="muted">architektura, notatki hosta</span></button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Ustawienia</h3>
+              <div class="filtry" style="flex-direction: column; align-items: stretch;">
+                <div><label for="e-przestrzen">Przestrzeń i strona nadrzędna</label><select id="e-przestrzen"><option>Bazy danych / SQL Server / Runbooki</option></select></div>
+                <div><label for="e-wlasciciel">Właściciel</label><select id="e-wlasciciel"><option>Łukasz Mazur</option><option>Władek Nowak</option><option>Ewa Kruk</option></select></div>
+                <div><label for="e-przeglad">Przegląd co</label><select id="e-przeglad"><option>3 miesiące</option><option selected>6 miesięcy</option><option>12 miesięcy</option><option>bez przeglądu</option></select></div>
+                <div><label for="e-etykiety">Etykiety</label><input id="e-etykiety" value="sql, klaster, dyżur, kadry"></div>
+                <div><label class="przelacznik-etapu" style="margin: 0;" for="e-dyzur"><input type="checkbox" id="e-dyzur" checked> przypnij na dyżur</label></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: HISTORIA ================= -->
+      <section class="ekran" id="ekran-historia">
+        <div class="okruszki"><a href="#" data-ekran-link="artykul">Awaria węzła SQL Server AlwaysOn</a> / Historia</div>
+        <div class="page-head">
+          <div>
+            <h1>Historia wersji</h1>
+            <p class="muted">Każda publikacja to nowa wersja. Starej nie da się nadpisać; przywrócenie tworzy kolejną wersję z tą samą treścią.</p>
+          </div>
+        </div>
+        <div class="dwie-kolumny" style="grid-template-columns: minmax(0, 360px) minmax(0, 1fr);">
+          <div class="panel">
+            <table class="table">
+              <thead><tr><th>Wer.</th><th>Kiedy / kto</th><th>Opis</th></tr></thead>
+              <tbody>
+                <tr><td class="lp"><b>7</b></td><td>dziś 09:14<br><span class="muted small">Łukasz Mazur</span></td><td class="small">Krok 4: dopisana baza Płace</td></tr>
+                <tr><td class="lp">6</td><td>02.09.2026<br><span class="muted small">Łukasz Mazur</span></td><td class="small">„Dotyczy”: dołożone sql-listener</td></tr>
+                <tr><td class="lp">5</td><td>14.06.2026<br><span class="muted small">Ewa Kruk</span></td><td class="small">Przegląd — bez zmian treści</td></tr>
+                <tr><td class="lp">4</td><td>20.03.2026<br><span class="muted small">Władek Nowak</span></td><td class="small">Nowy numer umowy Premier</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <div class="filtry">
+              <div><label for="v-od">Porównaj</label><select id="v-od"><option>wersja 6</option><option>wersja 5</option></select></div>
+              <div><label for="v-do">z</label><select id="v-do"><option>wersja 7 (bieżąca)</option></select></div>
+              <div><button type="button" class="btn" data-komunikat="Przywrócono treść wersji 6 jako wersję 8">Przywróć wersję 6</button></div>
+            </div>
+            <div class="diff">
+              <div class="kon">  ## Postępowanie</div>
+              <div class="kon">  …</div>
+              <div class="usu">- 4. Po powrocie węzła wznów synchronizację: ALTER DATABASE [Kadry] SET HADR RESUME;</div>
+              <div class="dod">+ 4. Po powrocie węzła wznów synchronizację dla baz Kadry i Płace:</div>
+              <div class="dod">+    ALTER DATABASE [Kadry] SET HADR RESUME;</div>
+              <div class="dod">+    ALTER DATABASE [Place] SET HADR RESUME;</div>
+              <div class="kon">  </div>
+              <div class="kon">  ## Kontakty</div>
+            </div>
+            <p class="muted small" style="margin-top: 10px;">Zmiany w „Dotyczy” i w ustawieniach też są wersjonowane i pokazują się tu osobnymi wierszami.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: SZUKAJ ================= -->
+      <section class="ekran" id="ekran-szukaj">
+        <div class="page-head"><div><h1>Wyszukiwanie</h1><p class="muted">Pełnotekstowe po tytule, treści, etykietach i komentarzach, bez względu na polskie znaki: „zaklescenie” znajdzie „zakleszczenie”.</p></div></div>
+        <div class="filtry">
+          <div class="szukajka" style="flex: 1 1 320px;"><label for="q">Szukaj</label><input id="q" type="search" value="failover sql" style="width: 100%;"></div>
+          <div><label for="s-przestrzen">Przestrzeń</label><select id="s-przestrzen"><option>wszystkie</option><option>Bazy danych</option><option>Windows</option></select></div>
+          <div><label for="s-rodzaj">Rodzaj</label><select id="s-rodzaj"><option>wszystkie</option><option>Runbook</option><option>Problem</option><option>Procedura</option><option>Opis</option></select></div>
+          <div><label for="s-maszyna">Dotyczy maszyny</label><input id="s-maszyna" placeholder="np. sql-prod-02"></div>
+        </div>
+        <div class="panel">
+          <p class="muted small">3 wyniki</p>
+          <div class="wynik">
+            <div class="wynik-tytul"><a href="#" data-ekran-link="artykul">Awaria węzła <mark>SQL</mark> Server AlwaysOn — przełączenie ręczne</a> <span class="rodzaj rodzaj-runbook">Runbook</span></div>
+            <div class="wynik-sciezka">Bazy danych / SQL Server / Runbooki · dotyczy 3 maszyn</div>
+            <div class="wynik-fragment">…wymuś przełączenie z utratą danych tylko po zgodzie właściciela: ALTER AVAILABILITY GROUP [AG-PROD] FORCE_<mark>FAILOVER</mark>_ALLOW_DATA_LOSS…</div>
+          </div>
+          <div class="wynik">
+            <div class="wynik-tytul"><a href="#" data-ekran-link="artykul">Architektura klastra PROD</a> <span class="rodzaj rodzaj-opis">Opis</span></div>
+            <div class="wynik-sciezka">Bazy danych / SQL Server</div>
+            <div class="wynik-fragment">…dwa węzły <mark>SQL</mark> w trybie synchronicznym, <mark>failover</mark> automatyczny przy utracie świadka…</div>
+          </div>
+          <div class="wynik">
+            <div class="wynik-tytul"><a href="#" data-ekran-link="artykul">Zanik zasilania w Serwerowni A</a> <span class="rodzaj rodzaj-runbook">Runbook</span></div>
+            <div class="wynik-sciezka">Infrastruktura · dotyczy 41 maszyn</div>
+            <div class="wynik-fragment">…po powrocie zasilania sprawdź, czy <mark>SQL</mark> nie wykonał <mark>failover</mark> na węzeł w szafie R2…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: KARTA MASZYNY ================= -->
+      <section class="ekran" id="ekran-maszyna">
+        <div class="page-head">
+          <div>
+            <h1>sql-prod-02</h1>
+            <p class="muted">Windows Server 2019 Standard · 10.10.4.22 · Serwerownia A, szafa R4 · opiekun Łukasz Mazur</p>
+          </div>
+        </div>
+        <div class="tab-buttons">
+          <span class="tab-button">Przegląd</span><span class="tab-button">Sprzęt</span><span class="tab-button">Zakup i gwarancja</span><span class="tab-button">Uwagi</span><span class="tab-button">Agent</span><span class="tab-button">Oprogramowanie</span>
+          <span class="tab-button is-active">Wiedza <span class="ikona-wiedzy">4</span></span>
+          <span class="tab-button">Aktualizacje</span><span class="tab-button">Podatności</span><span class="tab-button">Historia</span>
+        </div>
+
+        <div class="page-head">
+          <p class="muted" style="max-width: 72ch;">Artykuły, które dotyczą tej maszyny. Przy każdym widać dlaczego: reguła pasuje do jej danych z ostatniego raportu agenta albo ktoś wskazał ją wprost. Artykuł otwiera się w kontekście tej maszyny.</p>
+          <div class="head-actions">
+            <button type="button" class="btn btn-primary" data-ekran-link="edytor">+ Artykuł dla tej maszyny</button>
+          </div>
+        </div>
+
+        <div class="panel panel-scroll">
+          <table class="table">
+            <thead><tr><th>Artykuł</th><th>Rodzaj</th><th>Dlaczego tutaj</th><th>Stan</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><a href="#" data-ekran-link="artykul">sql-prod-02 — notatki hosta</a></td>
+                <td><span class="rodzaj rodzaj-opis">Opis</span></td>
+                <td><span class="powod">wskazana wprost</span></td>
+                <td><span class="status st-ok">aktualny</span></td>
+              </tr>
+              <tr>
+                <td><a href="#" data-ekran-link="artykul">Awaria węzła SQL Server AlwaysOn</a></td>
+                <td><span class="rodzaj rodzaj-runbook">Runbook</span></td>
+                <td><span class="powod">host <b>sql-prod-*</b></span> <span class="powod">oprogramowanie <b>SQL Server 2019</b></span></td>
+                <td><span class="status st-ok">aktualny</span></td>
+              </tr>
+              <tr>
+                <td><a href="#" data-ekran-link="artykul">KB5034439 nie instaluje się (0x80070643)</a></td>
+                <td><span class="rodzaj rodzaj-problem">Problem</span></td>
+                <td><span class="powod">system <b>Windows Server 2019</b></span></td>
+                <td><span class="status st-ok">aktualny</span></td>
+              </tr>
+              <tr>
+                <td><a href="#" data-ekran-link="artykul">Zanik zasilania w Serwerowni A</a></td>
+                <td><span class="rodzaj rodzaj-runbook">Runbook</span></td>
+                <td><span class="powod">lokalizacja <b>Serwerownia A</b></span></td>
+                <td><span class="status st-warn">do przeglądu</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="makro makro-info"><b>To samo w helpdesku</b>Zgłoszenie powiązane z sql-prod-02 pokazuje w panelu bocznym te same 4 artykuły. Technik może zaznaczyć „ten artykuł rozwiązał problem”, co zwiększa licznik użyć artykułu.</div>
+      </section>
+
+      <!-- ================= EKRAN: LISTA ZASOBOW ================= -->
+      <section class="ekran" id="ekran-lista">
+        <div class="page-head"><div><h1>Zasoby</h1><p class="muted">Liczba przy nazwie mówi, ile artykułów dotyczy maszyny. Kliknięcie otwiera zakładkę „Wiedza”. Filtr „bez artykułów” pokazuje, czego jeszcze nikt nie opisał.</p></div></div>
+        <div class="filtry">
+          <div><label for="l-wiedza">Baza wiedzy</label><select id="l-wiedza"><option>wszystkie</option><option>z artykułami</option><option>bez artykułów</option></select></div>
+        </div>
+        <div class="panel panel-scroll">
+          <table class="table">
+            <thead><tr><th>Nazwa</th><th>System</th><th>Lokalizacja</th><th>Opiekun</th><th class="lp">Ostatni raport</th></tr></thead>
+            <tbody>
+              <tr><td><a href="#" data-ekran-link="maszyna">sql-prod-01</a><span class="ikona-wiedzy" title="3 artykuły">3</span></td><td>Windows Server 2019</td><td>Serwerownia A</td><td>Łukasz Mazur</td><td class="lp">4 min temu</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">sql-prod-02</a><span class="ikona-wiedzy" title="4 artykuły">4</span></td><td>Windows Server 2019</td><td>Serwerownia A</td><td>Łukasz Mazur</td><td class="lp">22 min temu</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">web-01</a><span class="ikona-wiedzy" title="2 artykuły">2</span></td><td>Ubuntu 24.04</td><td>Serwerownia A</td><td>Władek Nowak</td><td class="lp">1 h temu</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">rpi-czujnik-3</a></td><td>Raspberry Pi OS 12</td><td>Magazyn</td><td>—</td><td class="lp">3 h temu</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">LAP-KSIEG-07</a><span class="ikona-wiedzy" title="1 artykuł">1</span></td><td>Windows 11 Pro</td><td>pokój 214</td><td>Ewa Kruk</td><td class="lp">wczoraj</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: ZAKRES ================= -->
+      <section class="ekran" id="ekran-zakres">
+        <div class="page-head"><div><h1>Zakres i decyzje</h1><p class="muted">Co wchodzi w pierwszą wersję, co odkładamy i co trzeba rozstrzygnąć przed pisaniem kodu.</p></div></div>
+        <div class="decyzje">
+          <div class="decyzja">
+            <h3>Model danych <span class="badge badge-ok">propozycja</span></h3>
+            <ul>
+              <li><b>Przestrzeń → strony w drzewie</b> (jak w Confluence). Strona ma rodzica, kolejność i rodzaj: runbook, problem, procedura, opis.</li>
+              <li><b>Artykuł i jego wersje w osobnych tabelach.</b> Każda publikacja to wiersz wersji: treść, tytuł, reguły, autor, opis zmiany. Inaczej niż w hubzso, gdzie cały artykuł był jednym dokumentem JSONB bez historii.</li>
+              <li><b>Treść w Markdown z rozszerzeniami</b>: panele info/uwaga/stop, kroki, pola <span class="zmienna">{hostname}</span>. Jest czytelna w diffie i w kopii zapasowej, a w edytorze da się pisać jak w Confluence.</li>
+              <li><b>„Dotyczy” jako reguła w JSONB plus lista maszyn wskazanych wprost.</b> Dopasowanie liczy się przy odczycie z kolumn zasobu i z oprogramowania w ostatnim raporcie, więc nowa maszyna pasuje od pierwszego raportu, bez zadania w tle.</li>
+              <li>Etykiety, załączniki (jak w helpdesku, na dysku serwera), komentarze, ocena „pomógł / nieaktualne”, właściciel i termin przeglądu.</li>
+              <li>Wyszukiwanie: PostgreSQL <code>tsvector</code> z <code>unaccent</code>, bez dodatkowej usługi.</li>
+            </ul>
+          </div>
+          <div class="decyzja">
+            <h3>Wielofirmowość <span class="badge badge-warn">do decyzji</span></h3>
+            <ul>
+              <li>Każda przestrzeń należy do jednej firmy, tak jak zasoby. Artykuł nigdy nie dopasuje maszyny z innej firmy.</li>
+              <li>Czy chcesz przestrzeń <b>wspólną dla wszystkich firm</b> (np. „Windows — typowe problemy”), prowadzoną przez superadmina i techników, a w firmach tylko do odczytu? Na makiecie jest jako „Wspólna”.</li>
+              <li>Uprawnienia jak w reszcie panelu: <code>viewer</code> i audytor czytają, <code>admin</code> i technik piszą. Na razie bez uprawnień per przestrzeń.</li>
+            </ul>
+          </div>
+          <div class="decyzja">
+            <h3>Pola reguły „Dotyczy” <span class="badge badge-warn">do decyzji</span></h3>
+            <ul>
+              <li>Na start: nazwa hosta (wzorzec <code>*</code>), system (rodzina i nazwa), oprogramowanie z raportu, rodzaj sprzętu, lokalizacja, etykieta zasobu, opiekun, maszyny wprost.</li>
+              <li>Warunki łączone przez „i”. Alternatywę „lub” zapisuje się drugim artykułem albo listą wprost. Czy wystarczy?</li>
+              <li>Później możliwe: relacje (wszystkie VM na hoście X), port z wykrywania sieci, cel monitorowania.</li>
+            </ul>
+          </div>
+          <div class="decyzja">
+            <h3>Poza pierwszą wersją</h3>
+            <ul>
+              <li>Równoczesna edycja przez dwie osoby (w wersji 1 wygrywa pierwsza publikacja, druga dostaje ostrzeżenie o konflikcie).</li>
+              <li>Import z Confluence (eksport HTML/XML) i z bazy hubzso.</li>
+              <li>Etap 2: podpowiadanie artykułów w nowym zgłoszeniu na podstawie treści maila.</li>
+              <li>Aplikacja mobilna: podgląd artykułów z karty maszyny.</li>
+            </ul>
+          </div>
+          <div class="decyzja">
+            <h3>Z założeń hubzso <span class="badge">uwaga</span></h3>
+            <ul>
+              <li>Wklejony opis urwał się na części 2 (schemat SQL). Brakuje części 3–8, w tym <b>znanych problemów</b> i <b>kryteriów akceptacji</b>. Jeśli je masz, wklej, a uzupełnię makietę.</li>
+              <li>Z tego, co doszło, przejmuję cel (runbooki na dyżur), słowniki tagów z podpowiedziami i ikonę przy hoście na liście.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="footer">CMDB · makieta modułu „Baza wiedzy” · wrzesień 2026</footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  var ekrany = document.querySelectorAll('.ekran');
+  var przyciski = document.querySelectorAll('[data-ekran]');
+  function pokaz(nazwa) {
+    ekrany.forEach(function (e) { e.classList.toggle('is-active', e.id === 'ekran-' + nazwa); });
+    przyciski.forEach(function (b) { b.classList.toggle('is-active', b.dataset.ekran === nazwa); });
+    window.scrollTo(0, 0);
+  }
+  przyciski.forEach(function (b) { b.addEventListener('click', function () { pokaz(b.dataset.ekran); }); });
+  document.querySelectorAll('[data-ekran-link]').forEach(function (a) {
+    a.addEventListener('click', function (ev) { ev.preventDefault(); pokaz(a.dataset.ekranLink); });
+  });
+  document.getElementById('szybkie-szukanie').addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { document.getElementById('q').value = ev.target.value || 'failover sql'; pokaz('szukaj'); }
+  });
+
+  // Kontekst maszyny - podstawia hostname w tresci artykulu
+  var partner = { 'sql-prod-02': 'sql-prod-01', 'sql-prod-01': 'sql-prod-02' };
+  document.getElementById('kontekst-maszyny').addEventListener('change', function (ev) {
+    var host = ev.target.value;
+    document.querySelectorAll('.ctx-host').forEach(function (el) { el.textContent = host || '{hostname}'; });
+    document.querySelectorAll('.ctx-partner').forEach(function (el) { el.textContent = partner[host] || 'drugi węzeł'; });
+  });
+
+  // Reguly "Dotyczy" - przyklad przeliczania trafien
+  var MASZYNY = [
+    { h: 'sql-prod-01', os: 'Windows Server 2019', sw: 'Microsoft SQL Server 2019', lok: 'Serwerownia A', rodzaj: 'komputer' },
+    { h: 'sql-prod-02', os: 'Windows Server 2019', sw: 'Microsoft SQL Server 2019', lok: 'Serwerownia A', rodzaj: 'komputer' },
+    { h: 'sql-test-01', os: 'Windows Server 2022', sw: 'Microsoft SQL Server 2022', lok: 'Serwerownia B', rodzaj: 'vm' },
+    { h: 'web-01', os: 'Ubuntu 24.04', sw: 'nginx', lok: 'Serwerownia A', rodzaj: 'komputer' },
+    { h: 'web-02', os: 'Ubuntu 24.04', sw: 'nginx', lok: 'Serwerownia A', rodzaj: 'vm' },
+    { h: 'dc-01', os: 'Windows Server 2019', sw: 'Active Directory', lok: 'Serwerownia A', rodzaj: 'komputer' },
+    { h: 'LAP-KSIEG-07', os: 'Windows 11 Pro', sw: 'Microsoft Office', lok: 'pokój 214', rodzaj: 'komputer' },
+    { h: 'rpi-czujnik-3', os: 'Raspberry Pi OS 12', sw: 'python3', lok: 'Magazyn', rodzaj: 'komputer' }
+  ];
+  var POLE = { 'nazwa hosta': 'h', 'system': 'os', 'oprogramowanie': 'sw', 'lokalizacja': 'lok', 'rodzaj': 'rodzaj' };
+  function wzorzec(w) { return new RegExp('^' + w.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$', 'i'); }
+  function pasuje(m, pole, war, wart) {
+    var k = POLE[pole]; if (!k || !wart) { return true; }
+    var v = m[k] || '', w = wart.toLowerCase(), vl = v.toLowerCase();
+    if (war === 'pasuje do') { return wzorzec(wart).test(v); }
+    if (war === 'nie pasuje') { return !wzorzec(wart).test(v); }
+    if (war === 'równa się') { return vl === w; }
+    return vl.indexOf(w) !== -1;
+  }
+  function policz() {
+    var reguly = Array.prototype.map.call(document.querySelectorAll('#reguly .regula-edycja'), function (r) {
+      var s = r.querySelectorAll('select'); return [s[0].value, s[1].value, r.querySelector('input').value.trim()];
+    });
+    var trafione = MASZYNY.filter(function (m) { return reguly.every(function (r) { return pasuje(m, r[0], r[1], r[2]); }); });
+    var lista = document.getElementById('lista-trafien');
+    lista.innerHTML = '';
+    trafione.slice(0, 6).forEach(function (m) {
+      var a = document.createElement('a'); a.href = '#';
+      a.innerHTML = m.h + ' <span class="muted">' + m.os + '</span>'; lista.appendChild(a);
+    });
+    var a = document.createElement('a'); a.href = '#'; a.innerHTML = 'sql-listener <span class="muted">wprost</span>'; lista.appendChild(a);
+    var n = trafione.length + 1;
+    document.getElementById('licznik-trafien').textContent = n;
+    document.getElementById('opis-trafien').textContent = (n === 1 ? 'maszyna pasuje' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'maszyny pasują' : 'maszyn pasuje')) + ' teraz';
+  }
+  var reguly = document.getElementById('reguly');
+  reguly.addEventListener('input', policz);
+  reguly.addEventListener('change', policz);
+  reguly.addEventListener('click', function (ev) {
+    if (ev.target.matches('[data-usun]')) { ev.target.closest('.regula-edycja').remove(); policz(); }
+  });
+  document.getElementById('dodaj-regule').addEventListener('click', function () {
+    var wzor = reguly.querySelector('.regula-edycja');
+    var nowa = wzor ? wzor.cloneNode(true) : null;
+    if (!nowa) { return; }
+    nowa.querySelector('select').value = 'lokalizacja';
+    nowa.querySelectorAll('select')[1].value = 'równa się';
+    nowa.querySelector('input').value = '';
+    reguly.appendChild(nowa); nowa.querySelector('input').focus(); policz();
+  });
+  document.querySelectorAll('.szablon').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.szablon').forEach(function (x) { x.classList.toggle('is-active', x === b); });
+    });
+  });
+
+  // Motyw
+  document.getElementById('motyw').addEventListener('click', function () {
+    var teraz = document.documentElement.getAttribute('data-theme');
+    var ciemny = teraz === 'dark' || (!teraz && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', ciemny ? 'light' : 'dark');
+  });
+
+  var toast = document.getElementById('toast'), zegar;
+  function komunikat(tekst) {
+    toast.textContent = tekst; toast.hidden = false;
+    clearTimeout(zegar); zegar = setTimeout(function () { toast.hidden = true; }, 2600);
+  }
+  document.querySelectorAll('[data-komunikat]').forEach(function (b) {
+    b.addEventListener('click', function () { komunikat(b.dataset.komunikat); });
+  });
+
+  policz();
+})();
+</script>
