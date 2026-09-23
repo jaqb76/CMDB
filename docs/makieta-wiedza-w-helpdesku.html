@@ -1,0 +1,756 @@
+<title>Wiedza w helpdesku</title>
+<style>
+/* ---------------------------------------------------------------------------
+   Makieta: baza wiedzy w karcie zgloszenia helpdesku. Style przepisane
+   z makiety helpdesku (a ta z app.css); nowe klasy na koncu.
+--------------------------------------------------------------------------- */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --border: #dcdfe4;
+  --text: #1c2024;
+  --muted: #6b7280;
+  --accent: #2f6fd0;
+  --accent-contrast: #ffffff;
+  --ok-bg: #e6f4ea;   --ok-fg: #1c6b34;
+  --warn-bg: #fdf3d8; --warn-fg: #8a6100;
+  --danger-bg: #fbe6e6; --danger-fg: #a52222;
+  --hold-bg: #ece9f7; --hold-fg: #55499a;
+  --wewn-bg: #fdf6e3; --wewn-fg: #7a5c00; --wewn-line: #d9b64a;
+  --sidebar: #102641;
+  --sidebar-text: #c1cee0;
+  --radius: 7px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171c; --surface: #1c2028; --surface-2: #232833; --border: #2e343e;
+    --text: #e6e8ec; --muted: #97a0af; --accent: #5b9bf5; --accent-contrast: #0d1117;
+    --ok-bg: #17331f; --ok-fg: #7fd39a;
+    --warn-bg: #37300f; --warn-fg: #e2c464;
+    --danger-bg: #3a1a1a; --danger-fg: #f08a8a;
+    --hold-bg: #262040; --hold-fg: #b5a8f0;
+    --wewn-bg: #2e2711; --wewn-fg: #e2c464; --wewn-line: #8a6f22;
+    --sidebar: #080f1c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171c; --surface: #1c2028; --surface-2: #232833; --border: #2e343e;
+  --text: #e6e8ec; --muted: #97a0af; --accent: #5b9bf5; --accent-contrast: #0d1117;
+  --ok-bg: #17331f; --ok-fg: #7fd39a;
+  --warn-bg: #37300f; --warn-fg: #e2c464;
+  --danger-bg: #3a1a1a; --danger-fg: #f08a8a;
+  --hold-bg: #262040; --hold-fg: #b5a8f0;
+  --wewn-bg: #2e2711; --wewn-fg: #e2c464; --wewn-line: #8a6f22;
+  --sidebar: #080f1c;
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* --- szkielet aplikacji --- */
+.app-shell { display: grid; grid-template-columns: 238px minmax(0, 1fr); min-height: 100vh; }
+.app-sidebar {
+  position: sticky; top: 0; height: 100vh; min-width: 0; display: flex; flex-direction: column;
+  overflow-y: auto; padding: 10px 8px 12px; background: var(--sidebar); color: #d8e3f2;
+}
+.sidebar-brand { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 8px; margin-bottom: 8px; }
+.sidebar-logo {
+  width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 9px;
+  background: var(--accent); color: var(--accent-contrast); font-size: 17px; font-weight: 800;
+}
+.sidebar-brand-name { color: #f5f8ff; font-size: 14px; font-weight: 700; line-height: 1.15; }
+.sidebar-brand-name span { display: block; color: #8ca0bd; font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.nav-group-label { margin: 12px 9px 2px; color: #8196b4; font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.app-nav { display: flex; flex-direction: column; gap: 1px; }
+.app-nav-link {
+  min-height: 36px; display: flex; align-items: center; gap: 11px; padding: 7px 12px; border: 0;
+  border-radius: 8px; background: none; color: var(--sidebar-text); font-size: 12px; font-weight: 500;
+  text-align: left; width: 100%; cursor: pointer;
+}
+.app-nav-link:hover { background: rgb(255 255 255 / .07); color: #fff; text-decoration: none; }
+.app-nav-link.is-active { background: var(--accent); color: var(--accent-contrast); }
+.app-nav-link.przygaszony { color: #7d8ea6; }
+.nav-icon { width: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+.nav-licznik {
+  margin-left: auto; background: rgb(255 255 255 / .16); border-radius: 999px;
+  padding: 0 7px; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.app-nav-link.is-active .nav-licznik { background: rgb(0 0 0 / .18); }
+.sidebar-bottom { margin-top: auto; padding-top: 9px; border-top: 1px solid rgb(255 255 255 / .09); }
+
+.app-workspace { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 20; min-height: 58px; display: flex; align-items: center;
+  justify-content: space-between; gap: 16px; padding: 9px 18px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-scope { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.topbar-context strong { font-size: 13px; }
+.userbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.content { padding: 20px 22px 8px; flex: 1; }
+.footer { padding: 14px 22px 28px; color: var(--muted); font-size: 12px; }
+
+/* --- elementy wspolne panelu --- */
+h1 { font-size: 22px; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 13px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+h3 { font-size: 14px; margin: 0 0 8px; }
+p { margin: 0 0 8px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.page-head p { max-width: 68ch; }
+.head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 16px;
+}
+.panel-scroll { overflow-x: auto; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; font-weight: 500; cursor: pointer;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: 7px 14px;
+}
+.btn:hover { border-color: var(--accent); text-decoration: none; }
+.btn-small { padding: 4px 10px; font-size: 13px; }
+.btn-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.btn-ghost { background: transparent; }
+.btn-wewn { background: var(--wewn-bg); color: var(--wewn-fg); border-color: var(--wewn-line); }
+
+input, select, textarea {
+  font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 7px 9px; width: 100%;
+}
+textarea { resize: vertical; }
+label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; font-weight: 600; }
+.filtry { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+.filtry > div { min-width: 150px; }
+.filtry input, .filtry select { width: auto; min-width: 150px; }
+.filtry .szukajka { min-width: 260px; }
+
+.badge {
+  display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: var(--bg); border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+}
+.badge-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: transparent; }
+.badge-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: transparent; }
+.badge-danger { background: var(--danger-bg); color: var(--danger-fg); border-color: transparent; }
+.badge-nowy { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); border-color: transparent; }
+.badge-hold { background: var(--hold-bg); color: var(--hold-fg); border-color: transparent; }
+
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+  border-bottom: 1px solid var(--border); padding: 8px 10px; font-weight: 600; white-space: nowrap;
+}
+.table td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.lp { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nr { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+
+.alert { padding: 11px 14px; border-radius: var(--radius); margin-bottom: 16px; border: 1px solid transparent; font-size: 14px; }
+.alert-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.alert-warn { background: var(--warn-bg); color: var(--warn-fg); }
+
+.kafelki { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.kafelek { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: var(--surface); }
+.kafelek-wartosc { font-size: 28px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.kafelek-opis { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+.pasek { display: inline-block; width: 120px; height: 8px; border-radius: 4px; background: var(--border); vertical-align: middle; overflow: hidden; }
+.pasek-wypelnienie { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+
+/* --- pasek makiety --- */
+.makieta-pasek {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px dashed var(--accent); border-radius: var(--radius); padding: 9px 14px; margin-bottom: 18px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent); font-size: 13px;
+}
+.makieta-pasek strong { color: var(--accent); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
+.przelacznik-etapu { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.przelacznik-etapu input { width: auto; }
+
+/* --- ekrany --- */
+.ekran { display: none; }
+.ekran.is-active { display: block; }
+
+/* --- kanban --- */
+.przelacznik-widoku { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.przelacznik-widoku button { border: 0; background: var(--surface); color: var(--muted); padding: 6px 13px; cursor: pointer; font-size: 13px; }
+.przelacznik-widoku button.is-active { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+
+.kanban { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; align-items: start; }
+.kolumna { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; min-width: 0; }
+.kolumna-glowa { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; }
+.kropka { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.kropka-nowe { background: var(--accent); }
+.kropka-trakcie { background: var(--warn-fg); }
+.kropka-oczekuje { background: var(--hold-fg); }
+.kropka-zamkniete { background: var(--ok-fg); }
+.kolumna-tytul { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.kolumna-licznik { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.kolumna-lista { display: flex; flex-direction: column; gap: 9px; }
+
+.ticket-karta {
+  display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--border); border-radius: 6px; padding: 10px 11px; cursor: pointer; color: var(--text);
+}
+.ticket-karta:hover { border-color: var(--accent); border-left-color: var(--accent); text-decoration: none; }
+.ticket-karta.pas-nowe { border-left-color: var(--accent); }
+.ticket-karta.pas-trakcie { border-left-color: var(--warn-fg); }
+.ticket-karta.pas-oczekuje { border-left-color: var(--hold-fg); }
+.ticket-karta.pas-zamkniete { border-left-color: var(--ok-fg); }
+.karta-glowa { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.karta-nr { font-family: var(--mono); font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.karta-temat { font-size: 13.5px; font-weight: 600; line-height: 1.35; margin-bottom: 7px; }
+.karta-firma { font-size: 12px; color: var(--muted); margin-bottom: 9px; }
+.karta-stopka { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+.karta-czas { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.osoba { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.inicjaly {
+  width: 21px; height: 21px; flex: none; border-radius: 999px; display: grid; place-items: center;
+  font-size: 10px; font-weight: 700; color: #fff; letter-spacing: .02em;
+}
+.in-wl { background: #2f6fd0; }
+.in-lu { background: #1c7f6b; }
+.in-ew { background: #9a4f8e; }
+.in-op { background: #b06a1e; }
+.in-brak { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
+.osoba-nazwa { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- karta zgloszenia --- */
+.ticket-uklad { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.ticket-naglowek { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.ticket-naglowek h1 { margin: 0; }
+.powrot { font-size: 13px; color: var(--muted); display: inline-block; margin-bottom: 10px; }
+
+.watek { display: flex; flex-direction: column; gap: 12px; }
+.wpis { border: 1px solid var(--border); border-radius: 6px; padding: 11px 13px; background: var(--surface); }
+.wpis-glowa { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.wpis-godzina { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 11.5px; }
+.wpis-autor { font-weight: 700; color: var(--text); font-size: 13px; }
+.wpis-tresc { font-size: 14px; }
+.wpis-tresc p:last-child { margin-bottom: 0; }
+.wpis-klient { border-left: 3px solid var(--border); }
+.wpis-wychodzacy { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+.wpis-wewnetrzny {
+  border: 1px dashed var(--wewn-line); border-left: 3px solid var(--wewn-line);
+  background: var(--wewn-bg); color: var(--wewn-fg);
+}
+.wpis-wewnetrzny .wpis-autor { color: var(--wewn-fg); }
+.znacznik-wewn {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--wewn-fg);
+  border: 1px solid var(--wewn-line); border-radius: 3px; padding: 1px 6px;
+}
+.wpis-system {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted);
+  padding: 3px 4px 3px 13px; border-left: 3px solid transparent;
+}
+.wpis-system .wpis-godzina { color: var(--muted); }
+.kierunek { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.kierunek-in { color: var(--muted); }
+.kierunek-out { color: var(--accent); }
+
+.komponuj { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.komponuj.tryb-wewnetrzny { border-color: var(--wewn-line); }
+.komponuj-zakladki { display: flex; gap: 0; border-bottom: 1px solid var(--border); }
+.komponuj-zakladki button {
+  border: 0; background: none; color: var(--muted); padding: 10px 16px; cursor: pointer;
+  border-bottom: 2px solid transparent; font-size: 13.5px; font-weight: 500;
+}
+.komponuj-zakladki button.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.komponuj.tryb-wewnetrzny .komponuj-zakladki button.is-active { color: var(--wewn-fg); border-bottom-color: var(--wewn-line); }
+.komponuj-cialo { padding: 12px 14px 14px; }
+.komponuj.tryb-wewnetrzny .komponuj-cialo { background: var(--wewn-bg); }
+.komponuj textarea { min-height: 96px; background: var(--bg); }
+.komponuj.tryb-wewnetrzny textarea { background: var(--surface); border-color: var(--wewn-line); }
+.komponuj-stopka { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.komponuj-info { font-size: 12px; color: var(--muted); flex: 1; min-width: 200px; }
+.komponuj.tryb-wewnetrzny .komponuj-info { color: var(--wewn-fg); }
+
+.kv { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 7px 12px; margin: 0; font-size: 13.5px; }
+.kv dt { color: var(--muted); font-size: 12.5px; }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.pole-boczne { margin-bottom: 12px; }
+.pole-boczne:last-child { margin-bottom: 0; }
+.rzad-akcji { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+
+.czas-suma { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.czas-suma-wartosc { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.czas-rozbicie { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.czas-rozbicie li { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; font-size: 13px; }
+.czas-rozbicie .pasek { width: 100%; grid-column: 1 / -1; }
+.czas-wartosc { font-variant-numeric: tabular-nums; font-weight: 600; }
+.czas-wpisy { list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 5px; }
+.czas-wpisy li { display: flex; gap: 8px; }
+.czas-wpisy .czas-min { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); white-space: nowrap; }
+.dodaj-czas { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; align-items: end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+.historia { list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+.historia .wpis-godzina { color: var(--muted); margin-right: 6px; }
+
+/* --- etap 2 (AI) --- */
+.etap2 { border: 1px dashed var(--hold-fg); border-radius: var(--radius); background: color-mix(in srgb, var(--hold-fg) 7%, transparent); padding: 13px 15px; }
+.etap2-znacznik {
+  display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--hold-fg); border: 1px solid var(--hold-fg); border-radius: 3px; padding: 1px 6px; margin-bottom: 8px;
+}
+.etap2-lista { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.etap2-kafel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 11px 12px; font-size: 13px; }
+.etap2-kafel h4 { margin: 0 0 5px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.pewnosc { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+
+/* --- droga wiadomosci --- */
+.tor { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.tor-drugi { margin-top: 10px; }
+.krok {
+  flex: 1 1 170px; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; background: var(--bg); font-size: 13px;
+}
+.krok b { overflow-wrap: anywhere; }
+.krok-etykieta { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.krok-wynik { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.krok-czeka { border-color: var(--warn-fg); background: var(--warn-bg); }
+.krok-czeka b, .krok-czeka .muted { color: var(--warn-fg); }
+.strzalka { align-self: center; color: var(--muted); font-size: 15px; flex: none; }
+@media (max-width: 780px) { .strzalka { display: none; } }
+
+/* --- domeny --- */
+.domeny { display: flex; flex-wrap: wrap; gap: 5px; }
+.domena { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; font-size: 12.5px; font-family: var(--mono); }
+.domena button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+.domena-dodaj { border-style: dashed; color: var(--accent); cursor: pointer; background: none; font-family: var(--font); }
+
+/* --- raporty: rozwijane wiersze --- */
+.drill { border-bottom: 1px solid var(--border); }
+.drill > summary { display: flex; align-items: center; gap: 10px; padding: 10px 6px; cursor: pointer; list-style: none; font-size: 14px; }
+.drill > summary::-webkit-details-marker { display: none; }
+.drill > summary::before { content: "▸"; color: var(--muted); font-size: 11px; width: 12px; flex: none; }
+.drill[open] > summary::before { content: "▾"; }
+.drill > summary:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.drill-suma { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.drill-cialo { padding: 0 6px 12px 28px; }
+.drill .table { font-size: 13px; }
+
+/* --- komunikat makiety --- */
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px;
+  font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / .25); z-index: 60;
+}
+.toast[hidden] { display: none; }
+
+/* --- zwezenie --- */
+@media (max-width: 1180px) { .kanban { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1050px) { .ticket-uklad { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .app-shell { display: block; }
+  .app-sidebar { position: static; height: auto; }
+  .app-nav, .sidebar-bottom { flex-direction: row; overflow-x: auto; gap: 4px; }
+  .app-nav-link { width: auto; white-space: nowrap; }
+  .nav-group-label { display: none; }
+  .sidebar-bottom { border-top: 0; }
+  .content { padding: 16px 14px 8px; }
+}
+@media (max-width: 700px) {
+  .kanban { grid-template-columns: 1fr; }
+  .dodaj-czas { grid-template-columns: 1fr; }
+  .kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .kv dd { margin-bottom: 6px; }
+}
+
+/* --- baza wiedzy w zgloszeniu (nowe) --- */
+.kb-kategoria { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+.kat-runbook { color: var(--danger-fg); } .kat-problem { color: var(--warn-fg); } .kat-proc { color: var(--accent); }
+.kb-lista-zgl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.kb-art { border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; background: var(--surface); }
+.kb-art.pomogl { border-color: var(--ok-fg); background: color-mix(in srgb, var(--ok-bg) 60%, var(--surface)); }
+.kb-art-glowa { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.kb-art-tytul { font-weight: 600; font-size: 13.5px; }
+.kb-powody { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 7px; }
+.kb-powod { font-size: 11px; border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; color: var(--muted); white-space: nowrap; }
+.kb-powod b { font-family: var(--mono); font-weight: 600; color: var(--text); font-size: 10.5px; }
+.kb-art-stopka { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.kb-art-stopka .btn { padding: 2px 9px; font-size: 12px; }
+.znacznik-pomogl { font-size: 11px; font-weight: 700; color: var(--ok-fg); }
+.tylko-technicy { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--wewn-fg); border: 1px solid var(--wewn-line); border-radius: 3px; padding: 1px 6px; }
+.kb-szukaj { display: flex; gap: 6px; margin-top: 10px; }
+.kb-szukaj input { padding: 5px 8px; font-size: 13px; }
+.zamkniecie { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-top: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 10px; }
+.opcja { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text); font-weight: 400; margin: 0; }
+.opcja input { width: auto; margin-top: 3px; }
+.kb-zrodlo { border: 1px dashed var(--wewn-line); background: var(--wewn-bg); color: var(--wewn-fg); border-radius: 6px; padding: 9px 12px; font-size: 13px; margin-bottom: 12px; }
+.edytor-pole { font-family: var(--mono); font-size: 13px; min-height: 300px; line-height: 1.55; }
+.dwie { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font-family: var(--mono); font-size: 12px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; background: var(--surface); }
+.uzycia { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.uzycia li { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.uzycia li:last-child { border-bottom: 0; }
+.uzycia .muted { margin-left: auto; font-size: 12px; white-space: nowrap; }
+.decyzje { display: grid; gap: 12px; }
+.decyzja { border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 15px; background: var(--surface); }
+.decyzja h3 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.decyzja ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
+.decyzja li { margin-bottom: 4px; }
+@media (max-width: 1050px) { .dwie { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .app-shell { display: block; }
+  .app-sidebar { position: static; height: auto; }
+  .app-nav, .sidebar-bottom { flex-direction: row; overflow-x: auto; gap: 4px; }
+  .app-nav-link { width: auto; white-space: nowrap; }
+  .nav-group-label { display: none; }
+  .sidebar-bottom { border-top: 0; }
+  .content { padding: 16px 16px 8px; }
+}
+@media (max-width: 700px) { .kv { grid-template-columns: 1fr; gap: 2px 0; } .kv dd { margin-bottom: 6px; } }
+</style>
+
+<div class="app-shell">
+  <aside class="app-sidebar">
+    <div class="sidebar-brand">
+      <span class="sidebar-logo">C</span>
+      <span class="sidebar-brand-name">CMDB Portal<span>Helpdesk + wiedza</span></span>
+    </div>
+    <div class="nav-group-label">Makieta</div>
+    <nav class="app-nav">
+      <button type="button" class="app-nav-link is-active" data-ekran="zgloszenie"><span class="nav-icon">✉</span>1. Zgłoszenie</button>
+      <button type="button" class="app-nav-link" data-ekran="artykul"><span class="nav-icon">▤</span>2. Artykuł: użycia</button>
+      <button type="button" class="app-nav-link" data-ekran="zamkniecie"><span class="nav-icon">✓</span>3. Zamknięcie</button>
+      <button type="button" class="app-nav-link" data-ekran="nowy"><span class="nav-icon">✎</span>3. Artykuł ze zgłoszenia</button>
+      <button type="button" class="app-nav-link" data-ekran="zakres"><span class="nav-icon">☷</span>Zakres i decyzje</button>
+    </nav>
+    <nav class="app-nav sidebar-bottom">
+      <span class="app-nav-link przygaszony"><span class="nav-icon">▣</span>Zasoby (CMDB)</span>
+      <span class="app-nav-link przygaszony"><span class="nav-icon">≡</span>Baza wiedzy</span>
+    </nav>
+  </aside>
+
+  <div class="app-workspace">
+    <header class="topbar">
+      <div class="topbar-context">
+        <span class="topbar-scope">Helpdesk · technik</span>
+        <strong>Firma A</strong>
+      </div>
+      <div class="userbox">
+        <button type="button" class="btn btn-small" id="motyw">motyw</button>
+        <span>technik@example.local</span>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="makieta-pasek">
+        <strong>Makieta</strong>
+        <span>Baza wiedzy w zgłoszeniu helpdesku. Dane przykładowe. Klikalne: „Pomógł”, zmiana statusu na „Zamknięte”, przejście do artykułu ze zgłoszenia. Numery w menu to punkty: 1 — lista artykułów, 2 — „pomógł” i licznik użyć, 3 — artykuł ze zgłoszenia.</span>
+      </div>
+
+      <!-- ================= EKRAN: ZGLOSZENIE ================= -->
+      <section class="ekran is-active" id="ekran-zgloszenie">
+        <span class="powrot">← Wróć do zgłoszeń</span>
+        <div class="ticket-naglowek">
+          <h1><span class="nr" style="font-size: 20px;">FA-123</span> Nie działa system-a</h1>
+          <span class="badge badge-warn">W trakcie</span>
+          <span class="badge">Incydent</span>
+        </div>
+        <p class="muted small" style="margin-bottom: 16px;">Firma A · zgłosił <a href="#">anna@example.local</a> · z wiadomości e-mail dziś 07:52</p>
+
+        <div class="ticket-uklad">
+          <div>
+            <section class="panel">
+              <h2>Historia zgłoszenia</h2>
+              <div class="watek">
+                <div class="wpis wpis-klient">
+                  <div class="wpis-glowa"><span class="wpis-godzina">07:52</span><span class="wpis-autor">Anna Kowalska</span><span class="kierunek kierunek-in">e-mail od klienta</span></div>
+                  <div class="wpis-tresc"><p>Dzień dobry, od rana system-a pokazuje „Login timeout expired”. Nikt w kadrach nie może pracować.</p></div>
+                </div>
+                <div class="wpis-system"><span class="wpis-godzina">07:53</span><span>Sprzęt dopasowany automatycznie: <b>db02.example.local</b> (system zgłaszającej)</span></div>
+                <div class="wpis wpis-wewnetrzny">
+                  <div class="wpis-glowa"><span class="wpis-godzina">08:04</span><span class="wpis-autor">Łukasz Mazur</span><span class="znacznik-wewn">Tylko dla techników</span></div>
+                  <div class="wpis-tresc"><p>Węzeł db02 nie odpowiada na 5022. Robię przełączenie wg runbooka z bazy wiedzy.</p></div>
+                </div>
+                <div class="wpis wpis-wychodzacy">
+                  <div class="wpis-glowa"><span class="wpis-godzina">08:21</span><span class="wpis-autor">Łukasz Mazur</span><span class="kierunek kierunek-out">odpowiedź do klienta</span></div>
+                  <div class="wpis-tresc"><p>Dzień dobry, przełączyliśmy bazę na zapasowy serwer. System-a powinien już działać — proszę o potwierdzenie.</p></div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside>
+            <section class="panel">
+              <h2>Sprzęt, którego dotyczy</h2>
+              <p class="small" style="margin-bottom: 4px;"><a href="#">db02.example.local</a> <span class="muted">· Windows Server 2019 · automat</span></p>
+              <button type="button" class="btn btn-small btn-ghost">Podepnij sprzęt</button>
+            </section>
+
+            <!-- NOWE -->
+            <section class="panel" id="panel-wiedzy">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
+                <h2 style="margin: 0;">Baza wiedzy</h2>
+                <span class="tylko-technicy">tylko dla techników</span>
+              </div>
+              <p class="muted small" style="margin-bottom: 10px;">Artykuły dotyczące sprzętu zgłoszenia — te same, co w zakładce „Wiedza” na karcie maszyny. Otwierają się w kontekście <b>db02.example.local</b>.</p>
+              <ul class="kb-lista-zgl">
+                <li class="kb-art" data-art>
+                  <div class="kb-art-glowa"><span class="kb-kategoria kat-runbook">Runbook</span><a class="kb-art-tytul" href="#" data-ekran-link="artykul">Awaria węzła SQL Server AlwaysOn</a></div>
+                  <div class="kb-powody"><span class="kb-powod">host <b>db0*</b></span><span class="kb-powod">oprogramowanie <b>SQL Server 2019</b></span></div>
+                  <div class="kb-art-stopka"><span>pomógł w 14 zgłoszeniach</span><button type="button" class="btn btn-small" data-pomogl style="margin-left: auto;">Pomógł</button></div>
+                </li>
+                <li class="kb-art" data-art>
+                  <div class="kb-art-glowa"><span class="kb-kategoria kat-problem">Problem</span><a class="kb-art-tytul" href="#" data-ekran-link="artykul">KB5034439 nie instaluje się (0x80070643)</a></div>
+                  <div class="kb-powody"><span class="kb-powod">system <b>Windows Server 2019</b></span></div>
+                  <div class="kb-art-stopka"><span>pomógł w 3 zgłoszeniach</span><button type="button" class="btn btn-small" data-pomogl style="margin-left: auto;">Pomógł</button></div>
+                </li>
+                <li class="kb-art" data-art>
+                  <div class="kb-art-glowa"><span class="kb-kategoria kat-runbook">Runbook</span><a class="kb-art-tytul" href="#" data-ekran-link="artykul">Zanik zasilania w Serwerowni A</a></div>
+                  <div class="kb-powody"><span class="kb-powod">lokalizacja <b>Serwerownia A</b></span></div>
+                  <div class="kb-art-stopka"><span>nie użyty w zgłoszeniach</span><button type="button" class="btn btn-small" data-pomogl style="margin-left: auto;">Pomógł</button></div>
+                </li>
+              </ul>
+              <div class="kb-szukaj">
+                <input type="search" placeholder="Inny artykuł z bazy wiedzy…" aria-label="Szukaj artykułu">
+                <button type="button" class="btn btn-small" data-komunikat="Artykuł spoza listy dopina się do zgłoszenia jako „pomógł”">Dopnij</button>
+              </div>
+              <p class="muted small" style="margin: 10px 0 0;">„Pomógł” zapisuje, że ten artykuł rozwiązał sprawę: licznik przy artykule rośnie, a zgłoszenie trafia na jego listę użyć. Klient tego nie widzi.</p>
+            </section>
+
+            <section class="panel">
+              <h2>Czas pracy</h2>
+              <p class="small muted">25 min · Łukasz Mazur</p>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: ZAMKNIECIE ================= -->
+      <section class="ekran" id="ekran-zamkniecie">
+        <div class="ticket-naglowek">
+          <h1><span class="nr" style="font-size: 20px;">FA-123</span> Nie działa system-a</h1>
+          <span class="badge badge-ok">Zamykane</span>
+        </div>
+        <p class="muted small" style="margin-bottom: 16px;">Panel „Zgłoszenie” w karcie po wybraniu statusu „Zamknięte”. Nowe są dwa ostatnie pola.</p>
+        <div class="dwie">
+          <section class="panel">
+            <h2>Zgłoszenie</h2>
+            <label for="z-status">Status</label>
+            <select id="z-status"><option>W trakcie</option><option>Oczekuje</option><option selected>Zamknięte</option></select>
+            <div class="zamkniecie">
+              <div>
+                <label for="z-podsumowanie">Podsumowanie dla klienta (opcjonalnie)</label>
+                <textarea id="z-podsumowanie" rows="3">Węzeł db02 przestał odpowiadać; baza została przełączona na db01. System-a działa, db02 wraca do klastra po wymianie karty sieciowej.</textarea>
+                <p class="muted small" style="margin: 4px 0 0;">Wyjdzie do klienta w mailu o zamknięciu — jak dotąd.</p>
+              </div>
+              <div>
+                <label for="z-artykul">Rozwiązane artykułem <span class="tylko-technicy">tylko dla techników</span></label>
+                <select id="z-artykul">
+                  <option>— żaden —</option>
+                  <option selected>Awaria węzła SQL Server AlwaysOn (oznaczony „pomógł”)</option>
+                  <option>KB5034439 nie instaluje się</option>
+                  <option>Zanik zasilania w Serwerowni A</option>
+                </select>
+              </div>
+              <label class="opcja" for="z-nowy"><input type="checkbox" id="z-nowy"> Zapisz rozwiązanie jako nowy artykuł — po zamknięciu otworzy się formularz artykułu wypełniony danymi zgłoszenia</label>
+              <div><button type="button" class="btn btn-primary" id="z-zapisz">Zapisz</button></div>
+            </div>
+          </section>
+          <section class="panel">
+            <h2>Co się stanie</h2>
+            <ul class="small" style="margin: 0; padding-left: 18px;" id="z-skutki">
+              <li>Klient dostaje mail o zamknięciu z podsumowaniem.</li>
+              <li>„Awaria węzła SQL Server AlwaysOn” — licznik użyć +1, FA-123 na liście użyć artykułu.</li>
+              <li hidden data-nowy-skutek>Otwiera się nowy artykuł z tematem, podsumowaniem i sprzętem zgłoszenia. Nic nie zapisze się bez „Opublikuj”.</li>
+            </ul>
+          </section>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: NOWY ARTYKUL ================= -->
+      <section class="ekran" id="ekran-nowy">
+        <div class="page-head">
+          <div>
+            <h1>Nowy artykuł</h1>
+            <p class="muted">Zwykły formularz artykułu, otwarty ze zgłoszenia i wypełniony jego danymi. Technik poprawia i publikuje — albo porzuca, i nic nie zostaje zapisane.</p>
+          </div>
+          <div class="head-actions">
+            <button type="button" class="btn">Anuluj</button>
+            <button type="button" class="btn btn-primary" data-komunikat="Opublikowano — FA-123 widnieje na liście użyć nowego artykułu">Opublikuj</button>
+          </div>
+        </div>
+        <div class="kb-zrodlo">Na podstawie zgłoszenia <b>FA-123</b>. Wypełnione: tytuł (temat), streszczenie (podsumowanie zamknięcia), systemy (sprzęt zgłoszenia), treść (pierwsza wiadomość klienta i podsumowanie). Komentarze wewnętrzne i dane klienta <b>nie</b> są przenoszone.</div>
+        <div class="dwie">
+          <section class="panel">
+            <label for="n-tytul">Tytuł</label>
+            <input id="n-tytul" value="Nie działa system-a — Login timeout expired">
+            <label for="n-stres" style="margin-top: 12px;">Streszczenie</label>
+            <textarea id="n-stres" rows="2">Węzeł db02 przestał odpowiadać; baza została przełączona na db01.</textarea>
+            <label for="n-tresc" style="margin-top: 12px;">Treść</label>
+            <textarea id="n-tresc" class="edytor-pole">## Objawy
+
+System-a pokazuje „Login timeout expired”, użytkownicy nie mogą pracować.
+
+## Przyczyna
+
+Węzeł {hostname} nie odpowiada na porcie 5022.
+
+## Rozwiązanie
+
+Przełączenie bazy na drugi węzeł — patrz runbook
+„Awaria węzła SQL Server AlwaysOn”.
+
+## Zgłoszenia
+
+- FA-123 (23.09.2026)</textarea>
+          </section>
+          <section class="panel">
+            <h2>Dotyczy</h2>
+            <label>Systemy</label>
+            <div class="chips"><span class="chip">db02.example.local</span><span class="chip">system-a</span></div>
+            <p class="muted small" style="margin-top: 6px;">Sprzęt zgłoszenia dopisany sam. „system-a” pochodzi z tematu — technik może go usunąć.</p>
+            <label for="n-kat" style="margin-top: 12px;">Kategoria</label>
+            <select id="n-kat"><option selected>Rozwiązywanie problemów</option><option>Runbooki incydentów</option><option>Procedury operacyjne</option></select>
+            <label for="n-przestrzen" style="margin-top: 12px;">Przestrzeń</label>
+            <select id="n-przestrzen"><option>Bazy danych</option><option>Ogólna</option></select>
+          </section>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: ARTYKUL - UZYCIA ================= -->
+      <section class="ekran" id="ekran-artykul">
+        <div class="page-head">
+          <div>
+            <h1>Awaria węzła SQL Server AlwaysOn</h1>
+            <p class="muted">Strona artykułu. Nowy panel po prawej, poniżej „Dotyczy”.</p>
+          </div>
+        </div>
+        <div class="dwie">
+          <section class="panel">
+            <p class="muted">… treść artykułu bez zmian …</p>
+          </section>
+          <section class="panel">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+              <h2 style="margin: 0;">Pomógł w zgłoszeniach</h2>
+              <span class="badge badge-ok">14</span>
+            </div>
+            <ul class="uzycia">
+              <li><a href="#" data-ekran-link="zgloszenie">FA-123</a><span>Nie działa system-a</span><span class="muted">dziś · Łukasz</span></li>
+              <li><a href="#">FA-121</a><span>Kadry: błąd logowania</span><span class="muted">19.09 · Ewa</span></li>
+              <li><a href="#">FA-98</a><span>Wolna baza po aktualizacji</span><span class="muted">02.09 · Łukasz</span></li>
+            </ul>
+            <p class="muted small" style="margin: 8px 0 0;">Widzą tylko technicy z dostępem do helpdesku tej firmy. Artykuł, który od roku nic nie rozwiązał, to kandydat do przeglądu.</p>
+          </section>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: ZAKRES ================= -->
+      <section class="ekran" id="ekran-zakres">
+        <div class="page-head"><div><h1>Zakres i decyzje</h1><p class="muted">Co wchodzi, co zostaje na później i co trzeba ustalić.</p></div></div>
+        <div class="decyzje">
+          <div class="decyzja">
+            <h3>1. Lista artykułów w zgłoszeniu <span class="badge badge-ok">propozycja</span></h3>
+            <ul>
+              <li>Źródło: sprzęt podpięty do zgłoszenia (automat albo technik) i to samo dopasowanie co zakładka „Wiedza”. Bez nowych tabel.</li>
+              <li>Kilka urządzeń w zgłoszeniu: jedna lista, bez powtórzeń; przy artykule widać, którego sprzętu dotyczy.</li>
+              <li>Zgłoszenie bez sprzętu: sekcja z samym polem wyszukiwania.</li>
+            </ul>
+          </div>
+          <div class="decyzja">
+            <h3>2. „Pomógł” i licznik użyć <span class="badge badge-ok">propozycja</span></h3>
+            <ul>
+              <li>Nowa tabela powiązań zgłoszenie ↔ artykuł: kto i kiedy oznaczył. Oznaczenie można cofnąć.</li>
+              <li>Można dopiąć artykuł spoza listy (wyszukiwarka) — np. gdy sprzęt nie był podpięty.</li>
+              <li>Przy zamknięciu pole „Rozwiązane artykułem” podpowiada oznaczony artykuł; wybór tam też liczy się jako „pomógł”.</li>
+              <li>Na stronie artykułu panel „Pomógł w zgłoszeniach”, a na liście artykułów sortowanie po liczbie użyć.</li>
+            </ul>
+          </div>
+          <div class="decyzja">
+            <h3>3. Artykuł ze zgłoszenia <span class="badge badge-ok">propozycja</span></h3>
+            <ul>
+              <li>Nie ma szkiców zapisanych w bazie: otwiera się zwykły formularz „Nowy artykuł” z wypełnionymi polami. Zapis dopiero po „Opublikuj”.</li>
+              <li>Przenoszone: temat, podsumowanie zamknięcia, pierwsza wiadomość klienta, sprzęt. <b>Nie</b> przenoszone: komentarze wewnętrzne, adresy i dane klienta.</li>
+              <li>Opublikowany artykuł od razu ma to zgłoszenie na liście użyć.</li>
+              <li>Przycisk dostępny też bez zamykania — w panelu „Baza wiedzy”.</li>
+            </ul>
+          </div>
+          <div class="decyzja">
+            <h3>Widoczność <span class="badge badge-warn">zasada</span></h3>
+            <ul>
+              <li>Panel i liczniki widzą tylko technicy i superadmin. Nic z bazy wiedzy nie trafia automatycznie do maila do klienta ani do podsumowania zamknięcia.</li>
+              <li>Technik widzi artykuły tylko tej firmy, do której należy zgłoszenie — tak jak sprzęt.</li>
+            </ul>
+          </div>
+          <div class="decyzja">
+            <h3>Do decyzji</h3>
+            <ul>
+              <li>Czy pole „Rozwiązane artykułem” przy zamknięciu ma być, czy wystarczy przycisk „Pomógł” w trakcie pracy?</li>
+              <li>Czy pokazywać panel także w aplikacji na telefon (zgłoszenia technika)? Proponuję w drugim kroku.</li>
+              <li>Czy w treści artykułu ze zgłoszenia dopisywać numer zgłoszenia (sekcja „Zgłoszenia”), czy wystarczy lista użyć przy artykule?</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="footer">CMDB · makieta: baza wiedzy w helpdesku · wrzesień 2026</footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  var ekrany = document.querySelectorAll('.ekran');
+  var przyciski = document.querySelectorAll('[data-ekran]');
+  function pokaz(nazwa) {
+    ekrany.forEach(function (e) { e.classList.toggle('is-active', e.id === 'ekran-' + nazwa); });
+    przyciski.forEach(function (b) { b.classList.toggle('is-active', b.dataset.ekran === nazwa); });
+    window.scrollTo(0, 0);
+  }
+  przyciski.forEach(function (b) { b.addEventListener('click', function () { pokaz(b.dataset.ekran); }); });
+  document.querySelectorAll('[data-ekran-link]').forEach(function (a) {
+    a.addEventListener('click', function (ev) { ev.preventDefault(); pokaz(a.dataset.ekranLink); });
+  });
+
+  var toast = document.getElementById('toast'), zegar;
+  function komunikat(t) { toast.textContent = t; toast.hidden = false; clearTimeout(zegar); zegar = setTimeout(function () { toast.hidden = true; }, 2600); }
+  document.querySelectorAll('[data-komunikat]').forEach(function (b) { b.addEventListener('click', function () { komunikat(b.dataset.komunikat); }); });
+
+  // "Pomogl" - przelacza oznaczenie i licznik
+  document.querySelectorAll('[data-pomogl]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var art = b.closest('[data-art]'), licznik = art.querySelector('.kb-art-stopka span');
+      var wlacz = !art.classList.contains('pomogl');
+      art.classList.toggle('pomogl', wlacz);
+      var m = licznik.textContent.match(/(\d+)/), n = m ? Number(m[1]) : 0;
+      n += wlacz ? 1 : -1;
+      licznik.textContent = n > 0 ? 'pomógł w ' + n + (n === 1 ? ' zgłoszeniu' : ' zgłoszeniach') : 'nie użyty w zgłoszeniach';
+      b.textContent = wlacz ? '✓ Pomógł — cofnij' : 'Pomógł';
+      komunikat(wlacz ? 'Zapisano: artykuł pomógł w FA-123' : 'Cofnięto oznaczenie');
+    });
+  });
+
+  var nowy = document.getElementById('z-nowy'), skutek = document.querySelector('[data-nowy-skutek]');
+  nowy.addEventListener('change', function () { skutek.hidden = !nowy.checked; });
+  document.getElementById('z-zapisz').addEventListener('click', function () {
+    if (nowy.checked) { pokaz('nowy'); } else { komunikat('Zamknięto FA-123 — mail do klienta wysłany'); }
+  });
+
+  document.getElementById('motyw').addEventListener('click', function () {
+    var teraz = document.documentElement.getAttribute('data-theme');
+    var ciemny = teraz === 'dark' || (!teraz && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', ciemny ? 'light' : 'dark');
+  });
+})();
+</script>
