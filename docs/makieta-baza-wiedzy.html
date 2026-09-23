@@ -226,6 +226,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 3px; f
 .pr-inf { background: #2f6fd0; } .pr-win { background: #1c7f6b; } .pr-lin { background: #b06a1e; }
 .pr-db { background: #9a4f8e; } .pr-sie { background: #55499a; } .pr-glob { background: #5b6472; }
 
+.kb-streszczenie { font-size: 16px; color: var(--muted); max-width: 72ch; margin: -8px 0 16px; }
 .okruszki { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
 .okruszki a { color: var(--muted); }
 .kb-tytul { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
@@ -390,6 +391,7 @@ mark { background: color-mix(in srgb, var(--warn-fg) 28%, transparent); color: i
     <div class="nav-group-label">Baza wiedzy</div>
     <nav class="app-nav">
       <button type="button" class="app-nav-link is-active" data-ekran="start"><span class="nav-icon">⌂</span>Start i przestrzenie</button>
+      <button type="button" class="app-nav-link" data-ekran="artykuly"><span class="nav-icon">≡</span>Lista artykułów</button>
       <button type="button" class="app-nav-link" data-ekran="artykul"><span class="nav-icon">▤</span>Strona artykułu</button>
       <button type="button" class="app-nav-link" data-ekran="edytor"><span class="nav-icon">✎</span>Edytor i „Dotyczy”</button>
       <button type="button" class="app-nav-link" data-ekran="historia"><span class="nav-icon">↺</span>Historia wersji</button>
@@ -404,6 +406,7 @@ mark { background: color-mix(in srgb, var(--warn-fg) 28%, transparent); color: i
 
     <div class="nav-group-label">Makieta</div>
     <nav class="app-nav">
+      <button type="button" class="app-nav-link" data-ekran="model"><span class="nav-icon">⛁</span>Model danych</button>
       <button type="button" class="app-nav-link" data-ekran="zakres"><span class="nav-icon">✓</span>Zakres i decyzje</button>
     </nav>
 
@@ -417,19 +420,19 @@ mark { background: color-mix(in srgb, var(--warn-fg) 28%, transparent); color: i
     <header class="topbar">
       <div class="topbar-context">
         <span class="topbar-scope">Firma</span>
-        <strong>Bongo sp. z o.o.</strong>
+        <strong>Firma A</strong>
       </div>
       <div class="userbox">
         <input type="search" id="szybkie-szukanie" placeholder="Szukaj w bazie wiedzy…" style="width: 230px; padding: 5px 9px; font-size: 13px;">
         <button type="button" class="btn btn-small" id="motyw">motyw</button>
-        <span>admin@bongo.pl</span>
+        <span>admin@example.local</span>
       </div>
     </header>
 
     <main class="content">
       <div class="makieta-pasek">
         <strong>Makieta</strong>
-        <span>Sam wygląd, bez działającego serwera. Dane są przykładowe. Klikalne: menu, przestrzenie, artykuły, kontekst maszyny, reguły „Dotyczy” w edytorze, wersje w historii.</span>
+        <span>Sam wygląd, bez działającego serwera. Dane są przykładowe i generyczne (<code>*.example.local</code>, <code>system-a</code>). Klikalne: menu, przestrzenie, artykuły, kontekst maszyny, reguły „Dotyczy” w edytorze, wersje w historii.</span>
       </div>
 
       <!-- ================= EKRAN: START ================= -->
@@ -476,8 +479,8 @@ mark { background: color-mix(in srgb, var(--warn-fg) 28%, transparent); color: i
             <h2>Ostatnio zmienione</h2>
             <ul class="lista-art">
               <li><span class="rodzaj rodzaj-runbook">Runbook</span><a href="#" data-ekran-link="artykul">Awaria węzła SQL Server AlwaysOn</a><span class="muted">dziś 09:14 · ŁM</span></li>
-              <li><span class="rodzaj rodzaj-problem">Problem</span><a href="#" data-ekran-link="artykul">KB5034439 nie instaluje się (0x80070643)</a><span class="muted">wczoraj · EK</span></li>
-              <li><span class="rodzaj rodzaj-opis">Opis</span><a href="#" data-ekran-link="artykul">sql-prod-02 — notatki hosta</a><span class="muted">19.09 · WN</span></li>
+              <li><span class="rodzaj rodzaj-problem">Troubleshooting</span><a href="#" data-ekran-link="artykul">KB5034439 nie instaluje się (0x80070643)</a><span class="muted">wczoraj · EK</span></li>
+              <li><span class="rodzaj rodzaj-opis">Architektura</span><a href="#" data-ekran-link="artykul">db02.example.local — notatki hosta</a><span class="muted">19.09 · WN</span></li>
               <li><span class="rodzaj rodzaj-procedura">Procedura</span><a href="#" data-ekran-link="artykul">Dodanie Raspberry Pi do CMDB</a><span class="muted">17.09 · WN</span></li>
             </ul>
           </div>
@@ -543,17 +546,21 @@ mark { background: color-mix(in srgb, var(--warn-fg) 28%, transparent); color: i
             </div>
             <div class="kb-meta">
               <span class="rodzaj rodzaj-runbook">Runbook</span>
+              <span class="status st-danger">PROD</span>
+              <span class="status st-warn">priorytet wysoki</span>
               <span class="status st-ok">aktualny</span>
               <span>wersja 7 · zmienił <b>Łukasz Mazur</b> dziś 09:14</span>
               <span>· przegląd do 23.03.2027</span>
               <span>· 4 min czytania</span>
             </div>
 
+            <p class="kb-streszczenie">Ręczne przełączenie grupy dostępności AG-A na drugi węzeł, gdy automatyczne nie zadziałało. Dla dyżuru poza godzinami pracy.</p>
+
             <div class="kontekst">
               <span>Czytasz w kontekście maszyny</span>
               <select id="kontekst-maszyny">
-                <option value="sql-prod-02" selected>sql-prod-02</option>
-                <option value="sql-prod-01">sql-prod-01</option>
+                <option value="db02.example.local" selected>db02.example.local</option>
+                <option value="db01.example.local">db01.example.local</option>
                 <option value="">— bez kontekstu —</option>
               </select>
               <span class="muted small">Pola <span class="zmienna">{hostname}</span> w poleceniach wypełniają się danymi z CMDB.</span>
@@ -563,36 +570,36 @@ mark { background: color-mix(in srgb, var(--warn-fg) 28%, transparent); color: i
               <div class="makro makro-stop"><b>Zanim zaczniesz</b>Przełączenie ręczne tylko wtedy, gdy automatyczne nie zadziałało w ciągu 2 minut. Przy dwóch żywych węzłach grozi rozjazdem danych.</div>
 
               <h2>Objawy</h2>
-              <p>Monitorowanie zgłasza <code>sql-listener:1433</code> jako niedostępny, a na karcie maszyny <span class="ctx-host">sql-prod-02</span> nie ma raportu od ponad 15 minut. Aplikacje zwracają błąd <code>Login timeout expired</code>.</p>
+              <p>Monitorowanie zgłasza <code>system-a:1433</code> jako niedostępny, a na karcie maszyny <span class="ctx-host">db02.example.local</span> nie ma raportu od ponad 15 minut. Aplikacje zwracają błąd <code>Login timeout expired</code>.</p>
 
               <h2>Postępowanie</h2>
               <ol class="kroki">
-                <li>Sprawdź, który węzeł jest głównym. Zaloguj się na drugi węzeł (<span class="ctx-partner">sql-prod-01</span>) i uruchom:
-                  <div class="kod"><button type="button" class="btn btn-small kod-kopiuj" data-komunikat="Skopiowano polecenie">Kopiuj</button><pre>Get-ClusterGroup -Cluster SQLCL-PROD | ft Name, OwnerNode, State
-Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022</pre></div>
+                <li>Sprawdź, który węzeł jest głównym. Zaloguj się na drugi węzeł (<span class="ctx-partner">db01.example.local</span>) i uruchom:
+                  <div class="kod"><button type="button" class="btn btn-small kod-kopiuj" data-komunikat="Skopiowano polecenie">Kopiuj</button><pre>Get-ClusterGroup -Cluster CLUSTER-A | ft Name, OwnerNode, State
+Test-NetConnection <span class="zmienna ctx-host">db02.example.local</span> -Port 5022</pre></div>
                 </li>
-                <li>Jeśli <span class="ctx-host">sql-prod-02</span> nie odpowiada na porcie 5022, wymuś przełączenie z utratą danych tylko po zgodzie właściciela aplikacji:
-                  <div class="kod"><button type="button" class="btn btn-small kod-kopiuj" data-komunikat="Skopiowano polecenie">Kopiuj</button><pre>ALTER AVAILABILITY GROUP [AG-PROD] FORCE_FAILOVER_ALLOW_DATA_LOSS;</pre></div>
+                <li>Jeśli <span class="ctx-host">db02.example.local</span> nie odpowiada na porcie 5022, wymuś przełączenie z utratą danych tylko po zgodzie właściciela aplikacji:
+                  <div class="kod"><button type="button" class="btn btn-small kod-kopiuj" data-komunikat="Skopiowano polecenie">Kopiuj</button><pre>ALTER AVAILABILITY GROUP [AG-A] FORCE_FAILOVER_ALLOW_DATA_LOSS;</pre></div>
                 </li>
-                <li>Załóż zgłoszenie w helpdesku i powiąż je z maszyną <span class="ctx-host">sql-prod-02</span>. Czas przełączenia wpisz w zgłoszeniu.</li>
+                <li>Załóż zgłoszenie w helpdesku i powiąż je z maszyną <span class="ctx-host">db02.example.local</span>. Czas przełączenia wpisz w zgłoszeniu.</li>
                 <li>Po powrocie węzła wznów synchronizację: <code>ALTER DATABASE [Kadry] SET HADR RESUME;</code></li>
               </ol>
 
               <div class="makro makro-info"><b>Dane z CMDB</b>
-                <span class="ctx-host">sql-prod-02</span> · Windows Server 2019 Standard (17763) · SQL Server 2019 CU27 · Serwerownia A, szafa R4 · opiekun <b>Łukasz Mazur</b></div>
+                <span class="ctx-host">db02.example.local</span> · Windows Server 2019 Standard (17763) · SQL Server 2019 CU27 · Serwerownia A, szafa R4 · opiekun <b>Łukasz Mazur</b></div>
 
               <h2>Kontakty</h2>
               <table>
                 <tr><th>Rola</th><th>Kto</th><th>Kiedy dzwonić</th></tr>
-                <tr><td>Właściciel aplikacji Kadry</td><td>Anna Wiśniewska, 600 123 456</td><td>przed FORCE_FAILOVER</td></tr>
-                <tr><td>Wsparcie Microsoft</td><td>umowa Premier 7731-22</td><td>gdy węzeł nie wraca po 1 h</td></tr>
+                <tr><td>Właściciel aplikacji Kadry</td><td>Anna Kowalska, +48 000 000 000</td><td>przed FORCE_FAILOVER</td></tr>
+                <tr><td>Wsparcie Microsoft</td><td>umowa wsparcia nr 0000-00</td><td>gdy węzeł nie wraca po 1 h</td></tr>
               </table>
 
               <div class="stopka-artykulu">
                 <span>Czy ten artykuł pomógł?</span>
                 <button type="button" class="btn btn-small" data-komunikat="Dziękujemy, zapisane">Tak</button>
                 <button type="button" class="btn btn-small" data-komunikat="Autor dostanie komentarz, co poprawić">Nie, coś jest nieaktualne</button>
-                <span style="margin-left: auto;">Użyty 14 razy w zgłoszeniach · <a href="#">BON-98</a>, <a href="#">BON-121</a></span>
+                <span style="margin-left: auto;">Użyty 14 razy w zgłoszeniach · <a href="#">FA-98</a>, <a href="#">FA-121</a></span>
               </div>
             </div>
           </article>
@@ -600,15 +607,16 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
           <aside class="dotyczy-kolumna">
             <div class="panel dotyczy">
               <h3>Dotyczy <span class="badge">reguła</span></h3>
-              <div class="regula"><span class="regula-pole">nazwa hosta</span><span class="wartosc">sql-prod-*</span></div>
+              <div class="regula"><span class="regula-pole">nazwa hosta</span><span class="wartosc">db0*.example.local</span></div>
               <div class="regula"><span class="lacznik">i</span><span class="regula-pole">oprogramowanie</span><span class="wartosc">Microsoft SQL Server 2019</span></div>
-              <div class="regula"><span class="lacznik">lub wprost</span><span class="wartosc">sql-listener (aplikacja)</span></div>
+              <div class="regula"><span class="lacznik">lub systemy</span><span class="wartosc">system-a</span><span class="wartosc">db03.example.local</span></div>
               <div class="podglad-trafien">
-                <div style="display: flex; align-items: baseline; gap: 8px;"><span class="licznik-trafien">3</span><span class="muted small">maszyny pasują teraz</span></div>
+                <div style="display: flex; align-items: baseline; gap: 8px;"><span class="licznik-trafien">4</span><span class="muted small">maszyny pasują teraz</span></div>
                 <div class="trafienia">
-                  <a href="#" data-ekran-link="maszyna">sql-prod-01 <span class="muted">reguła</span></a>
-                  <a href="#" data-ekran-link="maszyna">sql-prod-02 <span class="muted">reguła</span></a>
-                  <a href="#" data-ekran-link="maszyna">sql-listener <span class="muted">wprost</span></a>
+                  <a href="#" data-ekran-link="maszyna">db01.example.local <span class="muted">reguła</span></a>
+                  <a href="#" data-ekran-link="maszyna">db02.example.local <span class="muted">reguła</span></a>
+                  <a href="#" data-ekran-link="maszyna">db03.example.local <span class="muted">system = FQDN</span></a>
+                  <a href="#" data-ekran-link="maszyna">system-a <span class="muted">system = aplikacja w CMDB</span></a>
                 </div>
               </div>
             </div>
@@ -616,22 +624,29 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
             <div class="panel">
               <h3>Szczegóły</h3>
               <dl class="kv">
+                <dt>Kategoria</dt><dd>Runbooki incydentów</dd>
+                <dt>Środowisko</dt><dd>PROD</dd>
+                <dt>Priorytet</dt><dd>wysoki</dd>
                 <dt>Właściciel</dt><dd>Łukasz Mazur</dd>
                 <dt>Przestrzeń</dt><dd>Bazy danych</dd>
                 <dt>Widoczność</dt><dd>cała firma</dd>
                 <dt>Utworzony</dt><dd>04.11.2025, WN</dd>
                 <dt>Przegląd</dt><dd>co 6 mies., do 23.03.2027</dd>
               </dl>
-              <h3 style="margin-top: 12px;">Etykiety</h3>
+              <h3 style="margin-top: 12px;">Tagi</h3>
               <div class="etykiety"><span class="etykieta">sql</span><span class="etykieta">klaster</span><span class="etykieta">dyżur</span><span class="etykieta">kadry</span></div>
             </div>
 
             <div class="panel">
               <h3>Załączniki</h3>
               <ul class="lista-art small">
-                <li><a href="#">schemat-AG-PROD.png</a><span class="muted">212 KB</span></li>
+                <li><a href="#">schemat-AG-A.png</a><span class="muted">212 KB</span></li>
                 <li><a href="#">failover-checklist.pdf</a><span class="muted">88 KB</span></li>
               </ul>
+              <dl class="kv" style="margin-top: 8px;">
+                <dt>Załączniki</dt><dd class="small">Checklista do wydruku, trzymana też w szafie R4.</dd>
+                <dt>Diagram</dt><dd class="small">Źródło: diagrams/ag-a.drawio, eksport PNG powyżej.</dd>
+              </dl>
             </div>
 
             <div class="panel">
@@ -672,11 +687,13 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
               <button type="button" title="Treść jest też dostępna jako Markdown">Markdown</button>
             </div>
             <div class="pole-edycji">
-              <input class="tytul-edycji" id="tytul" value="Awaria węzła SQL Server AlwaysOn — przełączenie ręczne" aria-label="Tytuł">
+              <input class="tytul-edycji" id="tytul" maxlength="200" value="Awaria węzła SQL Server AlwaysOn — przełączenie ręczne" aria-label="Tytuł">
+              <label for="streszczenie">Streszczenie (na liście i w wynikach wyszukiwania, do 500 znaków)</label>
+              <textarea id="streszczenie" rows="2" maxlength="500" style="margin-bottom: 16px;">Ręczne przełączenie grupy dostępności AG-A na drugi węzeł, gdy automatyczne nie zadziałało. Dla dyżuru poza godzinami pracy.</textarea>
               <div class="kb-tresc edytowalne" contenteditable="true">
                 <div class="makro makro-stop"><b>Zanim zaczniesz</b>Przełączenie ręczne tylko wtedy, gdy automatyczne nie zadziałało w ciągu 2 minut.</div>
                 <h2>Objawy</h2>
-                <p>Monitorowanie zgłasza <code>sql-listener:1433</code> jako niedostępny…</p>
+                <p>Monitorowanie zgłasza <code>system-a:1433</code> jako niedostępny…</p>
                 <h2>Postępowanie</h2>
                 <ol class="kroki">
                   <li>Sprawdź, który węzeł jest głównym…
@@ -700,7 +717,7 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
                 <div class="regula-edycja">
                   <select aria-label="pole"><option selected>nazwa hosta</option><option>system</option><option>oprogramowanie</option><option>rodzaj</option><option>lokalizacja</option><option>etykieta zasobu</option><option>opiekun</option></select>
                   <select aria-label="warunek"><option selected>pasuje do</option><option>równa się</option><option>zawiera</option><option>nie pasuje</option></select>
-                  <input aria-label="wartość" value="sql-prod-*">
+                  <input aria-label="wartość" value="db0*.example.local">
                   <button type="button" class="usun" data-usun aria-label="Usuń warunek">×</button>
                 </div>
                 <div class="regula-edycja">
@@ -712,18 +729,20 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
               </div>
               <button type="button" class="btn btn-small" id="dodaj-regule">+ warunek</button>
 
-              <h3 style="margin-top: 14px;">Wskazane wprost</h3>
+              <h3 style="margin-top: 14px;">Systemy</h3>
+              <p class="muted small">Nazwy jak w hubzso, z podpowiedziami ze słownika. Nazwa równa nazwie hosta, FQDN albo aplikacji w CMDB (bez względu na wielkość liter) wiąże artykuł z tą maszyną. Nazwa spoza CMDB zostaje zwykłą etykietą.</p>
               <div class="domeny">
-                <span class="domena">sql-listener <button type="button" aria-label="usuń">×</button></span>
-                <button type="button" class="domena domena-dodaj">+ maszyna</button>
+                <span class="domena">system-a <button type="button" aria-label="usuń">×</button></span>
+                <span class="domena">db03.example.local <button type="button" aria-label="usuń">×</button></span>
+                <button type="button" class="domena domena-dodaj">+ system</button>
               </div>
 
               <div class="podglad-trafien">
-                <div style="display: flex; align-items: baseline; gap: 8px;"><span class="licznik-trafien" id="licznik-trafien">3</span><span class="muted small" id="opis-trafien">maszyny pasują teraz</span></div>
+                <div style="display: flex; align-items: baseline; gap: 8px;"><span class="licznik-trafien" id="licznik-trafien">4</span><span class="muted small" id="opis-trafien">maszyny pasują teraz</span></div>
                 <div class="trafienia" id="lista-trafien">
-                  <a href="#">sql-prod-01 <span class="muted">Win 2019 · SQL 2019</span></a>
-                  <a href="#">sql-prod-02 <span class="muted">Win 2019 · SQL 2019</span></a>
-                  <a href="#">sql-listener <span class="muted">wprost</span></a>
+                  <a href="#">db01.example.local <span class="muted">Win 2019 · SQL 2019</span></a>
+                  <a href="#">db02.example.local <span class="muted">Win 2019 · SQL 2019</span></a>
+                  <a href="#">system-a <span class="muted">wprost</span></a>
                 </div>
               </div>
             </div>
@@ -732,19 +751,24 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
               <h3>Szablon</h3>
               <div class="szablony">
                 <button type="button" class="szablon is-active"><b>Runbook</b><span class="muted">objawy, kroki, eskalacja</span></button>
-                <button type="button" class="szablon"><b>Problem</b><span class="muted">błąd, przyczyna, rozwiązanie</span></button>
+                <button type="button" class="szablon"><b>Troubleshooting</b><span class="muted">błąd, przyczyna, rozwiązanie</span></button>
                 <button type="button" class="szablon"><b>Procedura</b><span class="muted">kiedy, kto, kroki</span></button>
-                <button type="button" class="szablon"><b>Opis</b><span class="muted">architektura, notatki hosta</span></button>
+                <button type="button" class="szablon"><b>Architektura</b><span class="muted">opis systemu, notatki hosta</span></button>
               </div>
             </div>
 
             <div class="panel">
               <h3>Ustawienia</h3>
               <div class="filtry" style="flex-direction: column; align-items: stretch;">
+                <div><label for="e-kategoria">Kategoria *</label><select id="e-kategoria"><option>Procedury operacyjne</option><option>Rozwiązywanie problemów</option><option selected>Runbooki incydentów</option><option>Dokumentacja architektoniczna</option><option>Monitoring i alerty</option><option>Bezpieczeństwo</option><option>Wdrożenia</option></select></div>
+                <div><label for="e-srodowisko">Środowisko</label><select id="e-srodowisko"><option>— nie dotyczy —</option><option selected>PROD</option><option>DEV-TEST</option></select></div>
+                <div><label for="e-priorytet">Priorytet *</label><select id="e-priorytet"><option>krytyczny</option><option selected>wysoki</option><option>normalny</option><option>niski</option></select></div>
                 <div><label for="e-przestrzen">Przestrzeń i strona nadrzędna</label><select id="e-przestrzen"><option>Bazy danych / SQL Server / Runbooki</option></select></div>
                 <div><label for="e-wlasciciel">Właściciel</label><select id="e-wlasciciel"><option>Łukasz Mazur</option><option>Władek Nowak</option><option>Ewa Kruk</option></select></div>
                 <div><label for="e-przeglad">Przegląd co</label><select id="e-przeglad"><option>3 miesiące</option><option selected>6 miesięcy</option><option>12 miesięcy</option><option>bez przeglądu</option></select></div>
-                <div><label for="e-etykiety">Etykiety</label><input id="e-etykiety" value="sql, klaster, dyżur, kadry"></div>
+                <div><label for="e-etykiety">Tagi (podpowiedzi ze słownika, nowe dopisują się same)</label><input id="e-etykiety" value="sql, klaster, dyżur, kadry"></div>
+                <div><label for="e-zal">Opis załączników</label><input id="e-zal" value="Checklista do wydruku, trzymana też w szafie R4."></div>
+                <div><label for="e-diagram">Diagram: opis lub źródło</label><input id="e-diagram" value="diagrams/ag-a.drawio"></div>
                 <div><label class="przelacznik-etapu" style="margin: 0;" for="e-dyzur"><input type="checkbox" id="e-dyzur" checked> przypnij na dyżur</label></div>
               </div>
             </div>
@@ -764,12 +788,13 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
         <div class="dwie-kolumny" style="grid-template-columns: minmax(0, 360px) minmax(0, 1fr);">
           <div class="panel">
             <table class="table">
-              <thead><tr><th>Wer.</th><th>Kiedy / kto</th><th>Opis</th></tr></thead>
+              <thead><tr><th>Wer.</th><th>Kiedy / kto</th><th>Zmienione pola</th></tr></thead>
               <tbody>
-                <tr><td class="lp"><b>7</b></td><td>dziś 09:14<br><span class="muted small">Łukasz Mazur</span></td><td class="small">Krok 4: dopisana baza Płace</td></tr>
-                <tr><td class="lp">6</td><td>02.09.2026<br><span class="muted small">Łukasz Mazur</span></td><td class="small">„Dotyczy”: dołożone sql-listener</td></tr>
-                <tr><td class="lp">5</td><td>14.06.2026<br><span class="muted small">Ewa Kruk</span></td><td class="small">Przegląd — bez zmian treści</td></tr>
-                <tr><td class="lp">4</td><td>20.03.2026<br><span class="muted small">Władek Nowak</span></td><td class="small">Nowy numer umowy Premier</td></tr>
+                <tr><td class="lp"><b>7</b></td><td>dziś 09:14<br><span class="muted small">Łukasz Mazur</span></td><td class="small"><span class="etykieta">treść</span><br>Krok 4: dopisana baza Płace</td></tr>
+                <tr><td class="lp">6</td><td>02.09.2026<br><span class="muted small">Łukasz Mazur</span></td><td class="small"><span class="etykieta">systemy</span><br>dołożone system-a</td></tr>
+                <tr><td class="lp">5</td><td>14.06.2026<br><span class="muted small">Ewa Kruk</span></td><td class="small"><span class="etykieta">załączniki</span><br>usunięty stary-schemat.png (plik skasowany z dysku)</td></tr>
+                <tr><td class="lp">4</td><td>20.03.2026<br><span class="muted small">Władek Nowak</span></td><td class="small"><span class="etykieta">tytuł</span> <span class="etykieta">priorytet</span><br>Doprecyzowany tytuł, wyższy priorytet</td></tr>
+                <tr><td class="lp">—</td><td>14.06.2026<br><span class="muted small">Ewa Kruk</span></td><td class="small muted">Zapis bez zmian: wersja nie powstała</td></tr>
               </tbody>
             </table>
           </div>
@@ -789,7 +814,15 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
               <div class="kon">  </div>
               <div class="kon">  ## Kontakty</div>
             </div>
-            <p class="muted small" style="margin-top: 10px;">Zmiany w „Dotyczy” i w ustawieniach też są wersjonowane i pokazują się tu osobnymi wierszami.</p>
+            <h3 style="margin-top: 16px;">Wersja 4: pola proste</h3>
+            <div class="panel-scroll"><table class="table">
+              <thead><tr><th>Pole</th><th>Było</th><th>Jest</th></tr></thead>
+              <tbody>
+                <tr><td>tytuł</td><td><span class="diff" style="border: 0; display: inline;"><span class="usu" style="padding: 0 3px;">Awaria węzła SQL AlwaysOn</span></span></td><td><span class="diff" style="border: 0; display: inline;"><span class="dod" style="padding: 0 3px;">Awaria węzła SQL Server AlwaysOn — przełączenie ręczne</span></span></td></tr>
+                <tr><td>priorytet</td><td>normalny</td><td>wysoki</td></tr>
+              </tbody>
+            </table></div>
+            <p class="muted small" style="margin-top: 10px;">Treść porównuje się linia po linii (powyżej), pola proste jako „było / jest”. Zapis, który niczego nie zmienia, nie tworzy wersji.</p>
           </div>
         </div>
       </section>
@@ -800,18 +833,18 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
         <div class="filtry">
           <div class="szukajka" style="flex: 1 1 320px;"><label for="q">Szukaj</label><input id="q" type="search" value="failover sql" style="width: 100%;"></div>
           <div><label for="s-przestrzen">Przestrzeń</label><select id="s-przestrzen"><option>wszystkie</option><option>Bazy danych</option><option>Windows</option></select></div>
-          <div><label for="s-rodzaj">Rodzaj</label><select id="s-rodzaj"><option>wszystkie</option><option>Runbook</option><option>Problem</option><option>Procedura</option><option>Opis</option></select></div>
-          <div><label for="s-maszyna">Dotyczy maszyny</label><input id="s-maszyna" placeholder="np. sql-prod-02"></div>
+          <div><label for="s-rodzaj">Kategoria</label><select id="s-rodzaj"><option>wszystkie</option><option>Procedury operacyjne</option><option>Rozwiązywanie problemów</option><option>Runbooki incydentów</option><option>Dokumentacja architektoniczna</option><option>Monitoring i alerty</option><option>Bezpieczeństwo</option><option>Wdrożenia</option></select></div>
+          <div><label for="s-maszyna">Dotyczy maszyny</label><input id="s-maszyna" placeholder="np. db02.example.local"></div>
         </div>
         <div class="panel">
           <p class="muted small">3 wyniki</p>
           <div class="wynik">
             <div class="wynik-tytul"><a href="#" data-ekran-link="artykul">Awaria węzła <mark>SQL</mark> Server AlwaysOn — przełączenie ręczne</a> <span class="rodzaj rodzaj-runbook">Runbook</span></div>
             <div class="wynik-sciezka">Bazy danych / SQL Server / Runbooki · dotyczy 3 maszyn</div>
-            <div class="wynik-fragment">…wymuś przełączenie z utratą danych tylko po zgodzie właściciela: ALTER AVAILABILITY GROUP [AG-PROD] FORCE_<mark>FAILOVER</mark>_ALLOW_DATA_LOSS…</div>
+            <div class="wynik-fragment">…wymuś przełączenie z utratą danych tylko po zgodzie właściciela: ALTER AVAILABILITY GROUP [AG-A] FORCE_<mark>FAILOVER</mark>_ALLOW_DATA_LOSS…</div>
           </div>
           <div class="wynik">
-            <div class="wynik-tytul"><a href="#" data-ekran-link="artykul">Architektura klastra PROD</a> <span class="rodzaj rodzaj-opis">Opis</span></div>
+            <div class="wynik-tytul"><a href="#" data-ekran-link="artykul">Architektura klastra PROD</a> <span class="rodzaj rodzaj-opis">Architektura</span></div>
             <div class="wynik-sciezka">Bazy danych / SQL Server</div>
             <div class="wynik-fragment">…dwa węzły <mark>SQL</mark> w trybie synchronicznym, <mark>failover</mark> automatyczny przy utracie świadka…</div>
           </div>
@@ -827,7 +860,7 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
       <section class="ekran" id="ekran-maszyna">
         <div class="page-head">
           <div>
-            <h1>sql-prod-02</h1>
+            <h1>db02.example.local</h1>
             <p class="muted">Windows Server 2019 Standard · 10.10.4.22 · Serwerownia A, szafa R4 · opiekun Łukasz Mazur</p>
           </div>
         </div>
@@ -849,20 +882,20 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
             <thead><tr><th>Artykuł</th><th>Rodzaj</th><th>Dlaczego tutaj</th><th>Stan</th></tr></thead>
             <tbody>
               <tr>
-                <td><a href="#" data-ekran-link="artykul">sql-prod-02 — notatki hosta</a></td>
-                <td><span class="rodzaj rodzaj-opis">Opis</span></td>
+                <td><a href="#" data-ekran-link="artykul">db02.example.local — notatki hosta</a></td>
+                <td><span class="rodzaj rodzaj-opis">Architektura</span></td>
                 <td><span class="powod">wskazana wprost</span></td>
                 <td><span class="status st-ok">aktualny</span></td>
               </tr>
               <tr>
                 <td><a href="#" data-ekran-link="artykul">Awaria węzła SQL Server AlwaysOn</a></td>
                 <td><span class="rodzaj rodzaj-runbook">Runbook</span></td>
-                <td><span class="powod">host <b>sql-prod-*</b></span> <span class="powod">oprogramowanie <b>SQL Server 2019</b></span></td>
+                <td><span class="powod">host <b>db0*.example.local</b></span> <span class="powod">oprogramowanie <b>SQL Server 2019</b></span></td>
                 <td><span class="status st-ok">aktualny</span></td>
               </tr>
               <tr>
                 <td><a href="#" data-ekran-link="artykul">KB5034439 nie instaluje się (0x80070643)</a></td>
-                <td><span class="rodzaj rodzaj-problem">Problem</span></td>
+                <td><span class="rodzaj rodzaj-problem">Troubleshooting</span></td>
                 <td><span class="powod">system <b>Windows Server 2019</b></span></td>
                 <td><span class="status st-ok">aktualny</span></td>
               </tr>
@@ -875,7 +908,7 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
             </tbody>
           </table>
         </div>
-        <div class="makro makro-info"><b>To samo w helpdesku</b>Zgłoszenie powiązane z sql-prod-02 pokazuje w panelu bocznym te same 4 artykuły. Technik może zaznaczyć „ten artykuł rozwiązał problem”, co zwiększa licznik użyć artykułu.</div>
+        <div class="makro makro-info"><b>To samo w helpdesku</b>Zgłoszenie powiązane z db02.example.local pokazuje w panelu bocznym te same 4 artykuły. Technik może zaznaczyć „ten artykuł rozwiązał problem”, co zwiększa licznik użyć artykułu.</div>
       </section>
 
       <!-- ================= EKRAN: LISTA ZASOBOW ================= -->
@@ -888,13 +921,118 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
           <table class="table">
             <thead><tr><th>Nazwa</th><th>System</th><th>Lokalizacja</th><th>Opiekun</th><th class="lp">Ostatni raport</th></tr></thead>
             <tbody>
-              <tr><td><a href="#" data-ekran-link="maszyna">sql-prod-01</a><span class="ikona-wiedzy" title="3 artykuły">3</span></td><td>Windows Server 2019</td><td>Serwerownia A</td><td>Łukasz Mazur</td><td class="lp">4 min temu</td></tr>
-              <tr><td><a href="#" data-ekran-link="maszyna">sql-prod-02</a><span class="ikona-wiedzy" title="4 artykuły">4</span></td><td>Windows Server 2019</td><td>Serwerownia A</td><td>Łukasz Mazur</td><td class="lp">22 min temu</td></tr>
-              <tr><td><a href="#" data-ekran-link="maszyna">web-01</a><span class="ikona-wiedzy" title="2 artykuły">2</span></td><td>Ubuntu 24.04</td><td>Serwerownia A</td><td>Władek Nowak</td><td class="lp">1 h temu</td></tr>
-              <tr><td><a href="#" data-ekran-link="maszyna">rpi-czujnik-3</a></td><td>Raspberry Pi OS 12</td><td>Magazyn</td><td>—</td><td class="lp">3 h temu</td></tr>
-              <tr><td><a href="#" data-ekran-link="maszyna">LAP-KSIEG-07</a><span class="ikona-wiedzy" title="1 artykuł">1</span></td><td>Windows 11 Pro</td><td>pokój 214</td><td>Ewa Kruk</td><td class="lp">wczoraj</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">db01.example.local</a><span class="ikona-wiedzy" title="3 artykuły">3</span></td><td>Windows Server 2019</td><td>Serwerownia A</td><td>Łukasz Mazur</td><td class="lp">4 min temu</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">db02.example.local</a><span class="ikona-wiedzy" title="4 artykuły">4</span></td><td>Windows Server 2019</td><td>Serwerownia A</td><td>Łukasz Mazur</td><td class="lp">22 min temu</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">web01.example.local</a><span class="ikona-wiedzy" title="2 artykuły">2</span></td><td>Ubuntu 24.04</td><td>Serwerownia A</td><td>Władek Nowak</td><td class="lp">1 h temu</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">rpi03.example.local</a></td><td>Raspberry Pi OS 12</td><td>Magazyn</td><td>—</td><td class="lp">3 h temu</td></tr>
+              <tr><td><a href="#" data-ekran-link="maszyna">pc07.example.local</a><span class="ikona-wiedzy" title="1 artykuł">1</span></td><td>Windows 11 Pro</td><td>pokój 214</td><td>Ewa Kruk</td><td class="lp">wczoraj</td></tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+
+      <!-- ================= EKRAN: LISTA ARTYKULOW ================= -->
+      <section class="ekran" id="ekran-artykuly">
+        <div class="page-head">
+          <div>
+            <h1>Artykuły</h1>
+            <p class="muted">Płaska lista wszystkich artykułów firmy, z filtrami jak w hubzso. Link z ikony przy hoście otwiera ją przefiltrowaną po tym systemie.</p>
+          </div>
+          <div class="head-actions"><button type="button" class="btn btn-primary" data-ekran-link="edytor">+ Nowy artykuł</button></div>
+        </div>
+        <div class="filtry">
+          <div class="szukajka"><label for="a-tytul">Tytuł</label><input id="a-tytul" type="search" placeholder="fragment tytułu"></div>
+          <div><label for="a-kat">Kategoria</label><select id="a-kat"><option>wszystkie</option><option>Procedury operacyjne</option><option>Rozwiązywanie problemów</option><option>Runbooki incydentów</option><option>Dokumentacja architektoniczna</option><option>Monitoring i alerty</option><option>Bezpieczeństwo</option><option>Wdrożenia</option></select></div>
+          <div><label for="a-sr">Środowisko</label><select id="a-sr"><option>wszystkie</option><option>PROD</option><option>DEV-TEST</option></select></div>
+          <div><label for="a-tag">Tag</label><input id="a-tag" list="podpowiedzi-tagow" placeholder="np. klaster"></div>
+          <div><label for="a-sys">System</label><input id="a-sys" value="db02.example.local"></div>
+          <datalist id="podpowiedzi-tagow"><option value="klaster"></option><option value="dyżur"></option><option value="restart"></option><option value="sql"></option></datalist>
+        </div>
+        <div class="panel panel-scroll">
+          <p class="muted small">4 artykuły dotyczą <b>db02.example.local</b> (po systemie albo regule) · <a href="#">wyczyść filtr</a></p>
+          <table class="table">
+            <thead><tr><th>Tytuł</th><th>Kategoria</th><th>Środ.</th><th>Priorytet</th><th>Tagi</th><th>Systemy</th><th class="lp">Zmiana</th></tr></thead>
+            <tbody>
+              <tr><td><a href="#" data-ekran-link="artykul"><b>Awaria węzła SQL Server AlwaysOn</b></a><br><span class="muted small">Ręczne przełączenie AG-A na drugi węzeł.</span></td><td><span class="rodzaj rodzaj-runbook">Runbook</span></td><td><span class="status st-danger">PROD</span></td><td>wysoki</td><td><div class="etykiety"><span class="etykieta">sql</span><span class="etykieta">klaster</span></div></td><td><div class="etykiety"><span class="etykieta">system-a</span><span class="etykieta">db03.example.local</span></div></td><td class="lp">dziś</td></tr>
+              <tr><td><a href="#" data-ekran-link="artykul"><b>db02.example.local — notatki hosta</b></a><br><span class="muted small">Konfiguracja nietypowa: dysk logów na osobnej macierzy.</span></td><td><span class="rodzaj rodzaj-opis">Architektura</span></td><td><span class="status st-danger">PROD</span></td><td>normalny</td><td><div class="etykiety"><span class="etykieta">sql</span></div></td><td><div class="etykiety"><span class="etykieta">db02.example.local</span></div></td><td class="lp">19.09</td></tr>
+              <tr><td><a href="#" data-ekran-link="artykul"><b>KB5034439 nie instaluje się (0x80070643)</b></a><br><span class="muted small">Za mała partycja odzyskiwania, obejście i skrypt.</span></td><td><span class="rodzaj rodzaj-problem">Troubleshooting</span></td><td>—</td><td>normalny</td><td><div class="etykiety"><span class="etykieta">aktualizacje</span></div></td><td class="muted">reguła: system</td><td class="lp">wczoraj</td></tr>
+              <tr><td><a href="#" data-ekran-link="artykul"><b>Zanik zasilania w Serwerowni A</b></a><br><span class="muted small">Kolejność wyłączania i włączania, UPS, agregat.</span></td><td><span class="rodzaj rodzaj-runbook">Runbook</span></td><td><span class="status st-danger">PROD</span></td><td>krytyczny</td><td><div class="etykiety"><span class="etykieta">zasilanie</span><span class="etykieta">dyżur</span></div></td><td class="muted">reguła: lokalizacja</td><td class="lp">02.08</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= EKRAN: MODEL DANYCH ================= -->
+      <section class="ekran" id="ekran-model">
+        <div class="page-head"><div><h1>Model danych</h1><p class="muted">Propozycja zapisu w PostgreSQL. W hubzso cały artykuł, łącznie z historią, był jednym dokumentem JSONB. Tu stan bieżący jest w kolumnach, powiązania w tabelach, a historia osobno.</p></div></div>
+        <div class="dwie-kolumny" style="grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);">
+          <div class="panel panel-scroll">
+            <h2>Tabele</h2>
+            <div class="kod"><pre>wiedza_przestrzenie   id, tenant_id, nazwa, skrot, kolejnosc
+
+wiedza_artykuly       <b>stan bieżący</b>
+  id, tenant_id, przestrzen_id, rodzic_id, kolejnosc
+  tytul         varchar(200)  NOT NULL
+  streszczenie  varchar(500)  NOT NULL
+  tresc         text          NOT NULL   -- Markdown
+  kategoria     varchar(32)   NOT NULL   -- lista stała, CHECK
+  srodowisko    varchar(16)             -- production / test / NULL
+  priorytet     varchar(16)   NOT NULL   -- lista stała, CHECK
+  notatki_zalacznikow, notatki_diagramu  text
+  dotyczy       jsonb         -- reguła [{pole, warunek, wartosc}]
+  wlasciciel_id, przeglad_co_mies, przeglad_do, na_dyzur
+  wersja        int           -- numer bieżącej wersji
+  usuniety_o, usunal          -- soft delete
+  szukaj        tsvector GENERATED (tytuł A, streszczenie B, treść C) + GIN
+
+wiedza_tagi           artykul_id, wpis_id -> slowniki (kategoria 'tag_wiedzy')
+wiedza_systemy        artykul_id, wpis_id -> slowniki (kategoria 'system')
+                      + indeks na lower(wartosc) do łączenia z hostname/fqdn
+wiedza_zalaczniki     id, artykul_id, nazwa_oryginalna, plik, rozmiar,
+                      sha256, dodal, dodany_o
+
+wiedza_wersje         <b>historia</b>
+  artykul_id, wersja            PRIMARY KEY
+  kiedy, kto, operacja          -- utworzenie / zmiana / usuniecie / przywrocenie
+  opis_zmiany
+  zmiany        jsonb   -- {pole: {old, new}} tylko dla pól prostych
+  tresc_przed   text    -- tylko gdy zmieniła się treść
+</pre></div>
+          </div>
+          <div class="panel">
+            <h2>Dlaczego tak</h2>
+            <ul class="lista-art">
+              <li><span><b>Lista czyta tylko to, co pokazuje.</b> Tytuł, kategoria i streszczenie to kolumny. Lista nie wczytuje treści ani historii, więc duży runbook z 50 wersjami jej nie spowalnia.</span></li>
+              <li><span><b>Historia osobno, jak w zaleceniach.</b> <code>zmiany</code> ma format hubzso <code>{pole: {old, new}}</code>, ale tylko dla pól prostych. Dla treści zapisujemy <b>raz</b> tekst sprzed zmiany (nowy jest w następnej wersji albo w artykule). W hubzso każda zmiana treści wpisywała całe old i new do tego samego wiersza.</span></li>
+              <li><span><b>Wersja tylko przy realnej różnicy.</b> Serwer porównuje stan przed i po zapisie, pole po polu. Brak różnic oznacza brak wiersza. Zmiana jednego pola to wersja z jednym kluczem w <code>zmiany</code>.</span></li>
+              <li><span><b>Tagi i systemy w słowniku firmy.</b> CMDB już ma słowniki z podpowiedziami, dopisywaniem nowych wartości i porównaniem bez wielkości liter. Powiązanie jest kluczem obcym, a nie napisem w JSON-ie.</span></li>
+              <li><span><b>Kategoria, środowisko, priorytet</b> jako stałe listy w kodzie z <code>CHECK</code> w bazie, jak <code>RELATION_KINDS</code>. Wartość spoza listy odrzuca serwer, nie tylko formularz.</span></li>
+              <li><span><b>Treść w Markdown, render po stronie serwera</b> z wyłączonym surowym HTML. Tag, tytuł i treść z <code>&lt;script&gt;</code> zawsze wychodzą jako tekst. Markdown jest czytelny w porównaniu wersji i w kopii zapasowej.</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="panel panel-scroll">
+          <h2>Znane problemy hubzso i odpowiedź</h2>
+          <table class="table">
+            <thead><tr><th class="lp">#</th><th>Problem w hubzso</th><th>Tutaj</th></tr></thead>
+            <tbody>
+              <tr><td class="lp">1</td><td><code>environment</code> gubione przy tworzeniu</td><td>jedna funkcja zapisu dla tworzenia i edycji, test na każde pole</td></tr>
+              <tr><td class="lp">2</td><td>martwa trasa <code>POST /create</code></td><td>trasy jak w reszcie panelu: formularz GET, zapis POST, bez duplikatów</td></tr>
+              <tr><td class="lp">3</td><td>plik załącznika zostaje na dysku</td><td>jeden katalog załączników jak w helpdesku; usunięcie kasuje plik, metadane i dopisuje wersję</td></tr>
+              <tr><td class="lp">4</td><td>XSS w tagach na liście</td><td>Jinja z autoescape, bez surowego HTML; Markdown bez HTML</td></tr>
+              <tr><td class="lp">5</td><td>brak ról na trasach</td><td><code>ctx.can_write</code> na każdej trasie zapisu: viewer i audytor dostają 403</td></tr>
+              <tr><td class="lp">6</td><td>twarde usuwanie</td><td>soft delete + wersja „usunięcie”; przywrócenie możliwe</td></tr>
+              <tr><td class="lp">7</td><td>historia w tym samym JSON-ie</td><td>tabela <code>wiedza_wersje</code>, treść sprzed zmiany zapisana raz</td></tr>
+              <tr><td class="lp">8</td><td>relacja do nieistniejącej tabeli</td><td>nie przenosimy</td></tr>
+              <tr><td class="lp">9</td><td>brak limitów i list wartości</td><td>limity w kolumnach i walidacji, <code>CHECK</code> na listach</td></tr>
+              <tr><td class="lp">10</td><td>szukanie tylko po tytule</td><td><code>tsvector</code> z tytułu, streszczenia, treści i tagów, z <code>unaccent</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel">
+          <h2>„Nazwy → linki” w CMDB</h2>
+          <p class="small">W hubzso front wysyłał nazwy hostów z bieżącej strony i dostawał te, które mają artykuł. Tu lista zasobów liczy to przy renderowaniu, <b>jednym zapytaniem</b> dla całej strony: artykuły z systemem równym <code>lower(hostname)</code> albo <code>lower(fqdn)</code> plus artykuły, których reguła pasuje. Ten sam kontrakt (lista nazw → mapa nazwa → adres) zostaje też jako trasa JSON dla aplikacji mobilnej i innych modułów.</p>
         </div>
       </section>
 
@@ -905,12 +1043,10 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
           <div class="decyzja">
             <h3>Model danych <span class="badge badge-ok">propozycja</span></h3>
             <ul>
-              <li><b>Przestrzeń → strony w drzewie</b> (jak w Confluence). Strona ma rodzica, kolejność i rodzaj: runbook, problem, procedura, opis.</li>
-              <li><b>Artykuł i jego wersje w osobnych tabelach.</b> Każda publikacja to wiersz wersji: treść, tytuł, reguły, autor, opis zmiany. Inaczej niż w hubzso, gdzie cały artykuł był jednym dokumentem JSONB bez historii.</li>
-              <li><b>Treść w Markdown z rozszerzeniami</b>: panele info/uwaga/stop, kroki, pola <span class="zmienna">{hostname}</span>. Jest czytelna w diffie i w kopii zapasowej, a w edytorze da się pisać jak w Confluence.</li>
-              <li><b>„Dotyczy” jako reguła w JSONB plus lista maszyn wskazanych wprost.</b> Dopasowanie liczy się przy odczycie z kolumn zasobu i z oprogramowania w ostatnim raporcie, więc nowa maszyna pasuje od pierwszego raportu, bez zadania w tle.</li>
-              <li>Etykiety, załączniki (jak w helpdesku, na dysku serwera), komentarze, ocena „pomógł / nieaktualne”, właściciel i termin przeglądu.</li>
-              <li>Wyszukiwanie: PostgreSQL <code>tsvector</code> z <code>unaccent</code>, bez dodatkowej usługi.</li>
+              <li>Szczegóły na ekranie <a href="#" data-ekran-link="model">Model danych</a>: stan bieżący w kolumnach, tagi i systemy w słowniku firmy, historia w osobnej tabeli w formacie hubzso <code>{pole: {old, new}}</code>.</li>
+              <li><b>Przestrzeń → strony w drzewie</b> (jak w Confluence), a obok płaska lista z filtrami hubzso.</li>
+              <li><b>„Dotyczy” = systemy + reguła.</b> Systemy to nazwy jak w hubzso: nazwa równa hostowi, FQDN albo aplikacji w CMDB wiąże artykuł z maszyną. Reguła dokłada dopasowanie po systemie, oprogramowaniu, lokalizacji i wzorcu nazwy.</li>
+              <li>Załączniki (limit w konfiguracji, domyślnie 16 MB), komentarze, ocena „pomógł / nieaktualne”, właściciel i termin przeglądu.</li>
             </ul>
           </div>
           <div class="decyzja">
@@ -939,10 +1075,10 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
             </ul>
           </div>
           <div class="decyzja">
-            <h3>Z założeń hubzso <span class="badge">uwaga</span></h3>
+            <h3>Priorytety <span class="badge badge-warn">do decyzji</span></h3>
             <ul>
-              <li>Wklejony opis urwał się na części 2 (schemat SQL). Brakuje części 3–8, w tym <b>znanych problemów</b> i <b>kryteriów akceptacji</b>. Jeśli je masz, wklej, a uzupełnię makietę.</li>
-              <li>Z tego, co doszło, przejmuję cel (runbooki na dyżur), słowniki tagów z podpowiedziami i ikonę przy hoście na liście.</li>
+              <li>W hubzso lista priorytetów była tylko w widoku, którego nie ma w repo. Na makiecie: <b>krytyczny, wysoki, normalny, niski</b>. Czy tak?</li>
+              <li>Kategorie (7) i środowiska (PROD, DEV-TEST) są przejęte 1:1 z pkt 2.2. Kody zostają angielskie (<code>runbooks</code>, <code>production</code>), więc import z hubzso nie wymaga tłumaczenia.</li>
             </ul>
           </div>
         </div>
@@ -972,7 +1108,7 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
   });
 
   // Kontekst maszyny - podstawia hostname w tresci artykulu
-  var partner = { 'sql-prod-02': 'sql-prod-01', 'sql-prod-01': 'sql-prod-02' };
+  var partner = { 'db02.example.local': 'db01.example.local', 'db01.example.local': 'db02.example.local' };
   document.getElementById('kontekst-maszyny').addEventListener('change', function (ev) {
     var host = ev.target.value;
     document.querySelectorAll('.ctx-host').forEach(function (el) { el.textContent = host || '{hostname}'; });
@@ -981,14 +1117,14 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
 
   // Reguly "Dotyczy" - przyklad przeliczania trafien
   var MASZYNY = [
-    { h: 'sql-prod-01', os: 'Windows Server 2019', sw: 'Microsoft SQL Server 2019', lok: 'Serwerownia A', rodzaj: 'komputer' },
-    { h: 'sql-prod-02', os: 'Windows Server 2019', sw: 'Microsoft SQL Server 2019', lok: 'Serwerownia A', rodzaj: 'komputer' },
-    { h: 'sql-test-01', os: 'Windows Server 2022', sw: 'Microsoft SQL Server 2022', lok: 'Serwerownia B', rodzaj: 'vm' },
-    { h: 'web-01', os: 'Ubuntu 24.04', sw: 'nginx', lok: 'Serwerownia A', rodzaj: 'komputer' },
-    { h: 'web-02', os: 'Ubuntu 24.04', sw: 'nginx', lok: 'Serwerownia A', rodzaj: 'vm' },
-    { h: 'dc-01', os: 'Windows Server 2019', sw: 'Active Directory', lok: 'Serwerownia A', rodzaj: 'komputer' },
-    { h: 'LAP-KSIEG-07', os: 'Windows 11 Pro', sw: 'Microsoft Office', lok: 'pokój 214', rodzaj: 'komputer' },
-    { h: 'rpi-czujnik-3', os: 'Raspberry Pi OS 12', sw: 'python3', lok: 'Magazyn', rodzaj: 'komputer' }
+    { h: 'db01.example.local', os: 'Windows Server 2019', sw: 'Microsoft SQL Server 2019', lok: 'Serwerownia A', rodzaj: 'komputer' },
+    { h: 'db02.example.local', os: 'Windows Server 2019', sw: 'Microsoft SQL Server 2019', lok: 'Serwerownia A', rodzaj: 'komputer' },
+    { h: 'dbtest01.example.local', os: 'Windows Server 2022', sw: 'Microsoft SQL Server 2022', lok: 'Serwerownia B', rodzaj: 'vm' },
+    { h: 'web01.example.local', os: 'Ubuntu 24.04', sw: 'nginx', lok: 'Serwerownia A', rodzaj: 'komputer' },
+    { h: 'web02.example.local', os: 'Ubuntu 24.04', sw: 'nginx', lok: 'Serwerownia A', rodzaj: 'vm' },
+    { h: 'dc01.example.local', os: 'Windows Server 2019', sw: 'Active Directory', lok: 'Serwerownia A', rodzaj: 'komputer' },
+    { h: 'pc07.example.local', os: 'Windows 11 Pro', sw: 'Microsoft Office', lok: 'pokój 214', rodzaj: 'komputer' },
+    { h: 'rpi03.example.local', os: 'Raspberry Pi OS 12', sw: 'python3', lok: 'Magazyn', rodzaj: 'komputer' }
   ];
   var POLE = { 'nazwa hosta': 'h', 'system': 'os', 'oprogramowanie': 'sw', 'lokalizacja': 'lok', 'rodzaj': 'rodzaj' };
   function wzorzec(w) { return new RegExp('^' + w.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$', 'i'); }
@@ -1011,8 +1147,10 @@ Test-NetConnection <span class="zmienna ctx-host">sql-prod-02</span> -Port 5022<
       var a = document.createElement('a'); a.href = '#';
       a.innerHTML = m.h + ' <span class="muted">' + m.os + '</span>'; lista.appendChild(a);
     });
-    var a = document.createElement('a'); a.href = '#'; a.innerHTML = 'sql-listener <span class="muted">wprost</span>'; lista.appendChild(a);
-    var n = trafione.length + 1;
+    ['db03.example.local', 'system-a'].forEach(function (nazwa) {
+      var a = document.createElement('a'); a.href = '#'; a.innerHTML = nazwa + ' <span class="muted">system</span>'; lista.appendChild(a);
+    });
+    var n = trafione.length + 2;
     document.getElementById('licznik-trafien').textContent = n;
     document.getElementById('opis-trafien').textContent = (n === 1 ? 'maszyna pasuje' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'maszyny pasują' : 'maszyn pasuje')) + ' teraz';
   }
