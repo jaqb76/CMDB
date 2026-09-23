@@ -1344,3 +1344,82 @@ button.nav-group-label:focus-visible { outline: 2px solid var(--accent); outline
 .mapa-legenda { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
 .mapa-legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .mapa-pasek select { width: auto; min-width: 240px; max-width: 100%; }
+
+/* Mapa relacji - przelacznik widokow i widok "grupy". */
+.mapa-widoki { display: flex; gap: 4px; margin: -4px 0 12px; border-bottom: 1px solid var(--border); }
+.mapa-widoki a { padding: 7px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.mapa-widoki a:hover { color: var(--text); text-decoration: none; }
+.mapa-widoki a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+:root {
+  --mg-ok: #3f9a4f; --mg-bez: #e08a1e; --mg-wyl: #9aa2ad; --mg-bad: #d23b3b;
+  --mg-krawedz: #a9c3ab; --mg-krawedz-host: #8b93a0; --mg-dim: #dde1e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="jasny"]) {
+    --mg-ok: #5cc26d; --mg-bez: #f0a33c; --mg-wyl: #6b7380; --mg-bad: #f06161;
+    --mg-krawedz: #3f5f47; --mg-krawedz-host: #58606d; --mg-dim: #262b33;
+  }
+}
+:root[data-theme="ciemny"] {
+  --mg-ok: #5cc26d; --mg-bez: #f0a33c; --mg-wyl: #6b7380; --mg-bad: #f06161;
+  --mg-krawedz: #3f5f47; --mg-krawedz-host: #58606d; --mg-dim: #262b33;
+}
+.mg-pasek { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.mg-pasek input[type=search] { width: auto; min-width: 240px; max-width: 100%; }
+.mg-filtry { display: inline-flex; gap: 10px; flex-wrap: wrap; color: var(--muted); }
+.mg-filtry label, .mg-pasek > label { display: inline-flex; gap: 5px; align-items: center; }
+.mg-uklad { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; height: min(75vh, 860px); min-height: 480px; }
+@media (max-width: 900px) { .mg-uklad { grid-template-columns: 1fr; height: auto; } .mg-plotno { height: 70vh; } }
+.mg-plotno { position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); cursor: grab; touch-action: none; }
+.mg-plotno.mg-ciagnie { cursor: grabbing; }
+.mg-plotno svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mg-zoom { position: absolute; right: 10px; top: 10px; display: grid; gap: 4px; }
+.mg-zoom .btn { width: 32px; justify-content: center; }
+.mg-bok { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 10px;
+  align-content: start; overflow: auto; background: var(--surface); }
+.mg-bok h3 { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 16px; word-break: break-word; }
+.mg-kafle { display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 6px; }
+.mg-kafel { background: var(--bg); border-radius: var(--radius); padding: 8px 10px; }
+.mg-kafel b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.mg-kafel span { font-size: 11.5px; color: var(--muted); }
+.mg-kropka { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.mg-k-ok { background: var(--mg-ok); } .mg-k-bez { background: var(--mg-bez); }
+.mg-k-wyl { background: var(--mg-wyl); } .mg-k-bad { background: var(--mg-bad); }
+.mg-kr { fill: none; stroke: var(--mg-krawedz); stroke-width: 1.1; }
+.mg-kr.mg-host { stroke: var(--mg-krawedz-host); stroke-width: 2; }
+.mg-kr.mg-host-vm { stroke: var(--mg-krawedz-host); stroke-width: 1.4; }
+.mg-kr.mg-bez { stroke: var(--mg-bez); stroke-opacity: .7; }
+.mg-kr.mg-wyl { stroke: var(--mg-wyl); stroke-opacity: .7; }
+.mg-kr.mg-app { stroke: var(--mapa-app); stroke-dasharray: 4 3; stroke-opacity: .6; }
+.mg-kr.mg-dim { stroke: var(--mg-dim); stroke-opacity: 1; }
+.mg-kr.mg-sciezka { stroke: var(--accent); stroke-width: 3; stroke-opacity: 1; }
+.mg-w { cursor: pointer; }
+.mg-w .mg-ramka { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
+.mg-w .mg-pas { stroke: none; fill: var(--mg-wyl); }
+.mg-w text { fill: var(--text); font-size: 11px; pointer-events: none; }
+.mg-klaster .mg-ramka { stroke: var(--mapa-klaster); stroke-width: 2; }
+.mg-host .mg-ramka { stroke: var(--mapa-host); stroke-width: 1.6; }
+.mg-klaster text, .mg-host text { font-size: 12.5px; font-weight: 600; }
+.mg-klaster .mg-pas { fill: var(--mapa-klaster); } .mg-host .mg-pas { fill: var(--mapa-host); }
+.mg-aplikacja .mg-pas { fill: var(--mapa-app); }
+.mg-ok .mg-pas { fill: var(--mg-ok); } .mg-bez .mg-pas { fill: var(--mg-bez); }
+.mg-wyl .mg-pas { fill: var(--mg-wyl); } .mg-bad .mg-pas { fill: var(--mg-bad); }
+.mg-wyl text { fill: var(--muted); }
+.mg-sztuczny .mg-ramka { stroke-dasharray: 5 3; }
+.mg-wycofany text { text-decoration: line-through; }
+.mg-licznik { fill: var(--muted); font-weight: 400; font-size: 10.5px; }
+.mg-w.mg-dim { opacity: .16; }
+.mg-w.mg-zaznaczony .mg-ramka { stroke: var(--accent); stroke-width: 3; }
+.mg-zwiniety .mg-ramka { stroke-dasharray: 4 3; }
+.mg-w:focus-visible .mg-ramka { stroke: var(--accent); stroke-width: 3; }
+/* Z daleka maszyny bez napisow - sam kolor stanu. */
+svg[data-lod="daleko"] .mg-vm text { display: none; }
+svg[data-lod="daleko"] .mg-ok .mg-ramka { fill: var(--mg-ok); stroke: none; }
+svg[data-lod="daleko"] .mg-bez .mg-ramka { fill: var(--mg-bez); stroke: none; }
+svg[data-lod="daleko"] .mg-wyl .mg-ramka { fill: var(--mg-wyl); stroke: none; }
+svg[data-lod="daleko"] .mg-bad .mg-ramka { fill: var(--mg-bad); stroke: none; }
+.mapa-legenda i.mg-l-klaster { background: var(--mapa-klaster); } .mapa-legenda i.mg-l-host { background: var(--mapa-host); }
+.mapa-legenda i.mg-l-ok { background: var(--mg-ok); } .mapa-legenda i.mg-l-bez { background: var(--mg-bez); }
+.mapa-legenda i.mg-l-wyl { background: var(--mg-wyl); } .mapa-legenda i.mg-l-bad { background: var(--mg-bad); }
+.mapa-legenda i.mg-l-app { background: var(--mapa-app); }

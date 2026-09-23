@@ -70,13 +70,27 @@ oprogramowania. Karta każdej maszyny ma sekcję **Wirtualizacja**.
 ## Mapa relacji
 
 **Relacje i zależności → Pokaż na mapie** (albo „Pokaż na mapie relacji” na karcie
-zasobu) rysuje łańcuch klaster → host → VM/serwer → aplikacja. Kliknięcie
-dowolnego elementu przenosi na niego punkt widzenia, a przełącznik kierunku
-pokazuje, co na nim stoi (↓), na czym on stoi (↑) albo jedno i drugie. Panel
-obok liczy zasięg awarii — ile VM i aplikacji ucierpi, gdy ten element padnie —
-i oznacza ⚠ maszyny bez agenta CMDB. Adres zawiera wybrany zasób i kierunek,
-więc widok da się komuś wysłać. Mapa tylko pokazuje: relacje dodaje się
-i usuwa w tabeli.
+zasobu). Są dwa widoki tych samych danych:
+
+- **Widok: grupy** (domyślny) pokazuje całą infrastrukturę naraz. Każdy host to
+  zwarta grupa: blok hosta, a pod nim jego maszyny w kolumnach. Grupy układają
+  się w rzędy pod klastrem, a szerokość rzędów dobiera się do proporcji okna
+  i przelicza przy każdej zmianie rozmiaru. Linie prowadzą jak w schemacie
+  organizacyjnym, wyłącznie wewnątrz grupy, więc **nie przecinają się**.
+  Kolor paska bloku to stan maszyny: z agentem CMDB, bez agenta, wyłączona
+  (według Nutanixa) albo agent milczy (dłużej niż próg „bez kontaktu” firmy).
+  Z daleka widać same kolory, a po przybliżeniu nazwy. Kółko myszy przybliża,
+  przeciąganie przesuwa widok, kliknięcie hosta najeżdża na jego grupę i liczy
+  zasięg awarii, dwuklik zwija hosta. Wyszukiwarka i filtry stanu działają na
+  całej mapie. Aplikacje są domyślnie ukryte, bo jedna aplikacja na kilku
+  hostach to jedyne źródło przecięć linii.
+- **Widok: ścieżka** pokazuje jeden zasób w kolumnach klaster → host → VM/serwer
+  → aplikacja, z przełącznikiem kierunku: co na nim stoi (↓), na czym stoi (↑)
+  albo jedno i drugie.
+
+Hosty bez relacji do klastra trafiają do grupy „Bez klastra”, a maszyny bez
+hosta do grupy „Bez hosta”. Adres zawiera wybrany zasób, więc widok da się
+komuś wysłać. Mapa tylko pokazuje: relacje dodaje się i usuwa w tabeli.
 
 ## Maszyna wirtualna z agentem: jedna karta, nie dwie
 
