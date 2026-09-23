@@ -15,6 +15,8 @@
       {% if asset.lokalizacja %} &middot; <a href="/slowniki/wpis/{{ asset.lokalizacja.id }}">{{ asset.lokalizacja.wartosc }}</a>{% endif %}
       {% if asset.zrodlo == 'reczne' %}
         &middot; wpis ręczny, dodany {{ asset.first_seen | dt }}
+      {% elif asset.zrodlo == 'nutanix' %}
+        &middot; odczytany z Nutanix Prism Central, ostatnio {{ asset.last_seen | ago }}
       {% else %}
         &middot; {{ asset.fqdn or asset.hostname }}
         {% if asset.domain %} &middot; domena {{ asset.domain }}{% endif %}
@@ -37,7 +39,13 @@
 </div>
 
 {% if not snapshot %}
-  {% if asset.zrodlo == 'reczne' %}
+  {% if asset.zrodlo == 'nutanix' %}
+    <div class="alert">
+      Wpis z odczytu Nutanix Prism Central — w tej maszynie nie ma agenta CMDB,
+      więc system, oprogramowanie i podatności pozostają puste. Po instalacji
+      agenta odczyt sam połączy się z jego kartą.
+    </div>
+  {% elif asset.zrodlo == 'reczne' %}
     <div class="alert">
       Sprzęt wpisany ręcznie - nie ma na nim agenta, więc system operacyjny,
       oprogramowanie i podatności pozostają puste. Wszystko, co o nim wiadomo,
@@ -62,7 +70,7 @@
 </form>
 {% endif %}</div>
 {% endif %}
-<p><a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakość danych</a>{% if asset.zrodlo != 'reczne' %} · <a href="/assets/{{ asset.id }}?funkcja=skaner#agent">Skaner sieci</a>{% endif %}</p>
+<p><a href="/relacje?asset_id={{ asset.id }}">Relacje tego zasobu</a> · <a href="/jakosc">Jakość danych</a>{% if asset.zrodlo == 'agent' %} · <a href="/assets/{{ asset.id }}?funkcja=skaner#agent">Skaner sieci</a>{% endif %}</p>
 {% if collector_errors %}
   <div class="alert alert-warn">
     <b>Kolektory zgłosiły błędy ({{ collector_errors | length }}):</b>
@@ -294,7 +302,7 @@
     Dziesiec zakladek, z ktorych siedem jest trwale pustych, nie informuje -
     kaze zgadywac, czy czegos brakuje, czy tak ma byc.
   #}
-  {% set z_agentem = asset.zrodlo != 'reczne' %}
+  {% set z_agentem = asset.zrodlo == 'agent' %}
   <div class="tab-buttons">
     <button type="button" class="tab-button is-active" data-tab="overview">Przegląd</button>
     {% if z_agentem %}<button type="button" class="tab-button" data-tab="hardware">Sprzęt</button>{% endif %}
@@ -316,6 +324,7 @@
   </div>
 
   <section class="tab-panel is-active" data-panel="overview">
+    {% if wirtualizacja %}{% include "_wirtualizacja_karta.html" %}{% endif %}
     <div class="grid-2">
       {# Bez agenta caly ten panel to same kreski - i to na zawsze, bo nie ma
          czego czekac. Zamiast niego pokazujemy to, co o wpisie recznym

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Wirtualizacja - CMDB{% endblock %}
+{% block content %}
+<h1>Wirtualizacja</h1>
+<p class="muted">
+  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central przez agentów
+  z włączoną funkcją „Nutanix Prism Central” (karta maszyny → Agent → Dodatkowe funkcjonalności).
+  Kolumna „Agent CMDB” pokazuje, które maszyny wirtualne nie są objęte inwentaryzacją oprogramowania.
+</p>
+
+{% if czytniki %}
+<section class="panel">
+  <h2>Źródła odczytu</h2>
+  <table class="table">
+    <thead><tr><th>Agent</th><th>Prism Central</th><th>Stan</th><th>Ostatni odczyt</th></tr></thead>
+    <tbody>
+    {% for c in czytniki %}{% set u = c.ustawienia %}
+      <tr>
+        <td><a href="/assets/{{ c.asset.id }}?funkcja=nutanix#agent">{{ c.asset.hostname }}</a></td>
+        <td class="small">{{ u.adres or '—' }}</td>
+        <td>
+          {% if not u.wlaczona %}<span class="badge">wyłączony</span>
+          {% elif u.odczyt_o and not u.odczyt_ok %}<span class="badge badge-danger">błąd</span>
+          {% elif c.milczy %}<span class="badge badge-warn">brak odczytu</span>
+          {% else %}<span class="badge badge-ok">działa</span>{% endif %}
+        </td>
+        <td class="small">{% if u.odczyt_o %}{{ u.odczyt_o | ago }}{% if not u.odczyt_ok %} — {{ (u.odczyt_blad or '')[:120] }}{% endif %}{% else %}<span class="muted">jeszcze nie było</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if not drzewo %}
+<section class="panel">
+  <p>Nie ma jeszcze danych z Prism Central.</p>
+  <p class="muted">Włącz odczyt na karcie maszyny, która widzi Prism Central:
+    <b>Agent → Dodatkowe funkcjonalności → Nutanix Prism Central</b>.
+    Pierwszy odczyt pojawi się po najbliższym sprawdzeniu konfiguracji przez agenta.</p>
+</section>
+{% endif %}
+
+{% macro wiersz_vm(v) %}{% set d = v.obiekt.dane or {} %}
+  <tr class="wirt-vm">
+    <td>{% if v.asset %}<a href="/assets/{{ v.asset.id }}">{{ v.obiekt.nazwa or v.obiekt.ext_id }}</a>{% else %}{{ v.obiekt.nazwa }}{% endif %}</td>
+    <td>{% if d.stan == 'ON' %}<span class="badge badge-ok">włączona</span>{% elif d.stan == 'OFF' %}<span class="badge">wyłączona</span>{% elif d.stan %}<span class="badge">{{ d.stan | lower }}</span>{% endif %}</td>
+    <td class="small">{% if v.z_agentem %}{{ v.asset.os_name or d.system or '' }}{% else %}{{ d.system or '' }}{% if d.system %} <span class="muted">(wg Nutanix)</span>{% endif %}{% endif %}</td>
+    <td class="num">{% if d.gniazda or d.rdzenie_na_gniazdo %}{{ (d.gniazda or 1) * (d.rdzenie_na_gniazdo or 1) }}{% endif %}</td>
+    <td class="num">{{ d.ram_bajty | bytes if d.ram_bajty else '' }}</td>
+    <td>{% if v.z_agentem %}<span class="badge badge-ok">jest</span>{% else %}<span class="badge badge-warn">brak</span>{% endif %}</td>
+    <td class="small">{{ v.asset.owner.wartosc if v.asset and v.asset.owner else '—' }}</td>
+  </tr>
+{% endmacro %}
+
+{% for k in drzewo %}
+<section class="panel">
+  <h2>{% if k.obiekt %}{% if k.asset %}<a href="/assets/{{ k.asset.id }}">{{ k.obiekt.nazwa }}</a>{% else %}{{ k.obiekt.nazwa }}{% endif %}
+      {% if k.obiekt.dane.wersja %}<span class="muted small">AOS {{ k.obiekt.dane.wersja }}</span>{% endif %}
+    {% else %}Bez przypisanego klastra{% endif %}</h2>
+  <table class="table wirt-drzewo">
+    <thead><tr><th>Nazwa</th><th>Stan</th><th>System</th><th class="num">vCPU</th><th class="num">RAM</th><th>Agent CMDB</th><th>Opiekun</th></tr></thead>
+    <tbody>
+    {% for h in k.hosty.values() %}{% set hd = h.obiekt.dane or {} %}
+      <tr class="wirt-host">
+        <td colspan="7">
+          {% if h.asset %}<a href="/assets/{{ h.asset.id }}">{{ h.obiekt.nazwa }}</a>{% else %}{{ h.obiekt.nazwa }}{% endif %}
+          <span class="muted small">{% if hd.model %}· {{ hd.model }} {% endif %}{% if hd.ram_bajty %}· {{ hd.ram_bajty | bytes }} {% endif %}· {{ h.vm | length }} VM</span>
+        </td>
+      </tr>
+      {% for v in h.vm %}{{ wiersz_vm(v) }}{% endfor %}
+    {% endfor %}
+    {% if k.bez_hosta %}
+      <tr class="wirt-host"><td colspan="7">Bez hosta <span class="muted small">(zwykle wyłączone maszyny)</span></td></tr>
+      {% for v in k.bez_hosta %}{{ wiersz_vm(v) }}{% endfor %}
+    {% endif %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+{% endblock %}

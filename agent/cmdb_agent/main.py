@@ -361,6 +361,13 @@ def _wypisz_monitorowanie(monitoring: dict) -> None:
               f", pominiete {monitoring['pominieto']}")
     if monitoring.get("ostatni_blad"):
         print(f"blad monitorowania   : {monitoring['ostatni_blad']}")
+    nutanix = monitoring.get("nutanix") or {}
+    if nutanix.get("wlaczony") or nutanix.get("ostatni_blad"):
+        odczyt = nutanix.get("ostatni_odczyt_o")
+        print(f"odczyt Nutanix       : "
+              f"{status.format_local(odczyt) + ' (' + status.format_relative(odczyt) + ')' if odczyt else '-'}")
+        if nutanix.get("ostatni_blad"):
+            print(f"blad odczytu Nutanix : {nutanix['ostatni_blad']}")
 
     lista = monitoring.get("lista") or []
     if not lista:

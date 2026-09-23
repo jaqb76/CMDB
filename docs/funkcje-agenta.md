@@ -20,9 +20,9 @@ Dziś dodatkowe funkcjonalności to:
 |---|---|---|
 | Sieć | Skaner sieci | osobna strona „Polityka skanowania” |
 | Sieć | Monitorowanie usług | sekcja „Ta maszyna sprawdza” na przeglądzie karty |
+| Wirtualizacja | Nutanix Prism Central | nowa — [`nutanix.md`](nutanix.md) |
 
-Kolejne funkcje (np. odczyt Nutanix Prism Central) dochodzą jako kolejne
-podzakładki. Menu panelu i rząd zakładek karty się nie zmieniają — funkcji
+Kolejne funkcje dochodzą jako kolejne podzakładki. Menu panelu i rząd zakładek karty się nie zmieniają — funkcji
 będzie przybywać, a zakładek karty i tak jest już sporo.
 
 Podzakładka to zwykły adres, np. `/assets/<id>?funkcja=skaner#agent`, więc da
@@ -60,7 +60,8 @@ choć konfiguracja się nie zmieniła.
 
 Lista sprzętu ma filtr **„każda funkcja agenta”**. Wybranie funkcji zostawia
 na liście maszyny, na których jest włączona — np. wszystkie skanery sieci
-w firmie. Adres: `/assets?funkcja=skaner` albo `/assets?funkcja=monitorowanie`.
+w firmie. Adres: `/assets?funkcja=skaner`, `/assets?funkcja=monitorowanie`
+albo `/assets?funkcja=nutanix`.
 
 ## Uprawnienia
 

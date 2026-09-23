@@ -66,7 +66,7 @@ from ..security import (
     verify_password,
 )
 from ..services import (
-    changes, cve, duplicates, funkcje_agenta, logowanie, mobilna, monitoring, pakiet, qr,
+    changes, cve, duplicates, funkcje_agenta, logowanie, mobilna, monitoring, nutanix, pakiet, qr,
     rodzaje, scoping, slowniki, upgrades, ustawienia,
 )
 from ..services import schemat as definicje_pol
@@ -1005,6 +1005,7 @@ def asset_detail(
     ukryte: str = Query("", max_length=500),
     blad: str = Query("", max_length=2000),
     funkcja: str = Query("", max_length=32),
+    nutanix_komunikat: str = Query("", max_length=32),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -1108,7 +1109,14 @@ def asset_detail(
         ).scalars().all(),
         dni_do_konca=monitoring.dni_do_konca,
         **_zakladka_agenta(db, ctx, asset, payload, funkcja),
+        nutanix_komunikat=_komunikat_nutanix(nutanix_komunikat),
+        wirtualizacja=nutanix.obiekt_zasobu(db, asset),
     )
+
+
+def _komunikat_nutanix(kod: str) -> str:
+    from .nutanix_ui import KOMUNIKATY
+    return KOMUNIKATY.get(kod, "")
 
 
 def _zakladka_agenta(db: Session, ctx: TenantContext, asset: Asset, payload: dict,
@@ -1118,7 +1126,7 @@ def _zakladka_agenta(db: Session, ctx: TenantContext, asset: Asset, payload: dic
     Wpis reczny nie ma agenta, wiec nie ma tez tej zakladki - pusty slownik
     zamiast zestawu pustych wartosci, ktore szablon musialby i tak omijac.
     """
-    if asset.zrodlo == ZRODLO_RECZNE:
+    if asset.zrodlo != ZRODLO_AGENT:
         return {"funkcje": []}
     row = db.get(DiscoveryPolicy, asset.id)
     stany = funkcje_agenta.stan(db, asset)
@@ -1138,6 +1146,9 @@ def _zakladka_agenta(db: Session, ctx: TenantContext, asset: Asset, payload: dic
         # None: raport nie niesie listy (agent zbiera ja wylaczona albo jest
         # starszy); lista, takze pusta: zbierana.
         "liczba_procesow": len(procesy) if isinstance(procesy, list) else None,
+        "nutanix_ustawienia": nutanix.ustawienia(db, asset),
+        "nutanix_test_oczekuje": nutanix.test_oczekuje(nutanix.ustawienia(db, asset)),
+        "nutanix_interwaly": nutanix.INTERWALY_MINUT,
     }
 
 
