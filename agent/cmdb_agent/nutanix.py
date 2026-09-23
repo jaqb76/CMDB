@@ -83,6 +83,7 @@ def pobierz_polityke(client, state) -> dict:
     if not isinstance(polityka, dict):
         raise ValueError("niepoprawny format konfiguracji Nutanix")
     wynik = {"enabled": bool(polityka.get("enabled")), "test": bool(polityka.get("test")),
+             "odczyt_teraz": bool(polityka.get("odczyt_teraz")),
              "revision": str(payload.get("revision") or "")}
     if wynik["enabled"] or wynik["test"]:
         adres = str(polityka.get("adres") or "")
@@ -346,7 +347,7 @@ class CzytnikNutanix:
         self.wlaczony = polityka["enabled"]
         if polityka["test"]:
             self._uruchom(polityka, "test")
-        elif polityka["enabled"] and teraz >= self.nastepny_odczyt:
+        elif polityka["enabled"] and (polityka["odczyt_teraz"] or teraz >= self.nastepny_odczyt):
             self.nastepny_odczyt = teraz + polityka["interwal_sekund"]
             self._uruchom(polityka, "odczyt")
 

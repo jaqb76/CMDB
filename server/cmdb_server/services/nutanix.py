@@ -63,6 +63,12 @@ def test_oczekuje(row: NutanixUstawienia | None) -> bool:
     return row.test_o is None or row.test_o < row.test_zlecony_o
 
 
+def odczyt_oczekuje(row: NutanixUstawienia | None) -> bool:
+    if row is None or not row.wlaczona or row.odczyt_zlecony_o is None:
+        return False
+    return row.odczyt_o is None or row.odczyt_o < row.odczyt_zlecony_o
+
+
 def polityka_dla_agenta(db: Session, asset: Asset) -> dict:
     """Konfiguracja odczytu dla tej maszyny - albo "wylaczone".
 
@@ -82,6 +88,7 @@ def polityka_dla_agenta(db: Session, asset: Asset) -> dict:
     return {
         "enabled": bool(row.wlaczona),
         "test": test,
+        "odczyt_teraz": aktywna and odczyt_oczekuje(row),
         "adres": row.adres,
         "uzytkownik": row.uzytkownik,
         "haslo": haslo,

@@ -1283,3 +1283,4 @@ button.nav-group-label:focus-visible { outline: 2px solid var(--accent); outline
 .wirt-drzewo .wirt-host td { background: var(--bg); font-weight: 600; }
 .wirt-drzewo .wirt-vm td:first-child { padding-left: 24px; }
 .wirt-drzewo td.num, .wirt-drzewo th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

@@ -26,6 +26,7 @@ KOMUNIKATY = {
     "uzytkownik": "Podaj użytkownika Prism Central.",
     "haslo": "Podaj hasło do Prism Central.",
     "niepelna": "Najpierw zapisz adres, użytkownika i hasło.",
+    "wylaczona": "Odczyt jest wyłączony — zaznacz „Odczytuj Prism Central z tej maszyny” i zapisz.",
 }
 
 
@@ -114,6 +115,26 @@ def zlec_test(asset_id: str, request: Request, csrf_token: str = Form(""),
         return RedirectResponse(_karta(asset.id, "niepelna"), status_code=303)
     row.test_zlecony_o = utcnow()
     audit(db, ctx, action="nutanix.test_requested", target=asset.id, detail={}, ip=client_ip(request))
+    db.commit()
+    return RedirectResponse(_karta(asset.id), status_code=303)
+
+
+@router.post("/assets/{asset_id}/nutanix/odczyt")
+def zlec_odczyt(asset_id: str, request: Request, csrf_token: str = Form(""),
+                user: PortalUser = Depends(require_user), ctx: TenantContext = Depends(resolve_tenant),
+                db: Session = Depends(get_db)) -> Response:
+    """Pelny odczyt przy najblizszym sprawdzeniu konfiguracji (do 5 minut).
+
+    Tak jak test: serwer nie wola agenta, tylko zostawia mu zlecenie.
+    """
+    verify_csrf(request, user, csrf_token)
+    _require_write(ctx)
+    asset = _maszyna(db, ctx, asset_id)
+    row = nutanix.ustawienia(db, asset)
+    if row is None or not row.wlaczona:
+        return RedirectResponse(_karta(asset.id, "wylaczona"), status_code=303)
+    row.odczyt_zlecony_o = utcnow()
+    audit(db, ctx, action="nutanix.read_requested", target=asset.id, detail={}, ip=client_ip(request))
     db.commit()
     return RedirectResponse(_karta(asset.id), status_code=303)
 

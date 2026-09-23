@@ -922,6 +922,9 @@ class NutanixUstawienia(Base):
     test_ok: Mapped[bool | None] = mapped_column(Boolean)
     test_opis: Mapped[str | None] = mapped_column(Text)
 
+    # "Odczytaj teraz" z panelu - agent robi pelny odczyt przy najblizszym
+    # sprawdzeniu konfiguracji, nie czekajac na swoj odstep.
+    odczyt_zlecony_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     odczyt_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     odczyt_ok: Mapped[bool | None] = mapped_column(Boolean)
     odczyt_blad: Mapped[str | None] = mapped_column(Text)

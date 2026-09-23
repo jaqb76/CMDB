@@ -165,6 +165,12 @@
           {% else %}{{ nx.odczyt_blad }}{% endif %}
         </div>
         {% endif %}
+        {% if nutanix_odczyt_oczekuje %}
+        <div class="alert alert-warn" data-nutanix-odczyt>
+          <b>Odczyt zlecony {{ nx.odczyt_zlecony_o | ago }}</b> — agent wykona go przy najbliższym
+          sprawdzeniu konfiguracji (do 5 minut) i wynik pojawi się powyżej.
+        </div>
+        {% endif %}
         {% if nx and (nx.test_o or nutanix_test_oczekuje) %}
         <div class="alert {% if nutanix_test_oczekuje %}alert-warn{% elif nx.test_ok %}alert-ok{% else %}alert-error{% endif %}" data-nutanix-test>
           {% if nutanix_test_oczekuje %}
@@ -203,10 +209,18 @@
           </fieldset>
         </form>
         {% if ctx.can_write and nx and nx.adres and nx.haslo %}
-        <form method="post" action="/assets/{{ asset.id }}/nutanix/test" class="inline-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="btn btn-small" type="submit">Testuj połączenie</button>
-        </form>
+        <div class="btn-row">
+          <form method="post" action="/assets/{{ asset.id }}/nutanix/test" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-small" type="submit">Testuj połączenie</button>
+          </form>
+          {% if nx.wlaczona %}
+          <form method="post" action="/assets/{{ asset.id }}/nutanix/odczyt" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-small" type="submit" {% if nutanix_odczyt_oczekuje %}disabled{% endif %}>Odczytaj teraz</button>
+          </form>
+          {% endif %}
+        </div>
         {% endif %}
         {% endif %}
       </div>
