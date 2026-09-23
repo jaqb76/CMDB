@@ -1,20 +1,27 @@
-"""Nutanix Prism Central: konfiguracja dla agenta i wlaczanie odczytu do ewidencji.
+"""Wirtualizacja (Nutanix Prism Central, VMware vCenter): konfiguracja dla agenta
+i wlaczanie odczytu do ewidencji.
 
-Z Prism laczy sie agent (patrz agent/cmdb_agent/nutanix.py). Serwer tylko
+Obaj dostawcy przechodza te sama droge - roznia sie tylko tym, co agent pyta
+(agent/cmdb_agent/nutanix.py, agent/cmdb_agent/vmware.py). Agent sprowadza
+odpowiedz do tej samej plaskiej postaci, wiec reszta jest wspolna.
+
+Z platformy laczy sie agent. Serwer tylko
 wydaje mu konfiguracje, przyjmuje wynik i przeklada go na zasoby i relacje:
 
     klaster  <- host_cluster -  host  <- vm_host -  maszyna wirtualna
 
 Maszyna wirtualna, w ktorej dziala agent CMDB, nie dostaje drugiego wpisu:
-jej UUID z BIOS-u (raport agenta) rowna sie identyfikatorowi VM w Prism,
-wiec odczyt dopisuje sie do karty maszyny agenta. Pozostale VM, hosty
-i klastry dostaja wpisy o zrodle "nutanix".
+jej UUID z BIOS-u (raport agenta) rowna sie identyfikatorowi VM w Prism
+albo bios_uuid z vCenter, wiec odczyt dopisuje sie do karty maszyny agenta.
+Pozostale VM, hosty i klastry dostaja wpisy o zrodle "nutanix" / "vmware".
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from datetime import timedelta
+from urllib.parse import urlsplit
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -24,12 +31,14 @@ from ..models import (
     LIFECYCLE_WYCOFANY,
     ZRODLO_AGENT,
     ZRODLO_NUTANIX,
+    ZRODLO_VMWARE,
     Asset,
     AssetChange,
     AssetCurrentReport,
     AssetRelation,
     NutanixObiekt,
     NutanixUstawienia,
+    VmwareUstawienia,
     utcnow,
 )
 from ..nutanix_schema import WynikNutanix
@@ -38,16 +47,29 @@ from . import sekrety
 log = logging.getLogger(__name__)
 
 KLASTER, HOST, VM = "klaster", "host", "vm"
-WYCOFAL = "nutanix"  # retired_by - odroznia wycofanie z odczytu od decyzji czlowieka
+NUTANIX, VMWARE = ZRODLO_NUTANIX, ZRODLO_VMWARE
 INTERWALY_MINUT = (15, 30, 60, 120, 240, 720, 1440)
+
+# Wszystko, czym dostawcy sie roznia. retired_by/created_by = klucz dostawcy:
+# odroznia wycofanie i relacje z odczytu od decyzji czlowieka.
+DOSTAWCY = {
+    NUTANIX: {"model": NutanixUstawienia, "nazwa": "Nutanix Prism Central", "platforma": "Prism Central",
+              "port": 9440, "producent": "Nutanix", "model_vm": "AHV", "system_klastra": "AOS",
+              "przyklad": "https://prism.firma.pl:9440", "przyklad_konta": "cmdb-ro",
+              "konto": "z rolą <b>Viewer</b>"},
+    VMWARE: {"model": VmwareUstawienia, "nazwa": "VMware vCenter", "platforma": "vCenter",
+             "port": 443, "producent": "VMware", "model_vm": "vSphere", "system_klastra": "vSphere",
+             "przyklad": "https://vcenter.firma.pl", "przyklad_konta": "cmdb-ro@vsphere.local",
+             "konto": "z rolą <b>Read-only</b> nadaną na poziomie vCenter (z propagacją)"},
+}
 
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 # --- konfiguracja -----------------------------------------------------------
 
-def ustawienia(db: Session, asset: Asset) -> NutanixUstawienia | None:
-    row = db.get(NutanixUstawienia, asset.id)
+def ustawienia(db: Session, asset: Asset, dostawca: str = NUTANIX):
+    row = db.get(DOSTAWCY[dostawca]["model"], asset.id)
     if row is not None and row.tenant_id != asset.tenant_id:
         return None
     return row
@@ -69,7 +91,7 @@ def odczyt_oczekuje(row: NutanixUstawienia | None) -> bool:
     return row.odczyt_o is None or row.odczyt_o < row.odczyt_zlecony_o
 
 
-def polityka_dla_agenta(db: Session, asset: Asset) -> dict:
+def polityka_dla_agenta(db: Session, asset: Asset, dostawca: str = NUTANIX) -> dict:
     """Konfiguracja odczytu dla tej maszyny - albo "wylaczone".
 
     Haslo jedzie wylacznie tu, wylacznie do maszyny, ktorej je przypisano,
@@ -77,7 +99,7 @@ def polityka_dla_agenta(db: Session, asset: Asset) -> dict:
     konfiguracje nawet przy wylaczonym odczycie - inaczej nie dalo by sie
     sprawdzic ustawien przed wlaczeniem.
     """
-    row = ustawienia(db, asset)
+    row = ustawienia(db, asset, dostawca)
     aktywna = bool(asset.is_active and not asset.enrollment_blocked)
     test = aktywna and test_oczekuje(row)
     if row is None or not aktywna or not (row.wlaczona or test):
@@ -97,20 +119,20 @@ def polityka_dla_agenta(db: Session, asset: Asset) -> dict:
     }
 
 
-def normalizuj_adres(adres: str) -> str:
+def normalizuj_adres(adres: str, port: int = 9440) -> str:
     """https://host[:port] bez sciezki. Rzuca ValueError z opisem."""
     adres = (adres or "").strip().rstrip("/")
     if not adres:
-        raise ValueError("podaj adres Prism Central")
+        raise ValueError("podaj adres")
     if "://" not in adres:
         adres = "https://" + adres
     if not adres.lower().startswith("https://"):
-        raise ValueError("adres Prism Central musi zaczynac sie od https://")
+        raise ValueError("adres musi zaczynac sie od https://")
     reszta = adres[len("https://"):]
     if not reszta or "/" in reszta or "@" in reszta or any(z.isspace() for z in reszta):
-        raise ValueError("podaj sam adres, np. https://prism.firma.pl:9440, bez sciezki")
+        raise ValueError("podaj sam adres, np. https://nazwa.firma.pl, bez sciezki")
     if ":" not in reszta.rsplit("]", 1)[-1]:
-        adres += ":9440"
+        adres += f":{port}"
     return adres
 
 
@@ -125,15 +147,15 @@ def sprawdz_ca(pem: str) -> str | None:
 
 # --- przyjecie wyniku -------------------------------------------------------
 
-def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix) -> str:
+def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix, dostawca: str = NUTANIX) -> str:
     """Zapisuje wynik testu albo odczytu. Zwraca "przyjeto" / "pominieto"."""
-    row = ustawienia(db, czytnik)
+    row = ustawienia(db, czytnik, dostawca)
     if row is None:
         return "pominieto"
     teraz = utcnow()
     if wynik.rodzaj == "test":
         row.test_o, row.test_ok = teraz, wynik.ok
-        row.test_opis = (_opis_testu(wynik) if wynik.ok else (wynik.blad or "nieznany blad"))[:2000]
+        row.test_opis = (_opis_testu(wynik, dostawca) if wynik.ok else (wynik.blad or "nieznany blad"))[:2000]
         return "przyjeto"
 
     # Odczyt wykonany na starej konfiguracji (np. innym adresie Prism) nie
@@ -145,14 +167,23 @@ def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix) -> str:
         row.odczyt_blad = (wynik.blad or "nieznany blad")[:2000]
         return "przyjeto"
     row.odczyt_blad = None
-    row.odczyt_liczby = synchronizuj(db, czytnik, wynik)
+    row.odczyt_liczby = synchronizuj(db, czytnik, wynik, dostawca, _przestrzen(row, dostawca))
     return "przyjeto"
 
 
-def _opis_testu(wynik: WynikNutanix) -> str:
+def _przestrzen(row, dostawca: str) -> str:
+    """Przedrostek identyfikatorow: w VMware "vm-123" powtarza sie w kazdym vCenter,
+    wiec skrot adresu vCenter odroznia obiekty dwoch instalacji."""
+    if dostawca != VMWARE:
+        return ""
+    host = (urlsplit(row.adres or "").hostname or "vcenter").lower()
+    return hashlib.sha1(host.encode()).hexdigest()[:8] + "/"
+
+
+def _opis_testu(wynik: WynikNutanix, dostawca: str = NUTANIX) -> str:
     czesci = ["polaczenie OK"]
     if wynik.wersja_pc:
-        czesci.append(f"Prism Central {wynik.wersja_pc}")
+        czesci.append(f"{DOSTAWCY[dostawca]['platforma']} {wynik.wersja_pc}")
     czesci.append(f"klastry: {len(wynik.klastry)}")
     if wynik.czas_ms is not None:
         czesci.append(f"{wynik.czas_ms} ms")
@@ -202,24 +233,35 @@ def _maszyny_agentow(db: Session, tenant_id: str, uuidy: set[str]) -> dict[str, 
     return wynik
 
 
-def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix) -> dict:
+def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
+                 dostawca: str = NUTANIX, przestrzen: str = "") -> dict:
     """Przeklada udany, pelny odczyt na obiekty, zasoby i relacje."""
     tenant_id = czytnik.tenant_id
     teraz = utcnow()
+    opis = DOSTAWCY[dostawca]
     istniejace = {
         (o.rodzaj, o.ext_id): o for o in db.execute(
             select(NutanixObiekt).where(NutanixObiekt.tenant_id == tenant_id)
-        ).scalars()
+        ).scalars() if (o.dostawca or NUTANIX) == dostawca
     }
+
+    def ident(wartosc: str | None) -> str:
+        if not wartosc:
+            return ""
+        wartosc = wartosc.lower()
+        if len(przestrzen) + len(wartosc) > 64:  # kolumna ext_id ma 64 znaki
+            wartosc = hashlib.sha1(wartosc.encode()).hexdigest()
+        return przestrzen + wartosc
+
     widziane: set[tuple[str, str]] = set()
     liczby = {"klastry": 0, "hosty": 0, "vm": 0, "vm_z_agentem": 0, "nowe": 0, "wycofane": 0}
 
     def obiekt(rodzaj: str, ext_id: str, nazwa: str, dane: dict) -> NutanixObiekt:
-        klucz = (rodzaj, ext_id.lower())
+        klucz = (rodzaj, ident(ext_id))
         widziane.add(klucz)
         o = istniejace.get(klucz)
         if o is None:
-            o = NutanixObiekt(tenant_id=tenant_id, rodzaj=rodzaj, ext_id=klucz[1])
+            o = NutanixObiekt(tenant_id=tenant_id, rodzaj=rodzaj, ext_id=klucz[1], dostawca=dostawca)
             db.add(o)
             istniejace[klucz] = o
         o.nazwa, o.dane, o.czytnik_id = nazwa[:255], dane, czytnik.id
@@ -227,43 +269,45 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix) -> dict:
         return o
 
     def wpis(o: NutanixObiekt, typ: str, **pola) -> Asset:
-        """Zasob o zrodle "nutanix" dla obiektu - zalozony albo odswiezony."""
+        """Zasob o zrodle dostawcy dla obiektu - zalozony albo odswiezony."""
         asset = db.get(Asset, o.asset_id) if o.asset_id else None
         if asset is None or asset.tenant_id != tenant_id:
-            machine_id = f"nutanix:{o.rodzaj}:{o.ext_id}"
+            machine_id = f"{dostawca}:{o.rodzaj}:{o.ext_id}"
             asset = db.execute(select(Asset).where(
                 Asset.tenant_id == tenant_id, Asset.machine_id == machine_id)).scalar_one_or_none()
             if asset is None:
                 asset = Asset(tenant_id=tenant_id, machine_id=machine_id, typ=typ,
-                              zrodlo=ZRODLO_NUTANIX, hostname=o.nazwa or o.ext_id,
+                              zrodlo=dostawca, hostname=o.nazwa or o.ext_id,
                               first_seen=teraz)
                 db.add(asset)
                 db.flush()
                 liczby["nowe"] += 1
-        if asset.zrodlo == ZRODLO_NUTANIX:
+        if asset.zrodlo == dostawca:
             asset.hostname = (o.nazwa or o.ext_id)[:255]
             for kolumna, wartosc in pola.items():
                 setattr(asset, kolumna, wartosc)
             asset.last_seen = teraz
-            _przywroc(asset)
+            _przywroc(asset, dostawca)
         o.asset_id = asset.id
         return asset
 
     klastry: dict[str, Asset] = {}
     for k in wynik.klastry:
         o = obiekt(KLASTER, k.ext_id, k.nazwa, k.model_dump(exclude={"ext_id", "nazwa"}))
-        klastry[o.ext_id] = wpis(o, "klaster", manufacturer="Nutanix",
-                                 os_name=_pierwsze(k.hipernadzorca, "AOS"),
+        klastry[o.ext_id] = wpis(o, "klaster", manufacturer=opis["producent"],
+                                 os_name=_pierwsze(k.hipernadzorca, opis["system_klastra"]),
                                  os_version=k.wersja)
         liczby["klastry"] += 1
 
     hosty: dict[str, Asset] = {}
     for h in wynik.hosty:
-        o = obiekt(HOST, h.ext_id, h.nazwa, h.model_dump(exclude={"ext_id", "nazwa"}))
-        asset = wpis(o, "host", manufacturer="Nutanix", model=h.model,
+        dane = h.model_dump(exclude={"ext_id", "nazwa"})
+        dane["klaster_id"] = ident(h.klaster_id) or None
+        o = obiekt(HOST, h.ext_id, h.nazwa, dane)
+        asset = wpis(o, "host", manufacturer=_pierwsze(h.producent, opis["producent"]), model=h.model,
                      serial_number=h.numer_seryjny, primary_ip=h.ip, os_name=h.hipernadzorca)
         hosty[o.ext_id] = asset
-        _ustaw_relacje(db, tenant_id, asset, klastry.get((h.klaster_id or "").lower()), "host_cluster")
+        _ustaw_relacje(db, tenant_id, asset, klastry.get(ident(h.klaster_id)), "host_cluster", dostawca)
         liczby["hosty"] += 1
 
     uuidy: set[str] = set()
@@ -273,24 +317,25 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix) -> dict:
 
     for v in wynik.vm:
         dane = v.model_dump(exclude={"ext_id", "nazwa"})
+        dane["klaster_id"], dane["host_id"] = ident(v.klaster_id) or None, ident(v.host_id) or None
         o = obiekt(VM, v.ext_id, v.nazwa, dane)
         agent = next((agenci[u] for u in warianty_uuid(v.ext_id) | warianty_uuid(v.bios_uuid)
                       if u in agenci), None)
         if agent is not None:
-            _polacz_z_agentem(db, o, agent)
+            _polacz_z_agentem(db, o, agent, dostawca)
             asset = agent
             liczby["vm_z_agentem"] += 1
         else:
             ip = next((a for karta in v.karty for a in karta.ip), None)
-            asset = wpis(o, "vm", manufacturer="Nutanix", model="AHV",
+            asset = wpis(o, "vm", manufacturer=opis["producent"], model=opis["model_vm"],
                          os_name=v.system, primary_ip=ip)
-        host = hosty.get((v.host_id or "").lower())
-        _ustaw_relacje(db, tenant_id, asset, host, "vm_host", zapisz_zmiane=True)
+        host = hosty.get(ident(v.host_id))
+        _ustaw_relacje(db, tenant_id, asset, host, "vm_host", dostawca, zapisz_zmiane=True)
         liczby["vm"] += 1
 
     # Znikniecie oceniamy tylko dla obiektow widzianych dotad przez TEN
     # czytnik - i tylko po udanym, pelnym odczycie, bo tylko taki mowi,
-    # czego w Prism nie ma.
+    # czego na platformie nie ma.
     for klucz, o in istniejace.items():
         if klucz in widziane or o.czytnik_id != czytnik.id or o.zniknal_o is not None:
             continue
@@ -298,10 +343,10 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix) -> dict:
         asset = db.get(Asset, o.asset_id) if o.asset_id else None
         if asset is None:
             continue
-        _usun_relacje_odczytu(db, tenant_id, asset)
-        if asset.zrodlo == ZRODLO_NUTANIX and asset.lifecycle == LIFECYCLE_AKTYWNY:
+        _usun_relacje_odczytu(db, tenant_id, asset, dostawca)
+        if asset.zrodlo == dostawca and asset.lifecycle == LIFECYCLE_AKTYWNY:
             asset.lifecycle, asset.retired_at = LIFECYCLE_WYCOFANY, teraz
-            asset.retired_by, asset.retired_reason = WYCOFAL, "zniknęła z Prism Central"
+            asset.retired_by, asset.retired_reason = dostawca, f"zniknęła z {opis['platforma']}"
             liczby["wycofane"] += 1
     db.flush()
     return liczby
@@ -311,14 +356,14 @@ def _pierwsze(*wartosci):
     return next((w for w in wartosci if w), None)
 
 
-def _przywroc(asset: Asset) -> None:
-    """Obiekt wrocil do Prism - cofamy tylko wlasne wycofanie, nie ludzkie."""
-    if asset.lifecycle == LIFECYCLE_WYCOFANY and asset.retired_by == WYCOFAL:
+def _przywroc(asset: Asset, dostawca: str = NUTANIX) -> None:
+    """Obiekt wrocil na platforme - cofamy tylko wlasne wycofanie, nie ludzkie."""
+    if asset.lifecycle == LIFECYCLE_WYCOFANY and asset.retired_by == dostawca:
         asset.lifecycle, asset.retired_at = LIFECYCLE_AKTYWNY, None
         asset.retired_by = asset.retired_reason = None
 
 
-def _polacz_z_agentem(db: Session, o: NutanixObiekt, agent: Asset) -> None:
+def _polacz_z_agentem(db: Session, o: NutanixObiekt, agent: Asset, dostawca: str = NUTANIX) -> None:
     """VM dostala agenta: odczyt dopisuje sie do jego karty.
 
     Wpis zalozony wczesniej z samego odczytu (zanim zainstalowano agenta)
@@ -327,17 +372,17 @@ def _polacz_z_agentem(db: Session, o: NutanixObiekt, agent: Asset) -> None:
     """
     if o.asset_id and o.asset_id != agent.id:
         stary = db.get(Asset, o.asset_id)
-        if stary is not None and stary.zrodlo == ZRODLO_NUTANIX:
-            _usun_relacje_odczytu(db, stary.tenant_id, stary)
+        if stary is not None and stary.zrodlo == dostawca:
+            _usun_relacje_odczytu(db, stary.tenant_id, stary, dostawca)
             if stary.lifecycle == LIFECYCLE_AKTYWNY:
                 stary.lifecycle, stary.retired_at = LIFECYCLE_WYCOFANY, utcnow()
-                stary.retired_by = WYCOFAL
+                stary.retired_by = dostawca
                 stary.retired_reason = f"połączona z maszyną z agentem: {agent.hostname}"
     o.asset_id = agent.id
 
 
 def _ustaw_relacje(db: Session, tenant_id: str, zrodlo: Asset, cel: Asset | None, rodzaj: str,
-                   zapisz_zmiane: bool = False) -> None:
+                   dostawca: str = NUTANIX, zapisz_zmiane: bool = False) -> None:
     """Jedna relacja danego rodzaju od zrodla - przepinana, gdy cel sie zmienil."""
     obecne = db.execute(select(AssetRelation).where(
         AssetRelation.tenant_id == tenant_id, AssetRelation.source_id == zrodlo.id,
@@ -351,20 +396,20 @@ def _ustaw_relacje(db: Session, tenant_id: str, zrodlo: Asset, cel: Asset | None
         db.delete(r)
     db.flush()
     db.add(AssetRelation(tenant_id=tenant_id, source_id=zrodlo.id, target_id=cel.id,
-                         kind=rodzaj, created_by=WYCOFAL))
+                         kind=rodzaj, created_by=dostawca))
     if zapisz_zmiane and stary_cel is not None:
         db.add(AssetChange(
             tenant_id=tenant_id, asset_id=zrodlo.id, category="hardware", action="zmieniono",
-            path="wirtualizacja.host", label="Host wirtualizacji (Nutanix)",
+            path="wirtualizacja.host", label=f"Host wirtualizacji ({DOSTAWCY[dostawca]['producent']})",
             old_value=stary_cel.hostname, new_value=cel.hostname,
         ))
 
 
-def _usun_relacje_odczytu(db: Session, tenant_id: str, asset: Asset) -> None:
+def _usun_relacje_odczytu(db: Session, tenant_id: str, asset: Asset, dostawca: str = NUTANIX) -> None:
     for r in db.execute(select(AssetRelation).where(
             AssetRelation.tenant_id == tenant_id, AssetRelation.source_id == asset.id,
             AssetRelation.kind.in_(("vm_host", "host_cluster")),
-            AssetRelation.created_by == WYCOFAL)).scalars():
+            AssetRelation.created_by == dostawca)).scalars():
         db.delete(r)
 
 

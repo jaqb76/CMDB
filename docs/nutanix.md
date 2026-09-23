@@ -7,6 +7,8 @@ i wpisuje je do ewidencji razem z zależnościami:
 klaster  ← host_cluster ─  host  ← vm_host ─  maszyna wirtualna
 ```
 
+Tak samo działa odczyt VMware vCenter; różnice opisuje [`vmware.md`](vmware.md).
+
 ## Kto się z kim łączy
 
 Z Prism łączy się **agent** na wybranej maszynie, nie serwer CMDB. Serwer nie
