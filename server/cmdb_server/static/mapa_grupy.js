@@ -87,7 +87,7 @@
 
     var filtr = { ok: true, bez: true, wyl: true, bad: true }, apki = false, zwiniete = {}, wgRozmiaru = false;
     var zaznaczony = W[korzen.dataset.mapaWybrany] ? korzen.dataset.mapaWybrany : null;
-    var widok = { x: 0, y: 0, s: 1 }, sledzOkno = !zaznaczony;
+    var widok = { x: 0, y: 0, s: 1 }, sledzOkno = true;
     var plotno = korzen.querySelector("[data-mg-plotno]"), svg = korzen.querySelector("[data-mg-svg]");
     var scena = korzen.querySelector("[data-mg-scena]"), gK = korzen.querySelector("[data-mg-krawedzie]");
     var gW = korzen.querySelector("[data-mg-wezly]");
@@ -99,8 +99,12 @@
       return e;
     }
     function skroc(t, n) { return t.length > n ? t.slice(0, n - 1) + "…" : t; }
+    // Po zaznaczeniu mapa pokazuje wylacznie zaznaczony zasob i jego relacje -
+    // reszta znika, a uklad przelicza sie dla tego, co zostalo.
+    var zakres = null;
+    function wZakresie(id) { return !zakres || !!zakres[id]; }
     function vmWidoczne(h) {
-      return zwiniete[h] ? [] : (vmHosta[h] || []).filter(function (v) { return filtr[stan(v)]; });
+      return zwiniete[h] ? [] : (vmHosta[h] || []).filter(function (v) { return filtr[stan(v)] && wZakresie(v); });
     }
 
     // --- uklad --------------------------------------------------------------------
@@ -111,7 +115,7 @@
                wys: HOST_W + (vms.length ? 16 + wKol * (VM_W + VM_ODST) : 0) };
     }
     function sekcja(k, maxSzer) {
-      var gr = hostyKlastra[k].map(grupa);
+      var gr = hostyKlastra[k].filter(wZakresie).map(grupa);
       if (wgRozmiaru) { gr.sort(function (a, b) { return b.vms.length - a.vms.length; }); }
       var rzedy = [], rz = null;
       gr.forEach(function (g) {
@@ -124,13 +128,13 @@
     }
     function uklad() {
       var b = plotno.getBoundingClientRect(), cel = b.width / Math.max(1, b.height);
-      var szer = hosty.map(function (h) { return grupa(h).szer; });
+      var szer = hosty.filter(wZakresie).map(function (h) { return grupa(h).szer; });
       var najw = Math.max.apply(null, szer.concat([KL_S])) + 30;
       var suma = szer.reduce(function (s, x) { return s + x + ODST_GRUP; }, 30);
       var najlepszy = null;
       for (var t = 0; t <= 24; t++) {
         var maxSzer = najw + Math.max(0, suma - najw) * t / 24;
-        var sek = klastry.map(function (k) { return sekcja(k, maxSzer); });
+        var sek = klastry.filter(wZakresie).map(function (k) { return sekcja(k, maxSzer); });
         var S = Math.max.apply(null, sek.map(function (s) { return s.szer; })) + (apki ? APP_S + 80 : 0);
         var H = sek.reduce(function (s, x) { return s + x.wys; }, 0) + ODST_KLASTROW * (sek.length - 1);
         var blad = Math.abs(Math.log((S / H) / cel));
@@ -167,6 +171,7 @@
     function rysuj() {
       gK.replaceChildren(); gW.replaceChildren(); poz = {}; dom = {}; sciezki = [];
       var y0 = 0;
+      zakres = zaznaczony ? powiazane(zaznaczony) : null;
       uklad().forEach(function (s) {
         blok(s.k, 0, y0, KL_S, KL_W);
         var pien = 16, y = y0 + KL_W, dolPnia = y;
@@ -196,16 +201,14 @@
         if (s.rzedy.length) { linia("M" + pien + "," + (y0 + KL_W) + " V" + dolPnia, "mg-host", [s.k]); }
         y0 = y + ODST_KLASTROW;
       });
-      if (apki) { rysujAplikacje(); }
+      if (apki || (zaznaczony && W[zaznaczony].typ === "aplikacja")) { rysujAplikacje(); }
       podswietl();
       if (sledzOkno) { dopasuj(); }
-      else if (zaznaczony && !wstepnie) { wstepnie = true; najedz(zaznaczony); }
     }
-    var wstepnie = false;
     function rysujAplikacje() {
       var maxX = 0, minY = Infinity;
       Object.keys(poz).forEach(function (id) { maxX = Math.max(maxX, poz[id].x + poz[id].sz); minY = Math.min(minY, poz[id].y); });
-      aplikacje.forEach(function (a, i) {
+      aplikacje.filter(wZakresie).forEach(function (a, i) {
         var x = maxX + 80, y = minY + i * 50;
         blok(a, x, y, APP_S, APP_W);
         apkiMaszyny.forEach(function (e) {
@@ -264,22 +267,15 @@
         history.replaceState(null, "", "/relacje/mapa?widok=grupy" + (zaznaczony && !W[zaznaczony].sztuczny ? "&zasob=" + encodeURIComponent(zaznaczony) : ""));
       }
     }
-    function najedz(id) {
-      var cel = vmHosta[id] ? [id].concat(vmWidoczne(id)) : hostVm[id] ? [id, hostVm[id]].concat(vmWidoczne(hostVm[id]))
-              : Object.keys(powiazane(id));
-      dopasuj(cel);
-    }
-    function wybierz(id, przybliz) {
+    function wybierz(id) {
       var h = hostVm[id];
       if (h && (zwiniete[h] || !filtr[stan(id)])) {
         zwiniete[h] = false; filtr[stan(id)] = true;
         korzen.querySelectorAll("[data-mg-filtr]").forEach(function (c) { c.checked = filtr[c.dataset.mgFiltr]; });
-        zaznaczony = id; sledzOkno = false; rysuj();
-      } else {
-        zaznaczony = id; sledzOkno = false; podswietl();
       }
-      if (przybliz) { najedz(id); }
+      zaznaczony = id; sledzOkno = true; rysuj();
     }
+    function odznacz() { zaznaczony = null; sledzOkno = true; rysuj(); }
 
     // --- panel boczny --------------------------------------------------------------
     function bok() {
@@ -302,7 +298,7 @@
           var li = document.createElement("li"), k = document.createElement("span");
           k.className = "mg-kropka mg-k-" + stan(v);
           var bt = document.createElement("button"); bt.type = "button"; bt.textContent = nazwa(v);
-          bt.addEventListener("click", function () { wybierz(v, true); });
+          bt.addEventListener("click", function () { wybierz(v); });
           li.appendChild(k); li.appendChild(bt); ul.appendChild(li);
         });
       }
@@ -320,11 +316,13 @@
           ranking.forEach(function (p) {
             var li = document.createElement("li"), bt = document.createElement("button");
             bt.type = "button"; bt.textContent = nazwa(p[0]);
-            bt.addEventListener("click", function () { wybierz(p[0], true); });
+            bt.addEventListener("click", function () { wybierz(p[0]); });
             li.appendChild(bt); li.appendChild(document.createTextNode(" — " + p[1])); ul.appendChild(li);
           });
         }
       } else {
+        var wroc = d("button", "btn btn-small", "← Pokaż całą mapę");
+        wroc.type = "button"; wroc.addEventListener("click", odznacz);
         var w = W[zaznaczony], h3 = d("h3", "", w.nazwa + " ");
         var s = MASZYNY[w.typ] || hostVm[zaznaczony] ? stan(zaznaczony) : "";
         var pil = document.createElement("span"); pil.className = "badge" + (s === "ok" ? " badge-ok" : s === "bez" || s === "bad" ? " badge-warn" : "");
@@ -356,12 +354,15 @@
     // --- mysz i klawiatura ------------------------------------------------------------
     var ciag = null, przesunieto = false;
     function podepnij(g, id) {
-      g.addEventListener("click", function (e) { e.stopPropagation(); if (!przesunieto) { wybierz(id, !hostVm[id]); } });
+      g.addEventListener("click", function (e) { e.stopPropagation(); if (!przesunieto) { wybierz(id); } });
       g.addEventListener("dblclick", function (e) {
         e.stopPropagation();
         if (vmHosta[id]) { zwiniete[id] = !zwiniete[id]; rysuj(); }
       });
-      g.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); wybierz(id, true); } });
+      g.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); wybierz(id); }
+        if (e.key === "Escape" && zaznaczony) { odznacz(); }
+      });
     }
     plotno.addEventListener("pointerdown", function (e) {
       if (e.target.closest(".mg-zoom")) { return; }
@@ -378,7 +379,7 @@
     window.addEventListener("pointerup", function (e) {
       if (!ciag) { return; }
       ciag = null; plotno.classList.remove("mg-ciagnie");
-      if (!przesunieto && !e.target.closest(".mg-w") && e.target.closest("[data-mg-plotno]") && zaznaczony) { zaznaczony = null; podswietl(); }
+      if (!przesunieto && !e.target.closest(".mg-w") && e.target.closest("[data-mg-plotno]") && zaznaczony) { odznacz(); }
       setTimeout(function () { przesunieto = false; }, 0);
     });
     function zoom(f, cx, cy) {
@@ -407,10 +408,10 @@
       c.addEventListener("change", function () {
         filtr[c.dataset.mgFiltr] = c.checked;
         if (c.dataset.mgFiltr === "ok") { filtr.bad = c.checked; }
-        sledzOkno = !zaznaczony; rysuj();
+        sledzOkno = true; rysuj();
       });
     });
-    korzen.querySelector("[data-mg-apki]").addEventListener("change", function (e) { apki = e.target.checked; sledzOkno = !zaznaczony; rysuj(); });
+    korzen.querySelector("[data-mg-apki]").addEventListener("change", function (e) { apki = e.target.checked; sledzOkno = true; rysuj(); });
     var lista = document.getElementById("mg-nazwy"), poNazwie = {};
     Object.keys(W).forEach(function (id) {
       if (W[id].sztuczny) { return; }
@@ -420,13 +421,13 @@
     korzen.querySelector("[data-mg-szukaj]").addEventListener("change", function (e) {
       var v = e.target.value.trim().toLowerCase(); if (!v) { return; }
       var id = poNazwie[v] || poNazwie[Object.keys(poNazwie).find(function (n) { return n.indexOf(v) >= 0; })];
-      if (id) { wybierz(id, true); }
+      if (id) { wybierz(id); }
     });
     var czekaj;
     if (window.ResizeObserver) {
       new ResizeObserver(function () {
         clearTimeout(czekaj);
-        czekaj = setTimeout(function () { if (!zaznaczony) { sledzOkno = true; } rysuj(); }, 120);
+        czekaj = setTimeout(function () { sledzOkno = true; rysuj(); }, 120);
       }).observe(plotno);
     }
     rysuj();

@@ -80,8 +80,10 @@ zasobu). Są dwa widoki tych samych danych:
   Kolor paska bloku to stan maszyny: z agentem CMDB, bez agenta, wyłączona
   (według Nutanixa) albo agent milczy (dłużej niż próg „bez kontaktu” firmy).
   Z daleka widać same kolory, a po przybliżeniu nazwy. Kółko myszy przybliża,
-  przeciąganie przesuwa widok, kliknięcie hosta najeżdża na jego grupę i liczy
-  zasięg awarii, dwuklik zwija hosta. Wyszukiwarka i filtry stanu działają na
+  przeciąganie przesuwa widok, dwuklik zwija hosta. Kliknięcie zasobu zostawia
+  na mapie tylko jego relacje (np. host z jego maszynami i klastrem albo sama
+  maszyna z hostem i klastrem), przelicza układ dla nich i liczy zasięg awarii;
+  kliknięcie w tło, Esc albo „← Pokaż całą mapę” wraca do całości. Wyszukiwarka i filtry stanu działają na
   całej mapie. Aplikacje są domyślnie ukryte, bo jedna aplikacja na kilku
   hostach to jedyne źródło przecięć linii.
 - **Widok: ścieżka** pokazuje jeden zasób w kolumnach klaster → host → VM/serwer
