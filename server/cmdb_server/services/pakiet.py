@@ -139,11 +139,31 @@ def _zawartosc(sciezka: Path, nazwa: str) -> bytes:
     return dane
 
 
+PLIK_WERSJI = f"{KATALOG_W_ARCHIWUM}/cmdb_agent/__init__.py"
+_LINIA_WERSJI = re.compile(r'^__version__\s*=\s*["\'][^"\']+["\']', re.MULTILINE)
+
+
+def wersja_paczki(bazowa: str, pliki: list[tuple[Path, str]]) -> str:
+    """Numer wersji paczki: numer ze zrodel plus skrot ich zawartosci.
+
+    Agent porownuje wylacznie numer wersji. Paczka budowana z repozytorium
+    miala dotad numer wziety wprost ze zrodel, ktory zmienia sie rzadko -
+    wiec nowy kod agenta wchodzil do paczki pod starym numerem i zadna
+    maszyna nie uznawala go za aktualizacje. Skrot zawartosci daje nowy
+    numer przy kazdej zmianie i ten sam przy tych samych zrodlach.
+    """
+    skrot = hashlib.sha256()
+    for sciezka, nazwa in pliki:
+        skrot.update(nazwa.encode("utf-8") + b"\0")
+        skrot.update(_zawartosc(sciezka, nazwa) + b"\0")
+    return f"{bazowa}+src.{skrot.hexdigest()[:8]}"
+
+
 def zbuduj(katalog_zrodel: Path, katalog_wydan: Path) -> dict:
     """Buduje paczke zrodel i zapisuje ja w magazynie wydan."""
     katalog_zrodel = Path(katalog_zrodel)
-    wersja = odczytaj_wersje(katalog_zrodel)
     pliki = _pliki(katalog_zrodel)
+    wersja = wersja_paczki(odczytaj_wersje(katalog_zrodel), pliki)
     katalog_wydan.mkdir(parents=True, exist_ok=True)
 
     archiwum = sciezka_archiwum(katalog_wydan)
@@ -165,6 +185,12 @@ def zbuduj(katalog_zrodel: Path, katalog_wydan: Path) -> dict:
                     # Skrypt instalacyjny musi zostac wykonywalny po rozpakowaniu.
                     info.mode = 0o755 if nazwa.endswith(".sh") else 0o644
                     dane = _zawartosc(sciezka, nazwa)
+                    if nazwa == PLIK_WERSJI:
+                        # Zainstalowany agent musi zglaszac ten sam numer, pod
+                        # ktorym paczka jest wydaniem - inaczej serwer
+                        # proponowalby mu ja w nieskonczonosc.
+                        dane = _LINIA_WERSJI.sub(f'__version__ = "{wersja}"',
+                                                 dane.decode("utf-8"), count=1).encode("utf-8")
                     info.size = len(dane)
                     tar.addfile(info, io.BytesIO(dane))
 

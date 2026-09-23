@@ -304,7 +304,23 @@ def test_wersja_paczki_pochodzi_ze_zrodel(tmp_path):
     )
     (zrodla / "packaging" / "install-agent.sh").write_text("#!/bin/sh\n", encoding="utf-8")
 
-    assert pakiet.zbuduj(zrodla, tmp_path / "cel")["version"] == "9.9.9"
+    metadane = pakiet.zbuduj(zrodla, tmp_path / "cel")
+    assert metadane["version"].startswith("9.9.9+src.")
+    # Zainstalowany agent zglosi dokladnie ten numer - jest wpisany w paczke.
+    assert pakiet.sprawdz_paczke(pakiet.sciezka_archiwum(tmp_path / "cel")) == metadane["version"]
+
+
+def test_zmiana_kodu_agenta_daje_nowa_wersje(tmp_path):
+    """Bez tego nowy kod wchodzil pod starym numerem i nikt sie nie aktualizowal."""
+    zrodla = tmp_path / "agent"
+    (zrodla / "cmdb_agent").mkdir(parents=True)
+    (zrodla / "packaging").mkdir()
+    (zrodla / "cmdb_agent" / "__init__.py").write_text('__version__ = "9.9.9"\n', encoding="utf-8")
+    (zrodla / "packaging" / "install-agent.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    pierwsza = pakiet.zbuduj(zrodla, tmp_path / "a")["version"]
+    assert pakiet.zbuduj(zrodla, tmp_path / "b")["version"] == pierwsza
+    (zrodla / "cmdb_agent" / "nutanix.py").write_text("X = 1\n", encoding="utf-8")
+    assert pakiet.zbuduj(zrodla, tmp_path / "c")["version"] != pierwsza
 
 
 def test_katalog_bez_zrodel_zglasza_czytelny_blad(tmp_path):
