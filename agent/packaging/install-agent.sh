@@ -18,6 +18,10 @@ KATALOG_PROGRAMU="/opt/cmdb-agent"
 KATALOG_KONFIGURACJI="/etc/cmdb-agent"
 KATALOG_DANYCH="/var/lib/cmdb-agent"
 NAZWA_USLUGI="cmdb-agent"
+# Pelna sciezka, a nie samo "cmdb-agent": sudo na RHEL/Rocky/Alma/CentOS
+# ustawia secure_path bez /usr/local/bin, wiec skrypt uruchomiony przez sudo
+# nie znajdowal wlasnie zalozonego launchera ("command not found").
+PROGRAM_AGENTA="/usr/local/bin/cmdb-agent"
 
 SERWER=""
 TOKEN=""
@@ -84,13 +88,13 @@ date -u +"%Y-%m-%dT%H:%M:%SZ" > "$KATALOG_PROGRAMU/.cmdb-instalacja"
 
 echo "    program        : $KATALOG_PROGRAMU"
 
-cat > /usr/local/bin/cmdb-agent <<LAUNCHER
+cat > "$PROGRAM_AGENTA" <<LAUNCHER
 #!/usr/bin/env bash
 # Uruchamia agenta CMDB zainstalowanego ze zrodel.
 exec "$PYTHON" -m cmdb_agent.main "\$@"
 LAUNCHER
-chmod 0755 /usr/local/bin/cmdb-agent
-sed -i "1a export PYTHONPATH=\"$KATALOG_PROGRAMU\"" /usr/local/bin/cmdb-agent
+chmod 0755 "$PROGRAM_AGENTA"
+sed -i "1a export PYTHONPATH=\"$KATALOG_PROGRAMU\"" "$PROGRAM_AGENTA"
 
 # --- 2. konfiguracja --------------------------------------------------------
 install -d -m 0700 "$KATALOG_KONFIGURACJI"
@@ -129,7 +133,7 @@ echo "    konfiguracja   : $KONFIGURACJA (dostep: tylko root)"
 
 # --- 3. rejestracja ---------------------------------------------------------
 krok "Rejestruje maszyne w serwerze..."
-if ! cmdb-agent --config "$KONFIGURACJA" enroll; then
+if ! "$PROGRAM_AGENTA" --config "$KONFIGURACJA" enroll; then
     blad "rejestracja nie powiodla sie - sprawdz adres, token i zaufanie do certyfikatu (cmdb-agent doctor)"
 fi
 
@@ -143,7 +147,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/cmdb-agent --config $KONFIGURACJA run
+ExecStart=$PROGRAM_AGENTA --config $KONFIGURACJA run
 # Agent jest jednorazowy - zbiera dane, wysyla i konczy prace. Cykl zapewnia
 # timer, dzieki czemu nic nie zajmuje pamieci miedzy przebiegami.
 TimeoutStartSec=1800
@@ -201,7 +205,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cmdb-agent --config $KONFIGURACJA monitor
+ExecStart=$PROGRAM_AGENTA --config $KONFIGURACJA monitor
 # Zatrzymanie ma dokonczyc raport, a nie uciac go w polowie: agent lapie
 # SIGTERM i wysyla ostatnie podsumowanie, zanim zakonczy prace.
 KillSignal=SIGTERM
@@ -229,13 +233,13 @@ echo "    monitorowanie  : $NAZWA_USLUGI-monitor.service (ciagle, cele z panelu 
 
 # --- 5. pierwszy przebieg ---------------------------------------------------
 krok "Wysylam pierwszy raport..."
-if ! cmdb-agent --config "$KONFIGURACJA" run; then
+if ! "$PROGRAM_AGENTA" --config "$KONFIGURACJA" run; then
     echo "    UWAGA: pierwszy raport sie nie powiodl - timer sprobuje ponownie"
 fi
 
 echo
 krok "Gotowe."
-cmdb-agent --config "$KONFIGURACJA" status || true
+"$PROGRAM_AGENTA" --config "$KONFIGURACJA" status || true
 echo
 echo "Diagnostyka        : cmdb-agent doctor"
 echo "Stan timera        : systemctl list-timers $NAZWA_USLUGI.timer"
