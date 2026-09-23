@@ -857,6 +857,31 @@ class DiscoveryPolicy(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class OdbiorFunkcjiAgenta(Base):
+    """Ktora wersje konfiguracji dodatkowej funkcji agent ostatnio pobral.
+
+    Zapis w panelu nie znaczy, ze funkcja dziala: serwer nie wola agenta,
+    tylko czeka, az ten sam przyjdzie po konfiguracje. Bez tego sladu
+    "wlaczone" w panelu i "dziala" na maszynie byly nie do odroznienia -
+    a roznica potrafi trwac godzine albo, przy wylaczonej maszynie, zawsze.
+
+    Wersja to znacznik tresci wydanej agentowi (rewizja polityki albo skrot
+    listy celow), wiec porownanie z biezaca mowi, czy zmiana juz dotarla.
+    """
+
+    __tablename__ = "agent_odbior_funkcji"
+
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True
+    )
+    funkcja: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    wersja: Mapped[str] = mapped_column(String(64), nullable=False)
+    odebrano: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 class DiscoveryScanner(Base):
     """Last scan status, including empty, failed and partial scans."""
     __tablename__ = "discovery_scanners"
@@ -1492,7 +1517,7 @@ class WpisZgloszenia(Base):
 
 
 class ZalacznikWpisu(Base):
-    """Plik przyslany przez klienta albo doklejony do odpowiedzi.
+    r"""Plik przyslany przez klienta albo doklejony do odpowiedzi.
 
     Sama tresc pliku lezy na dysku, w bazie zostaje opis i sciezka wzgledna.
     Zrzut ekranu bywa calym zgloszeniem ("nie dziala, zalaczam") i bez niego

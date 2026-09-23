@@ -30,7 +30,7 @@ from ..schemas import (
 )
 from ..security import generate_token
 from ..services.auth import client_ip, require_agent, require_enrollment_token
-from ..services import architektura, upgrades, ustawienia
+from ..services import architektura, funkcje_agenta, upgrades, ustawienia
 from ..services.inventory import store_report
 from ..services.scoping import TenantContext, audit
 
@@ -203,6 +203,8 @@ def discovery_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9
     policy = ScanPolicy.model_validate(row.config) if row else ScanPolicy()
     if not asset.is_active or asset.enrollment_blocked:
         policy = ScanPolicy()
+    funkcje_agenta.zapisz_odbior(db, asset, funkcje_agenta.SKANER, funkcje_agenta.wersja_skanera(row))
+    db.commit()
     response.headers["Cache-Control"] = "no-store"
     return {"protocol": 1, "nonce": nonce, "asset_id": asset.id, "machine_id": asset.machine_id,
             "revision": row.revision if row else "unassigned",
@@ -229,14 +231,11 @@ def monitoring_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-
     if asset is None or asset.tenant_id != ctx.tenant_id:
         raise HTTPException(404, "maszyna nie istnieje")
 
-    from ..services import monitoring
-
-    pusta = {"enabled": False, "interwal_raportu": get_settings().monitoring_report_seconds,
-             "cele": [], "wydano": utcnow().isoformat()}
-    if not asset.is_active or asset.enrollment_blocked or not get_settings().monitoring_enabled:
-        policy = pusta
-    else:
-        policy = monitoring.polityka_dla_agenta(db, asset)
+    policy = funkcje_agenta.polityka_monitorowania(db, asset)
+    # Slad odbioru: panel pokazuje, czy zmiana celow juz dotarla do agenta.
+    funkcje_agenta.zapisz_odbior(db, asset, funkcje_agenta.MONITOROWANIE,
+                                 funkcje_agenta.wersja_monitorowania(policy))
+    db.commit()
 
     response.headers["Cache-Control"] = "no-store"
     return {"protocol": 1, "nonce": nonce, "asset_id": asset.id, "machine_id": asset.machine_id,

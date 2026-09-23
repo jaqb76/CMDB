@@ -163,6 +163,7 @@ def strona_monitoringu(
     request: Request,
     komunikat: str = Query("", max_length=500),
     stan: str = Query("", max_length=16),
+    wykonawca: str = Query("", max_length=36),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -182,6 +183,9 @@ def strona_monitoringu(
         limit_osiagniety=monitoring.limit_osiagniety(db, ctx.tenant_id),
         dni_do_konca=monitoring.dni_do_konca,
         filtr_stanu=stan,
+        # Wstepny wybor maszyny sprawdzajacej - przycisk z zakladki "Agent".
+        # Tylko wybor na liscie: nieznany identyfikator nic nie zaznacza.
+        wybrany_wykonawca=wykonawca,
         komunikat=komunikat[:500],
         **_wspolne(db, ctx),
     )

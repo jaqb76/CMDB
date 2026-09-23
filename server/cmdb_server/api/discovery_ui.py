@@ -53,15 +53,21 @@ def discovery_page(request: Request, view: str = Query("pending", pattern="^(pen
 
 
 @router.get("/assets/{asset_id}/discovery-policy")
-def policy_page(asset_id: str, request: Request, user: PortalUser = Depends(require_user),
+def policy_page(asset_id: str, user: PortalUser = Depends(require_user),
                 ctx: TenantContext = Depends(resolve_tenant), db: Session = Depends(get_db)):
+    """Dawny adres polityki. Skaner jest teraz podzakladka karty maszyny.
+
+    Przekierowanie zamiast 404, bo stary adres siedzi w zakladkach
+    przegladarek i w dokumentacji wewnetrznej klientow.
+    """
     asset = get_asset(db, ctx, asset_id)
     if asset is None:
         raise HTTPException(404, "nie znaleziono maszyny")
-    row = db.get(DiscoveryPolicy, asset.id)
-    return render(request, "discovery_policy.html", user, ctx, db, asset=asset,
-                  policy=ScanPolicy.model_validate(row.config) if row else ScanPolicy(),
-                  revision=row.revision if row else "unassigned", policy_row=row)
+    return RedirectResponse(_karta_skanera(asset.id), status_code=303)
+
+
+def _karta_skanera(asset_id: str) -> str:
+    return f"/assets/{asset_id}?funkcja=skaner#agent"
 
 
 @router.post("/assets/{asset_id}/discovery-policy")
@@ -98,7 +104,7 @@ def save_policy(asset_id: str, request: Request, enabled: bool = Form(False), au
     audit(db, ctx, action="discovery.policy_changed", target=asset.id,
           detail={"before": previous, "after": row.config, "revision": row.revision}, ip=client_ip(request))
     db.commit()
-    return RedirectResponse(f"/assets/{asset.id}/discovery-policy", status_code=303)
+    return RedirectResponse(_karta_skanera(asset.id), status_code=303)
 
 
 @router.get("/wykrywanie/{device_id}")

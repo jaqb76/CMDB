@@ -7,7 +7,7 @@ Urządzenia są propozycjami do ewidencji; typ i OS wymagają weryfikacji. Brak 
 Adresy IP są rozdzielone według skanera, aby nie łączyć automatycznie różnych lokalizacji.</p>
 <section class="panel"><h2>Polityki skanowania</h2>
 <p>Wybierz agenta (do 200 aktywnych; pełna lista jest w ewidencji zasobów). Domyślnie skanowanie jest wyłączone.</p>
-{% for agent in agents %}<a class="btn btn-small" href="/assets/{{ agent.id }}/discovery-policy">{{ agent.hostname }}</a> {% else %}<p>Brak aktywnych agentów.</p>{% endfor %}
+{% for agent in agents %}<a class="btn btn-small" href="/assets/{{ agent.id }}?funkcja=skaner#agent">{{ agent.hostname }}</a> {% else %}<p>Brak aktywnych agentów.</p>{% endfor %}
 </section>
 <section class="panel">
 <h2>Ostatnie skany (do 50 skanerów)</h2>

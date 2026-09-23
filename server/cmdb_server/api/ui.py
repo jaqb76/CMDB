@@ -46,6 +46,7 @@ from ..models import (
     AgentCredential,
     Asset,
     AssetChange,
+    DiscoveryPolicy,
     EnrollmentToken,
     InventorySnapshot,
     MonitorUslugi,
@@ -54,6 +55,7 @@ from ..models import (
     WpisSlownika,
     utcnow,
 )
+from ..discovery_policy import ScanPolicy
 from ..security import (
     generate_token,
     hash_password,
@@ -64,8 +66,8 @@ from ..security import (
     verify_password,
 )
 from ..services import (
-    changes, cve, duplicates, logowanie, mobilna, monitoring, pakiet, qr, rodzaje, scoping,
-    slowniki, upgrades, ustawienia,
+    changes, cve, duplicates, funkcje_agenta, logowanie, mobilna, monitoring, pakiet, qr,
+    rodzaje, scoping, slowniki, upgrades, ustawienia,
 )
 from ..services import schemat as definicje_pol
 from ..services.auth import (
@@ -626,6 +628,7 @@ def asset_list(
     typ: str = Query("", max_length=32),
     lokalizacja: str = Query("", max_length=200),
     zrodlo: str = Query("", max_length=16),
+    funkcja: str = Query("", max_length=32),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -653,6 +656,11 @@ def asset_list(
         stmt = stmt.where(Asset.zrodlo == zrodlo)
     if lokalizacja:
         stmt = stmt.where(Asset.lokalizacja_id == lokalizacja)
+    # "Ktory agent co robi" - odpowiedz bez osobnej strony w menu, ktora
+    # rosnie razem z liczba dodatkowych funkcjonalnosci.
+    warunek_funkcji = funkcje_agenta.warunek_filtra(funkcja) if funkcja else None
+    if warunek_funkcji is not None:
+        stmt = stmt.where(warunek_funkcji)
     if owner == "none":
         stmt = stmt.where(Asset.owner_id.is_(None))
     elif owner:
@@ -692,7 +700,9 @@ def asset_list(
         lokalizacje=slowniki.wpisy(db, ctx, "lokalizacja"),
         filters={"q": q, "os_family": os_family, "owner": owner,
                  "state": state, "lifecycle": lifecycle,
-                 "typ": typ, "lokalizacja": lokalizacja, "zrodlo": zrodlo},
+                 "typ": typ, "lokalizacja": lokalizacja, "zrodlo": zrodlo,
+                 "funkcja": funkcja if warunek_funkcji is not None else ""},
+        funkcje_katalog=funkcje_agenta.KATALOG,
         liczba_wycofanych=db.execute(
             select(func.count(Asset.id)).where(
                 Asset.tenant_id == ctx.tenant_id, Asset.lifecycle == LIFECYCLE_WYCOFANY
@@ -994,6 +1004,7 @@ def asset_detail(
     snapshot: str = Query("", max_length=36),
     ukryte: str = Query("", max_length=500),
     blad: str = Query("", max_length=2000),
+    funkcja: str = Query("", max_length=32),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -1096,7 +1107,38 @@ def asset_detail(
             ).order_by(MonitorUslugi.nazwa)
         ).scalars().all(),
         dni_do_konca=monitoring.dni_do_konca,
+        **_zakladka_agenta(db, ctx, asset, payload, funkcja),
     )
+
+
+def _zakladka_agenta(db: Session, ctx: TenantContext, asset: Asset, payload: dict,
+                     wybrana: str) -> dict:
+    """Dane zakladki "Agent": stan, funkcje podstawowe i dodatkowe.
+
+    Wpis reczny nie ma agenta, wiec nie ma tez tej zakladki - pusty slownik
+    zamiast zestawu pustych wartosci, ktore szablon musialby i tak omijac.
+    """
+    if asset.zrodlo == ZRODLO_RECZNE:
+        return {"funkcje": []}
+    row = db.get(DiscoveryPolicy, asset.id)
+    stany = funkcje_agenta.stan(db, asset)
+    if wybrana not in funkcje_agenta.KLUCZE:
+        wybrana = funkcje_agenta.KATALOG[0].klucz
+    procesy = (payload.get("software") or {}).get("processes")
+    return {
+        "funkcje": stany,
+        "funkcje_grupy": funkcje_agenta.grupy(),
+        "funkcja_wybrana": wybrana,
+        "funkcje_czekaja": [s for s in stany if s.czeka],
+        "polityka_skanera": ScanPolicy.model_validate(row.config) if row else ScanPolicy(),
+        "rewizja_skanera": funkcje_agenta.wersja_skanera(row),
+        "polityka_skanera_row": row,
+        "interwal_raportowania": ustawienia.interwal_raportowania(db.get(Tenant, ctx.tenant_id)),
+        "wersja_docelowa_agenta": upgrades.wersja_docelowa(db, asset),
+        # None: raport nie niesie listy (agent zbiera ja wylaczona albo jest
+        # starszy); lista, takze pusta: zbierana.
+        "liczba_procesow": len(procesy) if isinstance(procesy, list) else None,
+    }
 
 
 @router.post("/assets/{asset_id}/owner")

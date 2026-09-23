@@ -43,6 +43,12 @@
     <option value="online" {% if filters.state == 'online' %}selected{% endif %}>aktywne</option>
     <option value="stale" {% if filters.state == 'stale' %}selected{% endif %}>bez kontaktu</option>
   </select>
+  <select name="funkcja" aria-label="Dodatkowa funkcja agenta">
+    <option value="">każda funkcja agenta</option>
+    {% for f in funkcje_katalog %}
+      <option value="{{ f.klucz }}" {% if filters.funkcja == f.klucz %}selected{% endif %}>{{ f.nazwa }}</option>
+    {% endfor %}
+  </select>
   <select name="lifecycle">
     <option value="">w użyciu</option>
     <option value="wycofany" {% if filters.lifecycle == 'wycofany' %}selected{% endif %}>wycofane{% if liczba_wycofanych %} ({{ liczba_wycofanych }}){% endif %}</option>
