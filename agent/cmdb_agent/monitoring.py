@@ -520,6 +520,11 @@ class Monitor:
         self.pilne: set[str] = set()
         self.przyjeto = self.pominieto = 0
         self.zatrzymaj = threading.Event()
+        # Odczyt Nutanix Prism Central jedzie na tej samej petli: ta usluga
+        # zyje caly czas, wiec zlecony z panelu test wraca w kilka minut,
+        # a nie przy nastepnej inwentaryzacji.
+        from .nutanix import CzytnikNutanix
+        self.nutanix = CzytnikNutanix(client, state)
         self._wczytaj_stan()
 
     # --- trwalosc miedzy uruchomieniami ---
@@ -700,6 +705,11 @@ class Monitor:
         if teraz >= self.nastepna_polityka:
             self.odswiez_polityke()
             self.nastepna_polityka = teraz + ODSTEP_POLITYKI
+        try:
+            self.nutanix.krok(teraz)
+        except Exception as exc:
+            # Dodatkowa funkcja nie moze zatrzymac monitorowania uslug.
+            log.warning("krok odczytu Nutanix: %s", exc)
         zdarzenia = self.sonduj_zalegle()
         if zdarzenia:
             # Poczatek i koniec potwierdzonej awarii ida natychmiast. Redukcja
@@ -786,6 +796,7 @@ class Monitor:
             "ostatnia_sonda_o": self.ostatnia_sonda_o,
             "ostatni_raport_o": self.ostatni_raport_o,
             "ostatni_raport_powod": self.ostatni_raport_powod,
+            "nutanix": self.nutanix.status(),
             "przyjeto": self.przyjeto,
             "pominieto": self.pominieto,
             "ostatni_blad": self.ostatni_blad,

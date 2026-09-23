@@ -43,6 +43,11 @@ LIFECYCLE_WSZYSTKIE = (LIFECYCLE_AKTYWNY, LIFECYCLE_WYCOFANY)
 # bo nie wolno ich oceniac miara "od kiedy nie bylo kontaktu".
 ZRODLO_AGENT = "agent"
 ZRODLO_RECZNE = "reczne"
+# Klaster, host albo maszyna wirtualna odczytana z Nutanix Prism Central.
+# Nie ma wlasnego agenta, wiec tak jak wpis reczny nie podlega ocenie
+# "bez kontaktu" - ale tez nie jest do recznej edycji, bo nadpisalby ja
+# kolejny odczyt.
+ZRODLO_NUTANIX = "nutanix"
 
 # Rodzaj sprzetu. Maszyny z agentem sa komputerami; reszte wybiera czlowiek.
 TYP_KOMPUTER = "komputer"
@@ -880,6 +885,85 @@ class OdbiorFunkcjiAgenta(Base):
     )
     wersja: Mapped[str] = mapped_column(String(64), nullable=False)
     odebrano: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class NutanixUstawienia(Base):
+    """Konfiguracja odczytu Prism Central wykonywanego przez tego agenta.
+
+    Laczy sie AGENT, nie serwer: to on stoi w sieci, w ktorej jest Prism,
+    a serwer CMDB nie musi jej widziec. Haslo lezy tu zaszyfrowane i trafia
+    wylacznie do tego agenta, w swiezej odpowiedzi waznej 60 sekund.
+    """
+
+    __tablename__ = "nutanix_ustawienia"
+
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    wlaczona: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    adres: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    uzytkownik: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    haslo: Mapped[str | None] = mapped_column(Text)
+    # Pusty = zaufane urzedy systemu maszyny z agentem (tak jest z firmowym
+    # CA dodanym do systemu). Wylaczenia weryfikacji nie ma i nie bedzie.
+    ca_pem: Mapped[str | None] = mapped_column(Text)
+    interwal_minut: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    revision: Mapped[str] = mapped_column(String(36), nullable=False, default=new_id)
+    updated_by: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    # Test polaczenia zleca panel, wykonuje agent przy najblizszym
+    # sprawdzeniu konfiguracji.
+    test_zlecony_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    test_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    test_ok: Mapped[bool | None] = mapped_column(Boolean)
+    test_opis: Mapped[str | None] = mapped_column(Text)
+
+    odczyt_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    odczyt_ok: Mapped[bool | None] = mapped_column(Boolean)
+    odczyt_blad: Mapped[str | None] = mapped_column(Text)
+    odczyt_liczby: Mapped[dict | None] = mapped_column(JSONType, default=dict)
+
+
+class NutanixObiekt(Base):
+    """Klaster, host albo VM widziana w Prism Central.
+
+    asset_id wskazuje wpis w ewidencji. Dla VM z agentem to maszyna agenta -
+    jedna karta z danymi z obu zrodel - a dla pozostalych wpis zalozony
+    z odczytu (zrodlo "nutanix").
+    """
+
+    __tablename__ = "nutanix_obiekty"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "rodzaj", "ext_id", name="uq_nutanix_obiekt"),
+        Index("ix_nutanix_obiekt_asset", "asset_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # klaster | host | vm
+    rodzaj: Mapped[str] = mapped_column(String(16), nullable=False)
+    ext_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    nazwa: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    dane: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    asset_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="SET NULL")
+    )
+    # Agent, ktorego odczyt ostatnio widzial obiekt. Znikniecie ocenia
+    # wylacznie ten sam czytnik - drugi agent czytajacy inny Prism nie
+    # moze "usunac" cudzych maszyn tylko dlatego, ze ich nie widzi.
+    czytnik_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="SET NULL"), index=True
+    )
+    widziany_o: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    zniknal_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    asset: Mapped["Asset | None"] = relationship(foreign_keys=[asset_id])
 
 
 class DiscoveryScanner(Base):

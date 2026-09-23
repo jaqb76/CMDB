@@ -146,6 +146,68 @@
         {% if ctx.can_write and asset.is_active %}
         <p><a class="btn btn-small" href="/monitoring?wykonawca={{ asset.id }}#nowy-cel">Dodaj usługę sprawdzaną z tej maszyny</a></p>
         {% endif %}
+
+        {% elif funkcja_wybrana == 'nutanix' %}
+        {% set nx = nutanix_ustawienia %}
+        <p class="small muted">
+          Z Prism Central łączy się agent na tej maszynie — adres ma być widoczny
+          <b>z niej</b>, nie z serwera CMDB. Wystarczy konto z rolą <b>Viewer</b>:
+          odczyt nie zmienia niczego w klastrze. Wyniki: <a href="/wirtualizacja">Wirtualizacja</a>.
+        </p>
+        {% if nutanix_komunikat %}<div class="alert alert-error">{{ nutanix_komunikat }}</div>{% endif %}
+        {% if nx and nx.odczyt_o %}
+        <div class="alert {{ 'alert-ok' if nx.odczyt_ok else 'alert-error' }}">
+          <b>Ostatni odczyt {{ nx.odczyt_o | ago }}:</b>
+          {% if nx.odczyt_ok %}
+            {% set l = nx.odczyt_liczby or {} %}
+            klastry {{ l.klastry or 0 }}, hosty {{ l.hosty or 0 }}, maszyny wirtualne {{ l.vm or 0 }}
+            (z agentem CMDB: {{ l.vm_z_agentem or 0 }}{% if l.nowe %}, nowe wpisy: {{ l.nowe }}{% endif %}{% if l.wycofane %}, wycofane: {{ l.wycofane }}{% endif %})
+          {% else %}{{ nx.odczyt_blad }}{% endif %}
+        </div>
+        {% endif %}
+        {% if nx and (nx.test_o or nutanix_test_oczekuje) %}
+        <div class="alert {% if nutanix_test_oczekuje %}alert-warn{% elif nx.test_ok %}alert-ok{% else %}alert-error{% endif %}" data-nutanix-test>
+          {% if nutanix_test_oczekuje %}
+            <b>Test zlecony {{ nx.test_zlecony_o | ago }}</b> — agent wykona go przy najbliższym
+            sprawdzeniu konfiguracji (co 5 minut, jeśli działa usługa monitorowania agenta).
+          {% else %}
+            <b>Test {{ nx.test_o | ago }}:</b> {{ nx.test_opis }}
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if nx %}<p class="small muted">Ostatnia zmiana: {{ nx.updated_by }}, {{ nx.updated_at | dt }}</p>{% endif %}
+        <form method="post" action="/assets/{{ asset.id }}/nutanix" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="revision" value="{{ nx.revision if nx else 'unassigned' }}">
+          <fieldset {% if not ctx.can_write %}disabled{% endif %}>
+            <p><label><input type="checkbox" name="wlaczona" value="true" {% if nx and nx.wlaczona %}checked{% endif %}> Odczytuj Prism Central z tej maszyny</label></p>
+            <div class="row-form">
+              <div><label for="nx-adres">Adres Prism Central</label>
+                <input id="nx-adres" name="adres" maxlength="255" value="{{ nx.adres if nx else '' }}" placeholder="https://prism.firma.pl:9440"></div>
+              <div><label for="nx-odstep">Odczyt co</label>
+                <select id="nx-odstep" name="interwal_minut">
+                  {% for m in nutanix_interwaly %}<option value="{{ m }}" {% if (nx.interwal_minut if nx else 60) == m %}selected{% endif %}>{% if m < 60 %}{{ m }} min{% else %}{{ m // 60 }} h{% endif %}</option>{% endfor %}
+                </select></div>
+            </div>
+            <div class="row-form">
+              <div><label for="nx-user">Użytkownik</label>
+                <input id="nx-user" name="uzytkownik" maxlength="128" autocomplete="off" value="{{ nx.uzytkownik if nx else '' }}" placeholder="cmdb-ro"></div>
+              <div><label for="nx-haslo">Hasło</label>
+                <input id="nx-haslo" name="haslo" type="password" maxlength="512" autocomplete="new-password"
+                       placeholder="{% if nx and nx.haslo %}zapisane — puste pole = bez zmian{% else %}hasło konta w Prism{% endif %}"></div>
+            </div>
+            <div><label for="nx-ca">Certyfikat CA Prism (opcjonalnie, PEM)</label>
+              <textarea id="nx-ca" name="ca_pem" rows="3" placeholder="Puste = zaufane urzędy systemu tej maszyny (np. firmowe CA dodane do systemu)">{{ nx.ca_pem if nx and nx.ca_pem else '' }}</textarea>
+              <div class="muted small">Weryfikacji certyfikatu nie da się wyłączyć.</div></div>
+            {% if ctx.can_write %}<p><button class="btn btn-primary" type="submit">Zapisz</button></p>{% endif %}
+          </fieldset>
+        </form>
+        {% if ctx.can_write and nx and nx.adres and nx.haslo %}
+        <form method="post" action="/assets/{{ asset.id }}/nutanix/test" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-small" type="submit">Testuj połączenie</button>
+        </form>
+        {% endif %}
         {% endif %}
       </div>
     </div>

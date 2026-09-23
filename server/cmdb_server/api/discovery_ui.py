@@ -47,7 +47,7 @@ def discovery_page(request: Request, view: str = Query("pending", pattern="^(pen
                           .where(DiscoveryScanner.tenant_id == ctx.tenant_id, Asset.tenant_id == ctx.tenant_id)
                           .order_by(DiscoveryScanner.scanned_at.desc()).limit(50)).all()
     agents = db.execute(select(Asset).where(Asset.tenant_id == ctx.tenant_id,
-        Asset.zrodlo != "reczne", Asset.is_active.is_(True)).order_by(Asset.hostname).limit(200)).scalars().all()
+        Asset.zrodlo == "agent", Asset.is_active.is_(True)).order_by(Asset.hostname).limit(200)).scalars().all()
     return render(request, "discovery.html", user, ctx, db, rows=rows[:50], scanners=scanners, agents=agents,
                   page=page, has_next=len(rows) > 50, view=view, q=q, types=TYPY_SPRZETU)
 
@@ -84,7 +84,7 @@ def save_policy(asset_id: str, request: Request, enabled: bool = Form(False), au
                        .with_for_update()).scalar_one_or_none()
     if asset is None:
         raise HTTPException(404, "nie znaleziono maszyny")
-    if asset.zrodlo == "reczne" or not asset.is_active:
+    if asset.zrodlo != "agent" or not asset.is_active:
         raise HTTPException(400, "polityka wymaga aktywnego zasobu z agentem")
     row = db.get(DiscoveryPolicy, asset.id)
     if revision != (row.revision if row else "unassigned"):

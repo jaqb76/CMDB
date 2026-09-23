@@ -1278,3 +1278,8 @@ button.nav-group-label:focus-visible { outline: 2px solid var(--accent); outline
   .funkcje-nav { border-right: 0; border-bottom: 1px solid var(--border); }
   .funkcje-odbior { text-align: left; }
 }
+
+/* Widok Wirtualizacja: wiersz hosta jako naglowek grupy VM. */
+.wirt-drzewo .wirt-host td { background: var(--bg); font-weight: 600; }
+.wirt-drzewo .wirt-vm td:first-child { padding-left: 24px; }
+.wirt-drzewo td.num, .wirt-drzewo th.num { text-align: right; font-variant-numeric: tabular-nums; }

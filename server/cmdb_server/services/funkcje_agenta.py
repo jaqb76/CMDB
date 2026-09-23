@@ -21,10 +21,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ..discovery_policy import ScanPolicy
-from ..models import Asset, DiscoveryPolicy, MonitorUslugi, OdbiorFunkcjiAgenta, utcnow
+from ..models import (
+    Asset, DiscoveryPolicy, MonitorUslugi, NutanixUstawienia, OdbiorFunkcjiAgenta, utcnow,
+)
 
 SKANER = "skaner"
 MONITOROWANIE = "monitorowanie"
+NUTANIX = "nutanix"
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,8 @@ KATALOG: tuple[Funkcja, ...] = (
             "Wykrywa urządzenia w podsieciach widzianych z tej maszyny."),
     Funkcja(MONITOROWANIE, "Monitorowanie usług", "Sieć",
             "Sprawdza z tej maszyny dostępność usług i ważność certyfikatów."),
+    Funkcja(NUTANIX, "Nutanix Prism Central", "Wirtualizacja",
+            "Odczytuje z Prism Central klastry, hosty i maszyny wirtualne (tylko odczyt, API v4)."),
 )
 KLUCZE = {f.klucz for f in KATALOG}
 
@@ -175,6 +180,20 @@ def stan(db: Session, asset: Asset) -> list[StanFunkcji]:
         f"{liczba} {_cele(liczba)}" if liczba else "brak celów",
         wersja_monitorowania(pol), *_odb(MONITOROWANIE),
     ))
+
+    from . import nutanix
+    nx = nutanix.ustawienia(db, asset)
+    if nx is not None and nx.wlaczona:
+        liczby = nx.odczyt_liczby or {}
+        if nx.odczyt_ok and liczby:
+            podsumowanie = (f"{nx.adres} · klastry {liczby.get('klastry', 0)}, "
+                            f"hosty {liczby.get('hosty', 0)}, VM {liczby.get('vm', 0)}")
+        else:
+            podsumowanie = nx.adres
+    else:
+        podsumowanie = ""
+    wynik.append(StanFunkcji(funkcja(NUTANIX), bool(nx and nx.wlaczona), podsumowanie,
+                             nutanix.wersja(nx), *_odb(NUTANIX)))
     return wynik
 
 
@@ -199,5 +218,10 @@ def warunek_filtra(klucz: str):
         return exists().where(
             MonitorUslugi.wykonawca_id == Asset.id,
             MonitorUslugi.aktywny.is_(True),
+        )
+    if klucz == NUTANIX:
+        return exists().where(
+            NutanixUstawienia.asset_id == Asset.id,
+            NutanixUstawienia.wlaczona.is_(True),
         )
     return None

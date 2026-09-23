@@ -20,6 +20,7 @@ from ..models import (AgentCredential, Asset, DiscoveryPolicy, EnrollmentToken,
                       MonitorUslugi, Tenant, utcnow)
 from ..discovery_policy import ScanPolicy
 from ..monitoring_schema import OdpowiedzMonitorowania, RaportDostepnosci
+from ..nutanix_schema import WynikNutanix
 from ..schemas import (
     EnrollRequest,
     EnrollResponse,
@@ -284,6 +285,60 @@ def monitoring_report(raport: RaportDostepnosci, request: Request,
         przyjeto=przyjeto, pominieto=pominieto, server_time=teraz,
         interwal_raportu=get_settings().monitoring_report_seconds,
     )
+
+
+# --- Nutanix Prism Central ------------------------------------------------------
+
+@router.get("/agent/nutanix-policy")
+def nutanix_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9a-f]{32}$"),
+                   db: Session = Depends(get_db),
+                   auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Konfiguracja odczytu Prism Central dla tej maszyny.
+
+    Ta sama zasada co przy skanerze i monitorowaniu: swieza odpowiedz,
+    zwiazana z jednorazowa wartoscia i wazna przez chwile. Niesie haslo,
+    wiec nigdy nie trafia do pamieci podrecznej po drodze.
+    """
+    from ..services import nutanix
+
+    credential, ctx = auth
+    asset = db.get(Asset, credential.asset_id)
+    if asset is None or asset.tenant_id != ctx.tenant_id:
+        raise HTTPException(404, "maszyna nie istnieje")
+    row = nutanix.ustawienia(db, asset)
+    polityka = nutanix.polityka_dla_agenta(db, asset)
+    funkcje_agenta.zapisz_odbior(db, asset, funkcje_agenta.NUTANIX, nutanix.wersja(row))
+    db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return {"protocol": 1, "nonce": nonce, "asset_id": asset.id, "machine_id": asset.machine_id,
+            "revision": nutanix.wersja(row),
+            "expires_at": (utcnow() + timedelta(seconds=60)).isoformat(),
+            "policy": polityka}
+
+
+@router.post("/agent/nutanix")
+def nutanix_wynik(wynik: WynikNutanix, db: Session = Depends(get_db),
+                  auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Wynik testu polaczenia albo pelnego odczytu Prism Central.
+
+    Zakres wyznacza poswiadczenie maszyny: wynik trafia do firmy agenta
+    i do jego wlasnej konfiguracji, niezaleznie od tego, co jest w tresci.
+    """
+    from ..services import nutanix
+
+    credential, ctx = auth
+    asset = db.get(Asset, credential.asset_id)
+    if asset is None or asset.tenant_id != ctx.tenant_id:
+        raise HTTPException(404, "maszyna nie istnieje")
+    if not asset.is_active or asset.enrollment_blocked:
+        raise HTTPException(403, "maszyna jest wycofana")
+    # Dwa agenty czytajace ten sam Prism nie moga przeplatac zapisow tej
+    # samej firmy - kazdy odczyt przepina relacje i ocenia znikniecia.
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+               {"key": "nutanix:" + ctx.tenant_id})
+    wynik_przyjecia = nutanix.przyjmij(db, asset, wynik)
+    db.commit()
+    return {"wynik": wynik_przyjecia, "server_time": utcnow().isoformat()}
 
 
 # --- aktualizacja agenta ----------------------------------------------------
