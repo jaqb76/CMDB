@@ -226,8 +226,10 @@ użytkownicy — monitorowanie z tej samej maszyny, na której usługa stoi,
 odpowiada na słabsze pytanie niż monitorowanie z sieci obok.
 
 Wyłączenie albo wycofanie maszyny gasi monitorowanie jej celów; widać to na
-karcie zasobu w sekcji **„Ta maszyna sprawdza”**. Cele trzeba wtedy przepisać
-innemu agentowi.
+karcie zasobu w zakładce **Agent → Dodatkowe funkcjonalności → Monitorowanie
+usług**. Cele trzeba wtedy przepisać innemu agentowi. Przycisk **„Dodaj usługę
+sprawdzaną z tej maszyny”** otwiera formularz nowego celu z tą maszyną już
+wybraną.
 
 ### Cel bez maszyny sprawdzającej
 

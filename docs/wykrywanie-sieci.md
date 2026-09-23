@@ -11,13 +11,17 @@ monit UAC przy operacji wymagającej administratora jest zachowany.
 ## Włączenie skanera
 
 1. Zaloguj się jako administrator firmy w CMDB.
-2. Otwórz kartę wybranego komputera → **Polityka skanowania** albo wybierz
-   komputer na stronie **Wykrywanie sieci**.
+2. Otwórz kartę wybranego komputera → zakładka **Agent** → **Dodatkowe
+   funkcjonalności** → **Skaner sieci** albo wybierz komputer na stronie
+   **Wykrywanie sieci**. Dawny adres `/assets/<id>/discovery-policy` przekierowuje
+   w to samo miejsce.
 3. Włącz moduł wyłącznie dla sieci objętych zgodą administratora. Wybierz
    automatyczne podsieci i/lub zakresy CIDR, np. `192.168.10.0/24`.
 4. Zapisz politykę. Agent od wersji 0.5.10 pobierze ją podczas następnego cyklu
    raportowania; zmieniona polityka inicjuje skan w tym cyklu, następne
-   skany domyślnie nie częściej niż co 24 godziny.
+   skany domyślnie nie częściej niż co 24 godziny. Do chwili pobrania zakładka
+   **Agent** pokazuje „czeka na odebranie” — patrz
+   [`funkcje-agenta.md`](funkcje-agenta.md).
 5. Wyniki są na stronie **Wykrywanie sieci** (`/wykrywanie`).
 
 Główne okno statusu nie pokazuje informacji o skanerze. Jego stan jest widoczny

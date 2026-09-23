@@ -1,0 +1,153 @@
+{#
+  Zakladka "Agent": co ten agent robi ponad inwentaryzacje i czy o tym wie.
+
+  Dodatkowe funkcjonalnosci maja wlasne podzakladki zamiast wlasnych zakladek
+  karty: funkcji bedzie przybywac, a rzad zakladek karty i tak juz sie lamie.
+  Podzakladka to zwykly odnosnik (?funkcja=...#agent) - dziala bez skryptu
+  i da sie ja podac komus jako adres.
+#}
+{% import "_monitoring_stan.html" as stany_mon %}
+<section class="tab-panel" data-panel="agent" id="agent">
+
+  <div class="agent-stan">
+    <div class="agent-stan-el"><span class="muted small">Wersja agenta</span><b>{{ asset.agent_version or '—' }}</b></div>
+    <div class="agent-stan-el"><span class="muted small">Ostatni kontakt</span><b>{{ asset.last_seen | ago }}</b></div>
+    <div class="agent-stan-el"><span class="muted small">Dodatkowe funkcje</span>
+      <b>{{ funkcje | selectattr('wlaczona') | list | length }} z {{ funkcje | length }} włączone</b></div>
+  </div>
+
+  {% if funkcje_czekaja %}
+  <div class="alert alert-warn" data-funkcje-czekaja>
+    <b>Zmiana czeka na odebranie:</b>
+    {% for s in funkcje_czekaja %}{{ s.funkcja.nazwa }}{% if not loop.last %}, {% endif %}{% endfor %}.
+    Serwer nie łączy się z agentem, tylko czeka, aż ten sam pobierze konfigurację.
+    Do tego czasu agent pracuje na poprzednich ustawieniach.
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <h2>Funkcje podstawowe</h2>
+    <div class="funkcje-podst">
+      <div>
+        <b>Inwentaryzacja</b> <span class="badge badge-ok">zawsze</span>
+        <div class="muted small">raport co {{ (interwal_raportowania // 60) }} min (ustawienie firmy)</div>
+      </div>
+      <div>
+        <b>Lista procesów</b>
+        {% if liczba_procesow is none %}<span class="badge">brak w raporcie</span>
+        <div class="muted small">agent jej nie przysyła: wyłączona na maszynie albo starsza wersja</div>
+        {% else %}<span class="badge badge-ok">zbierana</span>
+        <div class="muted small">{{ liczba_procesow }} w ostatnim raporcie</div>{% endif %}
+      </div>
+      <div>
+        <b>Aktualizacje agenta</b>
+        {% if wersja_docelowa_agenta %}<span class="badge badge-ok">wersja {{ wersja_docelowa_agenta.version }}</span>
+        <div class="muted small">wersja docelowa · <a href="#aktualizacje">stan aktualizacji</a></div>
+        {% else %}<span class="badge">brak wersji docelowej</span>
+        <div class="muted small">agent zostaje na obecnej wersji</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Dodatkowe funkcjonalności</h2>
+    <p class="muted small">Każdą włącza się osobno dla tego agenta. Zmiany są audytowane.</p>
+    <div class="funkcje">
+      <nav class="funkcje-nav" aria-label="Dodatkowe funkcjonalności">
+        {% for grupa, lista in funkcje_grupy %}
+        <div class="funkcje-grupa">{{ grupa }}</div>
+        {% for f in lista %}
+          {% set s = funkcje | selectattr('funkcja.klucz', 'equalto', f.klucz) | first %}
+          <a class="funkcje-tab{% if f.klucz == funkcja_wybrana %} is-active{% endif %}"
+             href="/assets/{{ asset.id }}?funkcja={{ f.klucz }}#agent"
+             {% if f.klucz == funkcja_wybrana %}aria-current="page"{% endif %}>
+            <span class="kropka{% if s.wlaczona %} wl{% endif %}" aria-hidden="true"></span>
+            <span>{{ f.nazwa }}</span>
+            {% if s.czeka %}<span class="funkcje-czeka" title="czeka na odebranie przez agenta">⏳</span>{% endif %}
+          </a>
+        {% endfor %}
+        {% endfor %}
+      </nav>
+
+      <div class="funkcje-panel">
+        {% set s = funkcje | selectattr('funkcja.klucz', 'equalto', funkcja_wybrana) | first %}
+        <div class="funkcje-naglowek">
+          <div>
+            <h3>{{ s.funkcja.nazwa }}
+              {% if s.wlaczona %}<span class="badge badge-ok">włączona</span>{% else %}<span class="badge">wyłączona</span>{% endif %}
+            </h3>
+            <div class="muted small">{{ s.funkcja.opis }}</div>
+            {% if s.podsumowanie %}<div class="small">{{ s.podsumowanie }}</div>{% endif %}
+          </div>
+          <div class="small funkcje-odbior">
+            {% if s.czeka %}<span class="badge badge-warn">czeka na odebranie</span>
+            {% elif s.odebrano %}<span class="badge badge-ok">agent ma aktualną konfigurację</span>
+            {% endif %}
+            {% if s.odebrano %}<div class="muted">ostatnio pobrana {{ s.odebrano | ago }}</div>
+            {% else %}<div class="muted">agent jeszcze jej nie pobierał</div>{% endif %}
+          </div>
+        </div>
+
+        {% if funkcja_wybrana == 'skaner' %}
+        <p class="small muted">
+          Działa od wersji agenta 0.5.10. Agent pobiera ustawienia przed każdym skanem, a brak
+          kontaktu z serwerem oznacza brak skanu. Wyłączenie nie przerywa skanu już rozpoczętego.
+          Wyniki: <a href="/wykrywanie">Wykrywanie sieci</a>.
+        </p>
+        {% if polityka_skanera_row %}<p class="small muted">Ostatnia zmiana: {{ polityka_skanera_row.updated_by }}, {{ polityka_skanera_row.updated_at | dt }}</p>{% endif %}
+        <form method="post" action="/assets/{{ asset.id }}/discovery-policy" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="revision" value="{{ rewizja_skanera }}">
+          <fieldset {% if not ctx.can_write %}disabled{% endif %}>
+            <p><label><input type="checkbox" name="enabled" value="true" {% if polityka_skanera.enabled %}checked{% endif %}> Zezwól temu agentowi na skanowanie sieci</label></p>
+            <p><label><input type="checkbox" name="auto_subnets" value="true" {% if polityka_skanera.auto_subnets %}checked{% endif %}> Automatycznie wykryj lokalne prywatne podsieci IPv4</label></p>
+            <div class="row-form">
+              <div><label for="sk-cidrs">Dodatkowe CIDR (po przecinku)</label>
+                <input id="sk-cidrs" name="cidrs" value="{{ polityka_skanera.cidrs | join(', ') }}" maxlength="2048" placeholder="192.168.10.0/24"></div>
+              <div><label for="sk-interval">Odstęp między skanami (sekundy)</label>
+                <input id="sk-interval" type="number" name="interval_seconds" min="3600" max="604800" value="{{ polityka_skanera.interval_seconds }}"></div>
+            </div>
+            <div class="row-form">
+              <div><label for="sk-max">Maksymalna liczba adresów</label>
+                <input id="sk-max" type="number" name="max_hosts" min="1" max="4096" value="{{ polityka_skanera.max_hosts }}"></div>
+              <div><label for="sk-rate">Próby połączenia na sekundę</label>
+                <input id="sk-rate" type="number" name="rate" min="1" max="128" value="{{ polityka_skanera.rate }}"></div>
+              <div><label for="sk-budget">Budżet skanu (sekundy)</label>
+                <input id="sk-budget" type="number" name="budget_seconds" min="10" max="900" value="{{ polityka_skanera.budget_seconds }}"></div>
+            </div>
+            {% if ctx.can_write %}<p><button class="btn btn-primary" type="submit">Zapisz</button></p>{% endif %}
+          </fieldset>
+        </form>
+        <p class="small muted">Włączaj skanowanie wyłącznie w zakresie zatwierdzonym przez administratora sieci.</p>
+
+        {% elif funkcja_wybrana == 'monitorowanie' %}
+        <p class="small muted">
+          Usługi sprawdzane z tej maszyny. Wyłączenie albo wycofanie maszyny zgasi ich
+          monitorowanie — cele trzeba wtedy przepisać innemu agentowi.
+        </p>
+        {% if sprawdza %}
+        <table class="table">
+          <thead><tr><th>Usługa</th><th>Adres</th><th>Stan</th><th>Sonda co</th></tr></thead>
+          <tbody>
+          {% for u in sprawdza %}
+            <tr>
+              <td><a href="/monitoring/{{ u.id }}">{{ u.nazwa }}</a>
+                {% if not u.aktywny %}<span class="badge">wyłączony</span>{% endif %}</td>
+              <td class="small">{{ u.host }}:{{ u.port }} <span class="muted">{{ u.protokol | upper }}</span></td>
+              <td>{{ stany_mon.odznaka(u.stan) }}</td>
+              <td class="small">{{ u.interwal_sekund }} s</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="muted">Ta maszyna niczego jeszcze nie sprawdza.</p>
+        {% endif %}
+        {% if ctx.can_write and asset.is_active %}
+        <p><a class="btn btn-small" href="/monitoring?wykonawca={{ asset.id }}#nowy-cel">Dodaj usługę sprawdzaną z tej maszyny</a></p>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>

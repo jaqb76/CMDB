@@ -342,6 +342,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | [`docs/aktualizacje.md`](docs/aktualizacje.md) | brakujące poprawki, źródła danych per system, czego to nie jest |
 | [`docs/podatnosci.md`](docs/podatnosci.md) | badanie CVE, dane dystrybucji, porównywanie wersji dpkg |
 | [`docs/raporty.md`](docs/raporty.md) | raporty pocztą, SMTP per firma, harmonogram, dane gwarancji |
+| [`docs/funkcje-agenta.md`](docs/funkcje-agenta.md) | zakładka „Agent”: funkcje podstawowe, dodatkowe funkcjonalności per agent, „czeka na odebranie” |
 | [`docs/monitorowanie-uslug.md`](docs/monitorowanie-uslug.md) | monitorowanie dostępności usług i ważności certyfikatów SSL, progi, powiadomienia |
 | [`docs/helpdesk.md`](docs/helpdesk.md) | zgłoszenia z maili, rozpoznawanie wątków, czas pracy, raporty, dostępy techników |
 | [`docs/kopie-zapasowe.md`](docs/kopie-zapasowe.md) | co jest stanem instalacji, nocne zadanie, przywracanie z panelu, przenosiny |

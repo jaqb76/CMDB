@@ -1234,3 +1234,47 @@ button.nav-group-label:focus-visible { outline: 2px solid var(--accent); outline
 .apk-kod p { margin: 8px 0 0; }
 .apk-opis { flex: 1; min-width: 280px; }
 @media (max-width: 720px) { .apk-pobranie { gap: 16px; } }
+
+/* Zakladka "Agent" na karcie maszyny. Dodatkowe funkcjonalnosci maja
+   pionowa liste podzakladek: funkcji bedzie przybywac, a pozioma lista
+   zaczelaby sie lamac szybciej niz rzad zakladek karty. */
+.agent-stan { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.agent-stan-el {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.funkcje-podst { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.funkcje {
+  display: grid; grid-template-columns: 220px minmax(0, 1fr);
+  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+}
+.funkcje-nav {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px;
+  background: var(--bg); border-right: 1px solid var(--border);
+}
+.funkcje-grupa {
+  padding: 10px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+.funkcje-tab {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px;
+  color: var(--text); font-size: 14px;
+}
+.funkcje-tab:hover { background: var(--surface); text-decoration: none; }
+.funkcje-tab.is-active { background: var(--surface); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.funkcje-czeka { margin-left: auto; font-size: 12px; }
+.kropka { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); flex: none; }
+.kropka.wl { background: var(--ok-fg); border-color: var(--ok-fg); }
+.funkcje-panel { padding: 16px; min-width: 0; }
+.funkcje-naglowek {
+  display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+.funkcje-naglowek h3 { margin: 0 0 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.funkcje-odbior { text-align: right; }
+.funkcje-panel fieldset { border: 0; padding: 0; margin: 0; }
+@media (max-width: 720px) {
+  .funkcje { grid-template-columns: 1fr; }
+  .funkcje-nav { border-right: 0; border-bottom: 1px solid var(--border); }
+  .funkcje-odbior { text-align: left; }
+}

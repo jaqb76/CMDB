@@ -154,7 +154,7 @@
 </section>
 
 {% if ctx.can_write and agenci %}
-<section class="panel">
+<section class="panel" id="nowy-cel">
   <h2>Nowa monitorowana usługa</h2>
   {% if limit_osiagniety %}
   <div class="alert alert-warn">
@@ -177,7 +177,7 @@
       <div>
         <label for="wykonawca_id">Sprawdza z maszyny <span class="wymagane">*</span></label>
         <select id="wykonawca_id" name="wykonawca_id" required>
-          {% for m in agenci %}<option value="{{ m.id }}">{{ m.hostname }}</option>{% endfor %}
+          {% for m in agenci %}<option value="{{ m.id }}"{% if m.id == wybrany_wykonawca %} selected{% endif %}>{{ m.hostname }}</option>{% endfor %}
         </select>
         <div class="muted small">
           Agent na tej maszynie nawiąże połączenie. Wybierz taką, która widzi
