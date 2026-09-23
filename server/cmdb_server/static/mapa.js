@@ -142,7 +142,7 @@
       b.setAttribute("aria-pressed", String(b.dataset.kierunek === stan.kierunek));
     });
     if (window.history && history.replaceState) {
-      history.replaceState(null, "", "/relacje/mapa?zasob=" + encodeURIComponent(stan.focus) +
+      history.replaceState(null, "", "/relacje/mapa?widok=sciezka&zasob=" + encodeURIComponent(stan.focus) +
                            "&kierunek=" + stan.kierunek);
     }
   }

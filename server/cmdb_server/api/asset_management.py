@@ -29,6 +29,39 @@ def relations_page(request: Request, asset_id: str = Query("", max_length=36),
 
 # Kolumna mapy wedlug rodzaju zasobu: od korzenia (klaster) do lisci (aplikacje).
 KOLUMNY_MAPY = {"klaster": 0, "host": 1, "aplikacja": 3}
+TYPY_MASZYN = ("vm", "komputer")
+
+
+def _stany_maszyn(db: Session, ctx: TenantContext, zasoby: dict) -> dict:
+    """Stan maszyny na mapie: ok / bez agenta / wylaczona / agent milczy.
+
+    Wylaczenie znamy tylko z Nutanixa (stan zasilania VM). Milczenie liczymy
+    tak samo jak "bez kontaktu" na liscie sprzetu - progiem firmy.
+    """
+    from sqlalchemy import select as _select
+
+    from ..models import NutanixObiekt, Tenant, as_utc
+    from ..services import ustawienia
+
+    ids = [a.id for a in zasoby.values() if a.typ in TYPY_MASZYN]
+    zasilanie = {}
+    if ids:
+        for o in db.execute(_select(NutanixObiekt).where(
+                NutanixObiekt.tenant_id == ctx.tenant_id, NutanixObiekt.asset_id.in_(ids),
+                NutanixObiekt.zniknal_o.is_(None))).scalars():
+            zasilanie[o.asset_id] = (o.dane or {}).get("stan")
+    granica = ustawienia.granica_aktywnosci(db.get(Tenant, ctx.tenant_id))
+    stany = {}
+    for a in zasoby.values():
+        if a.typ not in TYPY_MASZYN:
+            continue
+        if zasilanie.get(a.id) == "OFF":
+            stany[a.id] = "wyl"
+        elif a.zrodlo == "agent":
+            stany[a.id] = "bad" if a.last_seen and as_utc(a.last_seen) < granica else "ok"
+        else:
+            stany[a.id] = "bez"
+    return stany
 
 
 def _dane_mapy(db: Session, ctx: TenantContext, zasob: str, kierunek: str) -> dict:
@@ -47,11 +80,13 @@ def _dane_mapy(db: Session, ctx: TenantContext, zasob: str, kierunek: str) -> di
         if wybrany is None:
             raise HTTPException(404, "nie znaleziono zasobu")
         zasoby[wybrany.id] = wybrany
+    stany = _stany_maszyn(db, ctx, zasoby)
     wezly = [{
         "id": a.id, "nazwa": a.hostname, "typ": a.typ, "zrodlo": a.zrodlo,
         "kolumna": KOLUMNY_MAPY.get(a.typ, 2),
         "opis": a.os_name or a.model or a.role_label or "",
         "wycofany": a.lifecycle == "wycofany",
+        "stan": stany.get(a.id),
     } for a in sorted(zasoby.values(), key=lambda a: a.hostname.lower())]
     krawedzie = [{"z": r.source_id, "do": r.target_id, "rodzaj": r.kind} for r in rows]
     if not zasob and wezly:
@@ -63,15 +98,21 @@ def _dane_mapy(db: Session, ctx: TenantContext, zasob: str, kierunek: str) -> di
 @router.get("/relacje/mapa")
 def relations_map(request: Request, zasob: str = Query("", max_length=36),
                   kierunek: str = Query("w-dol", pattern="^(w-dol|w-gore|oba)$"),
+                  widok: str = Query("grupy", pattern="^(grupy|sciezka)$"),
                   user: PortalUser = Depends(require_user),
                   ctx: TenantContext = Depends(resolve_tenant), db: Session = Depends(get_db)):
     """Interaktywna mapa zaleznosci: klaster -> host -> VM/serwer -> aplikacja.
 
-    Strona rysuje graf sama, bez zewnetrznych bibliotek, a dane pobiera
-    z /relacje/mapa.json - CSP panelu nie dopuszcza skryptow w tresci strony.
+    Dwa widoki tych samych danych: "grupy" (domyslny) - kazdy host z maszynami
+    jako zwarta grupa, bez przeciec linii, dla calej infrastruktury naraz;
+    "sciezka" - kolumny od klastra do aplikacji, dla jednego zasobu i jego
+    zaleznosci. Strona rysuje graf sama, bez zewnetrznych bibliotek, a dane
+    pobiera z /relacje/mapa.json - CSP panelu nie dopuszcza skryptow w tresci.
     """
+    wybrany = zasob
     dane = _dane_mapy(db, ctx, zasob, kierunek)
-    return render(request, "relacje_mapa.html", user, ctx, db, dane_mapy=dane)
+    return render(request, "relacje_mapa.html", user, ctx, db, dane_mapy=dane, widok=widok,
+                  wybrany=wybrany)
 
 
 @router.get("/relacje/mapa.json")

@@ -2,10 +2,12 @@
 {% block title %}Mapa relacji - CMDB{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Mapa relacji</h1><a class="btn" href="/relacje">Tabela relacji</a></div>
-<p class="muted">
-  Kliknij dowolny zasób, żeby zobaczyć, co na nim stoi (↓), na czym on stoi (↑), albo jedno i drugie.
-  Łańcuch: klaster → host → maszyna wirtualna / serwer → aplikacja. Relacje dodaje się i usuwa w tabeli.
-</p>
+<nav class="mapa-widoki" aria-label="Widok mapy">
+  <a href="/relacje/mapa?widok=grupy{% if wybrany %}&amp;zasob={{ wybrany | urlencode }}{% endif %}"
+     {% if widok == 'grupy' %}aria-current="page"{% endif %}>Widok: grupy</a>
+  <a href="/relacje/mapa?widok=sciezka{% if dane_mapy.zasob %}&amp;zasob={{ dane_mapy.zasob | urlencode }}{% endif %}"
+     {% if widok == 'sciezka' %}aria-current="page"{% endif %}>Widok: ścieżka</a>
+</nav>
 
 {% if not dane_mapy.wezly %}
 <section class="panel">
@@ -13,7 +15,51 @@
   <p class="muted">Powstają same z odczytu Nutanix Prism Central (Agent → Dodatkowe funkcjonalności)
     albo można je dodać ręcznie w <a href="/relacje">tabeli relacji</a>.</p>
 </section>
+
+{% elif widok == 'grupy' %}
+<p class="muted small">
+  Każdy host to grupa ze swoimi maszynami, a grupy układają się w rzędy dopasowane do okna.
+  Kółko myszy przybliża, przeciąganie przesuwa, kliknięcie pokazuje zależności, dwuklik na hoście go zwija.
+</p>
+<section class="panel mg" data-mapa-grupy
+         data-mapa-zrodlo="/relacje/mapa.json"
+         data-mapa-wybrany="{{ wybrany }}">
+  <div class="mg-pasek">
+    <input type="search" data-mg-szukaj placeholder="Szukaj zasobu…" aria-label="Szukaj zasobu" list="mg-nazwy">
+    <datalist id="mg-nazwy"></datalist>
+    <button class="btn btn-small" type="button" data-mg-calosc>Dopasuj do okna</button>
+    <button class="btn btn-small" type="button" data-mg-zwin>Zwiń wszystkie hosty</button>
+    <label class="small"><input type="checkbox" data-mg-rozmiar> hosty wg liczby VM</label>
+    <span class="mg-filtry small" role="group" aria-label="Pokaż maszyny">
+      <label><input type="checkbox" data-mg-filtr="ok" checked> z agentem</label>
+      <label><input type="checkbox" data-mg-filtr="bez" checked> bez agenta</label>
+      <label><input type="checkbox" data-mg-filtr="wyl" checked> wyłączone</label>
+      <label><input type="checkbox" data-mg-apki> aplikacje</label>
+    </span>
+  </div>
+  <div class="mg-uklad">
+    <div class="mg-plotno" data-mg-plotno>
+      <svg data-mg-svg role="img" aria-label="Mapa relacji - grupy hostów"><g data-mg-scena><g data-mg-krawedzie></g><g data-mg-wezly></g></g></svg>
+      <div class="mg-zoom"><button class="btn btn-small" type="button" data-mg-plus aria-label="Przybliż">+</button><button class="btn btn-small" type="button" data-mg-minus aria-label="Oddal">−</button></div>
+    </div>
+    <aside class="mg-bok" data-mg-bok aria-live="polite"></aside>
+  </div>
+  <div class="mapa-legenda small muted">
+    <span><i class="mg-l-klaster"></i>klaster</span>
+    <span><i class="mg-l-host"></i>host</span>
+    <span><i class="mg-l-ok"></i>maszyna z agentem CMDB</span>
+    <span><i class="mg-l-bez"></i>bez agenta</span>
+    <span><i class="mg-l-wyl"></i>wyłączona</span>
+    <span><i class="mg-l-bad"></i>agent milczy</span>
+    <span><i class="mg-l-app"></i>aplikacja</span>
+  </div>
+</section>
+
 {% else %}
+<p class="muted">
+  Kliknij dowolny zasób, żeby zobaczyć, co na nim stoi (↓), na czym on stoi (↑), albo jedno i drugie.
+  Łańcuch: klaster → host → maszyna wirtualna / serwer → aplikacja. Relacje dodaje się i usuwa w tabeli.
+</p>
 <section class="panel mapa" data-mapa
          data-mapa-zrodlo="/relacje/mapa.json?zasob={{ dane_mapy.zasob | urlencode }}&amp;kierunek={{ dane_mapy.kierunek }}">
   <div class="mapa-pasek">
@@ -41,4 +87,4 @@
 </section>
 {% endif %}
 {% endblock %}
-{% block skrypty %}<script src="{{ zasob('mapa.js') }}"></script>{% endblock %}
+{% block skrypty %}{% if dane_mapy.wezly %}<script src="{{ zasob('mapa_grupy.js' if widok == 'grupy' else 'mapa.js') }}"></script>{% endif %}{% endblock %}

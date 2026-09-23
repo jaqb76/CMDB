@@ -39,15 +39,20 @@ def test_mapa_zawiera_graf_firmy_i_zaczyna_od_klastra(client, tenant_a, tenant_b
     obcy = zasob(tenant_b["id"], "obcy", "klaster")
     zaloguj(client, tenant_a, make_user)
 
+    # Domyslnie widok grup - cala infrastruktura, bez wskazanego zasobu.
     odp = client.get("/relacje/mapa")
     assert odp.status_code == 200
+    assert 'data-mapa-grupy' in odp.text and 'src="/static/mapa_grupy.js' in odp.text
+    # Widok sciezki - dotychczasowe kolumny, od pierwszego klastra.
+    odp = client.get("/relacje/mapa?widok=sciezka")
     assert f'data-mapa-zrodlo="/relacje/mapa.json?zasob={klaster}&amp;kierunek=w-dol"' in odp.text
+    assert 'src="/static/mapa.js' in odp.text
+    assert client.get("/relacje/mapa?widok=inny").status_code == 422
     dane = dane_mapy(client)
     assert {w["nazwa"]: w["kolumna"] for w in dane["wezly"]} == {
         "pod02": 0, "pod02-nutanix02": 1, "FUDO-pod02": 2, "FUDO PAM": 3}
     assert dane["zasob"] == klaster and dane["kierunek"] == "w-dol"
     assert len(dane["krawedzie"]) == 3
-    assert 'src="/static/mapa.js' in odp.text
 
     dane = dane_mapy(client, f"?zasob={vm}&kierunek=w-gore")
     assert dane["zasob"] == vm and dane["kierunek"] == "w-gore"
@@ -73,3 +78,25 @@ def test_bez_relacji_jest_podpowiedz_i_odnosniki(client, tenant_a, make_user):
     zaloguj(client, tenant_a, make_user)
     assert "Nie ma jeszcze żadnych relacji" in client.get("/relacje/mapa").text
     assert 'href="/relacje/mapa"' in client.get("/relacje").text
+
+
+def test_stan_maszyn_na_mapie(client, tenant_a, make_user):
+    """Kolor bloku: agent / agent milczy / bez agenta / wylaczona wg Nutanixa."""
+    from datetime import timedelta
+
+    from cmdb_server.models import NutanixObiekt, utcnow
+
+    t = tenant_a["id"]
+    host = zasob(t, "host-1", "host", "nutanix")
+    stany = {}
+    for nazwa, zrodlo in (("z-agentem", "agent"), ("milczy", "agent"), ("bez-agenta", "nutanix"), ("wylaczona", "nutanix")):
+        stany[nazwa] = zasob(t, nazwa, "vm", zrodlo)
+        relacja(t, stany[nazwa], host, "vm_host")
+    with SessionLocal() as db:
+        db.get(Asset, stany["milczy"]).last_seen = utcnow() - timedelta(days=30)
+        db.add(NutanixObiekt(tenant_id=t, rodzaj="vm", ext_id="vm-off", nazwa="wylaczona",
+                             dane={"stan": "OFF"}, asset_id=stany["wylaczona"]))
+        db.commit()
+    zaloguj(client, tenant_a, make_user)
+    wynik = {w["nazwa"]: w["stan"] for w in dane_mapy(client)["wezly"]}
+    assert wynik == {"host-1": None, "z-agentem": "ok", "milczy": "bad", "bez-agenta": "bez", "wylaczona": "wyl"}
