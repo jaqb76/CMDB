@@ -49,6 +49,11 @@
       <a class="app-nav-link{{ akt('/wirtualizacja') }}" href="/wirtualizacja" title="Wirtualizacja"><span class="nav-icon" aria-hidden="true">▦</span><span class="nav-label">Wirtualizacja</span></a>
       {% endcall %}
 
+      {% call grupa('wiedza', 'Baza wiedzy') %}
+      <a class="app-nav-link{{ akt('/wiedza', True) }}" href="/wiedza" title="Baza wiedzy — start" data-nav-exact><span class="nav-icon" aria-hidden="true">✎</span><span class="nav-label">Start i przestrzenie</span></a>
+      <a class="app-nav-link{{ akt('/wiedza/artykuly') }}" href="/wiedza/artykuly" title="Artykuły i wyszukiwanie"><span class="nav-icon" aria-hidden="true">≡</span><span class="nav-label">Artykuły</span></a>
+      {% endcall %}
+
       {% if helpdesk_widoczny %}
       {% call grupa('helpdesk', 'Helpdesk') %}
       <a class="app-nav-link{{ akt('/helpdesk') }}" href="/helpdesk" title="Zgłoszenia klientów"><span class="nav-icon" aria-hidden="true">✉</span><span class="nav-label">Zgłoszenia</span></a>

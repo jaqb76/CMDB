@@ -1,0 +1,40 @@
+{# Wspolne klocki bazy wiedzy. #}
+
+{% macro kategoria(a) -%}
+<span class="kb-kategoria kb-kat-{{ a.kategoria }}" title="{{ a.etykieta_kategorii }}">{{ a.krotka_kategoria }}</span>
+{%- endmacro %}
+
+{% macro stan_przegladu(a) -%}
+{% if a.usuniety_o %}<span class="badge badge-danger">w koszu</span>
+{% elif a.przeglad_co_mies and a.przeglad_do and a.przeglad_do < dzisiaj() %}<span class="badge badge-warn" title="Termin przeglądu minął {{ a.przeglad_do.strftime('%d.%m.%Y') }}">do przeglądu</span>
+{% else %}<span class="badge badge-ok">aktualny</span>{% endif %}
+{%- endmacro %}
+
+{#
+  Drzewo stron przestrzeni. Rekurencja w makrze: Jinja nie ma petli po
+  drzewie, a glebokosc jest ograniczona tym, jak ludzie ukladaja strony.
+#}
+{% macro drzewo(wezly, aktywny='') -%}
+<ul>
+  {% for w in wezly %}
+  <li{% if w.dzieci %} class="kb-folder"{% endif %}>
+    <a href="/wiedza/a/{{ w.artykul.id }}"{% if w.artykul.id == aktywny %} class="is-active" aria-current="page"{% endif %}>{{ w.artykul.tytul }}</a>
+    {% if w.dzieci %}{{ drzewo(w.dzieci, aktywny) }}{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+
+{% macro etykiety(lista, filtr) -%}
+{% if lista %}<span class="kb-etykiety">{% for x in lista %}<a class="kb-etykieta" href="/wiedza/artykuly?{{ filtr }}={{ x | urlencode }}">{{ x }}</a>{% endfor %}</span>{% endif %}
+{%- endmacro %}
+
+{% macro lista_artykulow(lista, pusto='Brak artykułów.') -%}
+{% if lista %}
+<ul class="kb-lista">
+  {% for a in lista %}
+  <li>{{ kategoria(a) }}<a href="/wiedza/a/{{ a.id }}">{{ a.tytul }}</a><span class="muted small kb-lista-prawo">{{ a.zmieniono | ago }}</span></li>
+  {% endfor %}
+</ul>
+{% else %}<p class="muted small">{{ pusto }}</p>{% endif %}
+{%- endmacro %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% import "_wiedza.html" as kb %}
+{% block title %}{{ przestrzen.nazwa }} - Baza wiedzy - CMDB{% endblock %}
+{% block content %}
+<div class="okruszki"><a href="/wiedza">Baza wiedzy</a> / {{ przestrzen.nazwa }}</div>
+<div class="page-head">
+  <div class="kb-tytul-przestrzeni">
+    <span class="kb-skrot kb-skrot-duzy">{{ przestrzen.skrot }}</span>
+    <div>
+      <h1>{{ przestrzen.nazwa }}</h1>
+      <p class="muted">{{ przestrzen.opis or '' }} {{ liczba }} {% if liczba == 1 %}artykuł{% else %}art.{% endif %}</p>
+    </div>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/wiedza/artykuly?przestrzen={{ przestrzen.id }}">Lista z filtrami</a>
+    {% if ctx.can_write %}<a class="btn btn-primary" href="/wiedza/nowy?przestrzen={{ przestrzen.id }}">+ Nowa strona</a>{% endif %}
+  </div>
+</div>
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+<section class="panel kb-drzewo kb-drzewo-duze">
+  <h2>Strony</h2>
+  {% if drzewo %}{{ kb.drzewo(drzewo) }}{% else %}<p class="muted">Przestrzeń jest pusta.</p>{% endif %}
+</section>
+{% endblock %}

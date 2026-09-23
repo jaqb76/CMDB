@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{% if art %}Edycja: {{ art.tytul }}{% else %}Nowy artykuł{% endif %} - Baza wiedzy - CMDB{% endblock %}
+{% block content %}
+
+<div class="okruszki">
+  <a href="/wiedza">Baza wiedzy</a> /
+  {% if art %}<a href="/wiedza/a/{{ art.id }}">{{ art.tytul }}</a> / Edycja{% else %}Nowy artykuł{% endif %}
+</div>
+<div class="page-head">
+  <div>
+    <h1>{% if art %}Edycja artykułu{% else %}Nowy artykuł{% endif %}</h1>
+    <p class="muted">
+      Treść w Markdown: przyciski nad polem wstawiają nagłówki, kroki, bloki kodu
+      i panele. Każde zapisanie zmian to nowa wersja w historii; zapis bez zmian
+      wersji nie tworzy.
+    </p>
+  </div>
+</div>
+
+{% if blad %}<div class="alert alert-error" role="alert">{{ blad }}</div>{% endif %}
+
+<form method="post" action="{% if art %}/wiedza/a/{{ art.id }}{% else %}/wiedza/nowy{% endif %}" id="kb-formularz" class="kb-edytor" data-kb-edytor>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% if art %}<input type="hidden" name="wersja" value="{{ pola.wersja }}">{% endif %}
+
+  <div class="kb-edytor-glowna">
+    <div class="panel">
+      <label for="kb-tytul">Tytuł <span class="wymagane">*</span></label>
+      <input id="kb-tytul" name="tytul" value="{{ pola.tytul or '' }}" maxlength="200" required class="kb-pole-tytulu">
+
+      <label for="kb-streszczenie" class="odstep-s">Streszczenie <span class="wymagane">*</span> <span class="muted">— na liście i w wynikach wyszukiwania</span></label>
+      <textarea id="kb-streszczenie" name="streszczenie" rows="2" maxlength="500" required>{{ pola.streszczenie or '' }}</textarea>
+
+      <label for="kb-tresc" class="odstep-s">Treść <span class="wymagane">*</span></label>
+      <div class="kb-narzedzia" role="toolbar" aria-label="Formatowanie" data-kb-narzedzia hidden>
+        <button type="button" class="btn btn-small" data-md="**|**" title="Pogrubienie"><b>B</b></button>
+        <button type="button" class="btn btn-small" data-md="`|`" title="Kod w tekście"><code>kod</code></button>
+        <button type="button" class="btn btn-small" data-md-linia="## " title="Nagłówek">Nagłówek</button>
+        <button type="button" class="btn btn-small" data-md-linia="- " title="Lista">• Lista</button>
+        <button type="button" class="btn btn-small" data-md-linia="1. " title="Kroki">1. Kroki</button>
+        <button type="button" class="btn btn-small" data-md="&#10;```&#10;|&#10;```&#10;" title="Blok kodu">Blok kodu</button>
+        <button type="button" class="btn btn-small" data-md="&#10;| Kolumna | Kolumna |&#10;|---|---|&#10;| | |&#10;|" title="Tabela">Tabela</button>
+        {% for kod, nazwa in panele.items() %}
+        <button type="button" class="btn btn-small kb-przycisk-{{ kod }}" data-md="&#10;:::{{ kod }} {{ nazwa }}&#10;|&#10;:::&#10;" title="Panel: {{ nazwa | lower }}">Panel: {{ nazwa | lower }}</button>
+        {% endfor %}
+        <select data-md-pole aria-label="Wstaw pole maszyny">
+          <option value="">Pole maszyny…</option>
+          {% for kod, opis in pola_maszyny.items() %}<option value="{{ '{' ~ kod ~ '}' }}">{{ '{' ~ kod ~ '}' }} — {{ opis }}</option>{% endfor %}
+        </select>
+        <button type="button" class="btn btn-small do-prawej" data-kb-podglad-przycisk>Podgląd</button>
+      </div>
+      <textarea id="kb-tresc" name="tresc" rows="22" maxlength="200000" required class="kb-pole-tresci" spellcheck="true">{{ pola.tresc or '' }}</textarea>
+      <div class="kb-tresc kb-podglad" data-kb-podglad hidden></div>
+      <p class="muted small">
+        Panele: <code>:::uwaga Tytuł</code> … <code>:::</code> (info, uwaga, stop, ok).
+        Pola <code>{hostname}</code>, <code>{fqdn}</code>, <code>{ip}</code>, <code>{system}</code>,
+        <code>{lokalizacja}</code> wypełniają się, gdy artykuł otworzysz z karty maszyny.
+      </p>
+    </div>
+
+    <div class="panel kb-zapis">
+      <label for="kb-opis-zmiany">Opis zmiany <span class="muted">— trafi do historii</span></label>
+      <input id="kb-opis-zmiany" name="opis_zmiany" maxlength="300" placeholder="{% if art %}np. dopisany krok 4{% else %}np. pierwsza wersja{% endif %}">
+      <div class="pasek-akcji">
+        <button type="submit" class="btn btn-primary">{% if art %}Zapisz zmiany{% else %}Opublikuj{% endif %}</button>
+        <a class="btn" href="{% if art %}/wiedza/a/{{ art.id }}{% else %}/wiedza{% endif %}">Anuluj</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="kb-edytor-bok">
+    <div class="panel">
+      <h2>Dotyczy</h2>
+      <p class="muted small">Maszyna pasuje, gdy spełnia <b>co najmniej jeden</b> warunek albo nazywa się tak jak jeden z systemów. Pusty warunek nie jest brany pod uwagę.</p>
+
+      <label for="kb-systemy">Systemy <span class="muted">— nazwy hostów, FQDN, aplikacji; po przecinku</span></label>
+      <input id="kb-systemy" name="systemy" value="{{ pola.systemy or '' }}" list="kb-lista-systemow" data-kb-systemy placeholder="np. host01.example.local, system-a">
+
+      <div class="kb-warunki-edycja" data-kb-warunki>
+        {% for w in warunki %}
+        <div class="kb-warunek" data-kb-warunek>
+          <select name="warunek_pole" aria-label="Pole warunku" data-kb-pole>
+            {% for kod, etykieta in pola_dotyczy.items() %}<option value="{{ kod }}" {% if w.pole == kod %}selected{% endif %}>{{ etykieta }}</option>{% endfor %}
+          </select>
+          <input name="warunek_wartosc" value="{{ w.wartosc }}" maxlength="200" aria-label="Wartość warunku" placeholder="np. db0*  albo  Windows Server 2019" data-kb-wartosc>
+          <button type="button" class="btn btn-link" data-kb-usun-warunek aria-label="Usuń warunek" hidden>×</button>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-small" data-kb-dodaj-warunek hidden>+ warunek</button>
+      <p class="muted small">W nazwie hosta i etykiecie <code>*</code> zastępuje dowolny ciąg znaków; pozostałe pola szukają fragmentu.</p>
+
+      <div class="kb-podglad-trafien" data-kb-trafienia hidden>
+        <p class="kb-licznik-trafien"><b data-kb-liczba>0</b> <span data-kb-opis-liczby>maszyn pasuje teraz</span></p>
+        <ul class="kb-trafienia" data-kb-lista-trafien></ul>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Ustawienia</h2>
+      <div class="stack">
+        <div>
+          <label for="kb-kategoria">Kategoria <span class="wymagane">*</span></label>
+          <select id="kb-kategoria" name="kategoria" required>
+            {% for kod, etykieta in kategorie.items() %}<option value="{{ kod }}" {% if pola.kategoria == kod %}selected{% endif %}>{{ etykieta }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="kb-przestrzen">Przestrzeń</label>
+          <select id="kb-przestrzen" name="przestrzen_id">
+            {% if not przestrzenie %}<option value="">Ogólna (zostanie założona)</option>{% endif %}
+            {% for p in przestrzenie %}<option value="{{ p.id }}" {% if pola.przestrzen_id == p.id %}selected{% endif %}>{{ p.nazwa }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="kb-rodzic">Strona nadrzędna</label>
+          <select id="kb-rodzic" name="rodzic_id">
+            <option value="">— najwyższy poziom —</option>
+            {% for s in strony %}<option value="{{ s.id }}" {% if pola.rodzic_id == s.id %}selected{% endif %}>{{ s.tytul }}</option>{% endfor %}
+          </select>
+          <p class="muted small">Lista stron z przestrzeni wybranej przy otwarciu formularza. Po zmianie przestrzeni strona nadrzędna musi być z nowej przestrzeni.</p>
+        </div>
+        <div>
+          <label for="kb-tagi">Tagi <span class="muted">— po przecinku; nowe dopisują się do podpowiedzi</span></label>
+          <input id="kb-tagi" name="tagi" value="{{ pola.tagi or '' }}" list="kb-lista-tagow" placeholder="np. restart, klaster">
+        </div>
+        <div>
+          <label for="kb-wlasciciel">Właściciel</label>
+          <select id="kb-wlasciciel" name="wlasciciel">
+            <option value="">—</option>
+            {% for e in wlasciciele %}<option value="{{ e }}" {% if pola.wlasciciel == e %}selected{% endif %}>{{ e }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="kb-przeglad">Przegląd co</label>
+          <select id="kb-przeglad" name="przeglad_co_mies">
+            {% for m in przeglady %}<option value="{{ m }}" {% if pola.przeglad_co_mies | int == m %}selected{% endif %}>{% if m %}{{ m }} mies.{% else %}bez przeglądu{% endif %}</option>{% endfor %}
+          </select>
+        </div>
+        <label class="kb-opcja"><input type="checkbox" name="na_dyzur" value="1" {% if pola.na_dyzur %}checked{% endif %}> przypnij na dyżur — artykuł trafi na stronę startową bazy wiedzy</label>
+        <div>
+          <label for="kb-notatki-zal">Opis załączników</label>
+          <textarea id="kb-notatki-zal" name="notatki_zalacznikow" rows="2" maxlength="5000">{{ pola.notatki_zalacznikow or '' }}</textarea>
+        </div>
+        <div>
+          <label for="kb-notatki-diag">Diagram — opis lub źródło</label>
+          <textarea id="kb-notatki-diag" name="notatki_diagramu" rows="2" maxlength="5000">{{ pola.notatki_diagramu or '' }}</textarea>
+        </div>
+        {% if not art %}<p class="muted small">Załączniki dodasz na stronie artykułu po opublikowaniu.</p>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <datalist id="kb-lista-tagow">{% for t in tagi %}<option value="{{ t }}"></option>{% endfor %}</datalist>
+  <datalist id="kb-lista-systemow">{% for s in systemy %}<option value="{{ s }}"></option>{% endfor %}</datalist>
+  <datalist id="kb-lista-rodzaj">{% for kod, etykieta in rodzaje_sprzetu.items() %}<option value="{{ kod }}">{{ etykieta }}</option>{% endfor %}</datalist>
+  <datalist id="kb-lista-lokalizacja">{% for l in lokalizacje %}<option value="{{ l }}"></option>{% endfor %}</datalist>
+</form>
+{% endblock %}
+{% block skrypty %}<script src="{{ zasob('wiedza.js') }}"></script>{% endblock %}

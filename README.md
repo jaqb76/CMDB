@@ -315,6 +315,31 @@ zgłoszeniem.
 
 Szczegóły: [`docs/helpdesk.md`](docs/helpdesk.md).
 
+## Baza wiedzy
+
+Procedury, runbooki i opisy rozwiązań w układzie znanym z Confluence —
+przestrzenie i drzewo stron — ale **powiązane z maszynami z CMDB**. Artykuł
+wskazuje, czego dotyczy: listą systemów (nazwy hostów, FQDN, aplikacji) albo
+warunkami na nazwę hosta (`db0*`), system operacyjny, oprogramowanie
+z ostatniego raportu, rodzaj sprzętu, lokalizację czy etykietę. **Wystarczy
+jeden pasujący warunek**, a artykuł sam pojawia się na karcie maszyny
+w zakładce „Wiedza”, z powodem dopasowania.
+
+| Element | Jak działa |
+|---|---|
+| Treść | Markdown z panelami (`:::uwaga`) i polami `{hostname}`, `{ip}`… wypełnianymi danymi maszyny, z której otwarto artykuł |
+| Historia | wersja tylko przy realnej zmianie, z listą zmienionych pól; porównanie i przywrócenie treści |
+| Wyszukiwanie | pełnotekstowe po tytule, streszczeniu, tagach, systemach i treści, bez względu na polskie znaki |
+| Lista zasobów | liczba artykułów przy nazwie maszyny — jedno zapytanie dla całej listy |
+| Kosz | usunięty artykuł zostaje z historią i załącznikami, można go przywrócić |
+| Przegląd | właściciel i termin przeglądu; po terminie artykuł trafia na listę „Do przeglądu” |
+| Nazwy → linki | `GET /wiedza/linki?nazwa=…` — które z podanych nazw mają artykuł (dla innych modułów) |
+
+Przestrzenie należą do firmy; technik widzi tylko firmy, do których ma
+dostęp. Konto tylko do odczytu dostaje 403 na każdej trasie zapisu.
+
+Szczegóły: [`docs/baza-wiedzy.md`](docs/baza-wiedzy.md).
+
 ## Wielofirmowość i tokeny
 
 Rejestracja agenta jest dwustopniowa:
@@ -347,6 +372,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | [`docs/vmware.md`](docs/vmware.md) | odczyt VMware vCenter przez agenta: klastry, hosty ESXi, VM — ta sama ścieżka co Nutanix |
 | [`docs/monitorowanie-uslug.md`](docs/monitorowanie-uslug.md) | monitorowanie dostępności usług i ważności certyfikatów SSL, progi, powiadomienia |
 | [`docs/helpdesk.md`](docs/helpdesk.md) | zgłoszenia z maili, rozpoznawanie wątków, czas pracy, raporty, dostępy techników |
+| [`docs/baza-wiedzy.md`](docs/baza-wiedzy.md) | przestrzenie i artykuły, dopasowanie do maszyn, historia wersji, trasa „nazwy → linki” |
 | [`docs/kopie-zapasowe.md`](docs/kopie-zapasowe.md) | co jest stanem instalacji, nocne zadanie, przywracanie z panelu, przenosiny |
 | [`docs/dwie-instancje.md`](docs/dwie-instancje.md) | produkcja i development na jednym serwerze, wspólny nginx, oznaczenie instancji |
 | [`docs/wdrozenie.md`](docs/wdrozenie.md) | docker compose, TLS, kopie zapasowe, utrzymanie |

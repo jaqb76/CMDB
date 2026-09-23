@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "_wiedza.html" as kb %}
+{% block title %}Baza wiedzy - CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Baza wiedzy</h1>
+    <p class="muted">
+      Procedury, runbooki i opisy rozwiązań. Artykuł wskazuje, których maszyn
+      dotyczy: po nazwie systemu albo warunkiem (nazwa hosta, system,
+      oprogramowanie, lokalizacja…). Wystarczy jeden pasujący warunek, a artykuł
+      sam pojawia się na karcie maszyny, w zakładce „Wiedza”.
+    </p>
+  </div>
+  <div class="head-actions">
+    <form method="get" action="/wiedza/artykuly" class="inline-form kb-szukajka">
+      <input type="search" name="q" placeholder="Szukaj w bazie wiedzy…" aria-label="Szukaj w bazie wiedzy">
+      <button type="submit" class="btn">Szukaj</button>
+    </form>
+    {% if ctx.can_write %}<a class="btn btn-primary" href="/wiedza/nowy">+ Nowy artykuł</a>{% endif %}
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+
+<section class="kafelki">
+  <a class="kafelek" href="/wiedza/artykuly">
+    <div class="kafelek-wartosc">{{ razem }}</div>
+    <div class="kafelek-opis">artykułów w {{ przestrzenie | length }} przestrzeniach</div>
+  </a>
+  <a class="kafelek" href="/assets">
+    <div class="kafelek-wartosc">{{ maszyny_objete }} / {{ maszyny_aktywne }}</div>
+    <div class="kafelek-opis">aktywnych maszyn objętych co najmniej jednym artykułem</div>
+  </a>
+  <a class="kafelek {% if do_przegladu %}kafelek-alarm{% endif %}" href="#do-przegladu">
+    <div class="kafelek-wartosc">{{ do_przegladu | length }}</div>
+    <div class="kafelek-opis">po terminie przeglądu — sprawdź, czy są aktualne</div>
+  </a>
+</section>
+
+<section class="panel">
+  <div class="kb-naglowek-sekcji">
+    <h2>Przestrzenie</h2>
+    <span class="head-actions">
+      <a class="btn btn-small" href="/wiedza/kosz">Kosz{% if w_koszu %} ({{ w_koszu }}){% endif %}</a>
+      <a class="btn btn-small" href="/wiedza/przestrzenie">Zarządzaj przestrzeniami</a>
+    </span>
+  </div>
+  {% if przestrzenie %}
+  <div class="kb-przestrzenie">
+    {% for p in przestrzenie %}
+    <a class="kb-przestrzen-karta" href="/wiedza/p/{{ p.id }}">
+      <span class="kb-skrot">{{ p.skrot }}</span>
+      <span><b>{{ p.nazwa }}</b><span class="muted small">{{ liczby.get(p.id, 0) }} art.{% if p.opis %} · {{ p.opis }}{% endif %}</span></span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">
+    Firma nie ma jeszcze przestrzeni. {% if ctx.can_write %}Pierwszy artykuł założy
+    przestrzeń „Ogólna” — albo <a href="/wiedza/przestrzenie">załóż własne</a>
+    (np. Infrastruktura, Windows, Sieć).{% endif %}
+  </p>
+  {% endif %}
+</section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Przypięte na dyżur</h2>
+    {{ kb.lista_artykulow(na_dyzur, 'Nic nie jest przypięte. Zaznacz „przypnij na dyżur” w edycji artykułu — trafi tutaj.') }}
+  </section>
+  <section class="panel">
+    <h2>Ostatnio zmienione</h2>
+    {{ kb.lista_artykulow(ostatnie) }}
+  </section>
+</div>
+
+<section class="panel" id="do-przegladu">
+  <h2>Do przeglądu</h2>
+  <p class="muted small">
+    Każdy artykuł ma właściciela i termin przeglądu. Po terminie trafia tutaj —
+    otwórz go i potwierdź, że jest aktualny, albo popraw.
+  </p>
+  {% if do_przegladu %}
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>Artykuł</th><th>Przestrzeń</th><th>Właściciel</th><th>Termin</th></tr></thead>
+    <tbody>
+    {% for a in do_przegladu %}
+      <tr>
+        <td><a href="/wiedza/a/{{ a.id }}">{{ a.tytul }}</a></td>
+        <td class="small">{{ a.przestrzen.nazwa }}</td>
+        <td class="small">{{ a.wlasciciel or '—' }}</td>
+        <td class="small"><span class="badge badge-warn">{{ a.przeglad_do.strftime('%d.%m.%Y') }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted small">Wszystkie artykuły są w terminie.</p>{% endif %}
+</section>
+{% endblock %}

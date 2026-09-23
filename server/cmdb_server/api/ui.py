@@ -70,6 +70,7 @@ from ..services import (
     rodzaje, scoping, slowniki, upgrades, ustawienia,
 )
 from ..services import schemat as definicje_pol
+from ..services import wiedza_dopasowanie
 from ..services.auth import (
     LoginRequired,
     authenticate_user,
@@ -703,6 +704,9 @@ def asset_list(
                  "typ": typ, "lokalizacja": lokalizacja, "zrodlo": zrodlo,
                  "funkcja": funkcja if warunek_funkcji is not None else ""},
         funkcje_katalog=funkcje_agenta.KATALOG,
+        # Ile artykulow bazy wiedzy dotyczy kazdej maszyny - jedno zapytanie
+        # dla calej listy, bez wzgledu na liczbe artykulow.
+        wiedza_liczniki=wiedza_dopasowanie.liczniki(db, ctx.tenant_id, [a.id for a in assets]),
         liczba_wycofanych=db.execute(
             select(func.count(Asset.id)).where(
                 Asset.tenant_id == ctx.tenant_id, Asset.lifecycle == LIFECYCLE_WYCOFANY
@@ -1111,7 +1115,15 @@ def asset_detail(
         **_zakladka_agenta(db, ctx, asset, payload, funkcja),
         nutanix_komunikat=_komunikat_nutanix(nutanix_komunikat, funkcja),
         wirtualizacja=nutanix.obiekt_zasobu(db, asset),
+        # Artykuly bazy wiedzy dotyczace tej maszyny, z powodem dopasowania.
+        wiedza=_wiedza_maszyny(db, ctx, asset),
     )
+
+
+def _wiedza_maszyny(db: Session, ctx: TenantContext, asset: Asset) -> list:
+    from .wiedza_ui import artykuly_maszyny
+
+    return artykuly_maszyny(db, ctx, asset)
 
 
 def _komunikat_nutanix(kod: str, funkcja: str) -> str:

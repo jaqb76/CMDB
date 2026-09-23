@@ -39,8 +39,10 @@ def kopie(tmp_path, monkeypatch):
     monkeypatch.setattr(ustawienia, "kopie_dir", str(tmp_path / "kopie"))
     monkeypatch.setattr(ustawienia, "release_dir", str(tmp_path / "releases"))
     monkeypatch.setattr(ustawienia, "helpdesk_dir", str(tmp_path / "helpdesk"))
+    monkeypatch.setattr(ustawienia, "wiedza_dir", str(tmp_path / "wiedza"))
     (tmp_path / "releases").mkdir()
     (tmp_path / "helpdesk").mkdir()
+    (tmp_path / "wiedza").mkdir()
     return modul
 
 
@@ -67,6 +69,7 @@ def test_archiwum_zawiera_baze_pliki_i_manifest(client, tenant_a, kopie):
     """Kopia to nie sam zrzut bazy - zalaczniki i wydania tez sa stanem."""
     Path(get_settings().helpdesk_dir, "zrzut.png").write_bytes(b"udawany-png")
     Path(get_settings().release_dir, "agent.exe").write_bytes(b"udawany-exe")
+    Path(get_settings().wiedza_dir, "schemat.pdf").write_bytes(b"udawany-pdf")
 
     kopia = kopie.utworz("reczna", autor="test@mojadomena.pl")
 
@@ -76,6 +79,7 @@ def test_archiwum_zawiera_baze_pliki_i_manifest(client, tenant_a, kopie):
     assert "manifest.json" in nazwy
     assert "helpdesk/zrzut.png" in nazwy
     assert "releases/agent.exe" in nazwy
+    assert "wiedza/schemat.pdf" in nazwy
 
     assert kopia.opis["autor"] == "test@mojadomena.pl"
     assert kopia.opis["format"] == 1

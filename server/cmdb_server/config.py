@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # Gorna granica jednego zalacznika. Skrzynka i tak odrzuci wieksze, ale
     # serwer nie moze polegac na cudzych limitach.
     helpdesk_zalacznik_mb: int = 25
+    # Zalaczniki artykulow bazy wiedzy. Osobny katalog, bo to pliki wgrywane
+    # przez zespol, a nie przysylane przez klientow - i osobno je sie
+    # przenosi oraz odtwarza z kopii.
+    wiedza_dir: str = "./wiedza"
+    # Gorna granica jednego zalacznika artykulu. Odpowiednik w nginx:
+    # location dla /wiedza/a/.../zalaczniki w deploy/nginx.
+    wiedza_zalacznik_mb: int = 16
 
     # --- kopie zapasowe ---
     # Katalog archiwow. Ten sam dla nocnego zadania i dla panelu, zeby lista

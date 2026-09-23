@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Przestrzenie - Baza wiedzy - CMDB{% endblock %}
+{% block content %}
+<div class="okruszki"><a href="/wiedza">Baza wiedzy</a> / Przestrzenie</div>
+<div class="page-head">
+  <div>
+    <h1>Przestrzenie</h1>
+    <p class="muted">
+      Przestrzeń grupuje strony tak jak w Confluence: Infrastruktura, Windows,
+      Sieć… Należy do tej firmy — technik widzi przestrzenie tylko tych firm,
+      do których ma dostęp. Przestrzeń z artykułami (także w koszu) nie da się usunąć.
+    </p>
+  </div>
+</div>
+{% if komunikat %}<div class="alert {% if komunikat.startswith('Nie ') %}alert-error{% else %}alert-ok{% endif %}">{{ komunikat }}</div>{% endif %}
+
+<section class="panel">
+  {% if przestrzenie %}
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>Skrót</th><th>Nazwa i opis</th><th>Artykuły</th>{% if ctx.can_write %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for p in przestrzenie %}
+      <tr>
+        {% if ctx.can_write %}
+        <td colspan="2">
+          <form method="post" action="/wiedza/p/{{ p.id }}" class="kb-przestrzen-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input name="skrot" value="{{ p.skrot }}" maxlength="4" class="kb-pole-skrot" aria-label="Skrót">
+            <input name="nazwa" value="{{ p.nazwa }}" maxlength="120" required aria-label="Nazwa">
+            <input name="opis" value="{{ p.opis or '' }}" maxlength="300" placeholder="opis (opcjonalnie)" aria-label="Opis">
+            <button type="submit" class="btn btn-small">Zapisz</button>
+          </form>
+        </td>
+        {% else %}
+        <td><span class="kb-skrot">{{ p.skrot }}</span></td>
+        <td><a href="/wiedza/p/{{ p.id }}">{{ p.nazwa }}</a><div class="muted small">{{ p.opis or '' }}</div></td>
+        {% endif %}
+        <td><a href="/wiedza/p/{{ p.id }}">{{ liczby.get(p.id, 0) }}</a></td>
+        {% if ctx.can_write %}
+        <td>
+          {% if not liczby.get(p.id) %}
+          <form method="post" action="/wiedza/p/{{ p.id }}/usun" class="inline-form" data-confirm="Usunąć pustą przestrzeń {{ p.nazwa }}?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-danger">Usuń</button>
+          </form>
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted">Brak przestrzeni.</p>{% endif %}
+</section>
+
+{% if ctx.can_write %}
+<section class="panel">
+  <h2>Nowa przestrzeń</h2>
+  <form method="post" action="/wiedza/przestrzenie" class="kb-przestrzen-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input name="skrot" maxlength="4" placeholder="INF" class="kb-pole-skrot" aria-label="Skrót">
+    <input name="nazwa" maxlength="120" required placeholder="np. Infrastruktura" aria-label="Nazwa">
+    <input name="opis" maxlength="300" placeholder="np. serwerownia, zasilanie, kopie" aria-label="Opis">
+    <button type="submit" class="btn btn-primary">Dodaj</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

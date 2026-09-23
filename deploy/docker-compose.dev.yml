@@ -58,6 +58,7 @@ services:
 
       CMDB_RELEASE_DIR: /app/releases
       CMDB_HELPDESK_DIR: /app/helpdesk
+      CMDB_WIEDZA_DIR: /app/wiedza
       CMDB_KOPIE_DIR: /app/kopie
 
       # Oznaczenie instancji. Puste CMDB_INSTANCJA wystarcza - przy CMDB_ENV=dev
@@ -79,6 +80,7 @@ services:
     volumes:
       - releases:/app/releases
       - helpdesk:/app/helpdesk
+      - wiedza:/app/wiedza
       - kopie:/app/kopie
     expose:
       - "8000"
@@ -102,4 +104,5 @@ volumes:
   pgdata:
   releases:
   helpdesk:
+  wiedza:
   kopie:

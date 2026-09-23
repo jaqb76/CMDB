@@ -70,7 +70,7 @@ ENV CMDB_WERSJA=$CMDB_WERSJA
 # Katalogi wolumenow zakladamy TERAZ, przed chown: pusty wolumen dziedziczy
 # wlasciciela po katalogu z obrazu, wiec bez tego serwer nie moglby zapisac
 # ani zalacznika, ani kopii.
-RUN mkdir -p /app/releases /app/helpdesk /app/kopie \
+RUN mkdir -p /app/releases /app/helpdesk /app/wiedza /app/kopie \
     && useradd --system --create-home --uid 10001 cmdb \
     && chown -R cmdb:cmdb /app
 USER cmdb

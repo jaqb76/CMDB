@@ -79,6 +79,7 @@ services:
       CMDB_PUBLIC_URL: ${CMDB_PUBLIC_URL:?ustaw CMDB_PUBLIC_URL, np. https://cmdb.firma.pl}
       CMDB_RELEASE_DIR: /app/releases
       CMDB_HELPDESK_DIR: /app/helpdesk
+      CMDB_WIEDZA_DIR: /app/wiedza
       CMDB_KOPIE_DIR: /app/kopie
     volumes:
       # Wgrane wersje agenta musza przezyc odtworzenie kontenera - bez tego
@@ -88,6 +89,8 @@ services:
       # od klientow gina przy kazdym wdrozeniu: wiersz w bazie zostaje, plik
       # nie, a watek pokazuje "pliku nie ma juz na dysku".
       - helpdesk:/app/helpdesk
+      # Zalaczniki artykulow bazy wiedzy - z tego samego powodu.
+      - wiedza:/app/wiedza
       # Kopie zapasowe. Wspolny wolumen dla crona i panelu, zeby lista w panelu
       # pokazywala te same pliki, ktore zaklada nocne zadanie.
       - kopie:/app/kopie
@@ -137,4 +140,5 @@ volumes:
   pgdata:
   releases:
   helpdesk:
+  wiedza:
   kopie:

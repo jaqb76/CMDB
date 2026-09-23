@@ -1,9 +1,9 @@
 """Kopie zapasowe calej instalacji: baza, pliki i opis archiwum.
 
-Baza to nie wszystko. Instalacja to cztery rzeczy, z ktorych trzy nie leza
-w Postgresie: wgrane wersje agenta, zalaczniki zgloszen oraz ``.env``
-z ``CMDB_SECRET_KEY``. Archiwum obejmuje dwie pierwsze - trzecia NIE i to
-jest decyzja, a nie przeoczenie: kluczem odszyfrowuje sie hasla skrzynki
+Baza to nie wszystko. Instalacja to piec rzeczy, z ktorych cztery nie leza
+w Postgresie: wgrane wersje agenta, zalaczniki zgloszen, zalaczniki bazy
+wiedzy oraz ``.env`` z ``CMDB_SECRET_KEY``. Archiwum obejmuje trzy pierwsze,
+ostatniej NIE - i to jest decyzja, a nie przeoczenie: kluczem odszyfrowuje sie hasla skrzynki
 zapisane w bazie, wiec klucz w tym samym pliku co zrzut bazy zamienilby kopie
 zapasowa w komplet do odczytania wszystkiego. Klucz jedzie osobnym kanalem.
 
@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 # Nazwa pliku z opisem archiwum. Lezy w srodku, obok zrzutu i plikow.
 MANIFEST = "manifest.json"
 ZRZUT = "baza.dump"
-KATALOGI = {"releases": "release_dir", "helpdesk": "helpdesk_dir"}
+KATALOGI = {"releases": "release_dir", "helpdesk": "helpdesk_dir", "wiedza": "wiedza_dir"}
 
 # Znacznik "przy najblizszym starcie odtworz to archiwum". Plik, a nie wiersz
 # w bazie - baza za chwile zostanie zastapiona i wiersz zniknalby razem z nia.
