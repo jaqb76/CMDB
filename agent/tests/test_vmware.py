@@ -75,7 +75,9 @@ INTERFEJSY = {"vm-101": [{"mac_address": "00:50:56:AA:BB:01", "ip": {"ip_address
 
 
 @contextmanager
-def falszywy_vcenter(tmp_path, haslo="tajne"):
+def falszywy_vcenter(tmp_path, haslo="tajne", wspolna_sesja=False):
+    """wspolna_sesja: VI/JSON przyjmuje sesje REST, a wlasne logowanie konczy
+    sie bledem VI/JSON (HTTP 500 z typem w tresci) - jak na vCenter z kontem bez domeny."""
     pem, klucz = _certyfikat()
     (tmp_path / "c.pem").write_text(pem)
     (tmp_path / "c.key").write_text(klucz)
@@ -96,6 +98,8 @@ def falszywy_vcenter(tmp_path, haslo="tajne"):
 
         def do_POST(self):
             zapytania.append(("POST", urlsplit(self.path).path))
+            if self.path == f"{VI}/SessionManager/SessionManager/Login" and wspolna_sesja:
+                return self._odpowiedz(500, {"_typeName": "InvalidLogin", "faultMessage": []})
             if self.path == f"{VI}/SessionManager/SessionManager/Login":
                 dane = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 if dane != {"userName": "cmdb-ro@vsphere.local", "password": haslo}:
@@ -129,7 +133,7 @@ def falszywy_vcenter(tmp_path, haslo="tajne"):
             if self.headers.get("vmware-api-session-id") not in sesje:
                 return self._odpowiedz(401, {"error_type": "UNAUTHENTICATED"})
             if sciezka.startswith(VI + "/HostSystem/"):
-                if self.headers.get("vmware-api-session-id") != "vi-1":
+                if self.headers.get("vmware-api-session-id") != ("sesja-1" if wspolna_sesja else "vi-1"):
                     return self._odpowiedz(401, {})
                 _, ident, wlasciwosc = sciezka[len(VI) + 1:].split("/")
                 zrodlo = PODSUMOWANIE_HOSTA if wlasciwosc == "summary" else KONFIGURACJA_HOSTA
@@ -268,3 +272,27 @@ def test_bez_vi_json_hosty_zostaja_z_rest(tmp_path, monkeypatch):
     esx = {h["ext_id"]: h for h in wynik["hosty"]}["host-10"]
     assert wynik["ok"] and esx["nazwa"] == "esx01.firma.pl" and "model" not in esx
     assert not sesje
+
+
+def test_vi_json_na_sesji_rest(tmp_path):
+    """vCenter 8 przyjmuje sesje REST w VI/JSON - bez drugiego logowania."""
+    with falszywy_vcenter(tmp_path, wspolna_sesja=True) as (adres, pem, zapytania, sesje):
+        wynik = vmware.wykonaj(vmware.VCenter(adres, "cmdb-ro@vsphere.local", "tajne", pem), "odczyt")
+    esx = {h["ext_id"]: h for h in wynik["hosty"]}["host-10"]
+    assert esx["model"] == "PowerEdge R760" and esx["ip"] == "10.30.0.11"
+    assert not any(s.endswith("/Login") for _, s in zapytania)
+    assert [s for m, s in zapytania if m != "GET"] == ["/api/session", "/api/session"]
+    assert not sesje
+
+
+def test_blad_vi_json_ma_nazwe_z_tresci(tmp_path, caplog):
+    import logging
+    with falszywy_vcenter(tmp_path, wspolna_sesja=True) as (adres, pem, _, _s):
+        vc = vmware.VCenter(adres, "cmdb-ro@vsphere.local", "tajne", pem)
+        with vc:
+            vc._vi_wspolna = False
+            with caplog.at_level(logging.INFO, logger="cmdb_agent.vmware"):
+                vc._sesja = "zla"  # sesja REST odrzucona -> proba logowania -> InvalidLogin
+                assert vc.vi_json("HostSystem/host-10/summary") is None
+            vc._sesja = "sesja-1"
+    assert "HTTP 500" in caplog.text and "InvalidLogin" in caplog.text
