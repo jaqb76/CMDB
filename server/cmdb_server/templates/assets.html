@@ -72,6 +72,7 @@
     <tr>
       <td>
         <a class="strong" href="/assets/{{ a.id }}">{{ a.hostname }}</a>
+        {% if wiedza_liczniki and wiedza_liczniki.get(a.id) %}<a class="kb-licznik" href="/assets/{{ a.id }}#wiedza" title="Artykuły w bazie wiedzy: {{ wiedza_liczniki[a.id] }}">{{ wiedza_liczniki[a.id] }}</a>{% endif %}
         {% if a.lifecycle == 'wycofany' %}<span class="badge badge-danger">wycofana</span>{% endif %}
         {% if a.serial_number %}<div class="muted small">s/n {{ a.serial_number }}</div>{% endif %}
       </td>

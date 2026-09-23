@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "_wiedza.html" as kb %}
+{% block title %}Kosz - Baza wiedzy - CMDB{% endblock %}
+{% block content %}
+<div class="okruszki"><a href="/wiedza">Baza wiedzy</a> / Kosz</div>
+<div class="page-head">
+  <div>
+    <h1>Kosz</h1>
+    <p class="muted">
+      Usunięty artykuł nie znika: zostaje tutaj razem z historią i załącznikami
+      i można go przywrócić. Nie pojawia się na listach ani na kartach maszyn.
+    </p>
+  </div>
+</div>
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+<section class="panel">
+  {% if usuniete %}
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>Artykuł</th><th>Przestrzeń</th><th>Usunięty</th><th></th></tr></thead>
+    <tbody>
+    {% for a in usuniete %}
+      <tr>
+        <td><a href="/wiedza/a/{{ a.id }}">{{ a.tytul }}</a><div class="muted small">{{ a.etykieta_kategorii }}</div></td>
+        <td class="small">{{ a.przestrzen.nazwa }}</td>
+        <td class="small">{{ a.usuniety_o | dt }}<div class="muted">{{ a.usunal or '' }}</div></td>
+        <td>
+          {% if ctx.can_write %}
+          <form method="post" action="/wiedza/a/{{ a.id }}/przywroc" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small">Przywróć</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted">Kosz jest pusty.</p>{% endif %}
+</section>
+{% endblock %}

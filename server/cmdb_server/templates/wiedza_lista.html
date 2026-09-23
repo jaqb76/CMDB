@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% import "_wiedza.html" as kb %}
+{% block title %}Artykuły - Baza wiedzy - CMDB{% endblock %}
+{% block content %}
+
+<div class="okruszki"><a href="/wiedza">Baza wiedzy</a> / Artykuły</div>
+<div class="page-head">
+  <div>
+    <h1>{% if filtr.q %}Wyniki: „{{ filtr.q }}”{% else %}Artykuły{% endif %}</h1>
+    <p class="muted">
+      Szukanie obejmuje tytuł, streszczenie, tagi, systemy i treść — bez względu
+      na polskie znaki. Filtr „system” pokazuje artykuły z tą nazwą oraz te,
+      których warunki obejmują maszynę o tej nazwie.
+    </p>
+  </div>
+  {% if ctx.can_write %}<div class="head-actions"><a class="btn btn-primary" href="/wiedza/nowy{% if filtr.przestrzen_id %}?przestrzen={{ filtr.przestrzen_id }}{% endif %}">+ Nowy artykuł</a></div>{% endif %}
+</div>
+
+<form method="get" action="/wiedza/artykuly" class="filters kb-filtry">
+  <input type="search" name="q" value="{{ filtr.q }}" placeholder="tytuł, treść, tag…" aria-label="Szukaj">
+  <select name="kategoria" aria-label="Kategoria">
+    <option value="">wszystkie kategorie</option>
+    {% for kod, etykieta in kategorie.items() %}<option value="{{ kod }}" {% if filtr.kategoria == kod %}selected{% endif %}>{{ etykieta }}</option>{% endfor %}
+  </select>
+  <select name="przestrzen" aria-label="Przestrzeń">
+    <option value="">wszystkie przestrzenie</option>
+    {% for p in przestrzenie %}<option value="{{ p.id }}" {% if filtr.przestrzen_id == p.id %}selected{% endif %}>{{ p.nazwa }}</option>{% endfor %}
+  </select>
+  <input name="tag" value="{{ filtr.tag }}" list="kb-tagi" placeholder="tag" aria-label="Tag">
+  <input name="system" value="{{ filtr.system }}" list="kb-systemy" placeholder="system / host" aria-label="System">
+  {% if wybrana_maszyna %}<input type="hidden" name="maszyna" value="{{ wybrana_maszyna.id }}">{% endif %}
+  <button type="submit" class="btn">Filtruj</button>
+  <a class="btn btn-ghost" href="/wiedza/artykuly">Wyczyść</a>
+  <datalist id="kb-tagi">{% for t in tagi %}<option value="{{ t }}"></option>{% endfor %}</datalist>
+  <datalist id="kb-systemy">{% for s in systemy %}<option value="{{ s }}"></option>{% endfor %}</datalist>
+</form>
+
+{% if wybrana_maszyna %}
+<div class="alert">
+  Artykuły dotyczące maszyny <a href="/assets/{{ wybrana_maszyna.id }}">{{ wybrana_maszyna.hostname }}</a>.
+  <a href="/wiedza/artykuly">Pokaż wszystkie</a>
+</div>
+{% endif %}
+
+<section class="panel">
+  <p class="muted small">{{ wyniki | length }} {% if wyniki | length == 1 %}artykuł{% elif wyniki | length % 10 in [2, 3, 4] and (wyniki | length % 100 < 10 or wyniki | length % 100 >= 20) %}artykuły{% else %}artykułów{% endif %}</p>
+  {% if wyniki %}
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>Tytuł</th><th>Kategoria</th><th>Tagi</th><th>Systemy</th><th>Zmiana</th></tr></thead>
+    <tbody>
+    {% for a in wyniki %}
+      <tr>
+        <td class="kb-komorka-tytul">
+          <a class="strong" href="/wiedza/a/{{ a.id }}">{{ a.tytul }}</a>
+          {% if a.na_dyzur %}<span class="badge badge-akcent" title="Przypięty na dyżur">dyżur</span>{% endif %}
+          <div class="muted small">{{ a.przestrzen.nazwa }} · {{ a.streszczenie }}</div>
+          {% if fragmenty.get(a.id) %}<div class="small kb-fragment">{{ fragmenty[a.id] }}</div>{% endif %}
+        </td>
+        <td>{{ kb.kategoria(a) }}</td>
+        <td>{{ kb.etykiety(a.tagi, 'tag') }}</td>
+        <td>{{ kb.etykiety(a.systemy, 'system') }}{% if a.dotyczy %}<div class="muted small">+ {{ a.dotyczy | length }} {% if a.dotyczy | length == 1 %}warunek{% else %}warunki{% endif %}</div>{% endif %}</td>
+        <td class="small nowrap">{{ a.zmieniono | ago }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">Nic nie pasuje do filtrów.</p>
+  {% endif %}
+</section>
+{% endblock %}

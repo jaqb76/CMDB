@@ -23,7 +23,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # Raporty agentow trzymamy w JSONB - binarnej postaci Postgresa, po ktorej da
@@ -1803,3 +1803,256 @@ class IgnorowanaDomena(Base):
     )
     przechwycone: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ostatnia_wiadomosc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# --- baza wiedzy -------------------------------------------------------------
+#
+# Artykul trzyma STAN BIEZACY w zwyklych kolumnach, a historie w osobnej
+# tabeli. W poprzednim systemie caly artykul razem z historia byl jednym
+# dokumentem JSON: wiersz rosl bez konca, lista czytala cala historie, zeby
+# pokazac tytul, a baza nie pilnowala zadnej wartosci.
+
+# Kategorie przejete 1:1 z poprzedniego systemu, razem z kodami - import
+# starych artykulow nie wymaga tlumaczenia.
+KATEGORIE_WIEDZY: dict[str, str] = {
+    "procedures": "Procedury operacyjne",
+    "troubleshooting": "Rozwiązywanie problemów",
+    "runbooks": "Runbooki incydentów",
+    "architecture": "Dokumentacja architektoniczna",
+    "monitoring": "Monitoring i alerty",
+    "security": "Bezpieczeństwo",
+    "deployment": "Wdrożenia",
+}
+
+# Krotkie nazwy do znacznikow na listach - pelna nazwa jest w podpowiedzi.
+KATEGORIE_WIEDZY_KROTKIE: dict[str, str] = {
+    "procedures": "Procedura",
+    "troubleshooting": "Problem",
+    "runbooks": "Runbook",
+    "architecture": "Architektura",
+    "monitoring": "Monitoring",
+    "security": "Bezpieczeństwo",
+    "deployment": "Wdrożenie",
+}
+
+# Operacje zapisywane w historii artykulu.
+OPERACJE_WIEDZY = ("utworzenie", "zmiana", "usuniecie", "przywrocenie")
+
+# Rodzaje wpisow slownika bazy wiedzy. Tag opisuje temat artykulu, system
+# wskazuje, czego artykul dotyczy - nazwa systemu rowna nazwie hosta albo
+# FQDN maszyny wiaze artykul z ta maszyna.
+SLOWNIK_WIEDZY_TAG = "tag"
+SLOWNIK_WIEDZY_SYSTEM = "system"
+
+
+class WiedzaPrzestrzen(Base):
+    """Przestrzen bazy wiedzy - odpowiednik przestrzeni Confluence.
+
+    Nalezy do jednej firmy, tak jak zasoby. Wspolnej przestrzeni dla wielu
+    firm swiadomie nie ma: technik i tak widzi tylko firmy, do ktorych ma
+    dostep, a artykul z cudzej firmy nie moze dopasowac naszej maszyny.
+    """
+
+    __tablename__ = "wiedza_przestrzenie"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "klucz", name="uq_wiedza_przestrzen"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nazwa: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Klucz unikalnosci z nazwy znormalizowanej: "Sieć" i "sieć " to ta sama
+    # przestrzen.
+    klucz: Mapped[str] = mapped_column(String(120), nullable=False)
+    skrot: Mapped[str] = mapped_column(String(4), nullable=False, default="")
+    opis: Mapped[str | None] = mapped_column(String(300))
+    kolejnosc: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    utworzyl: Mapped[str | None] = mapped_column(String(255))
+
+
+class WiedzaArtykul(Base):
+    """Artykul bazy wiedzy w stanie biezacym."""
+
+    __tablename__ = "wiedza_artykuly"
+    __table_args__ = (
+        CheckConstraint(
+            "kategoria IN (" + ", ".join(f"'{k}'" for k in KATEGORIE_WIEDZY) + ")",
+            name="ck_wiedza_kategoria",
+        ),
+        CheckConstraint("id <> rodzic_id", name="ck_wiedza_nie_sam_sobie_rodzicem"),
+        Index("ix_wiedza_tenant_zmieniono", "tenant_id", "zmieniono"),
+        Index("ix_wiedza_szukaj", "szukaj", postgresql_using="gin"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Przestrzeni z artykulami nie da sie usunac - RESTRICT pilnuje tego
+    # takze wtedy, gdy ktos ominie formularz.
+    przestrzen_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("wiedza_przestrzenie.id", ondelete="RESTRICT"),
+        nullable=False, index=True,
+    )
+    rodzic_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("wiedza_artykuly.id", ondelete="SET NULL"), index=True
+    )
+    kolejnosc: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    tytul: Mapped[str] = mapped_column(String(200), nullable=False)
+    streszczenie: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    # Markdown. Serwer renderuje go z wylaczonym surowym HTML, wiec tresc
+    # nie moze wstrzyknac znacznikow do strony.
+    tresc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    kategoria: Mapped[str] = mapped_column(String(32), nullable=False)
+    notatki_zalacznikow: Mapped[str | None] = mapped_column(Text)
+    notatki_diagramu: Mapped[str | None] = mapped_column(Text)
+
+    # Warunki "Dotyczy": [{"pole": "host", "wartosc": "db0*"}]. Maszyna
+    # pasuje, gdy spelnia KTORYKOLWIEK warunek albo nazywa sie tak jak jeden
+    # z systemow artykulu. Dopasowanie liczy sie przy odczycie, wiec nowa
+    # maszyna pasuje od pierwszego raportu, bez zadania w tle.
+    dotyczy: Mapped[list | None] = mapped_column(JSONType, default=list)
+
+    wlasciciel: Mapped[str | None] = mapped_column(String(255))
+    # Co ile miesiecy artykul trzeba przejrzec (0 = bez przegladu).
+    przeglad_co_mies: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
+    przeglad_do: Mapped[date | None] = mapped_column(Date, index=True)
+    na_dyzur: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    wersja: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    utworzyl: Mapped[str | None] = mapped_column(String(255))
+    zmieniono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    zmienil: Mapped[str | None] = mapped_column(String(255))
+
+    # Usuniecie jest miekkie: artykul znika z list, ale zostaje w bazie razem
+    # z historia i zalacznikami, i da sie go przywrocic.
+    usuniety_o: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    usunal: Mapped[str | None] = mapped_column(String(255))
+
+    # Indeks pelnotekstowy liczony przy zapisie (services/wiedza.py) z tekstu
+    # bez polskich znakow - dzieki temu "zakleszczenie" i "zakleszczenie"
+    # bez ogonkow trafiaja w to samo, bez rozszerzenia unaccent, ktorego
+    # zalozenie wymaga uprawnien superuzytkownika bazy.
+    szukaj: Mapped[str | None] = mapped_column(TSVECTOR)
+
+    przestrzen: Mapped[WiedzaPrzestrzen] = relationship()
+    slownik: Mapped[list["WiedzaSlownik"]] = relationship(
+        secondary="wiedza_artykuly_slownik", order_by="WiedzaSlownik.wartosc"
+    )
+
+    @property
+    def tagi(self) -> list[str]:
+        return [w.wartosc for w in self.slownik if w.rodzaj == SLOWNIK_WIEDZY_TAG]
+
+    @property
+    def systemy(self) -> list[str]:
+        return [w.wartosc for w in self.slownik if w.rodzaj == SLOWNIK_WIEDZY_SYSTEM]
+
+    @property
+    def etykieta_kategorii(self) -> str:
+        return KATEGORIE_WIEDZY.get(self.kategoria, self.kategoria)
+
+    @property
+    def krotka_kategoria(self) -> str:
+        return KATEGORIE_WIEDZY_KROTKIE.get(self.kategoria, self.kategoria)
+
+
+class WiedzaSlownik(Base):
+    """Tag albo system uzyty w artykulach - zrodlo podpowiedzi.
+
+    Slownik tylko rosnie: usuniecie artykulu nie kasuje wpisu, bo ta sama
+    nazwa za tydzien znowu sie przyda i ma sie podpowiedziec tak samo.
+    """
+
+    __tablename__ = "wiedza_slownik"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "rodzaj", "klucz", name="uq_wiedza_slownik"),
+        CheckConstraint("rodzaj IN ('tag', 'system')", name="ck_wiedza_slownik_rodzaj"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    rodzaj: Mapped[str] = mapped_column(String(10), nullable=False)
+    wartosc: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Male litery, pojedyncze spacje - po nim porownujemy z nazwa hosta.
+    klucz: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+
+
+class WiedzaArtykulSlownik(Base):
+    __tablename__ = "wiedza_artykuly_slownik"
+
+    artykul_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("wiedza_artykuly.id", ondelete="CASCADE"), primary_key=True
+    )
+    wpis_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("wiedza_slownik.id", ondelete="CASCADE"),
+        primary_key=True, index=True,
+    )
+
+
+class WiedzaZalacznik(Base):
+    """Plik dolaczony do artykulu. Tresc na dysku, w bazie opis i sciezka.
+
+    Nazwe pliku na dysku nadaje serwer - nazwa od uzytkownika trafia
+    wylacznie do kolumny ``nazwa`` i nie dotyka systemu plikow.
+    """
+
+    __tablename__ = "wiedza_zalaczniki"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    artykul_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("wiedza_artykuly.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    nazwa: Mapped[str] = mapped_column(String(255), nullable=False)
+    typ_mime: Mapped[str | None] = mapped_column(String(120))
+    rozmiar: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    # Sciezka WZGLEDEM katalogu zalacznikow bazy wiedzy.
+    sciezka: Mapped[str] = mapped_column(String(500), nullable=False)
+    dodano: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    dodal: Mapped[str | None] = mapped_column(String(255))
+
+
+class WiedzaWersja(Base):
+    """Jedna wersja artykulu: kto, kiedy i CO zmienil.
+
+    ``zmiany`` ma postac {pole: {"old": ..., "new": ...}} i zawiera tylko pola,
+    ktore sie zmienily - zapis bez zmian nie tworzy wersji wcale. Tresc jest
+    wyjatkiem: zapisujemy JEDEN raz tekst sprzed zmiany (``tresc_przed``),
+    a nowy tekst jest w nastepnej wersji albo w samym artykule. Dzieki temu
+    kazda wersje tresci da sie odtworzyc, a zaden tekst nie lezy w bazie
+    dwa razy.
+    """
+
+    __tablename__ = "wiedza_wersje"
+    __table_args__ = (
+        CheckConstraint(
+            "operacja IN (" + ", ".join(f"'{o}'" for o in OPERACJE_WIEDZY) + ")",
+            name="ck_wiedza_operacja",
+        ),
+    )
+
+    artykul_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("wiedza_artykuly.id", ondelete="CASCADE"), primary_key=True
+    )
+    wersja: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kiedy: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    kto: Mapped[str | None] = mapped_column(String(255))
+    operacja: Mapped[str] = mapped_column(String(16), nullable=False)
+    opis_zmiany: Mapped[str | None] = mapped_column(String(300))
+    zmiany: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    tresc_przed: Mapped[str | None] = mapped_column(Text)

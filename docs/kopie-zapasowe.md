@@ -2,7 +2,7 @@
 
 ## Co jest stanem instalacji
 
-Baza to nie wszystko. Instalacja to cztery rzeczy, z których trzy nie leżą
+Baza to nie wszystko. Instalacja to pięć rzeczy, z których cztery nie leżą
 w Postgresie:
 
 | Co | Gdzie | W archiwum? |
@@ -10,6 +10,7 @@ w Postgresie:
 | Baza | wolumen `pgdata` | tak (`baza.dump`) |
 | Wgrane wersje agenta | wolumen `releases` | tak |
 | Załączniki zgłoszeń | wolumen `helpdesk` | tak |
+| Załączniki bazy wiedzy | wolumen `wiedza` | tak |
 | `.env` i `deploy/certs/` | katalog repozytorium | **nie** — celowo |
 
 **`.env` nie jest w archiwum i to jest decyzja, nie przeoczenie.** Kluczem

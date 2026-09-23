@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Historia: {{ art.tytul }} - Baza wiedzy - CMDB{% endblock %}
+
+{% macro wartosc(pole, w) -%}
+{%- if w is none or w == '' or w == [] -%}<span class="muted">—</span>
+{%- elif pole == 'kategoria' -%}{{ kategorie.get(w, w) }}
+{%- elif pole == 'na_dyzur' -%}{{ 'tak' if w else 'nie' }}
+{%- elif pole == 'dotyczy' -%}{% for x in w %}{{ pola_dotyczy.get(x.pole, x.pole) }}: <code>{{ x.wartosc }}</code>{% if not loop.last %}; {% endif %}{% endfor %}
+{%- elif w is iterable and w is not string -%}{{ w | join(', ') }}
+{%- else -%}{{ w }}{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="okruszki"><a href="/wiedza">Baza wiedzy</a> / <a href="/wiedza/a/{{ art.id }}">{{ art.tytul }}</a> / Historia</div>
+<div class="page-head">
+  <div>
+    <h1>Historia wersji</h1>
+    <p class="muted">
+      Wersja powstaje przy każdej zmianie i pokazuje tylko pola, które się
+      zmieniły. Starej wersji nie da się nadpisać — przywrócenie treści tworzy
+      kolejną wersję.
+    </p>
+  </div>
+</div>
+{% if komunikat %}<div class="alert">{{ komunikat }}</div>{% endif %}
+
+<div class="kb-historia">
+  <section class="panel">
+    <div class="tabela-przewijana">
+    <table class="table">
+      <thead><tr><th>Wer.</th><th>Kiedy / kto</th><th>Zmiany</th></tr></thead>
+      <tbody>
+      {% for w in wersje %}
+        <tr>
+          <td class="lp"><b>{{ w.wersja }}</b></td>
+          <td class="small nowrap">{{ w.kiedy | dt }}<div class="muted">{{ w.kto or '—' }}</div></td>
+          <td class="small">
+            {% if w.operacja == 'utworzenie' %}<span class="badge badge-ok">utworzenie</span>
+            {% elif w.operacja == 'usuniecie' %}<span class="badge badge-danger">do kosza</span>
+            {% elif w.operacja == 'przywrocenie' %}<span class="badge badge-ok">przywrócenie z kosza</span>{% endif %}
+            {% for pole in etykiety_pol if pole in w.zmiany %}<span class="kb-etykieta">{{ etykiety_pol[pole] }}</span>{% endfor %}
+            {% if w.opis_zmiany %}<div>{{ w.opis_zmiany }}</div>{% endif %}
+            <details class="kb-szczegoly-wersji">
+              <summary>szczegóły</summary>
+              {% if w.zmiany %}
+              <table class="table kb-tabela-zmian">
+                <thead><tr><th>Pole</th><th>Było</th><th>Jest</th></tr></thead>
+                <tbody>
+                {% for pole in etykiety_pol if pole in w.zmiany %}
+                  <tr>
+                    <td>{{ etykiety_pol[pole] }}</td>
+                    {% if pole == 'tresc' %}
+                    <td colspan="2">{{ w.zmiany[pole].znakow_przed }} → {{ w.zmiany[pole].znakow_po }} znaków
+                      {% if w.wersja > 1 %}· <a href="/wiedza/a/{{ art.id }}/historia?od={{ w.wersja - 1 }}&amp;do={{ w.wersja }}">porównaj z poprzednią</a>{% endif %}</td>
+                    {% else %}
+                    <td class="kb-bylo">{{ wartosc(pole, w.zmiany[pole].old) }}</td>
+                    <td class="kb-jest">{{ wartosc(pole, w.zmiany[pole].new) }}</td>
+                    {% endif %}
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+              {% else %}<p class="muted">Bez zmian pól.</p>{% endif %}
+            </details>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Porównanie treści</h2>
+    {% if art.wersja > 1 %}
+    <form method="get" action="/wiedza/a/{{ art.id }}/historia" class="filters">
+      <label for="kb-od">wersja</label>
+      <select id="kb-od" name="od">{% for n in range(1, art.wersja + 1) %}<option value="{{ n }}" {% if n == od %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+      <label for="kb-do">z wersją</label>
+      <select id="kb-do" name="do">{% for n in range(1, art.wersja + 1) %}<option value="{{ n }}" {% if n == do %}selected{% endif %}>{{ n }}{% if n == art.wersja %} (bieżąca){% endif %}</option>{% endfor %}</select>
+      <button type="submit" class="btn btn-small">Porównaj</button>
+    </form>
+    {% if porownanie %}
+    <div class="kb-diff" role="region" aria-label="Różnice treści">
+      {% for rodzaj, linia in porownanie %}<div class="kb-diff-{{ rodzaj }}">{% if rodzaj == 'dod' %}+ {% elif rodzaj == 'usu' %}- {% else %}  {% endif %}{{ linia }}</div>{% endfor %}
+    </div>
+    {% else %}<p class="muted small">Treść wersji {{ od }} i {{ do }} jest taka sama.</p>{% endif %}
+    {% if ctx.can_write and not art.usuniety_o and od < art.wersja %}
+    <form method="post" action="/wiedza/a/{{ art.id }}/historia/{{ od }}/przywroc" class="odstep-s"
+          data-confirm="Przywrócić treść wersji {{ od }}? Powstanie nowa wersja, obecna zostaje w historii.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-small">Przywróć treść wersji {{ od }}</button>
+    </form>
+    {% endif %}
+    {% else %}<p class="muted small">Artykuł ma jedną wersję.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

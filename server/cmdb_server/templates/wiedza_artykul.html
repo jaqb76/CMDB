@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% import "_wiedza.html" as kb %}
+{% block title %}{{ art.tytul }} - Baza wiedzy - CMDB{% endblock %}
+{% block content %}
+
+<div class="kb-uklad">
+  <nav class="kb-drzewo" aria-label="Strony przestrzeni">
+    <a class="kb-przestrzen-naglowek" href="/wiedza/p/{{ przestrzen.id }}"><span class="kb-skrot">{{ przestrzen.skrot }}</span><b>{{ przestrzen.nazwa }}</b></a>
+    {{ kb.drzewo(drzewo, art.id) }}
+    {% if ctx.can_write and not art.usuniety_o %}
+    <p><a class="btn btn-small" href="/wiedza/nowy?rodzic={{ art.id }}">+ Strona podrzędna</a></p>
+    {% endif %}
+  </nav>
+
+  <article class="kb-artykul">
+    <div class="okruszki">
+      <a href="/wiedza">Baza wiedzy</a> / <a href="/wiedza/p/{{ przestrzen.id }}">{{ przestrzen.nazwa }}</a>
+      {% for p in okruszki %} / <a href="/wiedza/a/{{ p.id }}">{{ p.tytul }}</a>{% endfor %}
+    </div>
+
+    {% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+    {% if art.usuniety_o %}
+    <div class="alert alert-error">
+      Artykuł jest w koszu od {{ art.usuniety_o | dt }} ({{ art.usunal or '—' }}). Nie pokazuje się na listach ani na kartach maszyn.
+      {% if ctx.can_write %}
+      <form method="post" action="/wiedza/a/{{ art.id }}/przywroc" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-small">Przywróć</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="kb-tytul">
+      <h1>{{ art.tytul }}</h1>
+      <div class="head-actions">
+        {% if ctx.can_write and not art.usuniety_o %}<a class="btn btn-small" href="/wiedza/a/{{ art.id }}/edycja">Edytuj</a>{% endif %}
+        <a class="btn btn-small" href="/wiedza/a/{{ art.id }}/historia">Historia</a>
+      </div>
+    </div>
+    <div class="kb-meta">
+      {{ kb.kategoria(art) }}
+      {{ kb.stan_przegladu(art) }}
+      {% if art.na_dyzur %}<span class="badge badge-akcent">na dyżur</span>{% endif %}
+      <span>wersja {{ art.wersja }} · {{ art.zmienil or art.utworzyl or '—' }}, {{ art.zmieniono | dt }}</span>
+    </div>
+    <p class="kb-streszczenie">{{ art.streszczenie }}</p>
+
+    {% if objete %}
+    <form method="get" action="/wiedza/a/{{ art.id }}" class="kb-kontekst">
+      <label for="kb-kontekst">Czytaj w kontekście maszyny</label>
+      <select id="kb-kontekst" name="maszyna" data-autosubmit>
+        <option value="">— bez kontekstu —</option>
+        {% for m, _ in objete %}<option value="{{ m.id }}" {% if kontekst_maszyna and kontekst_maszyna.id == m.id %}selected{% endif %}>{{ m.hostname }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-small" data-zapasowy>Pokaż</button>
+      <span class="muted small">Pola takie jak <span class="kb-pole">{hostname}</span> wypełniają się danymi maszyny z CMDB.</span>
+    </form>
+    {% elif kontekst_maszyna %}
+    <div class="kb-kontekst">Kontekst: <b>{{ kontekst_maszyna.hostname }}</b> <a class="small" href="/wiedza/a/{{ art.id }}">bez kontekstu</a></div>
+    {% endif %}
+
+    <div class="kb-tresc">{{ html }}</div>
+
+    {% if dzieci %}
+    <section class="kb-podstrony">
+      <h2>Strony podrzędne</h2>
+      {{ kb.lista_artykulow(dzieci) }}
+    </section>
+    {% endif %}
+
+    <div class="kb-stopka">
+      <span>Utworzony {{ art.utworzono | dt }} ({{ art.utworzyl or '—' }})</span>
+      {% if ctx.can_write and not art.usuniety_o %}
+      <form method="post" action="/wiedza/a/{{ art.id }}/usun" class="inline-form do-prawej"
+            data-confirm="Przenieść „{{ art.tytul }}” do kosza? Można go będzie przywrócić.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-small btn-danger">Do kosza</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+
+  <aside class="kb-bok">
+    <section class="panel">
+      <h2>Dotyczy</h2>
+      {% if art.systemy or art.dotyczy %}
+      <p class="muted small">Wystarczy jeden pasujący warunek.</p>
+      <ul class="kb-warunki">
+        {% for s in art.systemy %}<li><span class="muted">System</span> <code>{{ s }}</code></li>{% endfor %}
+        {% for w in art.dotyczy %}<li><span class="muted">{{ etykieta_warunku(w.pole) }}</span> <code>{{ w.wartosc }}</code></li>{% endfor %}
+      </ul>
+      <p class="kb-licznik-trafien"><b>{{ objete | length }}</b> {% if objete | length == 1 %}maszyna pasuje{% elif objete | length % 10 in [2, 3, 4] and (objete | length % 100 < 10 or objete | length % 100 >= 20) %}maszyny pasują{% else %}maszyn pasuje{% endif %} teraz</p>
+      <ul class="kb-trafienia">
+        {% for m, powody in objete[:30] %}
+        <li>
+          <a href="/assets/{{ m.id }}#wiedza">{{ m.hostname }}</a>
+          {% if m.lifecycle == 'wycofany' %}<span class="badge badge-danger">wycofana</span>{% endif %}
+          <span class="muted small">{% for e, w in powody %}{{ e | lower }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if objete | length > 30 %}<p class="muted small">…i {{ objete | length - 30 }} kolejnych.</p>{% endif %}
+      {% else %}
+      <p class="muted small">Artykuł nie wskazuje żadnej maszyny. Dopisz system albo warunek w edycji, a pojawi się na kartach pasujących maszyn.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>Szczegóły</h2>
+      <dl class="kv">
+        <dt>Kategoria</dt><dd>{{ art.etykieta_kategorii }}</dd>
+        <dt>Właściciel</dt><dd>{{ art.wlasciciel or '—' }}</dd>
+        <dt>Przegląd</dt><dd>{% if art.przeglad_co_mies %}co {{ art.przeglad_co_mies }} mies., do {{ art.przeglad_do.strftime('%d.%m.%Y') if art.przeglad_do else '—' }}{% else %}bez przeglądu{% endif %}</dd>
+        {% if ostatnia_wersja %}<dt>Ostatnio</dt><dd>{{ ostatnia_wersja.opis_zmiany or ostatnia_wersja.operacja }}</dd>{% endif %}
+      </dl>
+      {% if ctx.can_write and art.przeglad_co_mies and not art.usuniety_o %}
+      <form method="post" action="/wiedza/a/{{ art.id }}/przejrzany" class="odstep-s">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-small" title="Przesuwa termin przeglądu o {{ art.przeglad_co_mies }} mies. i zapisuje to w historii">Potwierdź: aktualny</button>
+      </form>
+      {% endif %}
+      {% if art.tagi %}<h3 class="odstep-s">Tagi</h3>{{ kb.etykiety(art.tagi, 'tag') }}{% endif %}
+    </section>
+
+    <section class="panel" id="zalaczniki">
+      <h2>Załączniki</h2>
+      {% if zalaczniki %}
+      <ul class="kb-zalaczniki">
+        {% for z in zalaczniki %}
+        <li>
+          <a href="/wiedza/zalacznik/{{ z.id }}">{{ z.nazwa }}</a>
+          <span class="muted small">{{ z.rozmiar | bytes }}</span>
+          {% if z.typ_mime and z.typ_mime.startswith('image/') %}<a class="small" href="/wiedza/zalacznik/{{ z.id }}/podglad">podgląd</a>{% endif %}
+          {% if ctx.can_write and not art.usuniety_o %}
+          <form method="post" action="/wiedza/a/{{ art.id }}/zalaczniki/{{ z.id }}/usun" class="inline-form"
+                data-confirm="Usunąć załącznik {{ z.nazwa }}? Plik zostanie skasowany z dysku.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-link btn-small" aria-label="Usuń {{ z.nazwa }}">usuń</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted small">Brak załączników.</p>{% endif %}
+      {% if art.notatki_zalacznikow %}<p class="small"><span class="muted">Opis:</span> {{ art.notatki_zalacznikow }}</p>{% endif %}
+      {% if art.notatki_diagramu %}<p class="small"><span class="muted">Diagram:</span> {{ art.notatki_diagramu }}</p>{% endif %}
+      {% if ctx.can_write and not art.usuniety_o %}
+      <form method="post" action="/wiedza/a/{{ art.id }}/zalaczniki" enctype="multipart/form-data" class="stack odstep-s">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="file" name="pliki" multiple aria-label="Pliki">
+        <div><button type="submit" class="btn btn-small">Dodaj pliki</button> <span class="muted small">do {{ limit_mb }} MB na plik</span></div>
+      </form>
+      {% endif %}
+    </section>
+  </aside>
+</div>
+{% endblock %}

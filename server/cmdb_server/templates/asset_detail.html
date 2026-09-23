@@ -308,6 +308,7 @@
     {% if z_agentem %}<button type="button" class="tab-button" data-tab="hardware">Sprzęt</button>{% endif %}
     <button type="button" class="tab-button" data-tab="zakup">Zakup i gwarancja</button>
     <button type="button" class="tab-button" data-tab="uwagi">Uwagi</button>
+    <button type="button" class="tab-button" data-tab="wiedza">Wiedza{% if wiedza %} <span class="kb-licznik">{{ wiedza | length }}</span>{% endif %}</button>
     <button type="button" class="tab-button" data-tab="cykl">Cykl życia</button>
     {% if z_agentem %}
     <button type="button" class="tab-button" data-tab="agent">Agent{% if funkcje_czekaja %} <span class="badge badge-warn" title="zmiana czeka na odebranie przez agenta">⏳</span>{% endif %}</button>
@@ -521,6 +522,46 @@
         <div><button type="submit" class="btn btn-primary">Zapisz uwagi</button></div>
         {% endif %}
       </form>
+    </div>
+  </section>
+
+  <section class="tab-panel" data-panel="wiedza" id="wiedza">
+    <div class="panel">
+      <div class="kb-naglowek-sekcji">
+        <h2>Baza wiedzy</h2>
+        <span class="head-actions">
+          <a class="btn btn-small" href="/wiedza/artykuly?maszyna={{ asset.id }}">Lista z filtrami</a>
+          {% if ctx.can_write %}<a class="btn btn-small btn-primary" href="/wiedza/nowy?maszyna={{ asset.id }}">+ Artykuł dla tej maszyny</a>{% endif %}
+        </span>
+      </div>
+      <p class="small muted">
+        Artykuły, które dotyczą tej maszyny, i powód: nazwa maszyny jest wśród
+        systemów artykułu albo pasuje jeden z jego warunków (nazwa hosta, system,
+        oprogramowanie z ostatniego raportu, lokalizacja…). Artykuł otwiera się
+        w kontekście tej maszyny — pola takie jak {hostname} w poleceniach
+        wypełniają się jej danymi.
+      </p>
+      {% if wiedza %}
+      <div class="tabela-przewijana">
+      <table class="table">
+        <thead><tr><th>Artykuł</th><th>Kategoria</th><th>Dlaczego tutaj</th><th>Zmiana</th></tr></thead>
+        <tbody>
+        {% for art, powody in wiedza %}
+          <tr>
+            <td><a class="strong" href="/wiedza/a/{{ art.id }}?maszyna={{ asset.id }}">{{ art.tytul }}</a>
+              {% if art.na_dyzur %}<span class="badge badge-akcent">dyżur</span>{% endif %}
+              <div class="muted small">{{ art.streszczenie }}</div></td>
+            <td class="small">{{ art.etykieta_kategorii }}</td>
+            <td class="small">{% for etykieta, wartosc in powody %}<span class="kb-powod">{{ etykieta | lower }} <code>{{ wartosc }}</code></span>{% endfor %}</td>
+            <td class="small nowrap">{{ art.zmieniono | ago }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="muted">Żaden artykuł nie dotyczy jeszcze tej maszyny.</p>
+      {% endif %}
     </div>
   </section>
 
