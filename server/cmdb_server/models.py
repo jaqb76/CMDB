@@ -1492,7 +1492,7 @@ class WpisZgloszenia(Base):
 
 
 class ZalacznikWpisu(Base):
-    """Plik przyslany przez klienta albo doklejony do odpowiedzi.
+    r"""Plik przyslany przez klienta albo doklejony do odpowiedzi.
 
     Sama tresc pliku lezy na dysku, w bazie zostaje opis i sciezka wzgledna.
     Zrzut ekranu bywa calym zgloszeniem ("nie dziala, zalaczam") i bez niego
