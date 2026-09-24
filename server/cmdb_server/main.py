@@ -75,9 +75,12 @@ async def lifespan(app: FastAPI):
     _odswiez_paczke_agenta(settings)
     log.info("CMDB wystartowal (env=%s, db=%s)", settings.env, settings.database_url.split("@")[-1])
 
-    from .services.harmonogram import petla
+    from .services.harmonogram import petla, petla_podatnosci
 
     zadanie = asyncio.create_task(petla())
+    # Dane o podatnosciach pobieraja sie same. Wczesniej trzeba bylo pamietac
+    # o przycisku, a dane sprzed miesiaca pokazuja flote zdrowsza, niz jest.
+    podatnosci_job = asyncio.create_task(petla_podatnosci())
     from .services.release_import import loop as release_loop
     import_job = asyncio.create_task(release_loop())
     # Poczta helpdesku ma wlasna petle, bo chodzi w innym rytmie: skrzynke
@@ -88,7 +91,7 @@ async def lifespan(app: FastAPI):
     # Monitorowanie NIE ma tu wlasnej petli: sonduje agent, a serwer tylko
     # przyjmuje wyniki. Sprzatanie starych okien i przerw jedzie z istniejacym
     # harmonogramem raportow - to jedyna praca w tle, jaka po nim zostaje.
-    zadania = (zadanie, import_job, poczta_job)
+    zadania = (zadanie, import_job, poczta_job, podatnosci_job)
     try:
         yield
     finally:

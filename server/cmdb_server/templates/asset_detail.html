@@ -815,11 +815,28 @@
           </div>
         </div>
 
+        {% if braki.index_refresh and braki.index_refresh.status != 'ok' %}
+        <div class="alert alert-warn">
+          <b>Agent nie odświeżył indeksu pakietów.</b>
+          {{ braki.index_refresh.detail or '' }}
+          <div class="small">
+            Wynik pochodzi z indeksu systemowego, takiego, jaki zostawił ostatni
+            <code>apt update</code> / <code>dnf makecache</code>.
+          </div>
+        </div>
+        {% endif %}
         {% if braki.index_age_hours is not none and braki.index_age_hours > 168 %}
         <div class="alert alert-warn">
           <b>Indeks pakietow ma {{ (braki.index_age_hours / 24) | round(0, 'floor') | int }} dni.</b>
-          Agent świadomie go nie odświeża, bo to zmieniałoby stan maszyny. Przy tak
-          starym indeksie wynik może nie obejmować poprawek wydanych później.
+          {% if braki.index_refresh %}
+            Odświeżanie przez agenta się nie udaje, a nikt nie odświeża go na maszynie.
+          {% else %}
+            Ten agent nie odświeża indeksu (starsza wersja albo wyłączone
+            <code>refresh_package_index</code>).
+          {% endif %}
+          Przy tak starym indeksie wynik może nie obejmować poprawek wydanych później.
+          Zakładka <b>Podatności</b> nie zależy od indeksu — porównuje zainstalowane
+          wersje z danymi dystrybucji pobieranymi przez serwer.
         </div>
         {% endif %}
 

@@ -69,6 +69,13 @@ class AgentConfig:
     # indeksu pakietow - szybkie i bez ruchu sieciowego. Na Windows oznacza
     # odpytanie uslugi Windows Update, ktore potrafi trwac kilka minut.
     collect_pending_updates: bool = True
+    # Linux: agent sam pobiera indeks pakietow (apt update / dnf makecache)
+    # do WLASNEGO katalogu danych, nie ruszajac systemowego. Bez tego na
+    # maszynach, na ktorych nikt nie robi "apt update", lista brakow opiera
+    # sie na indeksie sprzed miesiecy. Wymaga dostepu maszyny do repozytoriow.
+    refresh_package_index: bool = True
+    # Co ile godzin najwyzej odswiezac ten indeks.
+    package_index_max_age_hours: int = 24
     # Maksymalna liczba pozycji na liste - zabezpieczenie przed gigantycznym raportem.
     max_items_per_section: int = 5000
 
@@ -132,10 +139,12 @@ _INT_FIELDS = {
     "timeout_seconds",
     "max_retries",
     "max_items_per_section",
+    "package_index_max_age_hours",
     "discovery_interval_seconds", "discovery_max_hosts", "discovery_rate", "discovery_budget_seconds",
 }
 _BOOL_FIELDS = {"collect_processes", "collect_services", "collect_updates",
-                "collect_pending_updates", "discovery_enabled", "discovery_auto_subnets"}
+                "collect_pending_updates", "refresh_package_index",
+                "discovery_enabled", "discovery_auto_subnets"}
 
 
 def load_config(config_path: Path | None = None, overrides: dict | None = None) -> AgentConfig:

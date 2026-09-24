@@ -183,9 +183,15 @@ class LinuxCollector(BaseCollector):
 
     def collect_pending_updates(self) -> dict:
         """Aktualizacje czekajace na instalacje, z wyroznieniem poprawek
-        bezpieczenstwa. Czytamy lokalny indeks pakietow - bez odswiezania go,
-        bo agent ma maszyne inwentaryzowac, a nie zmieniac jej stan."""
-        return poprawki.braki_linux()
+        bezpieczenstwa. Systemowego indeksu pakietow nie ruszamy - agent
+        odswieza wlasna kopie w swoim katalogu danych (patrz poprawki.py)."""
+        katalog = None
+        if getattr(self.config, "refresh_package_index", False):
+            katalog = Path(self.config.data_dir) / "indeks-pakietow"
+        return poprawki.braki_linux(
+            katalog=katalog,
+            co_ile_godzin=max(1, int(getattr(self.config, "package_index_max_age_hours", 24))),
+        )
 
     def collect_system(self) -> dict:
         """Identyfikacja plyty.
@@ -533,7 +539,12 @@ class LinuxCollector(BaseCollector):
             # ("libssl3"). Bez tego wiekszosc podatnosci nie zostalaby
             # dopasowana.
             (["dpkg-query", "-W", "-f=${Package}\\t${Version}\\t${Maintainer}\\t${source:Package}\\t${source:Version}\\n"], "dpkg"),
-            (["rpm", "-qa", "--qf", "%{NAME}\\t%{VERSION}-%{RELEASE}\\t%{VENDOR}\\t%{SOURCERPM}\\n"], "rpm"),
+            # Piata kolumna to wersja z epoka ("1:3.0.7-27.el9") - tak opisuje
+            # pakiety Red Hat i bez niej porownanie z jego danymi bywa bledne.
+            # Skladnia warunkowa zamiast %{EPOCHNUM}, bo ta nie istnieje
+            # w rpm z RHEL 7, a nieznany znacznik wywraca cale zapytanie.
+            (["rpm", "-qa", "--qf", "%{NAME}\\t%{VERSION}-%{RELEASE}\\t%{VENDOR}\\t%{SOURCERPM}"
+              "\\t%|EPOCH?{%{EPOCH}}:{0}|:%{VERSION}-%{RELEASE}\\n"], "rpm"),
             (["pacman", "-Q"], "pacman"),
         ]
         for command, source in managers:
@@ -555,25 +566,31 @@ class LinuxCollector(BaseCollector):
                     # SOURCERPM to pelna nazwa pliku, np.
                     # "openssl-3.0.7-24.el9.src.rpm" - zostawiamy sama nazwe.
                     zrodlowy = zrodlowy.rsplit("-", 2)[0] if "-" in zrodlowy else zrodlowy
-                packages.append(
-                    {
-                        "name": nazwa,
-                        "version": fields[1].strip() if len(fields) > 1 else None,
-                        "publisher": fields[2].strip() if len(fields) > 2 else None,
-                        # Puste dla pakietow, ktore same sa zrodlem - wtedy
-                        # nazwa binarna i zrodlowa sa te same.
-                        "source_package": zrodlowy or nazwa,
-                        # Wersja ZRODLOWA, nie binarna. Dane o podatnosciach
-                        # podaja wersje zrodlowa, a binaria z jednego zrodla
-                        # miewaja rozne schematy wersji - porownanie ich ze
-                        # soba dawaloby falszywe alarmy.
-                        "source_version": (
-                            fields[4].strip() if len(fields) > 4 else None
-                        )
-                        or (fields[1].strip() if len(fields) > 1 else None),
-                        "source": source,
-                    }
-                )
+                evr = None
+                if source == "rpm":
+                    evr = fields[4].strip() if len(fields) > 4 else None
+                    # Dla rpm piata kolumna to wersja z epoka, nie zrodlowa.
+                    fields = fields[:4]
+                pakiet = {
+                    "name": nazwa,
+                    "version": fields[1].strip() if len(fields) > 1 else None,
+                    "publisher": fields[2].strip() if len(fields) > 2 else None,
+                    # Puste dla pakietow, ktore same sa zrodlem - wtedy
+                    # nazwa binarna i zrodlowa sa te same.
+                    "source_package": zrodlowy or nazwa,
+                    # Wersja ZRODLOWA, nie binarna. Dane o podatnosciach
+                    # podaja wersje zrodlowa, a binaria z jednego zrodla
+                    # miewaja rozne schematy wersji - porownanie ich ze
+                    # soba dawaloby falszywe alarmy.
+                    "source_version": (
+                        fields[4].strip() if len(fields) > 4 else None
+                    )
+                    or (fields[1].strip() if len(fields) > 1 else None),
+                    "source": source,
+                }
+                if evr:
+                    pakiet["evr"] = evr
+                packages.append(pakiet)
             packages.sort(key=lambda p: p["name"].lower())
             return self.limit(packages)
 

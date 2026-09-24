@@ -794,6 +794,7 @@ def strona_podatnosci(
         kanaly=kanaly,
         wydania=cve.wydania_we_flocie(db),
         przestarzaly_po=cve.PRZESTARZALY_PO_GODZINACH,
+        co_ile_godzin=get_settings().cve_refresh_hours,
     )
 
 
@@ -810,12 +811,7 @@ def odswiez_podatnosci(
     wydania, ktorego nikt nie uzywa, sa czystym obciazeniem.
     """
     sprawdz_csrf(user, csrf_token)
-    wydania = cve.wydania_we_flocie(db)
-    podsumowanie = cve.odswiez(
-        db,
-        wydania_debian=wydania.get("debian", set()),
-        wydania_ubuntu=wydania.get("ubuntu", set()),
-    )
+    podsumowanie = cve.odswiez(db, cve.wydania_we_flocie(db))
     audit(db, None, action="cve.refreshed", target=", ".join(sorted(podsumowanie)),
           detail=podsumowanie, ip=client_ip(request), actor=user.email)
     db.commit()

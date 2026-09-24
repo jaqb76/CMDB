@@ -356,7 +356,7 @@ def test_nieudane_pobranie_nie_kasuje_starych_danych(kanal_debian, monkeypatch):
 
     monkeypatch.setattr(cve, "_pobierz", padnij)
     with SessionLocal() as db:
-        cve.odswiez(db, wydania_debian={"bookworm"}, wydania_ubuntu=set())
+        cve.odswiez(db, {"debian": {"bookworm"}})
         wpisy = db.execute(select(CveEntry).where(CveEntry.source == "debian")).scalars().all()
         stan = db.execute(
             select(CveFeed).where(CveFeed.source == "debian")
