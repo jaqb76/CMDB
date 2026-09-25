@@ -1585,3 +1585,11 @@ a.kb-licznik:hover { text-decoration: none; background: var(--accent); color: va
   .kb-uklad { grid-template-columns: 1fr; }
   .kb-uklad > .kb-drzewo { position: static; max-height: none; }
 }
+
+/* Pasek postepu pobierania danych o podatnosciach. */
+progress {
+  width: 100%;
+  max-width: 480px;
+  height: 10px;
+  accent-color: var(--accent, #3b82f6);
+}

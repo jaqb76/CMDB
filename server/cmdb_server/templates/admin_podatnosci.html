@@ -1,5 +1,11 @@
 {% extends "base_admin.html" %}
 {% block title %}Podatności - administracja CMDB{% endblock %}
+{% block head_extra %}
+{% if pobieranie and pobieranie.state == 'running' %}
+  {# Odswiezamy strone, dopoki pobieranie trwa - bez skryptow (CSP). #}
+  <meta http-equiv="refresh" content="10">
+{% endif %}
+{% endblock %}
 {% block content %}
 
 <div class="page-head">
@@ -27,6 +33,41 @@
     </form>
   </div>
 </div>
+
+<section class="panel">
+  <h2>Pobieranie w tle</h2>
+  {% if pobieranie and pobieranie.state == 'running' %}
+    <p><span class="badge badge-warn">trwa</span>
+      {{ pobieranie.phase or '' }}
+      {% if pobieranie.total %} — {{ pobieranie.done }} z {{ pobieranie.total }}{% endif %}</p>
+    {% if pobieranie.total %}
+      <progress value="{{ pobieranie.done }}" max="{{ pobieranie.total }}"></progress>
+    {% endif %}
+    <p class="muted small">
+      Rozpoczęto {{ pobieranie.started_at | dt }} ({{ pobieranie.started_at | ago }}).
+      Strona odświeża się sama co 10 sekund. Można ją zamknąć — praca trwa na serwerze.
+    </p>
+  {% elif pobieranie %}
+    <p>
+      {% if pobieranie.state == 'error' %}<span class="badge badge-danger">błąd</span>
+      {% else %}<span class="badge badge-ok">zakończono</span>{% endif %}
+      {{ pobieranie.finished_at | dt }} ({{ pobieranie.finished_at | ago }})
+    </p>
+    <p class="small">{{ pobieranie.detail or '' }}</p>
+  {% else %}
+    <p class="muted small">Jeszcze nic nie pobierano.</p>
+  {% endif %}
+  <p class="muted small">
+    Serwer co godzinę sam dobiera brakujące oceny (NVD: do 200 na przebieg
+    {%- if not klucz_nvd %}, bez klucza ok. 22 minuty{% endif %}; Ubuntu: do 300)
+    i odświeża kanały starsze niż {{ co_ile_godzin or '—' }} h. Przyciski
+    uruchamiają to od razu, w tle.
+    {% if not klucz_nvd %}
+      Ustawienie <code>CMDB_NVD_API_KEY</code> (bezpłatny klucz) przyspiesza oceny NVD
+      dziesięciokrotnie.
+    {% endif %}
+  </p>
+</section>
 
 <div class="alert alert-warn">
   <b>Źródłem sa dane samych dystrybucji, nie baza NVD.</b>

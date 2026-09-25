@@ -47,6 +47,7 @@ from ..models import (
     Asset,
     AuditLog,
     CveFeed,
+    CveSyncStatus,
     EnrollmentToken,
     GlobalAgentTarget,
     WpisSlownika,
@@ -808,6 +809,8 @@ def strona_podatnosci(
         wydania=cve.wydania_we_flocie(db),
         przestarzaly_po=cve.PRZESTARZALY_PO_GODZINACH,
         co_ile_godzin=get_settings().cve_refresh_hours,
+        pobieranie=db.get(CveSyncStatus, 1),
+        klucz_nvd=bool(get_settings().nvd_api_key),
     )
 
 
@@ -824,11 +827,13 @@ def odswiez_podatnosci(
     wydania, ktorego nikt nie uzywa, sa czystym obciazeniem.
     """
     sprawdz_csrf(user, csrf_token)
-    podsumowanie = cve.odswiez(db, cve.wydania_we_flocie(db))
-    audit(db, None, action="cve.refreshed", target=", ".join(sorted(podsumowanie)),
-          detail=podsumowanie, ip=client_ip(request), actor=user.email)
+    from ..services import harmonogram
+
+    harmonogram.uruchom_w_tle(get_settings().nvd_api_key, kanaly=True, oceny=True)
+    audit(db, None, action="cve.refreshed", target="w tle", ip=client_ip(request),
+          actor=user.email)
     db.commit()
-    log.info("superadmin %s odswiezyl kanaly podatnosci: %s", user.email, podsumowanie)
+    log.info("superadmin %s uruchomil odswiezanie kanalow podatnosci", user.email)
     return RedirectResponse("/admin/podatnosci", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -847,16 +852,16 @@ def pobierz_oceny_cvss(
     zapytan po to, by opisac luki, ktorych u nikogo nie ma.
     """
     sprawdz_csrf(user, csrf_token)
-    podsumowanie = cve.pobierz_oceny(
-        db, cve.cve_we_flocie(db), klucz_api=get_settings().nvd_api_key
-    )
-    ubuntu = cve.cve_we_flocie(db, source="ubuntu")
-    if ubuntu:
-        podsumowanie["ubuntu"] = cve.pobierz_oceny_ubuntu(db, ubuntu)
-    audit(db, None, action="cve.scores", target=str(podsumowanie.get("pobrane")),
-          detail=podsumowanie, ip=client_ip(request), actor=user.email)
+    from ..services import harmonogram
+
+    # Bez klucza NVD to do 200 zapytan po 6,5 s - kilkadziesiat minut. Zadanie
+    # HTTP konczylo sie 504 z nginx, a praca przepadala; teraz idzie w tle,
+    # a strona pokazuje postep.
+    harmonogram.uruchom_w_tle(get_settings().nvd_api_key, kanaly=False, oceny=True)
+    audit(db, None, action="cve.scores", target="w tle", ip=client_ip(request),
+          actor=user.email)
     db.commit()
-    log.info("superadmin %s pobral oceny CVSS: %s", user.email, podsumowanie)
+    log.info("superadmin %s uruchomil pobieranie ocen CVSS", user.email)
     return RedirectResponse("/admin/podatnosci", status_code=status.HTTP_303_SEE_OTHER)
 
 

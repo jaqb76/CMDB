@@ -1010,7 +1010,7 @@ def _ocena_z_odpowiedzi(dane: dict) -> dict | None:
 
 
 def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
-                  limit: int = LIMIT_NA_PRZEBIEG) -> dict:
+                  limit: int = LIMIT_NA_PRZEBIEG, postep=None) -> dict:
     """Uzupelnia brakujace oceny CVSS. Zwraca podsumowanie przebiegu."""
     from ..models import CveScore
 
@@ -1062,6 +1062,11 @@ def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
         else:
             db.merge(CveScore(cve=cve, found=True, **ocena))
             pobrane += 1
+        if postep:
+            postep(numer + 1, len(do_pobrania))
+        # Zapis co kilkanascie ocen - przerwany przebieg nie traci wszystkiego.
+        if numer % 20 == 19:
+            db.commit()
     db.commit()
 
     return {
@@ -1124,7 +1129,8 @@ def _ocena_ubuntu(dane: dict) -> dict:
     }
 
 
-def pobierz_oceny_ubuntu(db: Session, cves: list[str], limit: int = 300) -> dict:
+def pobierz_oceny_ubuntu(db: Session, cves: list[str], limit: int = 300,
+                         postep=None) -> dict:
     """Priorytet i CVSS z ubuntu.com dla podatnosci znalezionych na Ubuntu.
 
     Swieze oceny sie zmieniaja (priorytet "needs-triage" dostaje wartosc po
@@ -1164,6 +1170,10 @@ def pobierz_oceny_ubuntu(db: Session, cves: list[str], limit: int = 300) -> dict
         else:
             db.merge(CveUbuntu(cve=cve, fetched_at=utcnow(), **_ocena_ubuntu(dane)))
             pobrane += 1
+            if postep:
+                postep(numer + 1, len(kolejka))
+            if numer % 20 == 19:
+                db.commit()
             continue
         if bledy >= 5:
             log.warning("przerywam pobieranie ocen Ubuntu po %d bledach", bledy)

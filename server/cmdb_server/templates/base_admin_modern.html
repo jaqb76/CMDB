@@ -14,6 +14,7 @@
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
+  {% block head_extra %}{% endblock %}
 </head>
 <body class="app-layout admin-scope{% if not menu_rozwiniete %} sidebar-collapsed{% endif %}">
 {% if instancja %}

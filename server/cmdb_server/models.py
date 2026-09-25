@@ -734,6 +734,26 @@ class CveEntry(Base):
     cvss_vector: Mapped[str | None] = mapped_column(String(128))
 
 
+class CveSyncStatus(Base):
+    """Stan pobierania danych o podatnosciach w tle - jeden wiersz (id=1).
+
+    Pobieranie ocen bez klucza NVD trwa kilkadziesiat minut, wiec nie moze
+    wisiec na zadaniu HTTP (nginx przerywal je po minucie). Panel czyta stad,
+    co sie dzieje i jak daleko doszlo.
+    """
+
+    __tablename__ = "cve_sync_status"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default="idle")
+    phase: Mapped[str | None] = mapped_column(String(64))
+    done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    detail: Mapped[str | None] = mapped_column(Text)
+
+
 class CveUbuntu(Base):
     """Ocena podatnosci wedlug Ubuntu: priorytet i CVSS z ubuntu.com.
 

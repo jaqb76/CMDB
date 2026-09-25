@@ -158,7 +158,11 @@ wstrzymywało wysyłki raportów.
 CMDB_CVE_REFRESH_HOURS=24   # 0 = tylko ręcznie
 ```
 
-Przyciski na stronie **Podatności** wymuszają odświeżenie od razu.
+Przyciski na stronie **Podatności** wymuszają odświeżenie od razu — **w tle**.
+Pobieranie ocen bez klucza NVD trwa do ~22 minut, więc nie może wisieć na
+żądaniu przeglądarki (nginx przerywał je błędem 504). Sekcja **Pobieranie
+w tle** pokazuje etap, pasek postępu i podsumowanie ostatniego przebiegu;
+strona odświeża się sama, dopóki praca trwa.
 
 Pobieramy dane wyłącznie dla wydań faktycznie używanych we flocie — kanał
 Debiana ma 86 MB. Nowe wydanie (np. pierwsza maszyna z RHEL 8) dostaje dane

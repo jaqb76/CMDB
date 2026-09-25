@@ -397,7 +397,7 @@ def test_harmonogram_dobiera_oceny(monkeypatch):
     monkeypatch.setattr(cve, "cve_we_flocie",
                         lambda db, source=None: [] if source else ["CVE-2024-0727"])
     monkeypatch.setattr(cve, "pobierz_oceny",
-                        lambda db, cves, klucz_api="": oceny.append((cves, klucz_api)) or {"pobrane": 1})
+                        lambda db, cves, klucz_api="", **_: oceny.append((cves, klucz_api)) or {"pobrane": 1})
     wynik = harmonogram.przebieg_podatnosci(24, "klucz")
     assert oceny == [(["CVE-2024-0727"], "klucz")]
     assert wynik["oceny"] == {"pobrane": 1}
@@ -446,3 +446,53 @@ def test_poprawka_modulu_dotyczy_tego_samego_strumienia(kanal_rhel):
     pozycje = [e for e in wynik["entries"] if e["cve"] == "CVE-2024-11235"]
     assert {n for e in pozycje for n in e["packages"]} == {"php", "php-pecl-apcu"}
     assert pozycje[0]["base_score"] == 8.8
+
+
+def test_przebieg_zapisuje_stan_dla_panelu(monkeypatch):
+    from cmdb_server.models import CveSyncStatus
+
+    monkeypatch.setattr(cve, "kanaly_do_odswiezenia", lambda db, h: {})
+    monkeypatch.setattr(cve, "cve_we_flocie", lambda db, source=None: [] if source else ["CVE-1"])
+
+    def oceny(db, cves, klucz_api="", postep=None, **_):
+        postep(1, 2)
+        with SessionLocal() as inna:
+            stan = inna.get(CveSyncStatus, 1)
+            assert (stan.state, stan.phase, stan.done, stan.total) == ("running", "oceny NVD", 1, 2)
+        return {"pobrane": 1, "bez_oceny": 0, "bledy": 0, "pozostalo": 5}
+
+    monkeypatch.setattr(cve, "pobierz_oceny", oceny)
+    harmonogram.przebieg_podatnosci(24)
+    with SessionLocal() as db:
+        stan = db.get(CveSyncStatus, 1)
+    assert stan.state == "ok"
+    assert "zostało 5" in stan.detail
+
+
+def test_przycisk_ocen_nie_czeka_na_nvd(client, make_user, monkeypatch):
+    """Pobieranie ocen trwa do kilkudziesieciu minut - nginx przerywal je 504."""
+    from .test_admin import _superadmin
+
+    uruchomione = []
+    monkeypatch.setattr(harmonogram, "uruchom_w_tle",
+                        lambda klucz, kanaly, oceny: uruchomione.append((kanaly, oceny)))
+    csrf = _superadmin(client, make_user)
+    odpowiedz = client.post("/admin/podatnosci/oceny", data={"csrf_token": csrf},
+                            follow_redirects=False)
+    assert odpowiedz.status_code == 303
+    assert uruchomione == [(False, True)]
+    assert "Pobieranie w tle" in client.get("/admin/podatnosci").text
+
+
+def test_strona_pokazuje_postep_i_odswieza_sie(client, make_user):
+    from cmdb_server.models import CveSyncStatus
+    from .test_admin import _superadmin
+
+    _superadmin(client, make_user)
+    with SessionLocal() as db:
+        db.add(CveSyncStatus(id=1, state="running", phase="oceny NVD", done=40, total=200,
+                             started_at=utcnow()))
+        db.commit()
+    strona = client.get("/admin/podatnosci").text
+    assert '<progress value="40" max="200">' in strona
+    assert 'http-equiv="refresh"' in strona

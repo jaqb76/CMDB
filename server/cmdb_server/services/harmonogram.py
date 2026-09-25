@@ -90,11 +90,30 @@ KLUCZ_BLOKADY_CVE = 0x434D4356  # "CMCV"
 ODSTEP_CVE_SEKUND = 3600
 
 
-def przebieg_podatnosci(co_ile_godzin: float, klucz_nvd: str = "") -> dict | None:
+def _stan_pobierania(**pola) -> None:
+    """Zapisuje postep w osobnej sesji - panel widzi go od razu."""
+    from ..models import CveSyncStatus, utcnow
+
+    with SessionLocal() as db:
+        stan = db.get(CveSyncStatus, 1)
+        if stan is None:
+            stan = CveSyncStatus(id=1)
+            db.add(stan)
+        for nazwa, wartosc in pola.items():
+            setattr(stan, nazwa, wartosc)
+        if pola.get("state") == "running" and "started_at" not in pola:
+            stan.started_at = utcnow()
+        db.commit()
+
+
+def przebieg_podatnosci(co_ile_godzin: float, klucz_nvd: str = "",
+                        kanaly: bool = True, oceny: bool = True) -> dict | None:
     """Jeden obieg odswiezania danych o podatnosciach.
 
-    None, gdy robote wykonuje wlasnie inny proces.
+    None, gdy robote wykonuje wlasnie inny proces. co_ile_godzin=0 wymusza
+    pobranie wszystkich kanalow.
     """
+    from ..models import utcnow
     from . import cve
 
     with engine.connect() as conn:
@@ -104,28 +123,72 @@ def przebieg_podatnosci(co_ile_godzin: float, klucz_nvd: str = "") -> dict | Non
             return None
         try:
             conn.commit()
+            _stan_pobierania(state="running", phase="przygotowanie", done=0, total=0,
+                             finished_at=None, detail=None, started_at=utcnow())
+
+            def postep(etap):
+                return lambda zrobione, wszystkie: _stan_pobierania(
+                    phase=etap, done=zrobione, total=wszystkie)
+
             wynik: dict = {"kanaly": {}, "oceny": None}
             with SessionLocal() as db:
-                do_odswiezenia = cve.kanaly_do_odswiezenia(db, co_ile_godzin)
-                if do_odswiezenia:
-                    wynik["kanaly"] = cve.odswiez(db, do_odswiezenia)
-                # Oceny dobieramy przy kazdym obiegu, porcjami. Jeden przebieg
-                # bez klucza NVD to do 200 ocen, wiec nowa flota dostaje
-                # komplet po kilku godzinach bez niczyjego klikania.
-                znalezione = cve.cve_we_flocie(db)
-                if znalezione:
-                    wynik["oceny"] = cve.pobierz_oceny(db, znalezione, klucz_api=klucz_nvd)
-                # Ubuntu ocenia swieze CVE szybciej niz NVD i ma wlasny
-                # priorytet - pobieramy go dla maszyn z Ubuntu.
-                ubuntu = cve.cve_we_flocie(db, source="ubuntu")
-                if ubuntu:
-                    wynik["ubuntu"] = cve.pobierz_oceny_ubuntu(db, ubuntu)
+                if kanaly:
+                    do_odswiezenia = cve.kanaly_do_odswiezenia(db, co_ile_godzin)
+                    if do_odswiezenia:
+                        _stan_pobierania(phase="kanały dystrybucji")
+                        wynik["kanaly"] = cve.odswiez(db, do_odswiezenia)
+                if oceny:
+                    # Oceny dobieramy przy kazdym obiegu, porcjami. Jeden
+                    # przebieg bez klucza NVD to do 200 ocen, wiec nowa flota
+                    # dostaje komplet po kilku godzinach bez niczyjego klikania.
+                    _stan_pobierania(phase="wyszukiwanie podatności we flocie")
+                    znalezione = cve.cve_we_flocie(db)
+                    if znalezione:
+                        wynik["oceny"] = cve.pobierz_oceny(
+                            db, znalezione, klucz_api=klucz_nvd, postep=postep("oceny NVD"))
+                    # Ubuntu ocenia swieze CVE szybciej niz NVD i ma wlasny
+                    # priorytet - pobieramy go dla maszyn z Ubuntu.
+                    ubuntu = cve.cve_we_flocie(db, source="ubuntu")
+                    if ubuntu:
+                        wynik["ubuntu"] = cve.pobierz_oceny_ubuntu(
+                            db, ubuntu, postep=postep("oceny Ubuntu"))
+            _stan_pobierania(state="ok", phase=None, finished_at=utcnow(),
+                             detail=_opis_wyniku(wynik))
             return wynik
+        except Exception as exc:
+            _stan_pobierania(state="error", finished_at=utcnow(), detail=str(exc)[:500])
+            raise
         finally:
             conn.execute(
                 text("SELECT pg_advisory_unlock(:klucz)"), {"klucz": KLUCZ_BLOKADY_CVE}
             )
             conn.commit()
+
+
+def _opis_wyniku(wynik: dict) -> str:
+    czesci = []
+    for nazwa, stan in (wynik.get("kanaly") or {}).items():
+        czesci.append(f"kanał {nazwa}: {stan}")
+    for klucz, etykieta in (("oceny", "NVD"), ("ubuntu", "Ubuntu")):
+        o = wynik.get(klucz)
+        if o:
+            czesci.append(f"oceny {etykieta}: pobrano {o.get('pobrane', 0)}, "
+                          f"bez oceny {o.get('bez_oceny', 0)}, błędów {o.get('bledy', 0)}, "
+                          f"zostało {o.get('pozostalo', 0)}")
+    return "; ".join(czesci) or "Wszystko aktualne - nic do pobrania."
+
+
+def uruchom_w_tle(klucz_nvd: str, kanaly: bool, oceny: bool) -> None:
+    """Start pobierania z panelu - w osobnym watku, zeby nie wisiec na HTTP."""
+    import threading
+
+    def praca():
+        try:
+            przebieg_podatnosci(0 if kanaly else 10**6, klucz_nvd, kanaly=kanaly, oceny=oceny)
+        except Exception as exc:
+            log.error("podatnosci: pobieranie z panelu zakonczylo sie bledem: %s", exc)
+
+    threading.Thread(target=praca, name="cmdb-podatnosci", daemon=True).start()
 
 
 async def petla_podatnosci() -> None:
