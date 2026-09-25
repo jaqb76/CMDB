@@ -45,6 +45,10 @@ jobs:
           name: CMDB-Agent-Release-Plan-${{ github.run_id }}
           path: agent-release-changelog.json
           if-no-files-found: error
+          # Artefakty sluza tylko publikacji w tym samym przebiegu - gotowe
+          # wydanie lezy w GitHub Release. Domyslne 90 dni zapelnialo limit
+          # miejsca konta i blokowalo kolejne wydania.
+          retention-days: 3
 
   server:
     needs: release-plan
@@ -92,6 +96,10 @@ jobs:
           name: CMDB-Agent-Linux-${{ steps.version.outputs.version }}
           path: agent/dist/source/*
           if-no-files-found: error
+          # Artefakty sluza tylko publikacji w tym samym przebiegu - gotowe
+          # wydanie lezy w GitHub Release. Domyslne 90 dni zapelnialo limit
+          # miejsca konta i blokowalo kolejne wydania.
+          retention-days: 3
   agent:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -163,6 +171,10 @@ jobs:
             agent/dist/unified/verified-worker.json
             agent/dist/unified/gui-preview/*.png
           if-no-files-found: error
+          # Artefakty sluza tylko publikacji w tym samym przebiegu - gotowe
+          # wydanie lezy w GitHub Release. Domyslne 90 dni zapelnialo limit
+          # miejsca konta i blokowalo kolejne wydania.
+          retention-days: 3
 
   verify-release:
     name: Verify complete release with disposable test signature
