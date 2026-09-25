@@ -176,11 +176,24 @@ def katalog_wersji() -> Path:
     return katalog
 
 
+def _klucz_wersji(wersja: str | None) -> tuple:
+    """Klucz sortowania wersji liczbowo: "0.6.131+1" po "0.6.77+1".
+
+    Sortowanie tekstowe stawialo 0.6.77 nad 0.6.131 ("7" > "1"), przez co
+    nowe wydania ladowaly na samym dole listy i wygladaly na nieistniejace.
+    """
+    import re
+
+    return tuple(int(czesc) for czesc in re.findall(r"\d+", wersja or ""))
+
+
 def _wydania(db: Session):
     """Wszystkie wydania, mapa po identyfikatorze i podzial na systemy."""
-    wszystkie = db.execute(
-        select(AgentRelease).order_by(AgentRelease.os_family, AgentRelease.version.desc())
-    ).scalars().all()
+    # System rosnaco, w obrebie systemu najnowsze wersje na gorze.
+    wszystkie = sorted(
+        db.execute(select(AgentRelease)).scalars().all(),
+        key=lambda w: (w.os_family or "", tuple(-n for n in _klucz_wersji(w.version))),
+    )
     wedlug_systemu: dict[str, list[AgentRelease]] = {}
     for wydanie in wszystkie:
         wedlug_systemu.setdefault(wydanie.os_family, []).append(wydanie)

@@ -1024,3 +1024,12 @@ def test_nie_da_sie_zlecic_wersji_wpisowi_recznemu(client, tenant_a, make_user):
     )
     assert odpowiedz.status_code == 400
     assert "reczny" in odpowiedz.text
+
+
+def test_wersje_agenta_sortowane_liczbowo():
+    """0.6.131 jest nowsze niz 0.6.77 - tekstowo bylo odwrotnie."""
+    from cmdb_server.api.admin import _klucz_wersji
+
+    wersje = ["0.6.77+1", "0.6.131+1", "0.6.125+1", "0.6.9+2"]
+    assert sorted(wersje, key=_klucz_wersji, reverse=True) == [
+        "0.6.131+1", "0.6.125+1", "0.6.77+1", "0.6.9+2"]
