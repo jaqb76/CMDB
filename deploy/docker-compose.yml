@@ -59,6 +59,7 @@ services:
       CMDB_LOGIN_LOCKOUT_HOURS: ${CMDB_LOGIN_LOCKOUT_HOURS:-24}
       # Bez klucza pobieranie ocen CVSS dziala, tylko wolniej (5 zapytan / 30 s).
       CMDB_NVD_API_KEY: ${CMDB_NVD_API_KEY:-}
+      CMDB_CVE_REFRESH_HOURS: ${CMDB_CVE_REFRESH_HOURS:-24}
       # Monitorowanie uslug: sonduje AGENT na maszynie klienta, nie ten
       # kontener. Serwer wydaje polityke, przyjmuje wyniki i powiadamia, wiec
       # nie musi widziec monitorowanych adresow. Wylaczenie zostawia

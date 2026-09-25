@@ -170,6 +170,12 @@ class Settings(BaseSettings):
     # Bezplatny: https://nvd.nist.gov/developers/request-an-api-key
     nvd_api_key: str = ""
 
+    # Co ile godzin serwer sam pobiera dane o podatnosciach (kanaly dystrybucji
+    # i brakujace oceny CVSS). Dystrybucje wydaja poprawki codziennie, wiec
+    # doba to rozsadny rytm. 0 wylacza pobieranie w tle - zostaje przycisk
+    # na stronie Podatnosci.
+    cve_refresh_hours: int = Field(default=24, ge=0)
+
     # --- monitorowanie uslug i certyfikatow ---
     # Sonduje AGENT, nie serwer: usluga zyje w sieci klienta, ktorej serwer
     # zwykle nie widzi. Serwer wydaje polityke, przyjmuje wyniki i powiadamia.

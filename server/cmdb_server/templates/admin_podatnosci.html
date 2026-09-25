@@ -6,6 +6,15 @@
   <div>
     <h1>Dane o podatnosciach</h1>
     <p class="muted">Kanały, z których zestawiamy inwentarz z lukami bezpieczeństwa.</p>
+    <p class="muted small">
+      {% if co_ile_godzin %}
+        Serwer odświeża je sam, gdy są starsze niż {{ co_ile_godzin }} h, i przy
+        okazji dobiera brakujące oceny CVSS. Przyciski wymuszają to od razu.
+      {% else %}
+        Odświeżanie w tle jest wyłączone (<code>CMDB_CVE_REFRESH_HOURS=0</code>) —
+        dane pobiera się wyłącznie przyciskiem.
+      {% endif %}
+    </p>
   </div>
   <div class="row-form">
     <form method="post" action="/admin/podatnosci/odswiez" class="inline-form">
@@ -21,7 +30,7 @@
 
 <div class="alert alert-warn">
   <b>Źródłem sa dane samych dystrybucji, nie baza NVD.</b>
-  Debian i Ubuntu latają wstecznie, nie zmieniajac numeru wersji: pakiet
+  Debian, Ubuntu i Red Hat latają wstecznie, nie zmieniajac numeru wersji: pakiet
   <code>22.08.8-6+deb12u1</code> zawiera poprawke, o której numer upstream
   <code>22.08.8</code> nic nie mówi. Porównywanie wersji z NVD dawałoby lawinę
   fałszywych alarmów — wiarygodna odpowiedz ma tylko ta dystrybucja, która
@@ -114,6 +123,12 @@
     Nie sprawdza konfiguracji, nie bada usług sieciowych i nie wie, czy podatny
     pakiet jest w ogóle uruchamiany. Do pełnej oceny służy skaner podatności —
     to zestawienie odpowiada na węższe, ale konkretne pytanie: czego brakuje.
+  </p>
+  <p class="muted small">
+    Dla RHEL (a także Rocky, Alma i CentOS, które przebudowują te same pakiety)
+    źródłem jest OVAL Red Hata z wydanymi poprawkami (RHSA). Ten kanał nie
+    opisuje luk bez poprawki, więc kategoria „bez poprawki” dla tych maszyn
+    jest pusta — to nie znaczy, że takich luk nie ma.
   </p>
   <p class="muted small">
     Wydania Ubuntu z przyrostkiem <code>+esm</code> pochodza z rozszerzonego

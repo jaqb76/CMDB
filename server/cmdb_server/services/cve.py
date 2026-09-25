@@ -26,6 +26,7 @@ bada uslug sieciowych i nie wie, czy podatny pakiet jest w ogole uzywany.
 from __future__ import annotations
 
 import bz2
+import io
 import json
 import logging
 import re
@@ -33,6 +34,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import timedelta
 
 from sqlalchemy import delete, select
@@ -48,6 +50,9 @@ STATUS_NIEZNANY = "nieznany"
 
 ADRES_DEBIAN = "https://security-tracker.debian.org/tracker/data/json"
 ADRES_UBUNTU = "https://usn.ubuntu.com/usn-db/database.json.bz2"
+# OVAL v2 Red Hata - jeden plik na glowne wydanie RHEL. Wariant bez
+# "including-unpatched", czyli wylacznie wydane poprawki (RHSA).
+ADRES_RHEL = "https://security.access.redhat.com/data/oval/v2/RHEL{wydanie}/rhel-{wydanie}.oval.xml.bz2"
 
 NAGLOWKI = {"User-Agent": "CMDB/0.5 (inwentaryzacja)"}
 LIMIT_POBIERANIA = 256 * 1024 * 1024
@@ -179,6 +184,117 @@ def wpisy_ubuntu(surowe: bytes, wydania: set[str]) -> list[dict]:
     return list(najlepsze.values())
 
 
+# Kryterium OVAL Red Hata: "openssl-libs is earlier than 1:3.0.7-27.el9".
+_WCZESNIEJSZY_NIZ = re.compile(r"^(?P<pakiet>\S+) is earlier than (?P<wersja>\S+)$")
+
+
+def _nazwa(element: ET.Element) -> str:
+    """Nazwa znacznika bez przestrzeni nazw XML."""
+    return element.tag.rsplit("}", 1)[-1]
+
+
+def wpisy_rhel(surowe: bytes, wydanie: str) -> list[dict]:
+    """Wpisy z OVAL v2 Red Hata dla jednego wydania RHEL.
+
+    Trzy roznice wobec Debiana i Ubuntu, wszystkie wynikaja z danych:
+
+    * Red Hat opisuje pakiety BINARNE ("openssl-libs"), nie zrodlowe - i po
+      binarnych dopasowujemy.
+    * Wersja naprawiona ma epoke ("1:3.0.7-27.el9") i porownuje sie ja
+      regulami RPM, nie dpkg.
+    * Plik bez "including-unpatched" zawiera wylacznie wydane poprawki, wiec
+      kategorii "bez poprawki" dla RHEL nie ma - to nie znaczy, ze takich luk
+      nie ma, tylko ze tego kanalu o nie nie pytamy.
+
+    Czytamy go strumieniowo: rozpakowany OVAL RHEL 8 ma kilkaset megabajtow,
+    a potrzebujemy wylacznie komentarzy kryteriow z sekcji definicji.
+    """
+    try:
+        strumien = bz2.open(io.BytesIO(surowe))
+        najlepsze: dict[tuple[str, str], dict] = {}
+        glebokosc = 0
+        for zdarzenie, element in ET.iterparse(strumien, events=("start", "end")):
+            if zdarzenie == "start":
+                glebokosc += 1
+                continue
+            glebokosc -= 1
+            if _nazwa(element) == "definition":
+                _definicja_rhel(element, wydanie, najlepsze)
+                element.clear()
+            elif glebokosc == 2:
+                # Testy, obiekty i stany nie sa nam potrzebne - zwalniamy je
+                # od razu, inaczej caly dokument zostalby w pamieci.
+                element.clear()
+    except (ET.ParseError, OSError, EOFError, ValueError) as exc:
+        raise BladKanalu(f"nie moge odczytac kanalu RHEL {wydanie}: {exc}") from exc
+    return list(najlepsze.values())
+
+
+def _definicja_rhel(definicja: ET.Element, wydanie: str,
+                    najlepsze: dict[tuple[str, str], dict]) -> None:
+    if definicja.get("class") != "patch":
+        return
+    tytul = ""
+    waga_biuletynu = None
+    cves: dict[str, str | None] = {}
+    kryteria: list[tuple[str, str]] = []
+    for element in definicja.iter():
+        nazwa = _nazwa(element)
+        if nazwa == "title" and not tytul:
+            tytul = (element.text or "").strip()
+        elif nazwa == "severity":
+            waga_biuletynu = (element.text or "").strip() or None
+        elif nazwa == "cve":
+            numer = (element.text or "").strip()
+            if numer.startswith("CVE-"):
+                cves[numer] = (element.get("impact") or "").strip() or None
+        elif nazwa == "reference" and element.get("source") == "CVE":
+            numer = (element.get("ref_id") or "").strip()
+            if numer.startswith("CVE-"):
+                cves.setdefault(numer, None)
+        elif nazwa == "criterion":
+            dopasowanie = _WCZESNIEJSZY_NIZ.match((element.get("comment") or "").strip())
+            if dopasowanie:
+                kryteria.append((dopasowanie.group("pakiet"), dopasowanie.group("wersja")))
+    if not cves or not kryteria:
+        return
+
+    for pakiet, wersja in kryteria:
+        for cve, waga in cves.items():
+            klucz = (pakiet, cve)
+            nowy = {
+                "package": pakiet,
+                "cve": cve,
+                "release": wydanie,
+                "fixed_version": wersja,
+                "status": "resolved",
+                "severity": (waga or waga_biuletynu or "").capitalize() or None,
+                "no_fix_reason": None,
+                "description": tytul[:1000] or None,
+            }
+            obecny = najlepsze.get(klucz)
+            if obecny is None or _lepsza_poprawka_rhel(nowy["fixed_version"], obecny["fixed_version"]):
+                najlepsze[klucz] = nowy
+
+
+def _lepsza_poprawka_rhel(nowa: str, obecna: str) -> bool:
+    """Ktora z dwoch poprawek tego samego pakietu zostawic.
+
+    Wersje z modulow ("...module+el9.2.0+...") dotycza konkretnego strumienia
+    (nodejs:18, postgresql:15) i obowiazuja tylko przy nim, wiec wpis spoza
+    modulu ma pierwszenstwo. W obrebie jednego rodzaju zostaje najnowsza
+    poprawka, bo starsza nie zamknelaby luki.
+    """
+    modul_nowa, modul_obecna = _z_modulu(nowa), _z_modulu(obecna)
+    if modul_nowa != modul_obecna:
+        return not modul_nowa
+    return wersje_pakietow.porownaj_rpm(obecna, nowa) < 0
+
+
+def _z_modulu(wersja: str | None) -> bool:
+    return ".module" in (wersja or "")
+
+
 # --- zapis do bazy ----------------------------------------------------------
 
 def zapisz_kanal(db: Session, source: str, release: str, wpisy: list[dict]) -> int:
@@ -229,33 +345,72 @@ def _zapisz_stan(db: Session, source: str, release: str, status: str,
             stan.entries = entries
 
 
-def odswiez(db: Session, wydania_debian: set[str], wydania_ubuntu: set[str]) -> dict:
-    """Pobiera kanaly dla wskazanych wydan. Blad jednego nie psuje pozostalych."""
+def odswiez(db: Session, wydania: dict[str, set[str]]) -> dict:
+    """Pobiera kanaly dla wskazanych wydan. Blad jednego nie psuje pozostalych.
+
+    Debian i Ubuntu publikuja jeden plik na wszystkie wydania, Red Hat - osobny
+    plik na kazde glowne wydanie RHEL.
+    """
     podsumowanie: dict[str, str] = {}
 
-    for source, adres, wydania, czytnik in (
-        ("debian", ADRES_DEBIAN, wydania_debian, wpisy_debian),
-        ("ubuntu", ADRES_UBUNTU, wydania_ubuntu, wpisy_ubuntu),
+    for source, adres, czytnik in (
+        ("debian", ADRES_DEBIAN, wpisy_debian),
+        ("ubuntu", ADRES_UBUNTU, wpisy_ubuntu),
     ):
-        if not wydania:
+        wybrane = wydania.get(source) or set()
+        if not wybrane:
             continue
         try:
             surowe = _pobierz(adres)
-            wszystkie = czytnik(surowe, wydania)
+            wszystkie = czytnik(surowe, wybrane)
         except BladKanalu as exc:
             log.warning("kanal %s: %s", source, exc)
-            for wydanie in wydania:
+            for wydanie in wybrane:
                 _zapisz_stan(db, source, wydanie, "blad", str(exc)[:500])
             db.commit()
             podsumowanie[source] = f"blad: {exc}"
             continue
 
-        for wydanie in wydania:
+        for wydanie in wybrane:
             zapisz_kanal(db, source, wydanie,
                          [w for w in wszystkie if w["release"] == wydanie])
         podsumowanie[source] = f"{len(wszystkie)} wpisow"
 
+    for wydanie in sorted(wydania.get("rhel") or set()):
+        klucz = f"rhel/{wydanie}"
+        try:
+            wpisy = wpisy_rhel(_pobierz(ADRES_RHEL.format(wydanie=wydanie)), wydanie)
+        except BladKanalu as exc:
+            log.warning("kanal %s: %s", klucz, exc)
+            _zapisz_stan(db, "rhel", wydanie, "blad", str(exc)[:500])
+            db.commit()
+            podsumowanie[klucz] = f"blad: {exc}"
+            continue
+        zapisz_kanal(db, "rhel", wydanie, wpisy)
+        podsumowanie[klucz] = f"{len(wpisy)} wpisow"
+
     return podsumowanie
+
+
+def kanaly_do_odswiezenia(db: Session, co_ile_godzin: float) -> dict[str, set[str]]:
+    """Wydania we flocie, ktorych dane sa starsze niz podany odstep.
+
+    Obejmuje tez wydania, dla ktorych nic jeszcze nie pobrano, i te, ktorych
+    ostatnie pobranie sie nie udalo - fetched_at wskazuje wtedy ostatni
+    sukces, wiec proba powtarza sie przy kolejnym obiegu.
+    """
+    granica = utcnow() - timedelta(hours=co_ile_godzin)
+    stany = {
+        (k.source, k.release): as_utc(k.fetched_at)
+        for k in db.execute(select(CveFeed)).scalars()
+    }
+    wynik: dict[str, set[str]] = {}
+    for source, wydania in wydania_we_flocie(db).items():
+        for wydanie in wydania:
+            pobrano = stany.get((source, wydanie))
+            if pobrano is None or pobrano < granica:
+                wynik.setdefault(source, set()).add(wydanie)
+    return wynik
 
 
 # --- dopasowanie ------------------------------------------------------------
@@ -272,6 +427,14 @@ UBUNTU_NAZWY = {
 # (bookworm)". Odczytanie jej z nawiasu to odczyt, nie zgadywanie.
 _NAWIAS = re.compile(r"\(([a-z]+)\)")
 _WERSJA_UBUNTU = re.compile(r"(\d+\.\d+)")
+_GLOWNA_WERSJA = re.compile(r"^(\d+)")
+
+# Systemy, ktore dopasowujemy do danych Red Hata. Rocky, Alma i CentOS
+# przebudowuja pakiety RHEL z tych samych zrodel i z tymi samymi numerami
+# wersji, wiec poprawka "3.0.7-27.el9_4" oznacza u nich to samo. Swiadomie
+# NIE ma tu Oracle Linux ani Fedory: pierwszy wydaje wlasne poprawki z innymi
+# numerami, druga to zupelnie inne wydania.
+RODZINA_RHEL = {"rhel", "centos", "rocky", "almalinux"}
 
 
 def wydanie_maszyny(payload: dict) -> tuple[str, str] | None:
@@ -291,6 +454,14 @@ def wydanie_maszyny(payload: dict) -> tuple[str, str] | None:
 
     nazwa = (system.get("name") or "").strip()
     niska = nazwa.lower()
+    # RHEL nie ma nazw kodowych - wydanie to glowny numer wersji ("9.4" -> "9"),
+    # bo Red Hat publikuje jeden kanal na cale wydanie glowne.
+    if identyfikator in RODZINA_RHEL or "red hat enterprise linux" in niska:
+        dopasowanie = _GLOWNA_WERSJA.match((system.get("version") or "").strip())
+        if dopasowanie:
+            return "rhel", dopasowanie.group(1)
+        return None
+
     if "debian" in niska:
         dopasowanie = _NAWIAS.search(niska)
         if dopasowanie:
@@ -313,14 +484,59 @@ def _to_jadro(pakiet_zrodlowy: str) -> bool:
     return bool(_ZRODLA_JADRA.match((pakiet_zrodlowy or "").lower()))
 
 
+# Pakiety jadra RHEL instalowane rownolegle w kilku wersjach (installonly):
+# "kernel", "kernel-core", "kernel-modules-extra", "kernel-rt-core"... dnf
+# trzyma domyslnie trzy jadra naraz, wiec starsze leza na dysku jak w Ubuntu.
+# "kernel-tools" czy "kernel-headers" pochodza z tego samego zrodla, ale sa
+# zwyklymi pakietami w jednej wersji - do nich regula nie ma zastosowania.
+_JADRO_RPM = re.compile(
+    r"^kernel(-rt|-64k)?(-debug)?(-core|-modules(-core|-extra|-internal)?"
+    r"|-devel(-matched)?|-uki-virt)?$"
+)
+
+
+def _to_jadro_rpm(nazwa: str, pakiet_zrodlowy: str) -> bool:
+    return bool(_JADRO_RPM.match((nazwa or "").lower()))
+
+
+def _klucz_pakietu(pakiet: dict, rpm: bool) -> str:
+    """Po czym szukamy pakietu w danych dystrybucji.
+
+    Debian i Ubuntu indeksuja po pakiecie zrodlowym, Red Hat - po binarnym.
+    """
+    nazwa = (pakiet.get("name") or "").strip()
+    if rpm:
+        return nazwa
+    return (pakiet.get("source_package") or nazwa).strip()
+
+
+def _modul_pasuje(zainstalowana: str, naprawiona: str | None) -> bool:
+    """Czy poprawka z modulu RHEL dotyczy zainstalowanego pakietu.
+
+    Poprawka dla strumienia nodejs:20 ("1:20.11.1-1.module+el9...") nie
+    dotyczy nodejs:18, choc wersja 18 jest "starsza". Bez tej reguly kazdy
+    starszy strumien modulu bylby zglaszany jako podatny. Strumien poznajemy
+    po glownym numerze wersji - to przyblizenie, ale bezpieczne: przy
+    niepewnosci wpis z modulu po prostu nie jest dopasowany.
+    """
+    if not _z_modulu(naprawiona):
+        return True
+    if not _z_modulu(zainstalowana):
+        return False
+    _, wersja_a, _ = wersje_pakietow.rozbierz_rpm(zainstalowana)
+    _, wersja_b, _ = wersje_pakietow.rozbierz_rpm(naprawiona or "")
+    return wersja_a.split(".")[0] == wersja_b.split(".")[0]
+
+
 def dopasuj(db: Session, payload: dict) -> dict:
     """Podatnosci maszyny na podstawie jej ostatniego raportu."""
     wydanie = wydanie_maszyny(payload)
     if wydanie is None:
         return _wynik(
             STATUS_NIEZNANY,
-            "nie rozpoznaje dystrybucji tej maszyny - agent musi podac ID "
-            "i VERSION_CODENAME z /etc/os-release (od wersji 0.5.4)",
+            "nie rozpoznaje dystrybucji tej maszyny - obslugiwane sa Debian, "
+            "Ubuntu oraz RHEL z pochodnymi (Rocky, Alma, CentOS); agent musi "
+            "podac ID i wersje z /etc/os-release (od wersji 0.5.4)",
         )
     source, release = wydanie
 
@@ -334,16 +550,15 @@ def dopasuj(db: Session, payload: dict) -> dict:
     if not pakiety:
         return _wynik(STATUS_NIEZNANY, "raport nie zawiera listy pakietow")
 
+    rpm = source == "rhel"
+
     # Jedno zapytanie na maszyne zamiast jednego na pakiet.
-    zrodlowe = {
-        (p.get("source_package") or p.get("name") or "").strip()
-        for p in pakiety
-    } - {""}
+    klucze = {_klucz_pakietu(p, rpm) for p in pakiety} - {""}
     wpisy = db.execute(
         select(CveEntry).where(
             CveEntry.source == source,
             CveEntry.release == release,
-            CveEntry.package.in_(zrodlowe),
+            CveEntry.package.in_(klucze),
         )
     ).scalars().all()
 
@@ -368,16 +583,33 @@ def dopasuj(db: Session, payload: dict) -> dict:
         # Porownujemy wersje ZRODLOWA, bo taka podaja dane dystrybucji.
         # Starsze agenty jej nie przysylaja - wtedy zostaje binarna, co dla
         # wiekszosci pakietow jest ta sama wartoscia.
-        wersja_porownywana = (pakiet.get("source_version") or wersja).strip()
+        # Na RHEL porownujemy wersje pakietu BINARNEGO z epoka, bo tak opisuje
+        # je Red Hat. Starsze agenty epoki nie podaja - wtedy zostaje
+        # "wersja-wydanie", a porownanie pomija epoke (starsza_niz_rpm).
+        if rpm:
+            wersja_porownywana = (pakiet.get("evr") or wersja).strip()
+        else:
+            wersja_porownywana = (pakiet.get("source_version") or wersja).strip()
         if not nazwa or not wersja_porownywana:
             continue
 
-        for wpis in wedlug_pakietu.get(zrodlo, []):
+        for wpis in wedlug_pakietu.get(_klucz_pakietu(pakiet, rpm), []):
             nieaktywne_jadro = False
             if wpis.status == "resolved":
-                if not wersje_pakietow.starsza_niz(wersja_porownywana, wpis.fixed_version):
+                if rpm:
+                    if not wersje_pakietow.starsza_niz_rpm(wersja_porownywana, wpis.fixed_version):
+                        continue
+                    if not _modul_pasuje(wersja_porownywana, wpis.fixed_version):
+                        continue
+                elif not wersje_pakietow.starsza_niz(wersja_porownywana, wpis.fixed_version):
                     continue
-                if _to_jadro(zrodlo):
+                if rpm and _to_jadro_rpm(nazwa, zrodlo):
+                    starsze = wersje_pakietow.dzialajace_jadro_starsze_rpm(
+                        dzialajace_jadro, wpis.fixed_version
+                    )
+                    if starsze is False:
+                        nieaktywne_jadro = True
+                elif not rpm and _to_jadro(zrodlo):
                     starsze = wersje_pakietow.dzialajace_jadro_starsze(
                         dzialajace_jadro, wpis.fixed_version
                     )
@@ -405,8 +637,13 @@ def dopasuj(db: Session, payload: dict) -> dict:
                     "inactive_kernel": nieaktywne_jadro,
                     "running_kernel": dzialajace_jadro or None,
                 }
-            elif nazwa not in grupa["packages"]:
-                grupa["packages"].append(nazwa)
+            else:
+                if nazwa not in grupa["packages"]:
+                    grupa["packages"].append(nazwa)
+                # Grupa jest "tylko nieaktywnym jadrem" dopiero wtedy, gdy
+                # WSZYSTKIE jej pakiety takie sa. Jeden podatny pakiet
+                # dzialajacego jadra wystarczy, zeby pozycja byla prawdziwa.
+                grupa["inactive_kernel"] = grupa["inactive_kernel"] and nieaktywne_jadro
 
     wszystkie = list(grupy.values())
     for pozycja in wszystkie:
@@ -562,6 +799,7 @@ LIMIT_NA_PRZEBIEG = 200
 ODNOSNIKI = {
     "debian": "https://security-tracker.debian.org/tracker/{cve}",
     "ubuntu": "https://ubuntu.com/security/{cve}",
+    "rhel": "https://access.redhat.com/security/cve/{cve}",
 }
 ODNOSNIK_NVD = "https://nvd.nist.gov/vuln/detail/{cve}"
 

@@ -47,6 +47,9 @@ VOLATILE_PATHS: tuple[str, ...] = (
     # na maszynie nic sie nie stalo.
     "software.updates_pending.checked_at",
     "software.updates_pending.index_age_hours",
+    # Wynik odswiezania indeksu przez agenta - chwilowy blad sieci
+    # na maszynie to nie zmiana konfiguracji.
+    "software.updates_pending.index_refresh",
     "errors",
 )
 

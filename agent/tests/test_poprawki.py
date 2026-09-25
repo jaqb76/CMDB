@@ -205,3 +205,126 @@ def test_dnf_nie_siega_do_sieci(monkeypatch):
 
     poprawki.braki_dnf()
     assert all("-C" in polecenie for polecenie in wywolania)
+
+
+# --- wlasny indeks agenta ----------------------------------------------------
+
+def _apt_podstawiony(wywolania, kod_update=0):
+    def podstawiony(polecenie, timeout=0):
+        wywolania.append(polecenie)
+        if "update" in polecenie:
+            return "E: nie mozna pobrac\n" if kod_update else "", kod_update
+        return APT_WYJSCIE, 0
+    return podstawiony
+
+
+def test_apt_odswieza_wlasny_indeks_a_nie_systemowy(monkeypatch, tmp_path):
+    """Na maszynach bez "apt update" systemowy indeks ma miesiace. Agent
+    pobiera wlasny - do swojego katalogu, bez ruszania /var/lib/apt/lists."""
+    wywolania = []
+    monkeypatch.setattr(poprawki.shutil, "which", lambda nazwa: "/usr/bin/apt-get")
+    monkeypatch.setattr(poprawki, "_uruchom", _apt_podstawiony(wywolania))
+
+    w = poprawki.braki_apt(katalog=tmp_path)
+
+    assert w["status"] == poprawki.STATUS_OK
+    assert w["index_refresh"] == {"status": "ok", "detail": None}
+    assert w["index_age_hours"] == 0.0
+    aktualizacja, symulacja = wywolania
+    konfiguracja = str(tmp_path / "apt.conf")
+    assert aktualizacja[-1] == "update" and konfiguracja in aktualizacja
+    assert "-s" in symulacja and konfiguracja in symulacja
+    tresc = (tmp_path / "apt.conf").read_text()
+    assert f'Dir::State::Lists "{tmp_path / "lists"}/"' in tresc
+    # Skrypty po "apt update" pisza do systemu - maja byc wylaczone.
+    assert "#clear APT::Update::Post-Invoke-Success;" in tresc
+    assert 'Dir::Cache::pkgcache "";' in tresc
+
+
+def test_apt_nie_odswieza_swiezego_indeksu(monkeypatch, tmp_path):
+    wywolania = []
+    monkeypatch.setattr(poprawki.shutil, "which", lambda nazwa: "/usr/bin/apt-get")
+    monkeypatch.setattr(poprawki, "_uruchom", _apt_podstawiony(wywolania))
+
+    poprawki.braki_apt(katalog=tmp_path)
+    wywolania.clear()
+    poprawki.braki_apt(katalog=tmp_path)
+
+    assert len(wywolania) == 1 and "update" not in wywolania[0]
+
+
+def test_apt_nieudane_odswiezenie_wraca_do_indeksu_systemowego(monkeypatch, tmp_path):
+    wywolania = []
+    monkeypatch.setattr(poprawki.shutil, "which", lambda nazwa: "/usr/bin/apt-get")
+    monkeypatch.setattr(poprawki, "_uruchom", _apt_podstawiony(wywolania, kod_update=100))
+
+    w = poprawki.braki_apt(katalog=tmp_path)
+
+    assert w["status"] == poprawki.STATUS_OK, "lista brakow z indeksu systemowego zostaje"
+    assert w["index_refresh"]["status"] == "blad"
+    assert "nie mozna pobrac" in w["index_refresh"]["detail"]
+    assert "-c" not in wywolania[-1], "bez udanego pobrania czytamy indeks systemowy"
+
+    # Kolejny raport nie ponawia od razu - niedostepne lustro to minuty czekania.
+    wywolania.clear()
+    w = poprawki.braki_apt(katalog=tmp_path)
+    assert all("update" not in p for p in wywolania)
+    assert w["index_refresh"]["status"] == "blad"
+
+
+def test_apt_ponawia_po_bledzie_po_przerwie(monkeypatch, tmp_path):
+    wywolania = []
+    monkeypatch.setattr(poprawki.shutil, "which", lambda nazwa: "/usr/bin/apt-get")
+    monkeypatch.setattr(poprawki, "_uruchom", _apt_podstawiony(wywolania, kod_update=100))
+    poprawki.braki_apt(katalog=tmp_path)
+
+    stan = poprawki._stan_odswiezenia(tmp_path)
+    stan["proba"] -= (poprawki.PONOW_PO_BLEDZIE_GODZIN + 1) * 3600
+    poprawki._zapisz_stan_odswiezenia(tmp_path, stan)
+    wywolania.clear()
+    poprawki.braki_apt(katalog=tmp_path)
+    assert any("update" in p for p in wywolania)
+
+
+def test_dnf_z_katalogiem_uzywa_wlasnego_bufora(monkeypatch, tmp_path):
+    wywolania = []
+    monkeypatch.setattr(poprawki.shutil, "which", lambda nazwa: f"/usr/bin/{nazwa}")
+    monkeypatch.setattr(
+        poprawki, "_uruchom",
+        lambda polecenie, timeout=0: (wywolania.append(polecenie), (DNF_WYJSCIE, 100))[1],
+    )
+
+    w = poprawki.braki_dnf(katalog=tmp_path, co_ile_godzin=12)
+
+    assert w["status"] == poprawki.STATUS_OK
+    assert w["index_refresh"]["status"] == "ok"
+    for polecenie in wywolania:
+        assert "-C" not in polecenie
+        assert f"--setopt=cachedir={tmp_path / 'cache'}" in polecenie
+        assert "--setopt=metadata_expire=43200" in polecenie
+
+
+def test_dnf_nieudane_odswiezenie_wraca_do_bufora_systemowego(monkeypatch, tmp_path):
+    wywolania = []
+
+    def podstawiony(polecenie, timeout=0):
+        wywolania.append(polecenie)
+        if "-C" in polecenie:
+            return DNF_WYJSCIE, 100
+        return "Error: Failed to download metadata for repo 'baseos'\n", 1
+
+    monkeypatch.setattr(poprawki.shutil, "which", lambda nazwa: f"/usr/bin/{nazwa}")
+    monkeypatch.setattr(poprawki, "_uruchom", podstawiony)
+
+    w = poprawki.braki_dnf(katalog=tmp_path)
+
+    assert w["status"] == poprawki.STATUS_OK
+    assert w["count"] == 4
+    assert w["index_refresh"]["status"] == "blad"
+    assert "Failed to download metadata" in w["index_refresh"]["detail"]
+
+
+def test_bez_katalogu_nie_ma_informacji_o_odswiezaniu(monkeypatch):
+    monkeypatch.setattr(poprawki.shutil, "which", lambda nazwa: "/usr/bin/apt-get")
+    monkeypatch.setattr(poprawki, "_uruchom", lambda polecenie, timeout=0: (APT_WYJSCIE, 0))
+    assert poprawki.braki_apt()["index_refresh"] is None

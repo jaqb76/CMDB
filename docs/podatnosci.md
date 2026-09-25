@@ -1,7 +1,8 @@
 # Badanie podatności (CVE)
 
 Karta maszyny ma zakładkę **Podatności**, a administrator serwera —
-stronę **Podatności** ze stanem kanałów danych.
+stronę **Podatności** ze stanem kanałów danych. Obsługiwane są Debian,
+Ubuntu oraz RHEL z pochodnymi (Rocky, Alma, CentOS).
 
 ## Skąd dane
 
@@ -9,6 +10,13 @@ stronę **Podatności** ze stanem kanałów danych.
 |---|---|---|
 | Debian | Debian Security Tracker (JSON, ~86 MB) | pakiet źródłowy + wersja źródłowa |
 | Ubuntu | baza biuletynów USN (JSON, ~44 MB) | pakiet źródłowy + wersja źródłowa |
+| RHEL, Rocky, Alma, CentOS | OVAL v2 Red Hata, osobny plik na wydanie główne (`rhel-9.oval.xml.bz2`) | pakiet **binarny** + wersja z epoką |
+
+**Niezależnie od `apt update` na maszynach.** Zestawienie porównuje wersje
+*zainstalowanych* pakietów (z raportu agenta) z danymi pobieranymi przez
+**serwer**. Indeks pakietów na maszynie nie ma tu żadnego znaczenia — nawet
+maszyna, na której od roku nikt nie zrobił `apt update`, ma aktualną listę
+podatności, o ile serwer ma świeże dane.
 
 **Nie używamy NVD.** Dystrybucje łatają wstecznie, nie zmieniając numeru
 wersji: pakiet `22.08.8-6+deb12u1` zawiera poprawkę, o której numer upstream
@@ -44,6 +52,27 @@ Zwykłe porównanie tekstowe daje złe odpowiedzi w obie strony:
 
 Druga pomyłka jest groźniejsza: podatność uznana za naprawioną nie pojawi się
 w żadnym raporcie.
+
+## RHEL i pochodne
+
+* **Wydanie** to główny numer wersji z `/etc/os-release` (`9.4` → `9`):
+  Red Hat publikuje jeden plik OVAL na całe wydanie główne.
+* **Rocky, Alma i CentOS** korzystają z danych RHEL — przebudowują te same
+  pakiety z tymi samymi numerami wersji. Oracle Linux i Fedora świadomie
+  nie są dopasowywane (inne poprawki, inne numery).
+* **Porównanie według reguł RPM**, nie dpkg (`rpmvercmp`: separatory są
+  równoważne, `^` po końcu wersji, segment liczbowy nowszy od literowego).
+* **Epoka.** Red Hat podaje `1:3.0.7-27.el9`. Agent przysyła ją w polu `evr`.
+  Starsze agenty jej nie podają — wtedy epokę pomijamy, zamiast uznawać ją
+  za 0 (co dałoby fałszywy alarm na każdym pakiecie z epoką).
+* **Moduły** (`nodejs:20`, `postgresql:15`). Poprawka ze strumienia modułu
+  dotyczy tylko pakietów z tego samego strumienia (ten sam główny numer
+  wersji) — inaczej każdy starszy strumień byłby „podatny”.
+* **Jądro.** dnf trzyma kilka jąder naraz; stare `kernel-core` leżące na
+  dysku nie jest podatnością, jeśli działa nowsze (porównanie z `uname -r`).
+* **Tylko wydane poprawki.** Używamy pliku bez `including-unpatched`, więc
+  kategoria „bez poprawki” dla RHEL jest pusta — to nie znaczy, że takich
+  luk nie ma.
 
 ## Pakiet źródłowy, nie binarny
 
@@ -81,7 +110,8 @@ końcu swojej grupy, a nie udaje najłagodniejszej, a panel pokazuje, ile ocen
 jeszcze brakuje.
 
 Odnośnik przy każdym CVE prowadzi do strony **dystrybucji**, nie do NVD —
-`security-tracker.debian.org` albo `ubuntu.com/security` opisują, co dana
+`security-tracker.debian.org`, `ubuntu.com/security` albo
+`access.redhat.com/security/cve` opisują, co dana
 dystrybucja zrobiła z konkretnym pakietem, co jest praktyczniejsze niż sam
 opis luki.
 
@@ -90,10 +120,28 @@ się pracę: rzeczy jednocześnie groźne i możliwe do naprawienia od ręki.
 
 ## Odświeżanie
 
-Ręcznie, przyciskiem na stronie **Podatności**. Pobieramy dane wyłącznie dla
-wydań faktycznie używanych we flocie — kanał Debiana ma 86 MB. Nieudane
-pobranie **nie kasuje** starych wpisów: dane sprzed tygodnia z widocznym
-wiekiem są lepsze niż żadne. Panel ostrzega, gdy dane mają ponad tydzień.
+**Automatycznie.** Serwer co godzinę sprawdza, czy dane któregoś wydania
+używanego we flocie są starsze niż `CMDB_CVE_REFRESH_HOURS` (domyślnie 24 h),
+i wtedy je pobiera. W tym samym obiegu dobiera porcję brakujących ocen CVSS
+z NVD. Pierwszy obieg rusza ok. 2 minuty po starcie serwera. Przy kilku
+procesach roboczych pracę wykonuje jeden — uzgadniają się blokadą doradczą
+Postgresa, osobną od harmonogramu raportów, żeby długie pobieranie nie
+wstrzymywało wysyłki raportów.
+
+```bash
+CMDB_CVE_REFRESH_HOURS=24   # 0 = tylko ręcznie
+```
+
+Przyciski na stronie **Podatności** wymuszają odświeżenie od razu.
+
+Pobieramy dane wyłącznie dla wydań faktycznie używanych we flocie — kanał
+Debiana ma 86 MB. Nowe wydanie (np. pierwsza maszyna z RHEL 8) dostaje dane
+w najbliższym obiegu. Nieudane pobranie **nie kasuje** starych wpisów: dane
+sprzed tygodnia z widocznym wiekiem są lepsze niż żadne; próba powtarza się
+w następnym obiegu (co godzinę). Panel ostrzega, gdy dane mają ponad tydzień.
+
+Serwer musi mieć dostęp do: `security-tracker.debian.org`, `usn.ubuntu.com`,
+`security.access.redhat.com` i `services.nvd.nist.gov`.
 
 ## Czego to nie zastąpi
 

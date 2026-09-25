@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Agent na Linuksie sam odświeża indeks pakietów (apt update, dnf makecache) — do własnego katalogu danych, bez ruszania indeksu systemowego. Lista brakujących aktualizacji nie zależy już od tego, czy ktoś robi apt update na maszynie. Na RHEL i pochodnych agent podaje też wersję pakietu z epoką, potrzebną do dopasowania podatności. Wyłączenie: refresh_package_index = false."
+}

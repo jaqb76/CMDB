@@ -140,3 +140,148 @@ def dzialajace_jadro_starsze(uruchomione: str | None, naprawione: str | None) ->
     if a is None or b is None:
         return None
     return porownaj(a, b) < 0
+
+
+# --- RPM (Red Hat i pochodne) -----------------------------------------------
+#
+# RPM porownuje wersje inaczej niz dpkg i pomylenie jednych regul z drugimi
+# daje zle odpowiedzi na granicach: w RPM znaki nie bedace litera ani cyfra
+# sa tylko separatorami ("1.0_1" == "1.0.1"), segment liczbowy jest zawsze
+# nowszy niz literowy, a po tyldzie jest daszek ("1.0^git1" jest PO "1.0",
+# ale przed "1.0.1"). Implementacja odwzorowuje rpmvercmp() z rpm 4.x.
+#
+# Wersja RPM ma postac [epoka:]wersja-wydanie ("1:3.0.7-27.el9_4").
+
+def _segmenty_rpm(a: str, b: str) -> int:
+    """rpmvercmp: porownanie jednej czesci (wersji albo wydania)."""
+    if a == b:
+        return 0
+    i = j = 0
+    while i < len(a) or j < len(b):
+        while i < len(a) and not a[i].isalnum() and a[i] not in "~^":
+            i += 1
+        while j < len(b) and not b[j].isalnum() and b[j] not in "~^":
+            j += 1
+
+        # Tylda sortuje przed wszystkim, takze przed koncem napisu.
+        if (i < len(a) and a[i] == "~") or (j < len(b) and b[j] == "~"):
+            if not (i < len(a) and a[i] == "~"):
+                return 1
+            if not (j < len(b) and b[j] == "~"):
+                return -1
+            i += 1
+            j += 1
+            continue
+
+        # Daszek sortuje przed wszystkim OPROCZ konca napisu.
+        if (i < len(a) and a[i] == "^") or (j < len(b) and b[j] == "^"):
+            if i >= len(a):
+                return -1
+            if j >= len(b):
+                return 1
+            if a[i] != "^":
+                return 1
+            if b[j] != "^":
+                return -1
+            i += 1
+            j += 1
+            continue
+
+        if not (i < len(a) and j < len(b)):
+            break
+
+        poczatek_a, poczatek_b = i, j
+        if a[i].isdigit():
+            liczbowy = True
+            while i < len(a) and a[i].isdigit():
+                i += 1
+            while j < len(b) and b[j].isdigit():
+                j += 1
+        else:
+            liczbowy = False
+            while i < len(a) and a[i].isalpha():
+                i += 1
+            while j < len(b) and b[j].isalpha():
+                j += 1
+
+        seg_a, seg_b = a[poczatek_a:i], b[poczatek_b:j]
+        if not seg_b:
+            # Rozne rodzaje segmentow: liczbowy jest zawsze nowszy.
+            return 1 if liczbowy else -1
+        if liczbowy:
+            seg_a, seg_b = seg_a.lstrip("0"), seg_b.lstrip("0")
+            if len(seg_a) != len(seg_b):
+                return -1 if len(seg_a) < len(seg_b) else 1
+        if seg_a != seg_b:
+            return -1 if seg_a < seg_b else 1
+
+    if i >= len(a) and j >= len(b):
+        return 0
+    return -1 if i >= len(a) else 1
+
+
+def rozbierz_rpm(wersja: str) -> tuple[int | None, str, str]:
+    """Rozklada wersje RPM na epoke, wersje i wydanie.
+
+    Epoka None znaczy "nie podano" - to cos innego niz 0, patrz starsza_niz_rpm.
+    """
+    tekst = (wersja or "").strip()
+    epoka: int | None = None
+    if ":" in tekst:
+        przed, tekst = tekst.split(":", 1)
+        epoka = int(przed) if przed.isdigit() else 0
+    wersja_gorna, _, wydanie = tekst.rpartition("-")
+    if not wersja_gorna:
+        return epoka, wydanie, ""
+    return epoka, wersja_gorna, wydanie
+
+
+def porownaj_rpm(a: str, b: str, *, pomin_epoke: bool = False) -> int:
+    """-1 gdy a < b, 0 gdy rowne, 1 gdy a > b - wedlug regul RPM."""
+    epoka_a, wersja_a, wydanie_a = rozbierz_rpm(a)
+    epoka_b, wersja_b, wydanie_b = rozbierz_rpm(b)
+    if not pomin_epoke:
+        epoka_a, epoka_b = epoka_a or 0, epoka_b or 0
+        if epoka_a != epoka_b:
+            return -1 if epoka_a < epoka_b else 1
+    wynik = _segmenty_rpm(wersja_a, wersja_b)
+    if wynik:
+        return wynik
+    return _segmenty_rpm(wydanie_a, wydanie_b)
+
+
+def starsza_niz_rpm(zainstalowana: str, naprawiona: str) -> bool:
+    """Czy zainstalowany pakiet RPM jest starszy niz ten z poprawka.
+
+    Nowy agent podaje epoke zawsze ("0:1.2-3") w polu "evr", starsze - nigdy. Brak
+    dwukropka znaczy wiec "epoka nieznana", a nie "epoka 0". Porownanie
+    nieznanej epoki z "1:..." z danych Red Hata uznaloby kazdy pakiet z epoka
+    za podatny - to setki falszywych alarmow. Epoka w obrebie jednego wydania
+    RHEL praktycznie sie nie zmienia, wiec gdy jej nie znamy, porownujemy
+    sama wersje i wydanie.
+    """
+    if not zainstalowana or not naprawiona:
+        return False
+    nieznana_epoka = ":" not in zainstalowana
+    return porownaj_rpm(zainstalowana, naprawiona, pomin_epoke=nieznana_epoka) < 0
+
+
+# Architektura na koncu nazwy wydania jadra RHEL: "5.14.0-427.13.1.el9_4.x86_64".
+_ARCH_JADRA_RPM = re.compile(r"\.(x86_64|aarch64|ppc64le|s390x|i686|noarch)$")
+
+
+def dzialajace_jadro_starsze_rpm(uruchomione: str | None, naprawione: str | None) -> bool | None:
+    """Odpowiednik dzialajace_jadro_starsze() dla RHEL.
+
+    uname podaje "5.14.0-427.13.1.el9_4.x86_64", czyli wersje i wydanie
+    pakietu jadra z doklejona architektura - po jej odcieciu da sie porownac
+    wprost z wersja z poprawka.
+    """
+    if not uruchomione or not naprawione:
+        return None
+    bez_arch = _ARCH_JADRA_RPM.sub("", uruchomione.strip())
+    # Warianty jadra: "...el9_4.x86_64+debug", "...el9_4.x86_64+rt".
+    bez_arch = _ARCH_JADRA_RPM.sub("", bez_arch.split("+", 1)[0])
+    if "-" not in bez_arch:
+        return None
+    return porownaj_rpm(bez_arch, naprawione, pomin_epoke=True) < 0

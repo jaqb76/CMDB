@@ -28,27 +28,52 @@ z powodem niepowodzenia.
 | System | Źródło | Czas | Ruch sieciowy |
 |---|---|---|---|
 | Windows | usługa Windows Update (COM `Microsoft.Update.Session`) | 15 s – kilka minut | tak — Windows Update albo WSUS |
-| Debian, Ubuntu | `apt-get -s dist-upgrade` | poniżej sekundy | **nie** |
-| RHEL, Fedora, Rocky | `dnf -C check-update` | poniżej sekundy | **nie** |
+| Debian, Ubuntu | `apt-get -s dist-upgrade` (na własnym indeksie agenta) | poniżej sekundy + odświeżenie indeksu raz na dobę | raz na dobę — repozytoria maszyny |
+| RHEL, Fedora, Rocky | `dnf check-update` (na własnym buforze agenta) | kilka sekund + odświeżenie raz na dobę | raz na dobę — repozytoria maszyny |
 
 Na Windows to ten sam mechanizm, z którego korzysta panel sterowania, więc
 wynik zgadza się z tym, co użytkownik widzi u siebie. Wyszukiwanie bywa
 kosztowne, dlatego ma osobny, wyższy limit czasu (420 s), a niepowodzenie
 kończy się stanem `nieznany`, nie psuje zaś całego raportu.
 
-## Czego agent NIE robi
+## Indeks pakietów: agent odświeża własną kopię
 
-**Nie odświeża indeksu pakietów.** `apt update` pobiera dane z sieci, bierze
-blokadę i zmienia stan maszyny — agent ma maszynę inwentaryzować, a nie
-modyfikować. Odczytujemy to, co system już wie.
+Lista braków na Linuksie jest tak dobra, jak indeks pakietów, z którego
+powstaje. Na maszynach, na których nikt nie robi `apt update` / `dnf
+makecache`, indeks ma miesiące i wynik niczego nie mówi.
 
-Konsekwencja jest taka, że wiek indeksu staje się częścią wyniku. „Brak
-brakujących aktualizacji" przy indeksie sprzed trzech miesięcy nie znaczy
-„maszyna aktualna", tylko „nie wiemy". Panel ostrzega, gdy indeks jest
+Dlatego agent **sam pobiera indeks — do własnego katalogu danych**
+(`<data_dir>/indeks-pakietow`), nie ruszając systemowego:
+
+| Menedżer | Jak | Co zostaje nietknięte |
+|---|---|---|
+| apt | `apt-get -c <agent>/apt.conf update` z własnym `Dir::State::Lists`, wyłączonymi skryptami `APT::Update::*-Invoke` i bez `pkgcache.bin` | `/var/lib/apt/lists`, `/var/cache/apt`, blokady apt |
+| dnf / yum | `--setopt=cachedir=<agent>/cache --setopt=metadata_expire=<wiek>` | `/var/cache/dnf`, `/var/cache/yum` |
+
+Źródła repozytoriów, klucze, proxy i uprawnienia (np. subskrypcja RHEL) są
+systemowe, więc wynik jest taki, jaki dałby zwykły `apt update`. Maszyna
+musi mieć dostęp do swoich repozytoriów — tak jak do zwykłych aktualizacji.
+
+* Indeks odświeża się najwyżej raz na `package_index_max_age_hours`
+  (domyślnie 24 h), a nie przy każdym raporcie.
+* Nieudane odświeżenie: agent wraca do indeksu systemowego, panel pokazuje
+  powód („Agent nie odświeżył indeksu pakietów…”), a kolejna próba jest
+  najwcześniej po 6 godzinach.
+* Własna kopia indeksu zajmuje zwykle od kilkudziesięciu do kilkuset MB
+  (zależnie od liczby repozytoriów).
+
+Wyłączenie (np. maszyny bez dostępu do repozytoriów):
+
+```json
+{ "refresh_package_index": false, "package_index_max_age_hours": 24 }
+```
+
+Wtedy agent czyta indeks systemowy jak dawniej, a panel ostrzega, gdy jest
 starszy niż tydzień.
 
-Na maszynach, gdzie to przeszkadza, indeks odświeża się normalnymi środkami
-systemu — `unattended-upgrades`, `apt-daily.timer`, `dnf-makecache.timer`.
+**Zakładka Podatności nie zależy od indeksu.** Porównuje zainstalowane
+wersje pakietów z danymi dystrybucji, które pobiera serwer — patrz
+[podatnosci.md](podatnosci.md).
 
 ## Czego to NIE jest
 
@@ -71,8 +96,8 @@ kosztowny albo maszyny nie mają wychodzić do sieci:
 { "collect_pending_updates": false }
 ```
 
-Na Linuksie wyłączanie zwykle nie ma sensu — odczyt jest lokalny i trwa
-ułamek sekundy.
+Na Linuksie wyłączanie zwykle nie ma sensu. Jeśli przeszkadza tylko ruch
+do repozytoriów, wystarczy `"refresh_package_index": false`.
 
 ## Historia zmian
 

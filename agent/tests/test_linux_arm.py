@@ -216,3 +216,26 @@ def test_zaden_bajt_zerowy_nie_przechodzi(raspberry5):
     for wartosc in raspberry5.collect_system().values():
         if isinstance(wartosc, str):
             assert chr(0) not in wartosc
+
+
+def test_rpm_podaje_wersje_z_epoka(monkeypatch):
+    """Red Hat opisuje poprawki wersja z epoka ("1:3.0.7-27.el9"). Bez epoki
+    porownanie z jego danymi bywa bledne, wiec agent podaje ja osobno."""
+    wyjscie = (
+        "openssl-libs\t3.0.7-27.el9\tRed Hat, Inc.\topenssl-3.0.7-27.el9.src.rpm\t1:3.0.7-27.el9\n"
+        "bash\t5.1.8-9.el9\tRed Hat, Inc.\tbash-5.1.8-9.el9.src.rpm\t0:5.1.8-9.el9\n"
+    )
+    monkeypatch.setattr(kolektor.shutil, "which",
+                        lambda nazwa: "/usr/bin/rpm" if nazwa == "rpm" else None)
+    polecenia = []
+    monkeypatch.setattr(kolektor, "run_command",
+                        lambda polecenie, timeout=0: (polecenia.append(polecenie), wyjscie)[1])
+
+    pakiety = {p["name"]: p for p in kolektor.LinuxCollector(AgentConfig()).collect_packages()}
+
+    assert "%|EPOCH?{%{EPOCH}}:{0}|" in polecenia[0][-1]
+    assert pakiety["openssl-libs"]["evr"] == "1:3.0.7-27.el9"
+    assert pakiety["openssl-libs"]["source_package"] == "openssl"
+    # Wersja zrodlowa to nadal wersja-wydanie - epoka nie przecieka tam.
+    assert pakiety["openssl-libs"]["source_version"] == "3.0.7-27.el9"
+    assert pakiety["bash"]["evr"] == "0:5.1.8-9.el9"
