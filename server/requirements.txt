@@ -25,3 +25,7 @@ openpyxl>=3.1
 # HTML - znacznik wpisany w tresc zawsze wychodzi jako tekst. Czysty Python,
 # bez zaleznosci systemowych i bez niczego z CDN.
 markdown-it-py>=3.0
+
+# Logowanie kontem Active Directory / LDAP. Czysty Python - bez bibliotek
+# systemowych OpenLDAP, wiec obraz serwera nie rosnie o kompilator.
+ldap3>=2.9

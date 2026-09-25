@@ -467,6 +467,7 @@ def przelacz_konto(
     sprawdz_csrf(user, csrf_token)
     konto = _konto_do_zmiany(db, user, user_id)
     konto.is_active = not konto.is_active
+    konto.wylaczone_recznie = not konto.is_active
     # Wylaczone konto ma stracic dostep natychmiast, a nie z wygasnieciem
     # ciasteczka: sesja sprawdza wersje przy kazdym zapytaniu.
     konto.session_version = PortalUser.session_version + 1
@@ -598,6 +599,9 @@ def ustaw_haslo_konta(
     konto = db.get(PortalUser, user_id)
     if konto is None:
         raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    if konto.z_katalogu:
+        raise HTTPException(status_code=400,
+                            detail="konto z AD loguje się hasłem domenowym - zmień je w AD")
     if len(password) < MIN_DLUGOSC_HASLA:
         raise HTTPException(
             status_code=400,
@@ -1502,6 +1506,12 @@ def zmien_zakres_konta(
     """
     sprawdz_csrf(user, csrf_token)
     konto = _konto_do_zmiany(db, user, user_id)
+    if konto.z_katalogu:
+        raise HTTPException(
+            status_code=400,
+            detail="uprawnienia konta z AD wynikają z grup w katalogu - zmień grupę w AD "
+                   "albo mapowanie grup w ekranie Katalogi AD",
+        )
     if zakres not in ZAKRESY:
         raise HTTPException(status_code=400, detail="nieznany rodzaj konta")
     if role not in {"admin", "viewer"}:

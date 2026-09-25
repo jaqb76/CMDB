@@ -113,8 +113,21 @@ class Tenant(Base):
     stale_after_hours: Mapped[int | None] = mapped_column(Integer)
     snapshot_retention: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Czy w tej firmie wolno logowac sie kontem lokalnym (haslo w CMDB).
+    # Firma z wlasnym AD moze to wylaczyc - wtedy jedyna droga jest katalog,
+    # a osoba usunieta z AD nie ma juz zapasowego hasla w CMDB. Superadmin,
+    # audytor i technicy nie naleza do firmy, wiec ich to nie dotyczy.
+    logowanie_lokalne: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")
+
+
+ZRODLO_LOKALNE = "lokalne"
+ZRODLO_AD = "ad"
+
+# Haslo-atrapa kont, ktore nie loguja sie haslem CMDB. Nie jest poprawnym
+# skrotem Argon2, wiec zadne haslo do niego nie pasuje.
+HASLO_NIEUZYWANE = "!"
 
 
 class PortalUser(Base):
@@ -144,7 +157,29 @@ class PortalUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Skad pochodzi tozsamosc konta: "lokalne" (haslo w CMDB) albo "ad"
+    # (katalog LDAP/AD). Konto z katalogu ma haslo-atrape - sprawdza je AD,
+    # a jego uprawnienia wynikaja z grup i nadpisuje je kazda synchronizacja.
+    zrodlo: Mapped[str] = mapped_column(String(16), default=ZRODLO_LOKALNE, nullable=False)
+    katalog_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("katalogi.id", ondelete="SET NULL"), index=True
+    )
+    # Staly identyfikator w katalogu (objectGUID). Po nim, a nie po adresie
+    # e-mail, laczymy konto z osoba: adres sie zmienia, GUID nie.
+    zewnetrzny_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Grupy, z ktorych wynika obecna rola - do pokazania w panelu, skad
+    # ktos ma dostep.
+    uprawnienia_z: Mapped[list | None] = mapped_column(JSONType)
+    ostatnia_synchronizacja: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Wylaczenie przez superadmina. Synchronizacja z AD przywraca dostep
+    # kontom, ktore sama wylaczyla - recznie wylaczonego nie ruszy.
+    wylaczone_recznie: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     tenant: Mapped[Tenant | None] = relationship()
+
+    @property
+    def z_katalogu(self) -> bool:
+        return self.zrodlo == ZRODLO_AD
 
 
 class EnrollmentToken(Base):
@@ -1594,6 +1629,10 @@ class HelpdeskDostep(Base):
     utworzono: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+    # "reczne" nadaje superadmin, "ad" wynika z grupy w katalogu operatora.
+    # Synchronizacja dotyka tylko swoich wpisow - recznie nadanego dostepu
+    # nie odbierze.
+    zrodlo: Mapped[str] = mapped_column(String(16), default="reczne", nullable=False)
 
     user: Mapped[PortalUser] = relationship()
     tenant: Mapped[Tenant] = relationship()
@@ -2125,3 +2164,84 @@ class WiedzaWersja(Base):
     opis_zmiany: Mapped[str | None] = mapped_column(String(300))
     zmiany: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
     tresc_przed: Mapped[str | None] = mapped_column(Text)
+
+
+# --- katalogi tozsamosci (AD / LDAP) ------------------------------------------
+
+# Role, jakie grupa katalogu moze dac. Katalog firmy daje tylko role W TEJ
+# firmie. Uprawnienia przekraczajace granice firmy - superadmin, audytor,
+# technik - daje wylacznie katalog operatora: administrator domeny klienta
+# moze dopisac sie do dowolnej grupy u siebie i nie moze przez to zobaczyc
+# innych firm.
+ROLE_KATALOGU_FIRMY = ("admin", "viewer")
+ROLE_KATALOGU_OPERATORA = ("superadmin", "audytor", "helpdesk")
+
+
+class KatalogTozsamosci(Base):
+    """Polaczenie z AD/LDAP - jednej firmy albo operatora (tenant_id NULL)."""
+
+    __tablename__ = "katalogi"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_katalog_firmy"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    nazwa: Mapped[str] = mapped_column(String(200), nullable=False)
+    aktywny: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Adresy serwerow po przecinku, w kolejnosci proby: ldaps://dc1:636, ...
+    serwery: Mapped[str] = mapped_column(Text, nullable=False)
+    starttls: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Certyfikat CA w PEM, gdy AD ma certyfikat z wewnetrznego urzedu.
+    certyfikat_ca: Mapped[str | None] = mapped_column(Text)
+    base_dn: Mapped[str] = mapped_column(String(512), nullable=False)
+    bind_dn: Mapped[str] = mapped_column(String(512), nullable=False)
+    bind_haslo_szyfr: Mapped[str | None] = mapped_column(Text)
+    filtr_uzytkownika: Mapped[str | None] = mapped_column(String(1000))
+    # Domeny loginu: ["abc.pl", "abc\\"] - po nich rozpoznajemy katalog.
+    domeny: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
+    # Co z osoba, ktora nie nalezy do zadnej zmapowanej grupy:
+    # "odmowa" (domyslnie) albo "viewer".
+    bez_grupy: Mapped[str] = mapped_column(String(16), default="odmowa", nullable=False)
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ostatnia_synchronizacja: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ostatni_blad: Mapped[str | None] = mapped_column(Text)
+
+    tenant: Mapped[Tenant | None] = relationship()
+    mapowania: Mapped[list["MapowanieGrupy"]] = relationship(
+        back_populates="katalog", cascade="all, delete-orphan",
+        order_by="MapowanieGrupy.nazwa",
+    )
+
+    @property
+    def operatora(self) -> bool:
+        return self.tenant_id is None
+
+
+class MapowanieGrupy(Base):
+    """Grupa katalogu i rola, ktora daje w CMDB."""
+
+    __tablename__ = "mapowania_grup"
+    __table_args__ = (
+        UniqueConstraint("katalog_id", "identyfikator", "rola", "tenant_id",
+                         name="uq_mapowanie_grupy"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    katalog_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("katalogi.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # SID grupy (AD) albo jej DN (inne LDAP). SID nie zmienia sie przy
+    # przeniesieniu grupy do innej OU, DN tak.
+    identyfikator: Mapped[str] = mapped_column(String(512), nullable=False)
+    nazwa: Mapped[str] = mapped_column(String(300), nullable=False)
+    dn: Mapped[str | None] = mapped_column(String(1000))
+    rola: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Tylko dla roli "helpdesk" w katalogu operatora: ktora firme obsluguje.
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    katalog: Mapped[KatalogTozsamosci] = relationship(back_populates="mapowania")
+    tenant: Mapped[Tenant | None] = relationship()

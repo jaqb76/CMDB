@@ -53,6 +53,15 @@ def przebieg() -> dict | None:
                 # wlasnej petli: to jedno zapytanie na kwadrans, a osobne
                 # zadanie w tle znaczyloby druga blokade do uzgodnienia.
                 wynik["monitorowanie"] = monitoring.usun_stara_historie(db)
+                # Synchronizacja kont z AD: co kwadrans, zeby osoba usunieta
+                # z grupy albo wylaczona w AD tracila dostep bez czekania na
+                # wygasniecie sesji.
+                from . import tozsamosc
+                try:
+                    wynik["katalogi"] = tozsamosc.synchronizuj_wszystkie(db)
+                except Exception as blad:
+                    db.rollback()
+                    log.error("harmonogram: synchronizacja katalogow: %s", blad)
                 return wynik
         finally:
             _zwolnij(conn)

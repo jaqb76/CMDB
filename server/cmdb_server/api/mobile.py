@@ -32,7 +32,7 @@ from ..models import (
     utcnow,
 )
 from ..security import load_session, sign_session
-from ..services import logowanie, raporty, rodzaje, scoping, slowniki, ustawienia
+from ..services import logowanie, raporty, rodzaje, scoping, slowniki, tozsamosc, ustawienia
 from ..services.auth import (
     authenticate_user,
     client_ip,
@@ -192,7 +192,14 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> d
             "Zbyt wiele błędnych prób. Logowanie jest czasowo zablokowane.",
             headers={"Retry-After": str(seconds)},
         )
-    user = authenticate_user(db, body.email, body.password)
+    wynik = tozsamosc.uwierzytelnij(db, body.email, body.password)
+    user = wynik.user
+    if user is None and wynik.powod in ("katalog", "brak_dostepu", "lokalne_wylaczone"):
+        audit(db, None, action=f"mobile.login.odmowa.{wynik.powod}", target=body.email,
+              ip=ip, actor=body.email)
+        db.commit()
+        raise HTTPException(503 if wynik.powod == "katalog" else 403,
+                            tozsamosc.KOMUNIKATY[wynik.powod])
     if user is None:
         audit(db, None, action="mobile.login.failed", target=body.email, ip=ip, actor=body.email)
         db.commit()

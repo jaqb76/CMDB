@@ -67,7 +67,7 @@ from ..security import (
 )
 from ..services import (
     changes, cve, duplicates, funkcje_agenta, logowanie, mobilna, monitoring, nutanix, pakiet, qr,
-    rodzaje, scoping, slowniki, upgrades, ustawienia,
+    rodzaje, scoping, slowniki, tozsamosc, upgrades, ustawienia,
 )
 from ..services import schemat as definicje_pol
 from ..services import wiedza_dopasowanie
@@ -396,6 +396,16 @@ def login_form(request: Request, user: PortalUser | None = Depends(current_user)
     )
 
 
+@router.get("/login/sposob")
+def login_sposob(login: str = Query("", max_length=320), db: Session = Depends(get_db)) -> dict:
+    """Jak zostanie sprawdzone haslo dla tego loginu - do podpowiedzi w formularzu.
+
+    Odpowiedz zalezy wylacznie od domeny, nie od tego, czy konto istnieje,
+    wiec nie da sie nia sprawdzac, kto ma konto.
+    """
+    return tozsamosc.sposob_logowania(db, login)
+
+
 @router.post("/login")
 def login_submit(
     request: Request,
@@ -410,7 +420,8 @@ def login_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"request": request, "error": komunikat, "motyw": motyw_z_ciasteczka(request)},
+            {"request": request, "error": komunikat, "motyw": motyw_z_ciasteczka(request),
+             "login": email},
             status_code=kod,
         )
 
@@ -426,7 +437,16 @@ def login_submit(
             status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
-    user = authenticate_user(db, email, password)
+    wynik = tozsamosc.uwierzytelnij(db, email, password)
+    user = wynik.user
+    if user is None and wynik.powod in ("katalog", "brak_dostepu", "lokalne_wylaczone"):
+        # Awaria katalogu albo brak grupy to nie jest zgadywanie hasla -
+        # nie liczymy tego do blokady, ale zostawiamy slad w audycie.
+        audit(db, None, action=f"login.odmowa.{wynik.powod}", target=email, ip=ip, actor=email)
+        db.commit()
+        return odmow(tozsamosc.KOMUNIKATY[wynik.powod],
+                     status.HTTP_503_SERVICE_UNAVAILABLE if wynik.powod == "katalog"
+                     else status.HTTP_403_FORBIDDEN)
     if user is None:
         audit(db, None, action="login.failed", target=email, ip=ip, actor=email)
         db.commit()
@@ -441,7 +461,7 @@ def login_submit(
             )
         # Komunikat jest ten sam dla zlego adresu i zlego hasla - inaczej
         # dalby sie uzyc do sprawdzania, ktore konta istnieja.
-        return odmow("Nieprawidlowy e-mail lub haslo.")
+        return odmow(tozsamosc.KOMUNIKATY["haslo"])
 
     logowanie.wyczysc(db, email, ip)
     user.last_login_at = utcnow()
@@ -450,6 +470,7 @@ def login_submit(
         None,
         action="login.ok",
         target=user.email,
+        detail={"sposob": wynik.sposob},
         ip=client_ip(request),
         actor=user.email,
     )

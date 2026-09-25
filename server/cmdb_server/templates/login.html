@@ -22,11 +22,18 @@
     <h1>CMDB</h1>
     <p class="muted">Inwentaryzacja maszyn</p>
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
-    <label for="email">E-mail</label>
-    <input id="email" type="email" name="email" required autocomplete="username" autofocus>
+    <label for="email">Login</label>
+    <input id="email" type="text" name="email" required autocomplete="username" autofocus
+           placeholder="jan.kowalski@firma.pl" value="{{ login or '' }}"
+           autocapitalize="none" spellcheck="false" data-login-pole>
+    {# Podpowiedz, jak nastapi logowanie. Uzytkownik niczego nie wybiera -
+       sposob wynika z domeny loginu. Tresc uzupelnia login.js. #}
+    <div class="login-sposob" data-login-sposob aria-live="polite" hidden></div>
     <label for="password">Hasło</label>
     <input id="password" type="password" name="password" required autocomplete="current-password">
+    <p class="muted small login-podpowiedz" data-login-podpowiedz hidden>To samo hasło, którym logujesz się do Windows.</p>
     <button type="submit" class="btn btn-primary btn-block">Zaloguj</button>
   </form>
+  <script src="{{ zasob('login.js') }}"></script>
 </body>
 </html>

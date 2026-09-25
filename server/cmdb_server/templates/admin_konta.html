@@ -31,12 +31,21 @@
       <tr {% if not k.is_active %}class="row-muted"{% endif %}>
         <td>
           <b>{{ k.full_name or k.email }}</b>
+          {% if k.z_katalogu %}<span class="badge badge-nowy" title="Konto z Active Directory">AD</span>{% else %}<span class="badge">lokalne</span>{% endif %}
           <div class="muted small">{{ k.email }}</div>
           {% if w.wpisow_czasu %}
             <div class="muted small">{{ w.wpisow_czasu }} wpisów czasu pracy</div>
           {% endif %}
         </td>
         <td>
+          {% if k.z_katalogu %}
+          <p class="small">
+            {% if k.is_superadmin %}superadmin{% elif k.is_global_viewer %}audytor wszystkich firm{% elif k.tenant_id %}{{ 'admin' if k.role == 'admin' else 'viewer' }} w {{ w.firma }}{% else %}technik helpdesku{% endif %}
+            🔒
+          </p>
+          <p class="muted small">Uprawnienia wynikają z grup w AD{% if k.uprawnienia_z %}: {{ k.uprawnienia_z | join(', ') }}{% endif %}.
+            Zmienia się je w AD albo w <a href="/admin/katalogi/{{ k.katalog_id }}">mapowaniu grup</a>.</p>
+          {% else %}
           <form method="post" action="/admin/users/{{ k.id }}/zakres" class="stack" data-konto-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label for="zakres-{{ k.id }}">Rodzaj konta</label>
@@ -69,6 +78,7 @@
 
             <button type="submit" class="btn btn-small">Zapisz rodzaj</button>
           </form>
+          {% endif %}
           {% if w.niespojne %}
           <p class="small tekst-uwaga odstep-xs">
             To konto ma jednocześnie firmy helpdesku i uprawnienie audytora, które
@@ -116,9 +126,11 @@
         <td class="small">{{ k.last_login_at | ago }}</td>
         <td>
           <div class="konto-akcje">
+            {% if not k.z_katalogu %}
             <button type="button" class="btn btn-small btn-ghost"
                     data-haslo-akcja="/admin/users/{{ k.id }}/haslo"
                     data-haslo-konto="{{ k.email }}">Hasło</button>
+            {% endif %}
             <form method="post" action="/admin/users/{{ k.id }}/active" class="inline-form">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="powrot" value="/admin/konta">
