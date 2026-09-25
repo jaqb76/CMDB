@@ -1416,6 +1416,14 @@ def _strona_kont(request: Request, user: PortalUser, db: Session, komunikat: str
         select(CzasPracy.technik_id, func.count(CzasPracy.id)).group_by(CzasPracy.technik_id)
     ).all())
 
+    from ..models import TozsamoscZewnetrzna
+
+    zewnetrzne: dict[str, list[str]] = {}
+    for user_id, dostawca in db.execute(
+        select(TozsamoscZewnetrzna.user_id, TozsamoscZewnetrzna.dostawca)
+    ).all():
+        zewnetrzne.setdefault(user_id, []).append(dostawca)
+
     konta = []
     for konto in db.execute(
         select(PortalUser).order_by(PortalUser.email)
@@ -1435,6 +1443,7 @@ def _strona_kont(request: Request, user: PortalUser, db: Session, komunikat: str
             # nie daja. Taki stan da sie odziedziczyc po starszych danych i lepiej
             # go nazwac, niz pozwolic komus liczyc, ze technik dziala.
             "niespojne": bool(firmy_konta) and konto.is_global_viewer,
+            "zewnetrzne": sorted(zewnetrzne.get(konto.id, [])),
         })
 
     return render_admin(

@@ -72,6 +72,35 @@
   {% endif %}
 </div>
 
+{% if zewn.powiazane or zewn.dostepni %}
+<section class="panel" id="zewnetrzne">
+  <h2>Logowanie kontem zewnętrznym</h2>
+  {% if zewn.powiazane %}
+  <ul class="lista-prosta">
+    {% for p, d in zewn.powiazane %}
+    <li>
+      <b>{{ d.nazwa if d else p.dostawca }}</b> <span class="muted">{{ p.email or '' }}</span>
+      <span class="muted small">· dodane {{ p.utworzono | dt }}{% if p.ostatnio_uzyta %}, ostatnio {{ p.ostatnio_uzyta | ago }}{% endif %}</span>
+      <form method="post" action="/konto/zewn/{{ p.id }}/odlacz" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-small btn-ghost">Odłącz</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Możesz logować się kontem Google, Microsoft albo GitHub zamiast hasła.</p>
+  {% endif %}
+  {% if zewn.dostepni %}
+  <div class="konto-akcje odstep-s">
+    {% for d in zewn.dostepni %}
+    <a class="btn btn-small" href="/login/zewn/{{ d.klucz }}?cel=powiaz">Dodaj konto {{ d.nazwa }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if mfa.lokalne %}
 <section class="panel" id="mfa">
   <h2>Weryfikacja dwuetapowa</h2>

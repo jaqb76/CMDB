@@ -12,6 +12,7 @@ from typing import Annotated
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -230,8 +231,16 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> d
                                             settings.login_lockout_hours)
             raise HTTPException(401, "Kod się nie zgadza.", headers={"X-CMDB-MFA": "wymagany"})
         logowanie.wyczysc(db, klucz, ip)
+    return _odpowiedz_logowania(db, user, ip, "mobile.login.ok", wynik.sposob)
+
+
+def _odpowiedz_logowania(db: Session, user: PortalUser, ip: str, akcja: str,
+                         sposob: str) -> dict:
+    """Token aplikacji po udanym logowaniu - jedno miejsce, w ktorym powstaje."""
+    settings = get_settings()
     user.last_login_at = utcnow()
-    audit(db, None, action="mobile.login.ok", target=user.email, ip=ip, actor=user.email)
+    audit(db, None, action=akcja, target=user.email, detail={"sposob": sposob}, ip=ip,
+          actor=user.email)
     db.commit()
     token = sign_session({"kind": "mobile", "uid": user.id, "sv": user.session_version})
     tenant = db.get(Tenant, user.tenant_id) if user.tenant_id else None
@@ -240,6 +249,73 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> d
         "token_type": "bearer",
         "expires_in": settings.session_max_age,
         "user": _user_item(user, tenant),
+    }
+
+
+# --- logowanie kontem zewnetrznym w aplikacji --------------------------------
+#
+# Aplikacja otwiera przegladarke systemowa na /login/zewn/<dostawca>?cel=mobile
+# &wyzwanie=<S256 weryfikatora>. Po powrocie od dostawcy serwer przekierowuje
+# na adres aplikacji z jednorazowym kodem (RFC 8252), a aplikacja wymienia kod
+# na token, podajac weryfikator. Kod przechwycony przez inna aplikacje, ktora
+# zarejestrowala ten sam schemat adresu, jest bez weryfikatora bezuzyteczny.
+
+ADRES_APLIKACJI = "pl.hubzso.cmdb:/logowanie"
+
+
+def przekaz_do_aplikacji(request: Request, db: Session, konto: PortalUser, sposob: str,
+                         wyzwanie: str | None) -> Response:
+    from fastapi.responses import RedirectResponse
+
+    from ..models import LINK_MOBILE
+
+    if not wyzwanie:
+        raise HTTPException(400, "brak wyzwania PKCE aplikacji")
+    kod = konta_lokalne.utworz_link(db, LINK_MOBILE, konto.email, user=konto, wyzwanie=wyzwanie,
+                                    utworzyl=sposob)
+    audit(db, None, action="mobile.zewn.kod", target=konto.email, detail={"sposob": sposob},
+          ip=client_ip(request), actor=konto.email)
+    db.commit()
+    odp = RedirectResponse(f"{ADRES_APLIKACJI}?kod={kod}", status_code=303)
+    odp.delete_cookie("cmdb_oauth", path="/")
+    return odp
+
+
+class KodBody(BaseModel):
+    code: str = Field(min_length=10, max_length=200)
+    verifier: str = Field(min_length=43, max_length=128)
+
+
+@router.post("/auth/kod")
+def login_kodem(body: KodBody, request: Request, db: Session = Depends(get_db)) -> dict:
+    import base64
+    import hashlib
+    import hmac
+
+    from ..models import LINK_MOBILE
+
+    ip = client_ip(request)
+    link = konta_lokalne.znajdz_link(db, body.code, LINK_MOBILE)
+    wyzwanie = base64.urlsafe_b64encode(
+        hashlib.sha256(body.verifier.encode()).digest()).rstrip(b"=").decode()
+    if link is None or not link.wyzwanie or not hmac.compare_digest(link.wyzwanie, wyzwanie):
+        raise HTTPException(401, "kod logowania jest nieprawidlowy albo wygasl")
+    link.uzyto = utcnow()
+    user = db.get(PortalUser, link.user_id) if link.user_id else None
+    if user is None or not user.is_active:
+        db.commit()
+        raise HTTPException(401, "konto jest wylaczone")
+    return _odpowiedz_logowania(db, user, ip, "mobile.login.ok", link.utworzyl or "zewnetrzne")
+
+
+@router.get("/auth/sposoby")
+def sposoby_logowania(login: str = Query("", max_length=320), db: Session = Depends(get_db)) -> dict:
+    """Dla ekranu logowania aplikacji: czy login to AD i jacy dostawcy sa wlaczeni."""
+    from ..services import zewnetrzne
+
+    return {
+        **(tozsamosc.sposob_logowania(db, login) if login else {}),
+        "external": [{"key": d.klucz, "name": d.nazwa} for d in zewnetrzne.wlaczeni()],
     }
 
 

@@ -67,7 +67,7 @@ from ..security import (
 )
 from ..services import (
     changes, cve, duplicates, funkcje_agenta, logowanie, mobilna, monitoring, nutanix, pakiet, qr,
-    rodzaje, scoping, slowniki, tozsamosc, upgrades, ustawienia,
+    rodzaje, scoping, slowniki, tozsamosc, upgrades, ustawienia, zewnetrzne,
 )
 from ..services import schemat as definicje_pol
 from ..services import wiedza_dopasowanie
@@ -395,7 +395,7 @@ def login_form(request: Request, user: PortalUser | None = Depends(current_user)
     return templates.TemplateResponse(
         request, "login.html",
         {"request": request, "error": None, "komunikat": komunikat,
-         "motyw": motyw_z_ciasteczka(request)},
+         "motyw": motyw_z_ciasteczka(request), "zewnetrzni": zewnetrzne.wlaczeni()},
     )
 
 
@@ -424,7 +424,7 @@ def login_submit(
             request,
             "login.html",
             {"request": request, "error": komunikat, "motyw": motyw_z_ciasteczka(request),
-             "login": email},
+             "login": email, "zewnetrzni": zewnetrzne.wlaczeni()},
             status_code=kod,
         )
 
@@ -2015,7 +2015,7 @@ def widok_konta(
     Kontekst firmy jest tu opcjonalny: konto globalne zadnej firmy nie ma,
     a haslo zmienic musi. Dlatego widok nie zalezy od resolve_tenant.
     """
-    from .logowanie_ui import dane_mfa_konta
+    from .logowanie_ui import dane_mfa_konta, dane_zewnetrzne_konta
 
     ctx = None
     if user.tenant_id:
@@ -2032,7 +2032,9 @@ def widok_konta(
         blad=blad,
         min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
         mfa=dane_mfa_konta(db, user, bool(request.query_params.get("mfa_konfiguracja"))),
-        komunikat_mfa=request.query_params.get("mfa", "")[:300],
+        komunikat_mfa=(request.query_params.get("mfa", "")
+                       or request.query_params.get("info", ""))[:300],
+        zewn=dane_zewnetrzne_konta(db, user),
     )
 
 

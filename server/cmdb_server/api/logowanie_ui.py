@@ -6,6 +6,7 @@ jedno miejsce, w ktorym powstaje sesja panelu.
 from __future__ import annotations
 
 import logging
+import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
@@ -17,22 +18,26 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import get_db
 from ..models import (
+    HASLO_NIEUZYWANE,
     LINK_RESET,
     LINK_ZAPROSZENIE,
     ZRODLO_LOKALNE,
     PortalUser,
     Tenant,
+    TozsamoscZewnetrzna,
     utcnow,
 )
 from ..security import (
     hash_password,
     load_mfa,
+    load_oauth,
     sign_mfa,
+    sign_oauth,
     sign_session,
     verify_password,
 )
-from ..services import konta_lokalne, logowanie, qr, sekrety
-from ..services.auth import client_ip, require_user, verify_csrf
+from ..services import konta_lokalne, logowanie, qr, sekrety, zewnetrzne
+from ..services.auth import client_ip, current_user, require_user, verify_csrf
 from ..services.scoping import audit
 from . import download
 from .ui import MIN_DLUGOSC_HASLA, motyw_z_ciasteczka, templates
@@ -194,7 +199,7 @@ def zamow_reset(request: Request, email: str = Form(...), db: Session = Depends(
 def _ustaw_haslo_formularz(request: Request, link, token: str, error: str | None = None,
                            kod: int = 200) -> Response:
     return _strona(request, "haslo_nowe.html", kod, link=link, token=token, error=error,
-                   min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
+                   min_dlugosc_hasla=MIN_DLUGOSC_HASLA, zewnetrzni=zewnetrzne.wlaczeni(),
                    zaproszenie=link is not None and link.rodzaj == LINK_ZAPROSZENIE)
 
 
@@ -346,3 +351,166 @@ def dane_mfa_konta(db: Session, user: PortalUser, konfiguracja: bool) -> dict:
     if konfiguracja and not user.totp_wlaczone and user.totp_szyfr:
         dane["konfiguracja"] = _dane_konfiguracji(user)
     return dane
+
+
+# --- konta zewnetrzne (Google, Microsoft, GitHub) ---------------------------
+
+CIASTECZKO_OAUTH = "cmdb_oauth"
+
+
+def _adres_zwrotny(request: Request) -> str:
+    return download.adres_publiczny(request) + "/login/zewn/callback"
+
+
+def _blad_zewn(request: Request, komunikat: str, kod: int = 400) -> Response:
+    odp = _strona(request, "login_zewn_blad.html", kod, komunikat=komunikat)
+    odp.delete_cookie(CIASTECZKO_OAUTH, path="/")
+    return odp
+
+
+@router.get("/login/zewn/callback")
+def powrot_od_dostawcy(request: Request, db: Session = Depends(get_db)) -> Response:
+    stan = load_oauth(request.cookies.get(CIASTECZKO_OAUTH, ""))
+    parametry = request.query_params
+    if not stan or not parametry.get("state") or parametry.get("state") != stan.get("state"):
+        return _blad_zewn(request, "Logowanie wygasło albo zostało otwarte w innej karcie. "
+                                   "Zacznij od nowa.")
+    if parametry.get("error"):
+        return _blad_zewn(request, "Logowanie zostało przerwane u dostawcy.")
+    try:
+        tozs = zewnetrzne.tozsamosc_z_kodu(stan, parametry.get("code", ""), _adres_zwrotny(request))
+    except zewnetrzne.BladZewnetrzny as blad:
+        log.warning("logowanie %s nieudane: %s", stan.get("dostawca"), blad)
+        return _blad_zewn(request, f"Nie udało się potwierdzić konta: {blad}")
+
+    nazwa = zewnetrzne.DOSTAWCY[tozs.dostawca].nazwa
+    opis = f"{nazwa} ({tozs.email})" if tozs.email else nazwa
+    ip = client_ip(request)
+    powiazanie = db.execute(select(TozsamoscZewnetrzna).where(
+        TozsamoscZewnetrzna.dostawca == tozs.dostawca, TozsamoscZewnetrzna.sub == tozs.sub
+    )).scalar_one_or_none()
+    cel = stan.get("cel")
+
+    if cel == "zaproszenie":
+        link = konta_lokalne.znajdz_link(db, stan.get("token", ""), LINK_ZAPROSZENIE)
+        if link is None:
+            return _blad_zewn(request, "Zaproszenie jest nieważne albo zostało już użyte.")
+        if powiazanie is not None:
+            return _blad_zewn(request, f"Konto {opis} jest już powiązane z innym kontem CMDB.")
+        try:
+            konto = przyjmij_zaproszenie(db, link, HASLO_NIEUZYWANE)
+        except ValueError as b:
+            return _blad_zewn(request, str(b))
+        db.add(TozsamoscZewnetrzna(user_id=konto.id, dostawca=tozs.dostawca, sub=tozs.sub,
+                                   email=tozs.email, ostatnio_uzyta=utcnow()))
+        if tozs.nazwa and not konto.full_name:
+            konto.full_name = tozs.nazwa[:200]
+        audit(db, None, action="zaproszenie.przyjete", target=konto.email,
+              detail={"zakres": link.zakres, "rola": konto.role, "zaprosil": link.utworzyl,
+                      "konto_zewnetrzne": opis}, ip=ip, actor=konto.email)
+        return wydaj_sesje(request, db, konto, tozs.dostawca)
+
+    if cel == "powiaz":
+        user = current_user(request, db)
+        if user is None or user.id != stan.get("uid"):
+            return _blad_zewn(request, "Zaloguj się ponownie i powtórz dodawanie konta.")
+        if powiazanie is not None:
+            if powiazanie.user_id == user.id:
+                return RedirectResponse("/konto?info=" + quote(f"Konto {opis} było już powiązane."),
+                                        status_code=status.HTTP_303_SEE_OTHER)
+            return _blad_zewn(request, f"Konto {opis} jest już powiązane z innym kontem CMDB.")
+        db.add(TozsamoscZewnetrzna(user_id=user.id, dostawca=tozs.dostawca, sub=tozs.sub,
+                                   email=tozs.email))
+        audit(db, None, action="zewnetrzne.powiazane", target=user.email,
+              detail={"konto": opis}, ip=ip, actor=user.email)
+        db.commit()
+        odp = RedirectResponse("/konto?info=" + quote(f"Możesz logować się kontem {opis}."),
+                               status_code=status.HTTP_303_SEE_OTHER)
+        odp.delete_cookie(CIASTECZKO_OAUTH, path="/")
+        return odp
+
+    # cel == "login" (i "mobile" - patrz api/mobile)
+    konto = db.get(PortalUser, powiazanie.user_id) if powiazanie else None
+    if konto is None:
+        audit(db, None, action="login.zewn.nieznane", target=tozs.email, ip=ip,
+              detail={"dostawca": tozs.dostawca}, actor=tozs.email or tozs.dostawca)
+        db.commit()
+        return _blad_zewn(request, f"Konto {opis} nie ma dostępu do CMDB. Poproś administratora "
+                                   "swojej firmy o zaproszenie.", 403)
+    if not konto.is_active:
+        return _blad_zewn(request, "To konto CMDB jest wyłączone.", 403)
+    if konto.tenant_id:
+        firma = db.get(Tenant, konto.tenant_id)
+        if firma is not None and not firma.logowanie_lokalne:
+            return _blad_zewn(request, "Twoja firma loguje się wyłącznie kontem domenowym.", 403)
+    powiazanie.ostatnio_uzyta = utcnow()
+    if cel == "mobile":
+        from .mobile import przekaz_do_aplikacji
+
+        return przekaz_do_aplikacji(request, db, konto, tozs.dostawca, stan.get("wyzwanie"))
+    return wydaj_sesje(request, db, konto, tozs.dostawca)
+
+
+@router.get("/login/zewn/{klucz}")
+def do_dostawcy(klucz: str, request: Request, zaproszenie: str = "", cel: str = "login",
+                wyzwanie: str = "", db: Session = Depends(get_db)) -> Response:
+    try:
+        zewnetrzne.dostawca(klucz)
+    except zewnetrzne.BladZewnetrzny as blad:
+        return _blad_zewn(request, str(blad), 404)
+    dodatkowe: dict = {}
+    podpowiedz = None
+    if zaproszenie:
+        link = konta_lokalne.znajdz_link(db, zaproszenie, LINK_ZAPROSZENIE)
+        if link is None:
+            return _blad_zewn(request, "Zaproszenie jest nieważne albo zostało już użyte.", 404)
+        cel, dodatkowe, podpowiedz = "zaproszenie", {"token": zaproszenie}, link.email
+    elif cel == "powiaz":
+        user = current_user(request, db)
+        if user is None:
+            return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+        if user.zrodlo != ZRODLO_LOKALNE:
+            return _blad_zewn(request, "Konto z AD loguje się kontem domenowym.")
+        dodatkowe = {"uid": user.id}
+    elif cel == "mobile":
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43,128}", wyzwanie or ""):
+            return _blad_zewn(request, "Aplikacja nie przekazała wyzwania logowania.")
+        dodatkowe = {"wyzwanie": wyzwanie}
+    elif cel != "login":
+        cel = "login"
+    stan = zewnetrzne.nowy_stan(klucz, cel, **dodatkowe)
+    odp = RedirectResponse(zewnetrzne.adres_autoryzacji(stan, _adres_zwrotny(request), podpowiedz),
+                           status_code=status.HTTP_303_SEE_OTHER)
+    odp.set_cookie(CIASTECZKO_OAUTH, sign_oauth(stan), max_age=600, httponly=True,
+                   secure=get_settings().require_https, samesite="lax", path="/")
+    return odp
+
+
+@router.post("/konto/zewn/{powiazanie_id}/odlacz")
+def odlacz_zewnetrzne(powiazanie_id: str, request: Request, csrf_token: str = Form(""),
+                      user: PortalUser = Depends(require_user), db: Session = Depends(get_db)):
+    verify_csrf(request, user, csrf_token)
+    powiazanie = db.get(TozsamoscZewnetrzna, powiazanie_id)
+    if powiazanie is None or powiazanie.user_id != user.id:
+        raise HTTPException(status_code=404, detail="nie ma takiego powiązania")
+    inne = db.execute(select(TozsamoscZewnetrzna).where(
+        TozsamoscZewnetrzna.user_id == user.id, TozsamoscZewnetrzna.id != powiazanie.id
+    )).scalars().first()
+    if inne is None and user.password_hash == HASLO_NIEUZYWANE:
+        return _wroc_konto(blad="To jedyny sposób logowania na to konto. Najpierw ustaw hasło "
+                                "(„Nie pamiętasz hasła?”) albo dodaj inne konto.")
+    db.delete(powiazanie)
+    audit(db, None, action="zewnetrzne.odlaczone", target=user.email,
+          detail={"dostawca": powiazanie.dostawca, "email": powiazanie.email},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return RedirectResponse("/konto?info=" + quote("Konto odłączone."),
+                            status_code=status.HTTP_303_SEE_OTHER)
+
+
+def dane_zewnetrzne_konta(db: Session, user: PortalUser) -> dict:
+    powiazane = db.execute(select(TozsamoscZewnetrzna).where(
+        TozsamoscZewnetrzna.user_id == user.id).order_by(TozsamoscZewnetrzna.utworzono)
+    ).scalars().all()
+    return {"powiazane": [(p, zewnetrzne.DOSTAWCY.get(p.dostawca)) for p in powiazane],
+            "dostepni": zewnetrzne.wlaczeni() if user.zrodlo == ZRODLO_LOKALNE else []}

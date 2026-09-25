@@ -155,3 +155,20 @@ def load_mfa(raw: str) -> dict | None:
     except (BadSignature, SignatureExpired):
         return None
     return dane if isinstance(dane, dict) and dane.get("uid") else None
+
+
+# Logowanie kontem zewnetrznym: state, nonce i weryfikator PKCE jada
+# w podpisanym ciasteczku miedzy przekierowaniem do dostawcy a powrotem.
+OAUTH_MAX_AGE = 10 * 60
+
+
+def sign_oauth(dane: dict) -> str:
+    return _serializer("cmdb-oauth").dumps(dane)
+
+
+def load_oauth(raw: str) -> dict | None:
+    try:
+        dane = _serializer("cmdb-oauth").loads(raw, max_age=OAUTH_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+    return dane if isinstance(dane, dict) else None

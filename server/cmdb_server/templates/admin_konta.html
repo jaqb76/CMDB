@@ -41,6 +41,7 @@
           <b>{{ k.full_name or k.email }}</b>
           {% if k.z_katalogu %}<span class="badge badge-nowy" title="Konto z Active Directory">AD</span>{% else %}<span class="badge">lokalne</span>{% endif %}
           {% if k.totp_wlaczone %}<span class="badge badge-ok" title="Weryfikacja dwuetapowa włączona">2FA</span>{% endif %}
+          {% for d in w.zewnetrzne %}<span class="badge" title="Loguje się także kontem {{ d }}">{{ d }}</span>{% endfor %}
           <div class="muted small">{{ k.email }}</div>
           {% if w.wpisow_czasu %}
             <div class="muted small">{{ w.wpisow_czasu }} wpisów czasu pracy</div>

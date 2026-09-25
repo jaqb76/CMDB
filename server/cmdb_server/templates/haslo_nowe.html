@@ -24,7 +24,12 @@
     <input id="powtorzone" name="powtorzone" type="password" required minlength="{{ min_dlugosc_hasla }}" autocomplete="new-password">
     <p class="small muted">Co najmniej {{ min_dlugosc_hasla }} znaków.</p>
     <button type="submit" class="btn btn-primary btn-block">{{ 'Załóż konto' if zaproszenie else 'Ustaw hasło' }}</button>
-    {% block zewnetrzne %}{% endblock %}
+    {% if zaproszenie %}
+      {% set naglowek_zewn = 'albo bez hasła' %}
+      {% set etykieta_zewn = 'Użyj konta' %}
+      {% set parametry_zewn = '?zaproszenie=' ~ (token | urlencode) %}
+      {% include "_przyciski_zewnetrzne.html" %}
+    {% endif %}
   </form>
   {% endif %}
 {% endblock %}

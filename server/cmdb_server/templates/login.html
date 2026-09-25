@@ -35,6 +35,8 @@
     <p class="muted small login-podpowiedz" data-login-podpowiedz hidden>To samo hasło, którym logujesz się do Windows.</p>
     <button type="submit" class="btn btn-primary btn-block">Zaloguj</button>
     <p class="small login-linki"><a href="/haslo/zapomniane">Nie pamiętasz hasła?</a></p>
+    {% set opis_zewn = 'Tylko dla osób zaproszonych do CMDB.' %}
+    {% include "_przyciski_zewnetrzne.html" %}
   </form>
   <script src="{{ zasob('login.js') }}"></script>
 </body>

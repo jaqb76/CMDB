@@ -2260,6 +2260,9 @@ class MapowanieGrupy(Base):
 
 LINK_ZAPROSZENIE = "zaproszenie"
 LINK_RESET = "reset"
+# Kod przekazywany aplikacji mobilnej po logowaniu kontem zewnetrznym
+# w przegladarce - wazny dwie minuty, wymieniany na token aplikacji.
+LINK_MOBILE = "mobile"
 
 
 class JednorazowyLink(Base):
@@ -2285,7 +2288,35 @@ class JednorazowyLink(Base):
     zakres: Mapped[str | None] = mapped_column(String(16))
     rola: Mapped[str | None] = mapped_column(String(16))
     full_name: Mapped[str | None] = mapped_column(String(200))
+    # Skrot weryfikatora PKCE od aplikacji mobilnej (tylko LINK_MOBILE): kod
+    # przechwycony przez inna aplikacje jest bez weryfikatora bezuzyteczny.
+    wyzwanie: Mapped[str | None] = mapped_column(String(128))
     wygasa: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     uzyto: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     utworzyl: Mapped[str | None] = mapped_column(String(255))
     utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# --- konta zewnetrzne (Google, Microsoft, GitHub) ---------------------------
+
+class TozsamoscZewnetrzna(Base):
+    """Konto u zewnetrznego dostawcy powiazane z kontem CMDB.
+
+    Wiazemy po parze (dostawca, sub) - staly identyfikator u dostawcy.
+    Adres e-mail zapisujemy tylko do pokazania: GitHub czy prywatny Google nie
+    sa dowodem, ze ktos jest wlascicielem adresu w danej domenie. Powiazanie
+    powstaje wylacznie z zaproszenia albo z zalogowanego konta.
+    """
+
+    __tablename__ = "tozsamosci_zewnetrzne"
+    __table_args__ = (UniqueConstraint("dostawca", "sub", name="uq_tozsamosc_zewnetrzna"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    dostawca: Mapped[str] = mapped_column(String(16), nullable=False)
+    sub: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255))
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ostatnio_uzyta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

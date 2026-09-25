@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import (
+    LINK_MOBILE,
     LINK_RESET,
     LINK_ZAPROSZENIE,
     ZRODLO_LOKALNE,
@@ -65,13 +66,18 @@ def sprawdz_adres(db: Session, email: str) -> None:
 def utworz_link(db: Session, rodzaj: str, email: str, *, user: PortalUser | None = None,
                 tenant_id: str | None = None, zakres: str | None = None,
                 rola: str | None = None, full_name: str | None = None,
-                utworzyl: str | None = None) -> str:
+                utworzyl: str | None = None, wyzwanie: str | None = None) -> str:
     """Zapisuje link i zwraca jawny token - pokazywany tylko raz."""
     ustawienia = get_settings()
-    waznosc = (timedelta(days=ustawienia.zaproszenie_dni) if rodzaj == LINK_ZAPROSZENIE
-               else timedelta(minutes=ustawienia.reset_hasla_minut))
-    # Nowy link uniewaznia poprzednie tego samego rodzaju dla tego adresu.
-    for stary in db.execute(select(JednorazowyLink).where(
+    if rodzaj == LINK_ZAPROSZENIE:
+        waznosc = timedelta(days=ustawienia.zaproszenie_dni)
+    elif rodzaj == LINK_MOBILE:
+        waznosc = timedelta(minutes=2)
+    else:
+        waznosc = timedelta(minutes=ustawienia.reset_hasla_minut)
+    # Nowy link uniewaznia poprzednie tego samego rodzaju dla tego adresu
+    # (poza kodami aplikacji - ktos moze logowac sie na dwoch telefonach).
+    for stary in [] if rodzaj == LINK_MOBILE else db.execute(select(JednorazowyLink).where(
         JednorazowyLink.email == email, JednorazowyLink.rodzaj == rodzaj,
         JednorazowyLink.uzyto.is_(None),
     )).scalars():
@@ -80,7 +86,7 @@ def utworz_link(db: Session, rodzaj: str, email: str, *, user: PortalUser | None
     db.add(JednorazowyLink(
         rodzaj=rodzaj, token_hash=hash_token(token), email=email,
         user_id=user.id if user else None, tenant_id=tenant_id, zakres=zakres, rola=rola,
-        full_name=full_name, wygasa=utcnow() + waznosc, utworzyl=utworzyl,
+        full_name=full_name, wygasa=utcnow() + waznosc, utworzyl=utworzyl, wyzwanie=wyzwanie,
     ))
     return token
 

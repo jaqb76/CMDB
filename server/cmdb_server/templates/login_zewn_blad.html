@@ -1,0 +1,9 @@
+{% extends "_logowanie_baza.html" %}
+{% block tytul %}Logowanie{% endblock %}
+{% block karta %}
+  <div class="login-card">
+    <h1>CMDB</h1>
+    <div class="alert alert-error">{{ komunikat }}</div>
+    <p class="small"><a href="/login">← Wróć do logowania</a></p>
+  </div>
+{% endblock %}

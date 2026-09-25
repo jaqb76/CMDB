@@ -1624,3 +1624,12 @@ label.check input { width: auto; margin-top: 3px; }
 .kod-qr { display: flex; justify-content: center; margin: 6px 0 10px; }
 .kod-qr svg { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 6px; }
 .login-linki { margin: 12px 0 0; text-align: center; }
+
+/* Logowanie kontem zewnetrznym (tylko dla osob z zaproszeniem). */
+.login-zewn { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.login-zewn .btn { justify-content: center; gap: 8px; }
+.login-zewn .muted { margin: 2px 0 0; text-align: center; }
+.login-lub { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.login-lub::before, .login-lub::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+.login-zewn-znak { width: 18px; text-align: center; font-weight: 800; }
+.lista-prosta { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
