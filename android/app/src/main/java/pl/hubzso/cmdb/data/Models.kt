@@ -3,11 +3,47 @@ package pl.hubzso.cmdb.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-@Serializable data class LoginRequest(val email: String, val password: String)
+@Serializable data class LoginRequest(
+    val email: String,
+    val password: String,
+    // Kod z aplikacji uwierzytelniajacej - tylko dla kont z weryfikacja dwuetapowa.
+    val code: String? = null,
+)
 @Serializable data class LoginResponse(
     @SerialName("access_token") val accessToken: String,
     @SerialName("expires_in") val expiresIn: Long,
     val user: User,
+    val policy: MobilePolicy = MobilePolicy(),
+)
+
+/** Zasady firmy dla aplikacji: biometria, pelne logowanie co N dni, blokada. */
+@Serializable data class MobilePolicy(
+    val biometrics: String = "dozwolona",
+    @SerialName("full_login_days") val fullLoginDays: Int = 30,
+    @SerialName("allow_device_credential") val allowDeviceCredential: Boolean = false,
+    @SerialName("lock_after_minutes") val lockAfterMinutes: Int = 5,
+)
+
+@Serializable data class DeviceRequest(
+    val name: String,
+    @SerialName("public_key") val publicKey: String,
+    val replaces: String? = null,
+)
+@Serializable data class Device(val id: String, val name: String)
+@Serializable data class DeviceResponse(val device: Device, val policy: MobilePolicy = MobilePolicy())
+@Serializable data class ChallengeRequest(@SerialName("device_id") val deviceId: String)
+@Serializable data class ChallengeResponse(val challenge: String)
+@Serializable data class BiometricRequest(
+    @SerialName("device_id") val deviceId: String,
+    val challenge: String,
+    val signature: String,
+)
+@Serializable data class CodeLoginRequest(val code: String, val verifier: String)
+@Serializable data class ExternalProvider(val key: String, val name: String)
+@Serializable data class LoginMethods(
+    val sposob: String? = null,
+    val firma: String? = null,
+    val external: List<ExternalProvider> = emptyList(),
 )
 
 @Serializable data class User(

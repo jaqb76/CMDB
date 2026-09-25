@@ -11,10 +11,23 @@
         android:theme="@style/Theme.Cmdb">
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!--
+              Powrot z przegladarki po logowaniu kontem Google/Microsoft/GitHub
+              (RFC 8252). Kod w adresie jest bezuzyteczny bez weryfikatora PKCE,
+              ktory zna tylko ta aplikacja - inna aplikacja z tym samym schematem
+              nic z nim nie zrobi.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="pl.hubzso.cmdb" />
             </intent-filter>
         </activity>
 

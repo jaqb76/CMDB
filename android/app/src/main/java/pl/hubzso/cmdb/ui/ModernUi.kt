@@ -49,6 +49,7 @@ import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -290,10 +291,17 @@ internal fun ModernLoginScreen(
     error: String?,
     onLogin: (String, String, String) -> Unit,
     onErrorShown: () -> Unit,
+    mfaRequired: Boolean = false,
+    onCode: (String) -> Unit = {},
+    onCancelCode: () -> Unit = {},
+    providers: List<pl.hubzso.cmdb.data.ExternalProvider> = emptyList(),
+    onLoadProviders: (String) -> Unit = {},
+    onExternal: (String, String) -> Unit = { _, _ -> },
 ) {
     var server by rememberSaveable(initialServer) { mutableStateOf(initialServer) }
     var email by rememberSaveable(initialEmail) { mutableStateOf(initialEmail) }
     var password by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(error) { error?.let { snackbar.showSnackbar(it); onErrorShown() } }
@@ -334,6 +342,30 @@ internal fun ModernLoginScreen(
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(44.dp))
+                if (mfaRequired) {
+                    // Drugi krok: kod z aplikacji uwierzytelniajacej.
+                    LoginLabel("Kod z aplikacji uwierzytelniającej")
+                    ModernInput(
+                        value = code,
+                        onValueChange = { code = it.filter { c -> c.isDigit() }.take(6) },
+                        placeholder = "6 cyfr",
+                        icon = Icons.Outlined.Lock,
+                        keyboardType = KeyboardType.NumberPassword,
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = { onCode(code) },
+                        enabled = !loading && code.length == 6,
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
+                        else Text("Potwierdź", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    TextButton(onClick = { code = ""; onCancelCode() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Wróć")
+                    }
+                } else {
                 LoginLabel("Adres portalu (HTTPS)")
                 ModernInput(
                     value = server,
@@ -343,11 +375,11 @@ internal fun ModernLoginScreen(
                     keyboardType = KeyboardType.Uri,
                 )
                 Spacer(Modifier.height(16.dp))
-                LoginLabel("E-mail")
+                LoginLabel("Login")
                 ModernInput(
                     value = email,
                     onValueChange = { email = it },
-                    placeholder = "użytkownik@twojafirma.pl",
+                    placeholder = "jan.kowalski@twojafirma.pl",
                     icon = Icons.Outlined.Email,
                     keyboardType = KeyboardType.Email,
                 )
@@ -379,7 +411,84 @@ internal fun ModernLoginScreen(
                     if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
                     else Text("Zaloguj", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }
+                Spacer(Modifier.height(10.dp))
+                if (providers.isEmpty()) {
+                    TextButton(
+                        onClick = { onLoadProviders(server) },
+                        enabled = !loading && server.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Konto Google, Microsoft lub GitHub") }
+                } else {
+                    Text(
+                        "Tylko dla osób zaproszonych do CMDB",
+                        Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                    providers.forEach { dostawca ->
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { onExternal(server, dostawca.key) },
+                            enabled = !loading,
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(10.dp),
+                        ) { Text("Zaloguj przez ${dostawca.name}") }
+                    }
+                }
+                }
             }
+        }
+    }
+}
+
+/** Ekran blokady: aplikacja czeka na odcisk palca. Tresc jest niewidoczna. */
+@Composable
+internal fun ModernLockScreen(
+    email: String,
+    reason: String?,
+    loading: Boolean,
+    error: String?,
+    onUnlock: () -> Unit,
+    onPassword: () -> Unit,
+    onErrorShown: () -> Unit,
+) {
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(error) { error?.let { snackbar.showSnackbar(it); onErrorShown() } }
+    Scaffold(
+        containerColor = LocalCmdbColors.current.loginBackground,
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(horizontal = 26.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("CMDB", color = MaterialTheme.colorScheme.primary, fontSize = 48.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text(email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(40.dp))
+            Icon(
+                Icons.Outlined.Fingerprint, null, Modifier.size(72.dp),
+                MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                reason ?: "Odblokuj CMDB",
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(28.dp))
+            Button(
+                onClick = onUnlock,
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
+                else Text("Użyj odcisku palca", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+            TextButton(onClick = onPassword, modifier = Modifier.fillMaxWidth()) { Text("Zaloguj się hasłem") }
         }
     }
 }
@@ -505,6 +614,7 @@ internal fun ModernMainScreen(
     onErrorShown: () -> Unit,
     onNoticeShown: () -> Unit,
     helpdesk: HelpdeskActions,
+    onToggleBiometrics: () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableStateOf(ModernTab.DASHBOARD) }
     var page by rememberSaveable { mutableStateOf<ModernPage?>(null) }
@@ -777,6 +887,7 @@ internal fun ModernMainScreen(
                     onToggleTheme = onToggleTheme,
                     onChooseTenant = onChooseTenant,
                     onLogout = onLogout,
+                    onToggleBiometrics = onToggleBiometrics,
                 )
             }
         }
@@ -1099,6 +1210,7 @@ private fun opisMotywu(theme: String) = when (theme) {
     onToggleTheme: () -> Unit,
     onChooseTenant: () -> Unit,
     onLogout: () -> Unit,
+    onToggleBiometrics: () -> Unit = {},
 ) {
     val kolory = LocalCmdbColors.current
     LazyColumn(
@@ -1144,6 +1256,13 @@ private fun opisMotywu(theme: String) = when (theme) {
                     HorizontalDivider(color = kolory.cardBorder)
                     MoreRow(Icons.Outlined.Business, "Zmień firmę", state.user?.tenant?.name, onClick = onChooseTenant)
                 }
+                HorizontalDivider(color = kolory.cardBorder)
+                MoreRow(
+                    Icons.Outlined.Fingerprint,
+                    "Logowanie odciskiem palca",
+                    if (state.biometricsEnabled) "włączone" else "wyłączone",
+                    onClick = onToggleBiometrics,
+                )
                 HorizontalDivider(color = kolory.cardBorder)
                 MoreRow(Icons.AutoMirrored.Outlined.Logout, "Wyloguj", null, barwa = kolory.danger, onClick = onLogout)
             }

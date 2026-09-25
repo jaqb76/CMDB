@@ -13,8 +13,8 @@ android {
         applicationId = "pl.hubzso.cmdb"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.5.1"
+        versionCode = 10
+        versionName = "0.6.0"
     }
 
     // Kazdy przebieg CI generowal wlasny, losowy klucz debugowy, wiec Android
@@ -70,6 +70,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.9")
     implementation("androidx.datastore:datastore-preferences:1.1.4")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // Logowanie odciskiem palca: systemowe okno biometrii z kluczem w Keystore.
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.6")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
