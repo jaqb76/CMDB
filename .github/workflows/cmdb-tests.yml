@@ -3,6 +3,10 @@ on:
   push:
     branches: ["claude/os-data-collection-agent-gfz2o8"]
   pull_request:
+  # Reczne uruchomienie z galezi glownej - np. po zwolnieniu limitu miejsca
+  # na artefakty, gdy nieudany przebieg zostal juz usuniety i nie ma czego
+  # ponowic. Publikacja nadal wymaga galezi glownej i srodowiska agent-release.
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -215,7 +219,8 @@ jobs:
     needs: [release-plan, server, agent, windows-agent, verify-release]
     if: >-
       always() && needs.release-plan.outputs.agent_changed == 'true' &&
-      needs.verify-release.result == 'success' && github.event_name == 'push' &&
+      needs.verify-release.result == 'success' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.repository == 'jaqb76/CMDB' &&
       github.ref == 'refs/heads/claude/os-data-collection-agent-gfz2o8'
     runs-on: ubuntu-latest
