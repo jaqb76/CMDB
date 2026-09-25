@@ -1,0 +1,5 @@
+{
+  "category": "fixed",
+  "systemy": ["windows"],
+  "text": "Pod koniec instalacji mogło pojawić się okno „Unhandled exception” z błędem kodowania 'charmap': polecenie status nie umiało wypisać polskiej litery do potoku instalatora. Znaki spoza strony kodowej tracą teraz tylko ogonek (ł → l)."
+}

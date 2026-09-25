@@ -8,6 +8,7 @@ from __future__ import annotations
 import codecs
 import os
 import sys
+import unicodedata
 
 # Znaki typograficzne, ktorych nie ma w stronach kodowych DOS. Zwykle "?" nie
 # niesie zadnej tresci, a mysnik zamiast kropki srodkowej czyta sie tak samo.
@@ -17,9 +18,23 @@ ZAMIENNIKI = {"\u00b7": "-", "\u2013": "-", "\u2014": "-", "\u2026": "...",
 NAZWA_BLEDU = "cmdb-konsola"
 
 
+# Litery, ktorych rozklad Unicode nie sprowadza do ASCII.
+LITERY = {"\u0142": "l", "\u0141": "L", "\u00df": "ss", "\u00f8": "o", "\u00d8": "O"}
+
+
+def _odpowiednik(znak: str) -> str:
+    if znak in ZAMIENNIKI:
+        return ZAMIENNIKI[znak]
+    if znak in LITERY:
+        return LITERY[znak]
+    # "ą" -> "a", "é" -> "e": litera bez ogonka czyta sie lepiej niz "?".
+    bazowy = unicodedata.normalize("NFKD", znak).encode("ascii", "ignore").decode("ascii")
+    return bazowy or "?"
+
+
 def _zastap_typografie(blad):
     tekst = blad.object[blad.start:blad.end]
-    return "".join(ZAMIENNIKI.get(znak, "?") for znak in tekst), blad.end
+    return "".join(_odpowiednik(znak) for znak in tekst), blad.end
 
 
 codecs.register_error(NAZWA_BLEDU, _zastap_typografie)
@@ -101,12 +116,29 @@ def restore_output():
     if sys.platform != "win32":
         return
     for name, number in (("stdout", -11), ("stderr", -12)):
-        if getattr(sys, name) is None:
+        obecny = getattr(sys, name)
+        if obecny is None:
             try:
                 stream = _inherited_output(number)
             except OSError:
                 stream = None
             setattr(sys, name, stream or open(os.devnull, "w", encoding="utf-8"))
+        else:
+            _bezpieczne_znaki(obecny)
+
+
+def _bezpieczne_znaki(strumien) -> None:
+    """Strumien, ktory Python otworzyl sam, nie moze wywracac agenta na "ł".
+
+    Gdy proces dostaje odziedziczony potok (instalator uruchamia "status"
+    i czyta jego wyjscie), Python tworzy stdout w kodowaniu systemu (cp1252)
+    w trybie "strict". Pierwszy polski znak konczyl sie wtedy wyjatkiem
+    i oknem "Unhandled exception" na koncu instalacji.
+    """
+    try:
+        strumien.reconfigure(errors=NAZWA_BLEDU)
+    except (AttributeError, ValueError, OSError):
+        pass
 
 
 def main(argv=None):

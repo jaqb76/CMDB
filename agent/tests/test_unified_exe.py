@@ -40,6 +40,22 @@ def test_output_restored_without_opening_console(monkeypatch):
     assert [c.args[0] for c in inherited.call_args_list] == [-11, -12]
 
 
+def test_istniejacy_strumien_nie_wywraca_sie_na_polskich_znakach(monkeypatch):
+    """Instalator czyta wyjscie "status" potokiem - Python sam otwiera wtedy
+    stdout w cp1252 "strict" i "ł" konczylo sie oknem z wyjatkiem."""
+    import io
+
+    bufor = io.BytesIO()
+    strumien = io.TextIOWrapper(bufor, encoding="cp1252", errors="strict")
+    monkeypatch.setattr(windows_entry.sys, "platform", "win32")
+    monkeypatch.setattr(windows_entry.sys, "stdout", strumien)
+    monkeypatch.setattr(windows_entry.sys, "stderr", strumien)
+    windows_entry.restore_output()
+    strumien.write("monitorowanie usług: brak celów · żółw\n")
+    strumien.flush()
+    assert bufor.getvalue().decode("cp1252") == "monitorowanie uslug: brak celów · zólw\n"
+
+
 def test_tray_restarts_after_binary_replacement(monkeypatch):
     app = TrayApp.__new__(TrayApp)
     app._executable_signature = (10, 100)
@@ -111,3 +127,8 @@ def test_nieznany_znak_nadal_nie_wywraca_wypisu():
     ma zejsc do "?", bo wyjatek w trakcie wypisu status znaczy brak statusu."""
     wynik = "próba 中".encode("cp852", errors=windows_entry.NAZWA_BLEDU).decode("cp852")
     assert wynik == "próba ?"
+
+
+def test_polska_litera_spoza_strony_traci_tylko_ogonek():
+    wynik = "Łódź, ąę".encode("cp1252", errors=windows_entry.NAZWA_BLEDU).decode("cp1252")
+    assert wynik == "Lódz, ae"
