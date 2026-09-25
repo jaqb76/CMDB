@@ -150,6 +150,7 @@ def _dodaj_brakujace_kolumny() -> None:
     _popraw_unikalnosc_schematow()
     _usun_pomiary_monitorow()
     _przenies_polaczenia_wirtualizacji()
+    _poszerz_wektory_cvss()
 
 
 def _popraw_ograniczenie_czasu() -> None:
@@ -494,3 +495,26 @@ def _przenies_polaczenia_wirtualizacji() -> None:
                 ).values(polaczenie_id=nowe.id))
                 db.delete(stary)
                 log.info("wirtualizacja: przeniesiono konfiguracje %s agenta %s", dostawca, stary.asset_id)
+
+
+def _poszerz_wektory_cvss() -> None:
+    """Wektory CVSS 4.0 bywaja dluzsze niz 128 znakow.
+
+    Kolumny mialy 128 znakow, co wystarczalo na CVSS 3.1, ale ocena w wersji
+    4.0 z NVD przerywala zapis calego przebiegu ("value too long"). Poszerzenie
+    varchar w Postgresie nie przepisuje danych.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    tabele = set(inspector.get_table_names())
+    for tabela, kolumna in (("cve_scores", "vector"), ("cve_ubuntu", "vector"),
+                            ("cve_entries", "cvss_vector")):
+        if tabela not in tabele:
+            continue
+        for opis in inspector.get_columns(tabela):
+            if opis["name"] == kolumna and (getattr(opis["type"], "length", None) or 0) < 512:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        f"ALTER TABLE {tabela} ALTER COLUMN {kolumna} TYPE VARCHAR(512)"))
+                log.info("poszerzono kolumne %s.%s do 512 znakow", tabela, kolumna)

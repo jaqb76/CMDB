@@ -770,3 +770,34 @@ def test_ubuntu_nie_zna_cve_zapamietujemy(monkeypatch):
     with SessionLocal() as db:
         cve.pobierz_oceny_ubuntu(db, ["CVE-2099-0001"])
         assert db.get(CveUbuntu, "CVE-2099-0001").priority == ""
+
+
+WEKTOR_CVSS4 = ("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N/"
+                "E:X/CR:X/IR:X/AR:X/MAV:X/MAC:X/MAT:X/MPR:X/MUI:X/MVC:X/MVI:X/MVA:X/"
+                "MSC:X/MSI:X/MSA:X/S:X/AU:X/R:X/V:X/RE:X/U:X")
+
+
+def test_dlugi_wektor_cvss4_nie_przerywa_przebiegu(monkeypatch):
+    """Zgloszony blad: 'value too long for type character varying(128)'."""
+    from cmdb_server.models import CveScore
+
+    assert len(WEKTOR_CVSS4) > 128
+    odpowiedz = {"vulnerabilities": [{"cve": {"id": "CVE-2026-81642", "metrics": {
+        "cvssMetricV40": [{"cvssData": {"baseScore": 9.1, "baseSeverity": "CRITICAL",
+                                        "vectorString": WEKTOR_CVSS4}}]}}}]}
+    _podstaw_nvd(monkeypatch, [odpowiedz])
+    with SessionLocal() as db:
+        assert cve.pobierz_oceny(db, ["CVE-2026-81642"])["pobrane"] == 1
+        assert db.get(CveScore, "CVE-2026-81642").vector == WEKTOR_CVSS4
+
+
+def test_migracja_poszerza_kolumny_wektorow():
+    from cmdb_server.db import _poszerz_wektory_cvss, engine
+    from sqlalchemy import inspect, text
+
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE cve_scores ALTER COLUMN vector TYPE VARCHAR(128)"))
+    _poszerz_wektory_cvss()
+    dlugosc = {k["name"]: getattr(k["type"], "length", None)
+               for k in inspect(engine).get_columns("cve_scores")}
+    assert dlugosc["vector"] == 512

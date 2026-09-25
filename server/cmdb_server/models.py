@@ -731,7 +731,7 @@ class CveEntry(Base):
     # Ocena CVSS podana przez sama dystrybucje (Red Hat ma ja w OVAL). Uzywana,
     # gdy NVD jeszcze nie ocenil luki.
     cvss_score: Mapped[float | None] = mapped_column(Float)
-    cvss_vector: Mapped[str | None] = mapped_column(String(128))
+    cvss_vector: Mapped[str | None] = mapped_column(String(512))
     # Slabosci (CWE) wskazane przez dystrybucje, np. "CWE-787,CWE-20".
     cwe: Mapped[str | None] = mapped_column(String(255))
 
@@ -789,7 +789,7 @@ class CveUbuntu(Base):
     priority: Mapped[str | None] = mapped_column(String(32))
     base_score: Mapped[float | None] = mapped_column(Float)
     severity: Mapped[str | None] = mapped_column(String(16))
-    vector: Mapped[str | None] = mapped_column(String(128))
+    vector: Mapped[str | None] = mapped_column(String(512))
     summary: Mapped[str | None] = mapped_column(Text)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -812,7 +812,7 @@ class CveScore(Base):
     cve: Mapped[str] = mapped_column(String(32), primary_key=True)
     base_score: Mapped[float | None] = mapped_column(Float)
     severity: Mapped[str | None] = mapped_column(String(16), index=True)
-    vector: Mapped[str | None] = mapped_column(String(128))
+    vector: Mapped[str | None] = mapped_column(String(512))
     published: Mapped[str | None] = mapped_column(String(32))
     # Krotki opis luki z NVD (po angielsku) - zeby z listy bylo widac, czego
     # dotyczy, bez otwierania kazdego CVE. Pusty napis: NVD opisu nie ma.

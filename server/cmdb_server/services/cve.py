@@ -1023,7 +1023,7 @@ def _ocena_z_odpowiedzi(dane: dict) -> dict | None:
                 "base_score": float(wynik),
                 "severity": (cvss.get("baseSeverity") or pozycja.get("baseSeverity") or "").upper()
                 or None,
-                "vector": cvss.get("vectorString"),
+                "vector": (cvss.get("vectorString") or "")[:512] or None,
             }
     return wynik_bazowy
 
@@ -1144,7 +1144,7 @@ def _ocena_ubuntu(dane: dict) -> dict:
         "priority": (dane.get("priority") or "").strip().lower() or "",
         "base_score": float(wynik) if wynik is not None else None,
         "severity": (cvss.get("baseSeverity") or "").upper() or None,
-        "vector": cvss.get("vectorString"),
+        "vector": (cvss.get("vectorString") or "")[:512] or None,
         "summary": opis or None,
     }
 
