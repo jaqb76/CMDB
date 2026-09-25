@@ -76,9 +76,9 @@ def test_pelny_przebieg(client, konto):
     token = odp.json()["access_token"]
     assert client.get("/api/v1/mobile/me", headers=_naglowek(token)).status_code == 200
     with SessionLocal() as db:
-        wpis = db.execute(select(AuditLog).where(AuditLog.action == "mobile.login.ok")
-                          .order_by(AuditLog.id.desc())).scalars().first()
-        assert wpis.detail["sposob"] == "biometria"
+        sposoby = [w.detail["sposob"] for w in db.execute(
+            select(AuditLog).where(AuditLog.action == "mobile.login.ok")).scalars()]
+    assert sorted(sposoby) == ["biometria", "lokalne"]
 
 
 def test_cudzy_klucz_nie_przejdzie(client, konto):
