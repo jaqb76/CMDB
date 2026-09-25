@@ -151,7 +151,13 @@ def wersja_paczki(bazowa: str, pliki: list[tuple[Path, str]]) -> str:
     wiec nowy kod agenta wchodzil do paczki pod starym numerem i zadna
     maszyna nie uznawala go za aktualizacje. Skrot zawartosci daje nowy
     numer przy kazdej zmianie i ten sam przy tych samych zrodlach.
+
+    Wersja nadana przez CI ("0.6.124+1") juz jest jednoznaczna i zostaje bez
+    zmian: publikacja wymaga, zeby paczka miala dokladnie numer wydania,
+    a doklejony skrot blokowal kazde wydanie Linuksa.
     """
+    if "+" in bazowa:
+        return bazowa
     skrot = hashlib.sha256()
     for sciezka, nazwa in pliki:
         skrot.update(nazwa.encode("utf-8") + b"\0")

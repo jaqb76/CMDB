@@ -310,6 +310,21 @@ def test_wersja_paczki_pochodzi_ze_zrodel(tmp_path):
     assert pakiet.sprawdz_paczke(pakiet.sciezka_archiwum(tmp_path / "cel")) == metadane["version"]
 
 
+def test_wersja_z_ci_zostaje_bez_skrotu(tmp_path):
+    """Publikacja porownuje numer paczki z numerem wydania nadanym przez CI."""
+    zrodla = tmp_path / "agent"
+    (zrodla / "cmdb_agent").mkdir(parents=True)
+    (zrodla / "packaging").mkdir()
+    (zrodla / "cmdb_agent" / "__init__.py").write_text(
+        '__version__ = "0.6.124+1"\n', encoding="utf-8"
+    )
+    (zrodla / "packaging" / "install-agent.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    metadane = pakiet.zbuduj(zrodla, tmp_path / "cel")
+    assert metadane["version"] == "0.6.124+1"
+    assert pakiet.sprawdz_paczke(pakiet.sciezka_archiwum(tmp_path / "cel")) == "0.6.124+1"
+
+
 def test_zmiana_kodu_agenta_daje_nowa_wersje(tmp_path):
     """Bez tego nowy kod wchodzil pod starym numerem i nikt sie nie aktualizowal."""
     zrodla = tmp_path / "agent"
