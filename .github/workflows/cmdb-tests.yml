@@ -57,7 +57,9 @@ jobs:
   server:
     needs: release-plan
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Pelny zestaw testow serwera (ok. 1000 przypadkow na Postgresie) trwa
+    # juz ponad 14 minut - limit 15 przerywal zadanie tuz przed koncem.
+    timeout-minutes: 30
     outputs:
       version: ${{ steps.version.outputs.version }}
     services:
