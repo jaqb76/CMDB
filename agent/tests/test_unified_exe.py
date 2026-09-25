@@ -46,7 +46,7 @@ def test_istniejacy_strumien_nie_wywraca_sie_na_polskich_znakach(monkeypatch):
     import io
 
     bufor = io.BytesIO()
-    strumien = io.TextIOWrapper(bufor, encoding="cp1252", errors="strict")
+    strumien = io.TextIOWrapper(bufor, encoding="cp1252", errors="strict", newline="\n")
     monkeypatch.setattr(windows_entry.sys, "platform", "win32")
     monkeypatch.setattr(windows_entry.sys, "stdout", strumien)
     monkeypatch.setattr(windows_entry.sys, "stderr", strumien)
