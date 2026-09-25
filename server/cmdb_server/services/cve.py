@@ -663,20 +663,30 @@ def dopasuj(db: Session, payload: dict) -> dict:
     # Oceny doklejamy jednym zapytaniem - z bufora, bez ruchu sieciowego.
     from ..models import CveScore
 
+    from ..models import CveUbuntu
+
     oceny = {}
+    ubuntu = {}
     if znalezione:
-        oceny = {
-            o.cve: o
-            for o in db.execute(
-                select(CveScore).where(CveScore.cve.in_({z["cve"] for z in znalezione}))
-            ).scalars()
-        }
+        numery = {z["cve"] for z in znalezione}
+        oceny = {o.cve: o for o in db.execute(
+            select(CveScore).where(CveScore.cve.in_(numery))).scalars()}
+        if source == "ubuntu":
+            ubuntu = {o.cve: o for o in db.execute(
+                select(CveUbuntu).where(CveUbuntu.cve.in_(numery))).scalars()}
     for z in znalezione:
         ocena = oceny.get(z["cve"])
+        u = ubuntu.get(z["cve"])
         z["base_score"] = ocena.base_score if ocena else None
         z["cvss_severity"] = ocena.severity if ocena else None
         z["vector"] = ocena.vector if ocena else None
-        z["summary"] = (ocena.summary if ocena else None) or None
+        z["score_source"] = "NVD" if z["base_score"] is not None else None
+        # NVD ocenia swieze CVE z opoznieniem - wtedy ocena Ubuntu.
+        if z["base_score"] is None and u and u.base_score is not None:
+            z["base_score"], z["cvss_severity"], z["vector"] = u.base_score, u.severity, u.vector
+            z["score_source"] = "Ubuntu"
+        z["ubuntu_priority"] = (u.priority or None) if u else None
+        z["summary"] = (ocena.summary if ocena else None) or (u.summary if u else None) or None
         z["link"] = odnosnik(f"{source}/{release}", z["cve"])
         z["nvd_link"] = ODNOSNIK_NVD.format(cve=z["cve"])
 
@@ -958,9 +968,12 @@ def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
     }
 
 
-def cve_we_flocie(db: Session) -> list[str]:
+def cve_we_flocie(db: Session, source: str | None = None) -> list[str]:
     """Podatnosci faktycznie dopasowane do maszyn - i tylko dla nich pobieramy
-    oceny. Kanal Debiana ma 45 tysiecy wpisow, maszyny dotyczy kilkaset."""
+    oceny. Kanal Debiana ma 45 tysiecy wpisow, maszyny dotyczy kilkaset.
+
+    source zaweza do maszyn jednej dystrybucji ("ubuntu").
+    """
     from ..models import Asset, InventorySnapshot
 
     znalezione: list[str] = []
@@ -979,8 +992,78 @@ def cve_we_flocie(db: Session) -> list[str]:
         wynik = dopasuj(db, payload or {})
         if wynik["status"] != STATUS_OK:
             continue
+        if source and (wynik["source"] or "").split("/")[0] != source:
+            continue
         for pozycja in wynik["entries"]:
             if pozycja["cve"] not in widziane:
                 widziane.add(pozycja["cve"])
                 znalezione.append(pozycja["cve"])
     return znalezione
+
+
+# --- oceny Ubuntu -------------------------------------------------------------
+
+ADRES_UBUNTU_CVE = "https://ubuntu.com/security/cves/{cve}.json"
+ODSTEP_UBUNTU = 0.5
+
+
+def _ocena_ubuntu(dane: dict) -> dict:
+    cvss = ((dane.get("impact") or {}).get("baseMetricV3") or {}).get("cvssV3") or {}
+    wynik = cvss.get("baseScore", dane.get("cvss3"))
+    opis = " ".join(str(dane.get("description") or "").split())[:1500]
+    return {
+        "priority": (dane.get("priority") or "").strip().lower() or "",
+        "base_score": float(wynik) if wynik is not None else None,
+        "severity": (cvss.get("baseSeverity") or "").upper() or None,
+        "vector": cvss.get("vectorString"),
+        "summary": opis or None,
+    }
+
+
+def pobierz_oceny_ubuntu(db: Session, cves: list[str], limit: int = 300) -> dict:
+    """Priorytet i CVSS z ubuntu.com dla podatnosci znalezionych na Ubuntu.
+
+    Swieze oceny sie zmieniaja (priorytet "needs-triage" dostaje wartosc po
+    kilku dniach), wiec wpisy starsze niz tydzien albo bez priorytetu
+    pobieramy ponownie - najpierw jednak te, ktorych nie ma wcale.
+    """
+    from ..models import CveUbuntu
+
+    granica = utcnow() - timedelta(days=7)
+    obecne = {o.cve: o for o in db.execute(
+        select(CveUbuntu).where(CveUbuntu.cve.in_(cves))).scalars()}
+    brakujace = [c for c in dict.fromkeys(cves) if c not in obecne]
+    do_odswiezenia = [
+        c for c, o in obecne.items()
+        if o.priority in (None, "needs-triage")
+        or (as_utc(o.fetched_at) or granica) < granica
+    ]
+    kolejka = (brakujace + do_odswiezenia)[:limit]
+
+    pobrane = bledy = 0
+    for numer, cve in enumerate(kolejka):
+        if numer:
+            time.sleep(ODSTEP_UBUNTU)
+        try:
+            zadanie = urllib.request.Request(
+                ADRES_UBUNTU_CVE.format(cve=urllib.parse.quote(cve)), headers=NAGLOWKI)
+            with urllib.request.urlopen(zadanie, timeout=60) as odpowiedz:
+                dane = json.loads(odpowiedz.read())
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                db.merge(CveUbuntu(cve=cve, priority="", fetched_at=utcnow()))
+                continue
+            bledy += 1
+        except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
+            log.warning("nie udalo sie pobrac oceny Ubuntu %s: %s", cve, exc)
+            bledy += 1
+        else:
+            db.merge(CveUbuntu(cve=cve, fetched_at=utcnow(), **_ocena_ubuntu(dane)))
+            pobrane += 1
+            continue
+        if bledy >= 5:
+            log.warning("przerywam pobieranie ocen Ubuntu po %d bledach", bledy)
+            break
+    db.commit()
+    return {"pobrane": pobrane, "bledy": bledy,
+            "pozostalo": max(0, len(brakujace) + len(do_odswiezenia) - len(kolejka))}

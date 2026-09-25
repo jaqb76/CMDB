@@ -715,3 +715,51 @@ def test_karta_maszyny_pokazuje_co_zaktualizowac(client, tenant_a, make_user, ka
     assert "Co zaktualizować" in strona
     assert "curl mishandles something" in strona          # opis z Debiana
     assert "https://nvd.nist.gov/vuln/detail/CVE-2025-10148" in strona
+
+
+# --- oceny Ubuntu -------------------------------------------------------------
+
+ODPOWIEDZ_UBUNTU = {
+    "id": "CVE-2025-10148", "priority": "medium", "cvss3": 7.4,
+    "description": "\ncurl mishandles\nsomething",
+    "impact": {"baseMetricV3": {"cvssV3": {
+        "baseScore": 7.4, "baseSeverity": "HIGH",
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"}}},
+}
+
+
+def test_ocena_ubuntu_gdy_nvd_jeszcze_nie_ocenil(kanal_ubuntu, monkeypatch):
+    """NVD ocenia swieze CVE z opoznieniem tygodni - Ubuntu od razu."""
+    cve_ubuntu = [e["cves"][0] for e in UBUNTU.values()][0]
+    odpowiedz = dict(ODPOWIEDZ_UBUNTU, id=cve_ubuntu)
+    _podstaw_nvd(monkeypatch, [odpowiedz])
+    with SessionLocal() as db:
+        wynik = cve.pobierz_oceny_ubuntu(db, [cve_ubuntu])
+    assert wynik["pobrane"] == 1
+
+    from cmdb_server.models import CveUbuntu
+    with SessionLocal() as db:
+        ocena = db.get(CveUbuntu, cve_ubuntu)
+    assert ocena.priority == "medium"
+    assert ocena.base_score == 7.4
+    assert ocena.summary == "curl mishandles something"
+
+    with SessionLocal() as db:
+        dopasowanie = cve.dopasuj(db, _raport(
+            [_pakiet("e2fsprogs", "1.46.5-2ubuntu1")], "ubuntu", "jammy"))
+    pozycja = next(e for e in dopasowanie["entries"] if e["cve"] == cve_ubuntu)
+    assert pozycja["base_score"] == 7.4
+    assert pozycja["score_source"] == "Ubuntu"
+    assert pozycja["ubuntu_priority"] == "medium"
+
+
+def test_ubuntu_nie_zna_cve_zapamietujemy(monkeypatch):
+    from cmdb_server.models import CveUbuntu
+
+    def nie_ma(zadanie, timeout=0):
+        raise cve.urllib.error.HTTPError(zadanie.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(cve.urllib.request, "urlopen", nie_ma)
+    with SessionLocal() as db:
+        cve.pobierz_oceny_ubuntu(db, ["CVE-2099-0001"])
+        assert db.get(CveUbuntu, "CVE-2099-0001").priority == ""

@@ -105,6 +105,14 @@ podnosi limit do 50 na 30 sekund:
 CMDB_NVD_API_KEY=...    # https://nvd.nist.gov/developers/request-an-api-key
 ```
 
+**Ubuntu.** NVD ocenia świeże CVE z opóźnieniem tygodni, więc dla maszyn
+z Ubuntu serwer pobiera też dane z `ubuntu.com/security/cves/<CVE>.json`:
+**priorytet Ubuntu** (Low/Medium/High/Critical — uwzględnia, jak luka dotyka
+pakietów Ubuntu) i ocenę CVSS. Priorytet jest pokazywany przy każdym CVE,
+a ocena Ubuntu zastępuje brakującą ocenę NVD (z adnotacją). Wpisy bez
+priorytetu (`needs-triage`) i starsze niż tydzień są odświeżane. Serwer
+potrzebuje dostępu do `ubuntu.com`.
+
 Brak oceny **nie jest** traktowany jak ocena niska: taka podatność ląduje na
 końcu swojej grupy, a nie udaje najłagodniejszej, a panel pokazuje, ile ocen
 jeszcze brakuje.

@@ -1035,8 +1035,16 @@
                     {{ '%.1f' | format(p.base_score) }} {{ p.cvss_severity }}
                   </span>
                   {% if p.vector %}<div class="muted tekst-drobny">{{ p.vector }}</div>{% endif %}
+                  {% if p.score_source == 'Ubuntu' %}<div class="muted tekst-drobny">ocena wg Ubuntu (NVD jeszcze nie ocenił)</div>{% endif %}
                 {% else %}
                   <span class="muted">—</span>
+                {% endif %}
+                {% if p.ubuntu_priority %}
+                  <div class="tekst-drobny">
+                    Priorytet Ubuntu:
+                    <span class="badge {{ 'badge-danger' if p.ubuntu_priority in ('critical', 'high')
+                                          else ('badge-warn' if p.ubuntu_priority == 'medium' else '') }}">{{ p.ubuntu_priority | capitalize }}</span>
+                  </div>
                 {% endif %}
               </td>
               <td class="small">

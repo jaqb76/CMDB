@@ -115,6 +115,11 @@ def przebieg_podatnosci(co_ile_godzin: float, klucz_nvd: str = "") -> dict | Non
                 znalezione = cve.cve_we_flocie(db)
                 if znalezione:
                     wynik["oceny"] = cve.pobierz_oceny(db, znalezione, klucz_api=klucz_nvd)
+                # Ubuntu ocenia swieze CVE szybciej niz NVD i ma wlasny
+                # priorytet - pobieramy go dla maszyn z Ubuntu.
+                ubuntu = cve.cve_we_flocie(db, source="ubuntu")
+                if ubuntu:
+                    wynik["ubuntu"] = cve.pobierz_oceny_ubuntu(db, ubuntu)
             return wynik
         finally:
             conn.execute(

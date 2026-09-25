@@ -837,6 +837,9 @@ def pobierz_oceny_cvss(
     podsumowanie = cve.pobierz_oceny(
         db, cve.cve_we_flocie(db), klucz_api=get_settings().nvd_api_key
     )
+    ubuntu = cve.cve_we_flocie(db, source="ubuntu")
+    if ubuntu:
+        podsumowanie["ubuntu"] = cve.pobierz_oceny_ubuntu(db, ubuntu)
     audit(db, None, action="cve.scores", target=str(podsumowanie.get("pobrane")),
           detail=podsumowanie, ip=client_ip(request), actor=user.email)
     db.commit()

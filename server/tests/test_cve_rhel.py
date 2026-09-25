@@ -355,7 +355,7 @@ def test_do_odswiezenia_trafiaja_tylko_stare_i_brakujace():
 def test_harmonogram_sam_pobiera_nieaktualne_kanaly(monkeypatch):
     wywolania = []
     monkeypatch.setattr(cve, "odswiez", lambda db, wydania: wywolania.append(wydania) or {})
-    monkeypatch.setattr(cve, "cve_we_flocie", lambda db: [])
+    monkeypatch.setattr(cve, "cve_we_flocie", lambda db, source=None: [])
     with SessionLocal() as db:
         _maszyna(db, "rhel", "9.4")
 
@@ -374,7 +374,8 @@ def test_harmonogram_sam_pobiera_nieaktualne_kanaly(monkeypatch):
 def test_harmonogram_dobiera_oceny(monkeypatch):
     oceny = []
     monkeypatch.setattr(cve, "kanaly_do_odswiezenia", lambda db, h: {})
-    monkeypatch.setattr(cve, "cve_we_flocie", lambda db: ["CVE-2024-0727"])
+    monkeypatch.setattr(cve, "cve_we_flocie",
+                        lambda db, source=None: [] if source else ["CVE-2024-0727"])
     monkeypatch.setattr(cve, "pobierz_oceny",
                         lambda db, cves, klucz_api="": oceny.append((cves, klucz_api)) or {"pobrane": 1})
     wynik = harmonogram.przebieg_podatnosci(24, "klucz")

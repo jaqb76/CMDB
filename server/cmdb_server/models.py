@@ -730,6 +730,27 @@ class CveEntry(Base):
     description: Mapped[str | None] = mapped_column(Text)
 
 
+class CveUbuntu(Base):
+    """Ocena podatnosci wedlug Ubuntu: priorytet i CVSS z ubuntu.com.
+
+    NVD ocenia swieze CVE z opoznieniem tygodni, a Ubuntu ma ocene CVSS
+    i wlasny priorytet ("Medium") zwykle od dnia publikacji. Priorytet Ubuntu
+    uwzglednia to, jak luka dotyka ICH pakietow - bywa nizszy niz CVSS, bo
+    np. podatna funkcja jest w Ubuntu wylaczona.
+    """
+
+    __tablename__ = "cve_ubuntu"
+
+    cve: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # Pusty napis: Ubuntu nie zna tego CVE (zeby nie pytac w kolko).
+    priority: Mapped[str | None] = mapped_column(String(32))
+    base_score: Mapped[float | None] = mapped_column(Float)
+    severity: Mapped[str | None] = mapped_column(String(16))
+    vector: Mapped[str | None] = mapped_column(String(128))
+    summary: Mapped[str | None] = mapped_column(Text)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class CveScore(Base):
     """Ocena CVSS pojedynczej podatnosci.
 
