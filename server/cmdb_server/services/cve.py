@@ -633,7 +633,9 @@ def dopasuj(db: Session, payload: dict) -> dict:
                     "status": wpis.status,
                     "severity": wpis.severity,
                     "no_fix_reason": wpis.no_fix_reason,
-                    "description": wpis.description,
+                    # Ubuntu podaje tu opis PAKIETU ("Linux kernel"), nie luki -
+                    # jako opis CVE bylby mylacy.
+                    "description": wpis.description if source != "ubuntu" else None,
                     "inactive_kernel": nieaktywne_jadro,
                     "running_kernel": dzialajace_jadro or None,
                 }
@@ -674,7 +676,9 @@ def dopasuj(db: Session, payload: dict) -> dict:
         z["base_score"] = ocena.base_score if ocena else None
         z["cvss_severity"] = ocena.severity if ocena else None
         z["vector"] = ocena.vector if ocena else None
+        z["summary"] = (ocena.summary if ocena else None) or None
         z["link"] = odnosnik(f"{source}/{release}", z["cve"])
+        z["nvd_link"] = ODNOSNIK_NVD.format(cve=z["cve"])
 
     # Najpierw to, co da sie naprawic, potem najgrozniejsze. Podatnosc bez
     # oceny lezy na koncu swojej grupy, a nie udaje najlagodniejszej.
@@ -695,6 +699,7 @@ def dopasuj(db: Session, payload: dict) -> dict:
     return _wynik(
         STATUS_OK,
         None,
+        packages_summary=_podsumowanie_pakietow(znalezione, rpm),
         entries=znalezione,
         stale_kernels=zalegajace_jadra,
         stale_kernel_count=len(nieaktywne),
@@ -704,12 +709,48 @@ def dopasuj(db: Session, payload: dict) -> dict:
     )
 
 
+def _podsumowanie_pakietow(znalezione: list[dict], rpm: bool) -> list[dict]:
+    """Ile podatnosci zamyka aktualizacja kazdego pakietu.
+
+    Liczba CVE mowi malo: jedno nieaktualne jadro to setki pozycji, a zamyka
+    je jedna aktualizacja i restart. Zestawienie po pakiecie zrodlowym
+    pokazuje, co faktycznie trzeba zrobic i w jakiej kolejnosci.
+    """
+    grupy: dict[str, dict] = {}
+    for z in znalezione:
+        if z["status"] != "resolved":
+            continue
+        g = grupy.setdefault(z["source_package"], {
+            "package": z["source_package"], "count": 0, "critical": 0,
+            "max_score": None, "fixed_version": None,
+            "kernel": _to_jadro(z["source_package"]) if not rpm
+                      else z["source_package"] in {"kernel", "kernel-rt"},
+            "installed_version": z["compared_version"],
+        })
+        g["count"] += 1
+        wynik = z.get("base_score")
+        if wynik is not None:
+            g["max_score"] = wynik if g["max_score"] is None else max(g["max_score"], wynik)
+            if wynik >= 7.0:
+                g["critical"] += 1
+        wersja = z.get("fixed_version")
+        if wersja and (g["fixed_version"] is None or (
+                wersje_pakietow.porownaj_rpm(g["fixed_version"], wersja) < 0 if rpm
+                else wersje_pakietow.starsza_niz(g["fixed_version"], wersja))):
+            g["fixed_version"] = wersja
+    return sorted(grupy.values(),
+                  key=lambda g: (-g["critical"], -g["count"], g["package"]))
+
+
 def _wynik(status: str, detail: str | None, entries: list | None = None,
            source: str | None = None, feed_age_hours: float | None = None,
            feed_entries: int | None = None, stale_kernels: list | None = None,
-           stale_kernel_count: int | None = None) -> dict:
+           stale_kernel_count: int | None = None,
+           packages_summary: list | None = None) -> dict:
     pozycje = entries or []
     return {
+        # Pakiety do aktualizacji, od tych zamykajacych najwiecej powaznych luk.
+        "packages_summary": packages_summary or [],
         "status": status,
         "detail": detail,
         "source": source,
@@ -810,17 +851,33 @@ def odnosnik(source: str | None, cve: str) -> str:
     return wzorzec.format(cve=cve)
 
 
+def _opis_z_odpowiedzi(wpis: dict) -> str:
+    """Angielski opis luki z NVD, przyciety do rozsadnej dlugosci."""
+    for opis in wpis.get("descriptions") or []:
+        if opis.get("lang") == "en" and opis.get("value"):
+            return " ".join(str(opis["value"]).split())[:1500]
+    return ""
+
+
 def _ocena_z_odpowiedzi(dane: dict) -> dict | None:
-    """Wyciaga ocene bazowa z odpowiedzi NVD.
+    """Wyciaga ocene bazowa i opis z odpowiedzi NVD.
 
     Bierzemy najnowsza dostepna wersje CVSS - starsze wydania maja tylko 2.0,
     nowsze 3.1 albo 4.0, a mieszanie ich w jednej kolumnie dawaloby liczby
     nieporownywalne miedzy soba bez podania wersji.
+
+    None, gdy NVD nie zna tego CVE. Znany CVE bez oceny zwraca sam opis
+    (base_score None) - swieze luki dostaja ocene po kilku dniach.
     """
     podatnosci = dane.get("vulnerabilities") or []
     if not podatnosci:
         return None
     wpis = podatnosci[0].get("cve") or {}
+    wynik_bazowy = {
+        "base_score": None, "severity": None, "vector": None,
+        "published": (wpis.get("published") or "")[:10] or None,
+        "summary": _opis_z_odpowiedzi(wpis),
+    }
     metryki = wpis.get("metrics") or {}
     for klucz in ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
         for pozycja in metryki.get(klucz) or []:
@@ -829,13 +886,13 @@ def _ocena_z_odpowiedzi(dane: dict) -> dict | None:
             if wynik is None:
                 continue
             return {
+                **wynik_bazowy,
                 "base_score": float(wynik),
                 "severity": (cvss.get("baseSeverity") or pozycja.get("baseSeverity") or "").upper()
                 or None,
                 "vector": cvss.get("vectorString"),
-                "published": (wpis.get("published") or "")[:10] or None,
             }
-    return None
+    return wynik_bazowy
 
 
 def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
@@ -843,10 +900,17 @@ def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
     """Uzupelnia brakujace oceny CVSS. Zwraca podsumowanie przebiegu."""
     from ..models import CveScore
 
-    znane = set(
-        db.execute(select(CveScore.cve).where(CveScore.cve.in_(cves))).scalars()
-    )
-    brakujace = [c for c in dict.fromkeys(cves) if c not in znane]
+    znane: set[str] = set()
+    bez_opisu: list[str] = []
+    for ocena in db.execute(select(CveScore).where(CveScore.cve.in_(cves))).scalars():
+        # Oceny pobrane przed dodaniem opisow dobieramy ponownie - najpierw
+        # jednak te, ktorych w ogole nie ma.
+        if ocena.found and ocena.summary is None:
+            bez_opisu.append(ocena.cve)
+        else:
+            znane.add(ocena.cve)
+    brakujace = [c for c in dict.fromkeys(cves) if c not in znane and c not in bez_opisu]
+    brakujace += [c for c in dict.fromkeys(cves) if c in bez_opisu]
     do_pobrania = brakujace[:limit]
 
     naglowki = dict(NAGLOWKI)
@@ -875,13 +939,14 @@ def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
             continue
 
         ocena = _ocena_z_odpowiedzi(dane)
-        if ocena is None:
+        if ocena is None or ocena["base_score"] is None:
             # Zapamietujemy takze brak wyniku - inaczej przy kazdym odswiezeniu
             # pytalibysmy o te same, nieopisane jeszcze podatnosci.
-            db.add(CveScore(cve=cve, found=False))
+            db.merge(CveScore(cve=cve, found=False,
+                              summary=(ocena or {}).get("summary") or None))
             puste += 1
         else:
-            db.add(CveScore(cve=cve, found=True, **ocena))
+            db.merge(CveScore(cve=cve, found=True, **ocena))
             pobrane += 1
     db.commit()
 

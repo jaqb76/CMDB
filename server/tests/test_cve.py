@@ -657,3 +657,61 @@ def test_pozycje_nieaktywnego_jadra_nie_zaslaniaja_reszty(kanal_jadra):
     assert [z["cve"] for z in wynik["entries"]] == ["CVE-2025-99999"]
     assert wynik["fixable_count"] == 1
     assert wynik["stale_kernel_count"] == 1
+
+
+# --- opisy i podsumowanie po pakietach -----------------------------------------
+
+def test_opis_z_nvd_trafia_do_znaleziska(kanal_debian, monkeypatch):
+    odpowiedz = json.loads(json.dumps(ODPOWIEDZ_NVD))
+    odpowiedz["vulnerabilities"][0]["cve"]["descriptions"] = [
+        {"lang": "es", "value": "no"}, {"lang": "en", "value": "curl  mishandles\ncookies"}]
+    _podstaw_nvd(monkeypatch, [odpowiedz])
+    with SessionLocal() as db:
+        cve.pobierz_oceny(db, ["CVE-2025-10148"])
+        wynik = cve.dopasuj(db, _raport([_pakiet("curl", "7.88.1-10+deb12u14")]))
+    pozycja = wynik["entries"][0]
+    assert pozycja["summary"] == "curl mishandles cookies"
+    assert pozycja["nvd_link"] == "https://nvd.nist.gov/vuln/detail/CVE-2025-10148"
+
+
+def test_oceny_bez_opisu_sa_dobierane_ponownie(monkeypatch):
+    from cmdb_server.models import CveScore
+
+    with SessionLocal() as db:
+        db.add(CveScore(cve="CVE-2025-10148", found=True, base_score=6.5))
+        db.commit()
+    _podstaw_nvd(monkeypatch, [ODPOWIEDZ_NVD])
+    with SessionLocal() as db:
+        wynik = cve.pobierz_oceny(db, ["CVE-2025-10148"])
+        ocena = db.get(CveScore, "CVE-2025-10148")
+        assert wynik["pobrane"] == 1
+        assert ocena.summary is not None
+
+
+def test_podsumowanie_liczy_luki_na_pakiet(kanal_debian):
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport([_pakiet("curl", "7.88.1-10+deb12u14")]))
+    assert wynik["packages_summary"][0]["package"] == "curl"
+    assert wynik["packages_summary"][0]["count"] == 1
+    assert wynik["packages_summary"][0]["fixed_version"] == "7.88.1-10+deb12u15"
+    assert wynik["packages_summary"][0]["kernel"] is False
+
+
+def test_karta_maszyny_pokazuje_co_zaktualizowac(client, tenant_a, make_user, kanal_debian):
+    from .factories import build_report
+    from .test_agent_api import enroll
+    from .test_tenant_isolation import _login
+
+    make_user(tenant_a["id"], "admin@cve.pl", "haslo-do-testow-123")
+    _login(client, "admin@cve.pl", "haslo-do-testow-123")
+    token = enroll(client, tenant_a["token"], machine_id="cve-0001", hostname="CVE-01").json()[
+        "agent_token"]
+    raport = build_report(machine_id="cve-0001", hostname="CVE-01")
+    raport["os"].update({"distro_id": "debian", "codename": "bookworm"})
+    raport.setdefault("software", {})["packages"] = [_pakiet("curl", "7.88.1-10+deb12u14")]
+    odpowiedz = client.post("/api/v1/inventory", headers={"Authorization": f"Bearer {token}"},
+                            json=raport)
+    strona = client.get(f"/assets/{odpowiedz.json()['asset_id']}").text
+    assert "Co zaktualizować" in strona
+    assert "curl mishandles something" in strona          # opis z Debiana
+    assert "https://nvd.nist.gov/vuln/detail/CVE-2025-10148" in strona

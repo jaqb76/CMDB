@@ -115,6 +115,19 @@ Odnośnik przy każdym CVE prowadzi do strony **dystrybucji**, nie do NVD —
 dystrybucja zrobiła z konkretnym pakietem, co jest praktyczniejsze niż sam
 opis luki.
 
+Przy każdym CVE jest rozwijany opis **„co to jest”** — krótki opis luki
+z NVD (po angielsku, pobierany razem z oceną), a dla Debiana opis z jego
+trackera — oraz odnośniki do strony dystrybucji i do NVD.
+
+## Co zaktualizować
+
+Liczba CVE bywa myląca: maszyna z jądrem sprzed roku ma tysiące pozycji, bo
+jądro Linuksa dostaje kilka tysięcy CVE rocznie, a zamyka je **jedna**
+aktualizacja jądra i restart. Dlatego nad listą jest zestawienie po pakiecie
+źródłowym: ile luk zamyka aktualizacja danego pakietu, ile z nich jest
+poważnych i od której wersji wszystkie są naprawione. Pakiety jądra są
+oznaczone osobno, z przypomnieniem, że nowe jądro działa dopiero po restarcie.
+
 Kafelek **„poważne (CVSS ≥ 7) z gotową poprawką"** to lista, od której zaczyna
 się pracę: rzeczy jednocześnie groźne i możliwe do naprawienia od ręki.
 

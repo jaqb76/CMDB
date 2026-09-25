@@ -948,6 +948,53 @@
         </div>
         {% endif %}
 
+        {% if podatnosci.packages_summary %}
+        <h3>Co zaktualizować</h3>
+        <p class="muted small">
+          Liczba CVE mówi niewiele: jedna nieaktualna paczka potrafi odpowiadać za
+          setki pozycji, a zamyka je jedna aktualizacja. Poniżej pakiety źródłowe
+          uporządkowane od tych, które zamykają najwięcej poważnych luk.
+        </p>
+        <table class="table">
+          <thead>
+            <tr><th>Pakiet</th><th>Luk do zamknięcia</th><th>W tym CVSS ≥ 7</th>
+                <th>Najwyższa ocena</th><th>Zainstalowana</th><th>Zamyka wszystkie</th></tr>
+          </thead>
+          <tbody>
+          {% for g in podatnosci.packages_summary[:15] %}
+            <tr>
+              <td class="small strong">
+                {{ g.package }}
+                {% if g.kernel %}
+                  <div class="muted">jądro systemu — po aktualizacji wymagany restart</div>
+                {% endif %}
+              </td>
+              <td class="small">{{ g.count }}</td>
+              <td class="small">{% if g.critical %}<span class="badge badge-danger">{{ g.critical }}</span>{% else %}0{% endif %}</td>
+              <td class="small">{% if g.max_score is not none %}{{ '%.1f' | format(g.max_score) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+              <td class="small muted"><code>{{ g.installed_version }}</code></td>
+              <td class="small"><code>{{ g.fixed_version or '' }}</code><div class="muted">lub nowsza</div></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% if podatnosci.packages_summary | length > 15 %}
+          <p class="muted small">…i {{ podatnosci.packages_summary | length - 15 }} kolejnych pakietów — pełna lista CVE poniżej.</p>
+        {% endif %}
+        {% set jadra = podatnosci.packages_summary | selectattr('kernel') | list %}
+        {% if jadra %}
+        <div class="alert alert-warn small">
+          <b>{{ jadra | sum(attribute='count') }} z {{ podatnosci.fixable_count }}</b> luk
+          dotyczy jądra. Nowe jądro działa dopiero po restarcie maszyny, więc sama
+          instalacja pakietów nie wystarczy.
+          {% if podatnosci.entries and podatnosci.entries[0].running_kernel %}
+            Działające jądro: <code>{{ podatnosci.entries[0].running_kernel }}</code>.
+          {% endif %}
+        </div>
+        {% endif %}
+        <h3>Wszystkie podatności</h3>
+        {% endif %}
+
         {% if podatnosci.entries %}
         <input type="search" class="table-filter" data-filter-for="cve-table"
                placeholder="Filtruj po CVE albo pakiecie...">
@@ -960,10 +1007,25 @@
           {% for p in podatnosci.entries %}
             <tr>
               <td class="small">
-                <a href="{{ p.link }}" target="_blank" rel="noopener noreferrer">
+                <a href="{{ p.link }}" target="_blank" rel="noopener noreferrer"
+                   title="Co dystrybucja zrobiła z tym pakietem">
                   <code>{{ p.cve }}</code></a>
                 {% if p.severity and p.severity != 'not yet assigned' %}
                   <div class="muted">{{ p.severity }}</div>
+                {% endif %}
+                {% if p.summary or p.description %}
+                  <details class="opis-cve">
+                    <summary class="muted">co to jest</summary>
+                    <div class="tekst-drobny">{{ p.summary or p.description }}</div>
+                    <div class="tekst-drobny">
+                      <a href="{{ p.link }}" target="_blank" rel="noopener noreferrer">strona dystrybucji ↗</a>
+                      · <a href="{{ p.nvd_link }}" target="_blank" rel="noopener noreferrer">NVD ↗</a>
+                    </div>
+                  </details>
+                {% else %}
+                  <div class="tekst-drobny">
+                    <a href="{{ p.nvd_link }}" target="_blank" rel="noopener noreferrer">opis w NVD ↗</a>
+                  </div>
                 {% endif %}
               </td>
               <td class="small">

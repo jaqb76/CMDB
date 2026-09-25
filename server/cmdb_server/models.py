@@ -750,6 +750,9 @@ class CveScore(Base):
     severity: Mapped[str | None] = mapped_column(String(16), index=True)
     vector: Mapped[str | None] = mapped_column(String(128))
     published: Mapped[str | None] = mapped_column(String(32))
+    # Krotki opis luki z NVD (po angielsku) - zeby z listy bylo widac, czego
+    # dotyczy, bez otwierania kazdego CVE. Pusty napis: NVD opisu nie ma.
+    summary: Mapped[str | None] = mapped_column(Text)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # Pusty wynik tez zapamietujemy - inaczej przy kazdym odswiezeniu pytalibysmy
     # o te same CVE, ktorych NVD nie zna (np. swieze, jeszcze nieopisane).
