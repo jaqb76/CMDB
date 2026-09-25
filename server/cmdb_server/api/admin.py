@@ -619,8 +619,11 @@ def ustaw_haslo_konta(
             detail=f"haslo musi miec co najmniej {MIN_DLUGOSC_HASLA} znakow",
         )
 
+    from ..services import biometria
+
     konto.session_version = PortalUser.session_version + 1
     konto.password_hash = hash_password(password)
+    biometria.odlacz_wszystkie(db, konto.id, "hasło ustawione przez administratora")
     audit(db, None, action="haslo.ustawione_przez_admina", target=konto.email,
           detail={"tenant": konto.tenant.slug if konto.tenant else None},
           ip=client_ip(request), actor=user.email)
@@ -698,6 +701,10 @@ def zapisz_ustawienia(
     pola_logowania: str = Form(""),
     logowanie_lokalne: bool = Form(False),
     wymagaj_mfa: bool = Form(False),
+    biometria: str = Form("dozwolona"),
+    biometria_dni: str = Form("30"),
+    biometria_pin: bool = Form(False),
+    blokada_aplikacji_minut: str = Form("5"),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
@@ -753,8 +760,15 @@ def zapisz_ustawienia(
     # Pola logowania zmieniamy tylko z formularza, ktory je pokazuje - zapis
     # ze starszego formularza nie moze po cichu wylaczyc kont lokalnych.
     if pola_logowania:
+        if biometria not in ("dozwolona", "wymagana", "wylaczona"):
+            raise HTTPException(status_code=400, detail="nieznane ustawienie biometrii")
         firma.logowanie_lokalne = logowanie_lokalne
         firma.wymagaj_mfa = wymagaj_mfa
+        firma.biometria = biometria
+        firma.biometria_dni = liczba(biometria_dni, "pełne logowanie co ile dni", 1, 365) or 30
+        firma.biometria_pin = biometria_pin
+        firma.blokada_aplikacji_minut = liczba(
+            blokada_aplikacji_minut, "blokada aplikacji po minutach", 0, 240) or 0
 
     audit(db, None, action="tenant.settings_changed", target=firma.slug,
           detail={"z": poprzednie, "interwal_h": godziny, "prog_h": prog, "retencja": retencja,
@@ -1424,6 +1438,13 @@ def _strona_kont(request: Request, user: PortalUser, db: Session, komunikat: str
     ).all():
         zewnetrzne.setdefault(user_id, []).append(dostawca)
 
+    from ..models import UrzadzenieMobilne
+
+    telefony = dict(db.execute(
+        select(UrzadzenieMobilne.user_id, func.count(UrzadzenieMobilne.id))
+        .where(UrzadzenieMobilne.odlaczono.is_(None)).group_by(UrzadzenieMobilne.user_id)
+    ).all())
+
     konta = []
     for konto in db.execute(
         select(PortalUser).order_by(PortalUser.email)
@@ -1444,6 +1465,7 @@ def _strona_kont(request: Request, user: PortalUser, db: Session, komunikat: str
             # go nazwac, niz pozwolic komus liczyc, ze technik dziala.
             "niespojne": bool(firmy_konta) and konto.is_global_viewer,
             "zewnetrzne": sorted(zewnetrzne.get(konto.id, [])),
+            "telefony": telefony.get(konto.id, 0),
         })
 
     return render_admin(
@@ -1566,6 +1588,26 @@ def link_hasla(user_id: str, request: Request, csrf_token: str = Form(""),
     db.commit()
     return _strona_kont(request, user, db, jednorazowy={
         "email": konto.email, "link": link, "wyslane": wyslane, "rodzaj": "reset"})
+
+
+@router.post("/users/{user_id}/urzadzenia/odlacz")
+def odlacz_urzadzenia_konta(user_id: str, request: Request, csrf_token: str = Form(""),
+                            user: PortalUser = Depends(require_superadmin),
+                            db: Session = Depends(get_db)) -> Response:
+    """Zgubiony albo skradziony telefon: biometria na nim przestaje dzialac od razu."""
+    from ..services import biometria
+
+    sprawdz_csrf(user, csrf_token)
+    konto = db.get(PortalUser, user_id)
+    if konto is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    ile = biometria.odlacz_wszystkie(db, konto.id, f"odłączone przez administratora {user.email}")
+    audit(db, None, action="mobile.urzadzenia_odlaczone", target=konto.email,
+          detail={"ile": ile}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    return RedirectResponse(
+        f"/admin/konta?komunikat={quote(f'{konto.email}: odłączono telefonów: {ile}.')}",
+        status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/users/{user_id}/mfa-reset")

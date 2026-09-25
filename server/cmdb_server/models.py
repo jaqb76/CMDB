@@ -11,6 +11,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -121,6 +122,14 @@ class Tenant(Base):
     # Konta lokalne tej firmy musza miec weryfikacje dwuetapowa (TOTP).
     # Kto jej nie ma, ustawia ja przy najblizszym logowaniu.
     wymagaj_mfa: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Biometria w aplikacji Android: "dozwolona", "wymagana" albo "wylaczona".
+    biometria: Mapped[str] = mapped_column(String(16), default="dozwolona", nullable=False)
+    # Co ile dni pelne logowanie (haslo/AD) mimo biometrii.
+    biometria_dni: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    # Czy PIN/wzor telefonu moze zastapic odcisk palca.
+    biometria_pin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Po ilu minutach w tle aplikacja prosi o ponowne potwierdzenie.
+    blokada_aplikacji_minut: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
     assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")
 
@@ -2320,3 +2329,34 @@ class TozsamoscZewnetrzna(Base):
     email: Mapped[str | None] = mapped_column(String(255))
     utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ostatnio_uzyta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# --- urzadzenia mobilne (biometria) -----------------------------------------
+
+class UrzadzenieMobilne(Base):
+    """Telefon, ktory po pelnym logowaniu moze logowac sie biometria.
+
+    Klucz prywatny lezy w sprzetowym sejfie telefonu (Android Keystore)
+    i wymaga biometrii przy kazdym uzyciu - serwer zna tylko klucz publiczny
+    i sprawdza nim podpis jednorazowego wyzwania. Odcisk palca nigdy nie
+    opuszcza telefonu. Odlaczenie urzadzenia dziala natychmiast.
+    """
+
+    __tablename__ = "urzadzenia_mobilne"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nazwa: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Klucz publiczny EC P-256, SubjectPublicKeyInfo w DER, base64.
+    klucz_publiczny: Mapped[str] = mapped_column(Text, nullable=False)
+    dodano: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ostatnio_uzyte: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ostatnie_pelne_logowanie: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False)
+    # Znacznik czasu (ms) ostatnio przyjetego wyzwania - kazde wyzwanie
+    # przechodzi raz, a starsze od juz uzytego wcale.
+    ostatnie_wyzwanie: Mapped[int | None] = mapped_column(BigInteger)
+    odlaczono: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    powod_odlaczenia: Mapped[str | None] = mapped_column(String(200))

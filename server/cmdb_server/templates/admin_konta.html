@@ -145,6 +145,13 @@
               <button type="submit" class="btn btn-small btn-ghost" title="Osoba sama ustawi nowe hasło">Link do hasła</button>
             </form>
             {% endif %}
+            {% if w.telefony %}
+            <form method="post" action="/admin/users/{{ k.id }}/urzadzenia/odlacz" class="inline-form"
+                  data-potwierdz="Odłączyć telefony ({{ w.telefony }}) konta {{ k.email }}? Logowanie odciskiem palca przestanie na nich działać.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-small btn-ghost">Odłącz telefony ({{ w.telefony }})</button>
+            </form>
+            {% endif %}
             {% if k.totp_wlaczone and k.id != user.id %}
             <form method="post" action="/admin/users/{{ k.id }}/mfa-reset" class="inline-form"
                   data-potwierdz="Zdjąć weryfikację dwuetapową z konta {{ k.email }}? Zrób to tylko, gdy ta osoba zgubiła telefon.">

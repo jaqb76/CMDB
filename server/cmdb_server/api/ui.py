@@ -484,7 +484,10 @@ def logout(request: Request) -> Response:
 def logout_all(request: Request, csrf_token: str = Form(""),
                user: PortalUser = Depends(require_user), db: Session = Depends(get_db)) -> Response:
     verify_csrf(request, user, csrf_token)
+    from ..services import biometria
+
     user.session_version = PortalUser.session_version + 1
+    biometria.odlacz_wszystkie(db, user.id, "wylogowanie ze wszystkich urządzeń")
     audit(db, None, action="session.revoke_all", actor=user.email, ip=client_ip(request))
     db.commit()
     response = RedirectResponse("/login", status_code=303)
@@ -2015,6 +2018,7 @@ def widok_konta(
     Kontekst firmy jest tu opcjonalny: konto globalne zadnej firmy nie ma,
     a haslo zmienic musi. Dlatego widok nie zalezy od resolve_tenant.
     """
+    from ..services.biometria import urzadzenia_konta as biometria_konta
     from .logowanie_ui import dane_mfa_konta, dane_zewnetrzne_konta
 
     ctx = None
@@ -2035,6 +2039,7 @@ def widok_konta(
         komunikat_mfa=(request.query_params.get("mfa", "")
                        or request.query_params.get("info", ""))[:300],
         zewn=dane_zewnetrzne_konta(db, user),
+        urzadzenia=biometria_konta(db, user.id),
     )
 
 
@@ -2075,8 +2080,11 @@ def zmien_wlasne_haslo(
     if nowe == obecne:
         return odmow("Nowe haslo musi rozni sie od dotychczasowego.")
 
+    from ..services import biometria
+
     user.session_version = PortalUser.session_version + 1
     user.password_hash = hash_password(nowe)
+    biometria.odlacz_wszystkie(db, user.id, "zmiana hasła")
     audit(db, None, action="haslo.zmienione", target=user.email,
           ip=client_ip(request), actor=user.email)
     db.commit()

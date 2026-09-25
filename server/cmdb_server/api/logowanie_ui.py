@@ -229,9 +229,12 @@ def ustaw_nowe_haslo(token: str, request: Request, nowe: str = Form(...),
     user = db.get(PortalUser, link.user_id) if link.user_id else None
     if user is None or not user.is_active or user.zrodlo != ZRODLO_LOKALNE:
         return _ustaw_haslo_formularz(request, None, token, kod=404)
+    from ..services import biometria
+
     user.password_hash = hash_password(nowe)
     # Nowe haslo wylogowuje wszedzie - takze tego, kto moze znac stare.
     user.session_version = PortalUser.session_version + 1
+    biometria.odlacz_wszystkie(db, user.id, "nowe hasło z linku")
     link.uzyto = utcnow()
     logowanie.wyczysc(db, user.email, client_ip(request))
     audit(db, None, action="haslo.ustawione_z_linku", target=user.email,
@@ -514,3 +517,25 @@ def dane_zewnetrzne_konta(db: Session, user: PortalUser) -> dict:
     ).scalars().all()
     return {"powiazane": [(p, zewnetrzne.DOSTAWCY.get(p.dostawca)) for p in powiazane],
             "dostepni": zewnetrzne.wlaczeni() if user.zrodlo == ZRODLO_LOKALNE else []}
+
+
+
+# --- wlasne konto: telefony z biometria --------------------------------------
+
+@router.post("/konto/urzadzenia/{urzadzenie_id}/odlacz")
+def odlacz_urzadzenie(urzadzenie_id: str, request: Request, csrf_token: str = Form(""),
+                      user: PortalUser = Depends(require_user), db: Session = Depends(get_db)):
+    from ..models import UrzadzenieMobilne
+    from ..services import biometria
+
+    verify_csrf(request, user, csrf_token)
+    urzadzenie = db.get(UrzadzenieMobilne, urzadzenie_id)
+    if urzadzenie is None or urzadzenie.user_id != user.id:
+        raise HTTPException(status_code=404, detail="nie ma takiego urządzenia")
+    biometria.odlacz(urzadzenie, "odłączone w panelu przez właściciela")
+    audit(db, None, action="mobile.urzadzenie_odlaczone", target=user.email,
+          detail={"urzadzenie": urzadzenie.nazwa, "przez": "panel"},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return RedirectResponse("/konto?info=" + quote(f"Odłączono {urzadzenie.nazwa}."),
+                            status_code=status.HTTP_303_SEE_OTHER)
