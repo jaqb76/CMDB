@@ -442,3 +442,35 @@ elementy zatwierdza się do ewidencji po sprawdzeniu.
 Dystrybucja Windows wymaga zaufanego skrótu gotowego buildu w konfiguracji
 serwera — sama stopka `unified` nie daje uprawnień do samoaktualizacji.
 [Przygotowanie zaufanych wydań](docs/zaufane-wydania-windows.md).
+
+## Licencja
+
+Projekt jest udostępniony na licencji
+[PolyForm Noncommercial 1.0.0](LICENSE.md). To **nie jest** licencja open
+source w rozumieniu OSI — kod jest publiczny do wglądu, ale prawo do używania
+jest ograniczone.
+
+**Bezpłatnie wolno** (wyłącznie w celach niekomercyjnych):
+
+* używać prywatnie — do nauki, testów, badań, projektów hobbystycznych,
+  bez przewidywanego zastosowania komercyjnego,
+* używać w organizacjach niekomercyjnych: fundacjach i organizacjach
+  charytatywnych, szkołach i uczelniach, publicznych instytucjach badawczych,
+  ochrony zdrowia i bezpieczeństwa, ochrony środowiska oraz w instytucjach
+  rządowych,
+* modyfikować i rozpowszechniać kod w tych samych celach, zawsze razem
+  z treścią licencji i linią `Required Notice`.
+
+**Bez osobnej, płatnej licencji nie wolno** używać projektu w żadnej firmie
+ani działalności zarobkowej — dotyczy to także użytku wyłącznie
+wewnętrznego (inwentaryzacja maszyn własnej firmy), świadczenia usług
+klientom (np. przez firmę IT lub MSP), udostępniania jako usługi (SaaS)
+oraz wbudowywania w produkty komercyjne. Jednoosobowa działalność
+gospodarcza również jest firmą.
+
+Licencję komercyjną można uzyskać od autora — kontakt przez
+[profil GitHub](https://github.com/jaqb76).
+
+Oprogramowanie jest dostarczane „tak jak jest”, bez żadnych gwarancji.
+Wiążący jest angielski tekst w [LICENSE.md](LICENSE.md); powyższy opis ma
+charakter informacyjny.
