@@ -65,9 +65,14 @@ w żadnym raporcie.
 * **Epoka.** Red Hat podaje `1:3.0.7-27.el9`. Agent przysyła ją w polu `evr`.
   Starsze agenty jej nie podają — wtedy epokę pomijamy, zamiast uznawać ją
   za 0 (co dałoby fałszywy alarm na każdym pakiecie z epoką).
-* **Moduły** (`nodejs:20`, `postgresql:15`). Poprawka ze strumienia modułu
-  dotyczy tylko pakietów z tego samego strumienia (ten sam główny numer
-  wersji) — inaczej każdy starszy strumień byłby „podatny”.
+* **Moduły** (`php:8.3`, `nodejs:20`). Poprawka ze strumienia modułu dotyczy
+  tylko tego strumienia — strumień bierzemy z kryterium OVAL „Module php:8.3
+  is enabled”. Agent nie raportuje włączonych strumieni, więc na maszynie
+  poznajemy go po wersji głównego pakietu modułu (`php` 8.2.30 → strumień
+  8.2). Bez tego poprawka dla php 8.3 była zgłaszana na maszynie z php 8.2.
+* **Ocena i priorytet Red Hata.** OVAL zawiera ocenę CVSS 3 każdej luki
+  i wagę Red Hata (Low/Moderate/Important/Critical). Waga jest pokazywana
+  w kolumnie oceny, a ocena Red Hata zastępuje brakującą ocenę NVD.
 * **Jądro.** dnf trzyma kilka jąder naraz; stare `kernel-core` leżące na
   dysku nie jest podatnością, jeśli działa nowsze (porównanie z `uname -r`).
 * **Tylko wydane poprawki.** Używamy pliku bez `including-unpatched`, więc

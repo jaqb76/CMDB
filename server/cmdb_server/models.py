@@ -728,6 +728,10 @@ class CveEntry(Base):
     # zmieszane z reszta utopilyby to, na co administrator moze zareagowac.
     no_fix_reason: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
+    # Ocena CVSS podana przez sama dystrybucje (Red Hat ma ja w OVAL). Uzywana,
+    # gdy NVD jeszcze nie ocenil luki.
+    cvss_score: Mapped[float | None] = mapped_column(Float)
+    cvss_vector: Mapped[str | None] = mapped_column(String(128))
 
 
 class CveUbuntu(Base):

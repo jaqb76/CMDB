@@ -230,14 +230,54 @@ def wpisy_rhel(surowe: bytes, wydanie: str) -> list[dict]:
     return list(najlepsze.values())
 
 
+# Kryterium strumienia modulu: "Module php:8.3 is enabled".
+_MODUL = re.compile(r"^Module (?P<modul>\S+:\S+) is enabled$")
+
+
+def _kryteria_rhel(kryteria: ET.Element, modul: str | None,
+                   wynik: list[tuple[str, str, str | None]]) -> None:
+    """Zbiera (pakiet, wersja, strumien modulu) z drzewa kryteriow.
+
+    Warunek "Module php:8.3 is enabled" stoi obok kryteriow pakietow w tej
+    samej grupie - dotyczy tej grupy i wszystkiego, co w niej zagniezdzone.
+    """
+    for dziecko in kryteria:
+        if _nazwa(dziecko) == "criterion":
+            trafienie = _MODUL.match((dziecko.get("comment") or "").strip())
+            if trafienie:
+                modul = trafienie.group("modul")
+    for dziecko in kryteria:
+        nazwa = _nazwa(dziecko)
+        if nazwa == "criterion":
+            trafienie = _WCZESNIEJSZY_NIZ.match((dziecko.get("comment") or "").strip())
+            if trafienie:
+                wynik.append((trafienie.group("pakiet"), trafienie.group("wersja"), modul))
+        elif nazwa == "criteria":
+            _kryteria_rhel(dziecko, modul, wynik)
+
+
+def _cvss_rhel(atrybut: str | None) -> tuple[float | None, str | None]:
+    """Atrybut cvss3 z OVAL: "7.5/CVSS:3.1/AV:N/AC:L/...". """
+    if not atrybut:
+        return None, None
+    ocena, _, wektor = atrybut.partition("/")
+    try:
+        return float(ocena), (wektor or None)
+    except ValueError:
+        return None, None
+
+
 def _definicja_rhel(definicja: ET.Element, wydanie: str,
                     najlepsze: dict[tuple[str, str], dict]) -> None:
     if definicja.get("class") != "patch":
         return
     tytul = ""
     waga_biuletynu = None
-    cves: dict[str, str | None] = {}
-    kryteria: list[tuple[str, str]] = []
+    cves: dict[str, dict] = {}
+    kryteria: list[tuple[str, str, str | None]] = []
+    for element in definicja:
+        if _nazwa(element) == "criteria":
+            _kryteria_rhel(element, None, kryteria)
     for element in definicja.iter():
         nazwa = _nazwa(element)
         if nazwa == "title" and not tytul:
@@ -247,30 +287,33 @@ def _definicja_rhel(definicja: ET.Element, wydanie: str,
         elif nazwa == "cve":
             numer = (element.text or "").strip()
             if numer.startswith("CVE-"):
-                cves[numer] = (element.get("impact") or "").strip() or None
+                ocena, wektor = _cvss_rhel(element.get("cvss3"))
+                cves[numer] = {"waga": (element.get("impact") or "").strip() or None,
+                               "ocena": ocena, "wektor": wektor}
         elif nazwa == "reference" and element.get("source") == "CVE":
             numer = (element.get("ref_id") or "").strip()
             if numer.startswith("CVE-"):
-                cves.setdefault(numer, None)
-        elif nazwa == "criterion":
-            dopasowanie = _WCZESNIEJSZY_NIZ.match((element.get("comment") or "").strip())
-            if dopasowanie:
-                kryteria.append((dopasowanie.group("pakiet"), dopasowanie.group("wersja")))
+                cves.setdefault(numer, {"waga": None, "ocena": None, "wektor": None})
     if not cves or not kryteria:
         return
 
-    for pakiet, wersja in kryteria:
-        for cve, waga in cves.items():
-            klucz = (pakiet, cve)
+    for pakiet, wersja, modul in kryteria:
+        # Poprawka z modulu dotyczy jednego strumienia - klucz niesie strumien,
+        # zeby php:8.2 i php:8.3 byly osobnymi wpisami, a nie nadpisywaly sie.
+        klucz_pakietu = f"{pakiet}@{modul}" if modul else pakiet
+        for cve, dane in cves.items():
+            klucz = (klucz_pakietu, cve)
             nowy = {
-                "package": pakiet,
+                "package": klucz_pakietu,
                 "cve": cve,
                 "release": wydanie,
                 "fixed_version": wersja,
                 "status": "resolved",
-                "severity": (waga or waga_biuletynu or "").capitalize() or None,
+                "severity": (dane["waga"] or waga_biuletynu or "").capitalize() or None,
                 "no_fix_reason": None,
                 "description": tytul[:1000] or None,
+                "cvss_score": dane["ocena"],
+                "cvss_vector": dane["wektor"],
             }
             obecny = najlepsze.get(klucz)
             if obecny is None or _lepsza_poprawka_rhel(nowy["fixed_version"], obecny["fixed_version"]):
@@ -319,6 +362,8 @@ def zapisz_kanal(db: Session, source: str, release: str, wpisy: list[dict]) -> i
                 severity=w["severity"],
                 no_fix_reason=w.get("no_fix_reason"),
                 description=w["description"],
+                cvss_score=w.get("cvss_score"),
+                cvss_vector=w.get("cvss_vector"),
             )
             for w in unikalne.values()
         ]
@@ -510,6 +555,23 @@ def _klucz_pakietu(pakiet: dict, rpm: bool) -> str:
     return (pakiet.get("source_package") or nazwa).strip()
 
 
+def _strumien_pasuje(modul: str, wersja: str, zainstalowane: dict[str, str]) -> bool:
+    """Czy na maszynie jest wlaczony strumien "php:8.3" modulu.
+
+    Agent nie raportuje wlaczonych strumieni, wiec poznajemy go po wersji
+    glownego pakietu modulu: php 8.3.19 to strumien 8.3, nodejs 20.11 - 20.
+    Pakiety poboczne (php-pecl-apcu 5.1.23) maja wlasne numery, dlatego
+    patrzymy na pakiet nazwany jak modul, a tylko gdy go nie ma - na wlasna
+    wersje pakietu. Niepewnosc konczy sie brakiem dopasowania: poprawka dla
+    php 8.3 zgloszona na maszynie z php 8.2 byla falszywym alarmem.
+    """
+    nazwa, _, strumien = modul.partition(":")
+    if not strumien:
+        return True
+    _, gorna, _ = wersje_pakietow.rozbierz_rpm(zainstalowane.get(nazwa) or wersja)
+    return gorna == strumien or gorna.startswith(strumien + ".")
+
+
 def _modul_pasuje(zainstalowana: str, naprawiona: str | None) -> bool:
     """Czy poprawka z modulu RHEL dotyczy zainstalowanego pakietu.
 
@@ -554,17 +616,29 @@ def dopasuj(db: Session, payload: dict) -> dict:
 
     # Jedno zapytanie na maszyne zamiast jednego na pakiet.
     klucze = {_klucz_pakietu(p, rpm) for p in pakiety} - {""}
+    warunek = CveEntry.package.in_(klucze)
+    if rpm:
+        # Wpisy z modulow maja klucz "php@php:8.3" - szukamy po nazwie przed "@".
+        from sqlalchemy import func, or_
+        warunek = or_(warunek, func.split_part(CveEntry.package, "@", 1).in_(klucze))
     wpisy = db.execute(
         select(CveEntry).where(
             CveEntry.source == source,
             CveEntry.release == release,
-            CveEntry.package.in_(klucze),
+            warunek,
         )
     ).scalars().all()
 
     wedlug_pakietu: dict[str, list[CveEntry]] = {}
     for wpis in wpisy:
-        wedlug_pakietu.setdefault(wpis.package, []).append(wpis)
+        wedlug_pakietu.setdefault(wpis.package.split("@", 1)[0], []).append(wpis)
+
+    # Wersje zainstalowanych pakietow - do rozpoznania strumienia modulu
+    # po jego glownym pakiecie (php, nodejs, postgresql...).
+    zainstalowane = {
+        (p.get("name") or "").strip(): (p.get("evr") or p.get("version") or "").strip()
+        for p in pakiety
+    } if rpm else {}
 
     # Jadro wymaga osobnego traktowania. Ubuntu zostawia stare pakiety jadra
     # zainstalowane po aktualizacji, wiec pakiety wycofanego ABI leza na dysku
@@ -599,7 +673,11 @@ def dopasuj(db: Session, payload: dict) -> dict:
                 if rpm:
                     if not wersje_pakietow.starsza_niz_rpm(wersja_porownywana, wpis.fixed_version):
                         continue
-                    if not _modul_pasuje(wersja_porownywana, wpis.fixed_version):
+                    if "@" in wpis.package:
+                        if not _strumien_pasuje(wpis.package.split("@", 1)[1],
+                                                wersja_porownywana, zainstalowane):
+                            continue
+                    elif not _modul_pasuje(wersja_porownywana, wpis.fixed_version):
                         continue
                 elif not wersje_pakietow.starsza_niz(wersja_porownywana, wpis.fixed_version):
                     continue
@@ -638,6 +716,8 @@ def dopasuj(db: Session, payload: dict) -> dict:
                     "description": wpis.description if source != "ubuntu" else None,
                     "inactive_kernel": nieaktywne_jadro,
                     "running_kernel": dzialajace_jadro or None,
+                    "distro_score": wpis.cvss_score,
+                    "distro_vector": wpis.cvss_vector,
                 }
             else:
                 if nazwa not in grupa["packages"]:
@@ -685,7 +765,18 @@ def dopasuj(db: Session, payload: dict) -> dict:
         if z["base_score"] is None and u and u.base_score is not None:
             z["base_score"], z["cvss_severity"], z["vector"] = u.base_score, u.severity, u.vector
             z["score_source"] = "Ubuntu"
+        if z["base_score"] is None and z.get("distro_score") is not None:
+            z["base_score"], z["vector"] = z["distro_score"], z.get("distro_vector")
+            z["cvss_severity"] = _waga_cvss(z["base_score"])
+            z["score_source"] = "Red Hat"
         z["ubuntu_priority"] = (u.priority or None) if u else None
+        # Priorytet nadany przez dystrybucje - pokazywany obok oceny CVSS.
+        if rpm and z.get("severity"):
+            z["priority_label"], z["priority"] = "Red Hat", z["severity"]
+        elif z["ubuntu_priority"]:
+            z["priority_label"], z["priority"] = "Ubuntu", z["ubuntu_priority"].capitalize()
+        else:
+            z["priority_label"] = z["priority"] = None
         z["summary"] = (ocena.summary if ocena else None) or (u.summary if u else None) or None
         z["link"] = odnosnik(f"{source}/{release}", z["cve"])
         z["nvd_link"] = ODNOSNIK_NVD.format(cve=z["cve"])
@@ -717,6 +808,19 @@ def dopasuj(db: Session, payload: dict) -> dict:
         feed_age_hours=wiek,
         feed_entries=stan.entries,
     )
+
+
+def _waga_cvss(ocena: float | None) -> str | None:
+    """Nazwa progu CVSS 3 dla oceny liczbowej."""
+    if ocena is None:
+        return None
+    if ocena >= 9.0:
+        return "CRITICAL"
+    if ocena >= 7.0:
+        return "HIGH"
+    if ocena >= 4.0:
+        return "MEDIUM"
+    return "LOW" if ocena > 0 else "NONE"
 
 
 def _podsumowanie_pakietow(znalezione: list[dict], rpm: bool) -> list[dict]:

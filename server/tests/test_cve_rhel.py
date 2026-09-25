@@ -32,7 +32,7 @@ OVAL = """<?xml version="1.0" encoding="UTF-8"?>
     <advisory from="secalert@redhat.com">
      <severity>Moderate</severity>
      <cve cvss3="5.3/CVSS:3.1/AV:N" impact="low" public="20231106">CVE-2023-5678</cve>
-     <cve public="20240125">CVE-2024-0727</cve>
+     <cve cvss3="5.5/CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H" public="20240125">CVE-2024-0727</cve>
     </advisory>
    </metadata>
    <criteria operator="OR">
@@ -64,6 +64,26 @@ OVAL = """<?xml version="1.0" encoding="UTF-8"?>
    <criteria operator="OR">
     <criterion comment="kernel-core is earlier than 0:5.14.0-427.16.1.el9_4" test_ref="t7"/>
     <criterion comment="kernel-tools is earlier than 0:5.14.0-427.16.1.el9_4" test_ref="t8"/>
+   </criteria>
+  </definition>
+  <definition class="patch" id="oval:com.redhat.rhsa:def:20240003" version="1">
+   <metadata>
+    <title>RHSA-2024:0003: php:8.3 security update (Important)</title>
+    <advisory><severity>Important</severity>
+     <cve cvss3="8.8/CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H">CVE-2024-11235</cve></advisory>
+   </metadata>
+   <criteria operator="OR">
+    <criteria operator="AND">
+     <criterion comment="Module php:8.3 is enabled" test_ref="t10"/>
+     <criteria operator="OR">
+      <criterion comment="php is earlier than 0:8.3.19-1.module+el9.6.0+23015+da8065b7" test_ref="t11"/>
+      <criterion comment="php-pecl-apcu is earlier than 0:5.1.23-1.module+el9.6.0+22647+1741ae35" test_ref="t12"/>
+     </criteria>
+    </criteria>
+    <criteria operator="AND">
+     <criterion comment="Module php:8.2 is enabled" test_ref="t13"/>
+     <criterion comment="php is earlier than 0:8.2.28-1.module+el9.6.0+23016+aaaaaaaa" test_ref="t14"/>
+    </criteria>
    </criteria>
   </definition>
   <definition class="inventory" id="oval:com.redhat.rhba:def:1" version="1">
@@ -387,4 +407,42 @@ def test_zapis_rhel_trafia_do_bazy(kanal_rhel):
     with SessionLocal() as db:
         liczba = len(db.execute(
             select(CveEntry).where(CveEntry.source == "rhel")).scalars().all())
-    assert liczba == 7
+    assert liczba == 10
+
+
+def test_ocena_red_hat_gdy_nvd_nie_ocenil(kanal_rhel):
+    """Red Hat podaje CVSS w OVAL - nie trzeba czekac na NVD."""
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport([
+            _pakiet("openssl-libs", "3.0.7-24.el9", evr="1:3.0.7-24.el9", source_package="openssl")]))
+    pozycja = next(e for e in wynik["entries"] if e["cve"] == "CVE-2024-0727")
+    assert pozycja["base_score"] == 5.5
+    assert pozycja["score_source"] == "Red Hat"
+    assert pozycja["priority_label"] == "Red Hat"
+    assert pozycja["priority"] == "Moderate"
+
+
+def test_poprawka_dla_php_83_nie_dotyczy_php_82(kanal_rhel):
+    """Zgloszony przypadek: php 8.2 z modulu porownywany z poprawka dla 8.3."""
+    pakiety = [
+        _pakiet("php", "8.2.30-1.module+el9.7.0+23849+7b831f17",
+                evr="0:8.2.30-1.module+el9.7.0+23849+7b831f17"),
+        _pakiet("php-pecl-apcu", "5.1.23-1.module+el9.4.0+20748+b46899d2",
+                evr="0:5.1.23-1.module+el9.4.0+20748+b46899d2"),
+    ]
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport(pakiety))
+    assert wynik["fixable_count"] == 0
+
+
+def test_poprawka_modulu_dotyczy_tego_samego_strumienia(kanal_rhel):
+    pakiety = [
+        _pakiet("php", "8.3.10-1.module+el9.5.0+1+a", evr="0:8.3.10-1.module+el9.5.0+1+a"),
+        _pakiet("php-pecl-apcu", "5.1.22-1.module+el9.5.0+1+a",
+                evr="0:5.1.22-1.module+el9.5.0+1+a"),
+    ]
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport(pakiety))
+    pozycje = [e for e in wynik["entries"] if e["cve"] == "CVE-2024-11235"]
+    assert {n for e in pozycje for n in e["packages"]} == {"php", "php-pecl-apcu"}
+    assert pozycje[0]["base_score"] == 8.8

@@ -1010,7 +1010,7 @@
                 <a href="{{ p.link }}" target="_blank" rel="noopener noreferrer"
                    title="Co dystrybucja zrobiła z tym pakietem">
                   <code>{{ p.cve }}</code></a>
-                {% if p.severity and p.severity != 'not yet assigned' %}
+                {% if p.severity and p.severity != 'not yet assigned' and not p.priority_label %}
                   <div class="muted">{{ p.severity }}</div>
                 {% endif %}
                 {% if p.summary or p.description %}
@@ -1035,15 +1035,16 @@
                     {{ '%.1f' | format(p.base_score) }} {{ p.cvss_severity }}
                   </span>
                   {% if p.vector %}<div class="muted tekst-drobny">{{ p.vector }}</div>{% endif %}
-                  {% if p.score_source == 'Ubuntu' %}<div class="muted tekst-drobny">ocena wg Ubuntu (NVD jeszcze nie ocenił)</div>{% endif %}
+                  {% if p.score_source and p.score_source != 'NVD' %}<div class="muted tekst-drobny">ocena wg {{ p.score_source }} (NVD jeszcze nie ocenił)</div>{% endif %}
                 {% else %}
                   <span class="muted">—</span>
                 {% endif %}
-                {% if p.ubuntu_priority %}
+                {% if p.priority_label %}
+                  {% set pr = p.priority | lower %}
                   <div class="tekst-drobny">
-                    Priorytet Ubuntu:
-                    <span class="badge {{ 'badge-danger' if p.ubuntu_priority in ('critical', 'high')
-                                          else ('badge-warn' if p.ubuntu_priority == 'medium' else '') }}">{{ p.ubuntu_priority | capitalize }}</span>
+                    Priorytet {{ p.priority_label }}:
+                    <span class="badge {{ 'badge-danger' if pr in ('critical', 'high', 'important')
+                                          else ('badge-warn' if pr in ('medium', 'moderate') else '') }}">{{ p.priority }}</span>
                   </div>
                 {% endif %}
               </td>
