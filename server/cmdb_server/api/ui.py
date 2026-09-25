@@ -2284,3 +2284,27 @@ def export_assets(
 
 
 __all__ = ["router", "LoginRequired"]
+
+
+@router.get("/podatnosci/cve/{numer}", response_class=HTMLResponse)
+def szczegoly_podatnosci(
+    numer: str,
+    request: Request,
+    zrodlo: str = Query("", max_length=64),
+    user: PortalUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Okno szczegolow CVE: opis, ocena, waga dystrybucji, slabosc (CWE).
+
+    Dane sa globalne (katalogi CVE, nie maszyny firm), wiec wystarczy
+    zalogowanie. Z naglowkiem X-Fragment zwracamy sama tresc okna - wstawia
+    ja skrypt karty maszyny; bez niego pelna strone (dziala bez JavaScriptu).
+    """
+    from ..services import cve as uslugi_cve
+
+    dane = uslugi_cve.szczegoly_cve(db, numer, zrodlo or None)
+    if dane is None:
+        raise HTTPException(status_code=404, detail="nieznany numer CVE")
+    if request.headers.get("X-Fragment"):
+        return templates.TemplateResponse(request, "_cve_szczegoly.html", {"p": dane})
+    return render(request, "cve_szczegoly.html", user, None, db, p=dane)

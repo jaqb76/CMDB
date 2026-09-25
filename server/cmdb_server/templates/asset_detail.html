@@ -1007,8 +1007,8 @@
           {% for p in podatnosci.entries %}
             <tr>
               <td class="small">
-                <a href="{{ p.link }}" target="_blank" rel="noopener noreferrer"
-                   title="Co dystrybucja zrobiła z tym pakietem">
+                <a href="/podatnosci/cve/{{ p.cve }}?zrodlo={{ podatnosci.source | urlencode }}"
+                   data-cve-szczegoly title="Szczegóły: opis, ocena, słabość (CWE)">
                   <code>{{ p.cve }}</code></a>
                 {% if p.severity and p.severity != 'not yet assigned' and not p.priority_label %}
                   <div class="muted">{{ p.severity }}</div>

@@ -70,7 +70,7 @@ OVAL = """<?xml version="1.0" encoding="UTF-8"?>
    <metadata>
     <title>RHSA-2024:0003: php:8.3 security update (Important)</title>
     <advisory><severity>Important</severity>
-     <cve cvss3="8.8/CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H">CVE-2024-11235</cve></advisory>
+     <cve cvss3="8.8/CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H" cwe="(CWE-787|CWE-20)">CVE-2024-11235</cve></advisory>
    </metadata>
    <criteria operator="OR">
     <criteria operator="AND">
@@ -373,6 +373,7 @@ def test_do_odswiezenia_trafiaja_tylko_stare_i_brakujace():
 
 
 def test_harmonogram_sam_pobiera_nieaktualne_kanaly(monkeypatch):
+    monkeypatch.setattr(cve, "odswiez_cwe", lambda db: None)
     wywolania = []
     monkeypatch.setattr(cve, "odswiez", lambda db, wydania: wywolania.append(wydania) or {})
     monkeypatch.setattr(cve, "cve_we_flocie", lambda db, source=None: [])
@@ -392,6 +393,7 @@ def test_harmonogram_sam_pobiera_nieaktualne_kanaly(monkeypatch):
 
 
 def test_harmonogram_dobiera_oceny(monkeypatch):
+    monkeypatch.setattr(cve, "odswiez_cwe", lambda db: None)
     oceny = []
     monkeypatch.setattr(cve, "kanaly_do_odswiezenia", lambda db, h: {})
     monkeypatch.setattr(cve, "cve_we_flocie",
@@ -451,6 +453,7 @@ def test_poprawka_modulu_dotyczy_tego_samego_strumienia(kanal_rhel):
 def test_przebieg_zapisuje_stan_dla_panelu(monkeypatch):
     from cmdb_server.models import CveSyncStatus
 
+    monkeypatch.setattr(cve, "odswiez_cwe", lambda db: None)
     monkeypatch.setattr(cve, "kanaly_do_odswiezenia", lambda db, h: {})
     monkeypatch.setattr(cve, "cve_we_flocie", lambda db, source=None: [] if source else ["CVE-1"])
 
@@ -496,3 +499,77 @@ def test_strona_pokazuje_postep_i_odswieza_sie(client, make_user):
     strona = client.get("/admin/podatnosci").text
     assert '<progress value="40" max="200">' in strona
     assert 'http-equiv="refresh"' in strona
+
+
+KATALOG_CWE = """<?xml version="1.0" encoding="UTF-8"?>
+<Weakness_Catalog xmlns="http://cwe.mitre.org/cwe-7" Name="CWE" Version="4.18">
+ <Weaknesses>
+  <Weakness ID="787" Name="Out-of-bounds Write" Abstraction="Base">
+   <Description>The product writes data past the end, or before the beginning, of the intended buffer.</Description>
+   <Common_Consequences>
+    <Consequence><Scope>Integrity</Scope><Impact>Modify Memory</Impact>
+     <Impact>Execute Unauthorized Code or Commands</Impact>
+     <Note>Write operations could cause memory corruption.</Note></Consequence>
+    <Consequence><Scope>Availability</Scope><Impact>DoS: Crash, Exit, or Restart</Impact></Consequence>
+   </Common_Consequences>
+  </Weakness>
+ </Weaknesses>
+</Weakness_Catalog>
+"""
+
+
+def _katalog_zip() -> bytes:
+    import io
+    import zipfile
+
+    bufor = io.BytesIO()
+    with zipfile.ZipFile(bufor, "w") as archiwum:
+        archiwum.writestr("cwec_v4.18.xml", KATALOG_CWE)
+    return bufor.getvalue()
+
+
+def test_katalog_cwe_czyta_skutki():
+    wpisy = cve.wpisy_cwe(_katalog_zip())
+    assert wpisy == [{
+        "id": "787", "name": "Out-of-bounds Write",
+        "description": "The product writes data past the end, or before the beginning, of the intended buffer.",
+        "consequences": [
+            {"scopes": ["Integrity"], "impacts": ["Modify Memory", "Execute Unauthorized Code or Commands"],
+             "note": "Write operations could cause memory corruption."},
+            {"scopes": ["Availability"], "impacts": ["DoS: Crash, Exit, or Restart"], "note": None},
+        ],
+    }]
+
+
+def test_katalog_cwe_pobierany_raz_na_miesiac(monkeypatch):
+    pobrania = []
+    monkeypatch.setattr(cve, "_pobierz", lambda adres: pobrania.append(adres) or _katalog_zip())
+    with SessionLocal() as db:
+        assert cve.odswiez_cwe(db) == "1 slabosci"
+        assert cve.odswiez_cwe(db) is None
+    assert pobrania == [cve.ADRES_CWE]
+
+
+def test_okno_szczegolow_cve(client, make_user, kanal_rhel, monkeypatch):
+    from cmdb_server.models import CveScore
+    from .test_admin import _superadmin
+
+    monkeypatch.setattr(cve, "_pobierz", lambda adres: _katalog_zip())
+    with SessionLocal() as db:
+        cve.odswiez_cwe(db)
+        db.add(CveScore(cve="CVE-2024-11235", found=False, summary="PHP out-of-bounds write in X."))
+        db.commit()
+    _superadmin(client, make_user)
+
+    fragment = client.get("/podatnosci/cve/CVE-2024-11235?zrodlo=rhel/9",
+                          headers={"X-Fragment": "1"}).text
+    assert "<html" not in fragment
+    assert "PHP out-of-bounds write in X." in fragment
+    assert "8.8" in fragment and "Red Hat" in fragment and "Important" in fragment
+    assert "Out-of-bounds Write" in fragment and "Execute Unauthorized Code" in fragment
+    assert "https://access.redhat.com/security/cve/CVE-2024-11235" in fragment
+    assert "https://cwe.mitre.org/data/definitions/20.html" in fragment
+
+    strona = client.get("/podatnosci/cve/CVE-2024-11235?zrodlo=rhel/9")
+    assert strona.status_code == 200 and "<html" in strona.text
+    assert client.get("/podatnosci/cve/nie-cve").status_code == 404

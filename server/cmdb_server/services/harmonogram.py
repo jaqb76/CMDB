@@ -137,6 +137,10 @@ def przebieg_podatnosci(co_ile_godzin: float, klucz_nvd: str = "",
                     if do_odswiezenia:
                         _stan_pobierania(phase="kanały dystrybucji")
                         wynik["kanaly"] = cve.odswiez(db, do_odswiezenia)
+                if kanaly:
+                    # Katalog slabosci MITRE - raz w miesiacu, do opisow CWE.
+                    _stan_pobierania(phase="katalog słabości CWE")
+                    wynik["cwe"] = cve.odswiez_cwe(db)
                 if oceny:
                     # Oceny dobieramy przy kazdym obiegu, porcjami. Jeden
                     # przebieg bez klucza NVD to do 200 ocen, wiec nowa flota
@@ -169,6 +173,8 @@ def _opis_wyniku(wynik: dict) -> str:
     czesci = []
     for nazwa, stan in (wynik.get("kanaly") or {}).items():
         czesci.append(f"kanał {nazwa}: {stan}")
+    if wynik.get("cwe"):
+        czesci.append(f"katalog CWE: {wynik['cwe']}")
     for klucz, etykieta in (("oceny", "NVD"), ("ubuntu", "Ubuntu")):
         o = wynik.get(klucz)
         if o:

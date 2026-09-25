@@ -289,11 +289,13 @@ def _definicja_rhel(definicja: ET.Element, wydanie: str,
             if numer.startswith("CVE-"):
                 ocena, wektor = _cvss_rhel(element.get("cvss3"))
                 cves[numer] = {"waga": (element.get("impact") or "").strip() or None,
-                               "ocena": ocena, "wektor": wektor}
+                               "ocena": ocena, "wektor": wektor,
+                               "cwe": ",".join(f"CWE-{n}" for n in dict.fromkeys(
+                                   _NUMER_CWE.findall(element.get("cwe") or ""))) or None}
         elif nazwa == "reference" and element.get("source") == "CVE":
             numer = (element.get("ref_id") or "").strip()
             if numer.startswith("CVE-"):
-                cves.setdefault(numer, {"waga": None, "ocena": None, "wektor": None})
+                cves.setdefault(numer, {"waga": None, "ocena": None, "wektor": None, "cwe": None})
     if not cves or not kryteria:
         return
 
@@ -314,6 +316,7 @@ def _definicja_rhel(definicja: ET.Element, wydanie: str,
                 "description": tytul[:1000] or None,
                 "cvss_score": dane["ocena"],
                 "cvss_vector": dane["wektor"],
+                "cwe": dane["cwe"],
             }
             obecny = najlepsze.get(klucz)
             if obecny is None or _lepsza_poprawka_rhel(nowy["fixed_version"], obecny["fixed_version"]):
@@ -364,6 +367,7 @@ def zapisz_kanal(db: Session, source: str, release: str, wpisy: list[dict]) -> i
                 description=w["description"],
                 cvss_score=w.get("cvss_score"),
                 cvss_vector=w.get("cvss_vector"),
+                cwe=w.get("cwe"),
             )
             for w in unikalne.values()
         ]
@@ -969,8 +973,22 @@ def _opis_z_odpowiedzi(wpis: dict) -> str:
     """Angielski opis luki z NVD, przyciety do rozsadnej dlugosci."""
     for opis in wpis.get("descriptions") or []:
         if opis.get("lang") == "en" and opis.get("value"):
-            return " ".join(str(opis["value"]).split())[:1500]
+            return " ".join(str(opis["value"]).split())[:4000]
     return ""
+
+
+_NUMER_CWE = re.compile(r"CWE-(\d+)")
+
+
+def _cwe_z_odpowiedzi(wpis: dict) -> str:
+    """Numery slabosci z NVD: "CWE-787,CWE-20". Pomija NVD-CWE-Other/noinfo."""
+    numery: list[str] = []
+    for slabosc in wpis.get("weaknesses") or []:
+        for opis in slabosc.get("description") or []:
+            for numer in _NUMER_CWE.findall(str(opis.get("value") or "")):
+                if f"CWE-{numer}" not in numery:
+                    numery.append(f"CWE-{numer}")
+    return ",".join(numery)[:255]
 
 
 def _ocena_z_odpowiedzi(dane: dict) -> dict | None:
@@ -991,6 +1009,7 @@ def _ocena_z_odpowiedzi(dane: dict) -> dict | None:
         "base_score": None, "severity": None, "vector": None,
         "published": (wpis.get("published") or "")[:10] or None,
         "summary": _opis_z_odpowiedzi(wpis),
+        "cwe": _cwe_z_odpowiedzi(wpis),
     }
     metryki = wpis.get("metrics") or {}
     for klucz in ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
@@ -1019,7 +1038,7 @@ def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
     for ocena in db.execute(select(CveScore).where(CveScore.cve.in_(cves))).scalars():
         # Oceny pobrane przed dodaniem opisow dobieramy ponownie - najpierw
         # jednak te, ktorych w ogole nie ma.
-        if ocena.found and ocena.summary is None:
+        if ocena.found and (ocena.summary is None or ocena.cwe is None):
             bez_opisu.append(ocena.cve)
         else:
             znane.add(ocena.cve)
@@ -1057,7 +1076,8 @@ def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
             # Zapamietujemy takze brak wyniku - inaczej przy kazdym odswiezeniu
             # pytalibysmy o te same, nieopisane jeszcze podatnosci.
             db.merge(CveScore(cve=cve, found=False,
-                              summary=(ocena or {}).get("summary") or None))
+                              summary=(ocena or {}).get("summary") or None,
+                              cwe=(ocena or {}).get("cwe") or ""))
             puste += 1
         else:
             db.merge(CveScore(cve=cve, found=True, **ocena))
@@ -1181,3 +1201,156 @@ def pobierz_oceny_ubuntu(db: Session, cves: list[str], limit: int = 300,
     db.commit()
     return {"pobrane": pobrane, "bledy": bledy,
             "pozostalo": max(0, len(brakujace) + len(do_odswiezenia) - len(kolejka))}
+
+
+# --- katalog slabosci MITRE CWE -------------------------------------------------
+
+ADRES_CWE = "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
+# Katalog zmienia sie kilka razy w roku - miesiac to az nadto czesto.
+CWE_CO_ILE_DNI = 30
+
+
+def wpisy_cwe(surowe: bytes) -> list[dict]:
+    """Slabosci z katalogu MITRE: nazwa, opis i skutki (Common_Consequences).
+
+    Czytamy strumieniowo - rozpakowany katalog ma kilkanascie megabajtow,
+    a z kazdej slabosci potrzebujemy kilku pol.
+    """
+    import zipfile
+
+    try:
+        archiwum = zipfile.ZipFile(io.BytesIO(surowe))
+        nazwa_pliku = next(n for n in archiwum.namelist() if n.endswith(".xml"))
+        wynik: list[dict] = []
+        with archiwum.open(nazwa_pliku) as plik:
+            for _, element in ET.iterparse(plik, events=("end",)):
+                if _nazwa(element) != "Weakness":
+                    continue
+                opis = ""
+                skutki = []
+                for dziecko in element:
+                    nazwa = _nazwa(dziecko)
+                    if nazwa == "Description":
+                        opis = " ".join("".join(dziecko.itertext()).split())
+                    elif nazwa == "Common_Consequences":
+                        for skutek in dziecko:
+                            if _nazwa(skutek) != "Consequence":
+                                continue
+                            pola: dict[str, list[str]] = {"Scope": [], "Impact": [], "Note": []}
+                            for pole in skutek:
+                                if _nazwa(pole) in pola:
+                                    tekst = " ".join("".join(pole.itertext()).split())
+                                    if tekst:
+                                        pola[_nazwa(pole)].append(tekst)
+                            skutki.append({"scopes": pola["Scope"], "impacts": pola["Impact"],
+                                           "note": " ".join(pola["Note"])[:1500] or None})
+                if element.get("ID"):
+                    wynik.append({"id": element.get("ID"), "name": (element.get("Name") or "")[:255],
+                                  "description": opis[:4000] or None, "consequences": skutki})
+                element.clear()
+        return wynik
+    except (zipfile.BadZipFile, StopIteration, ET.ParseError, OSError, KeyError) as exc:
+        raise BladKanalu(f"nie moge odczytac katalogu CWE: {exc}") from exc
+
+
+def odswiez_cwe(db: Session) -> str | None:
+    """Pobiera katalog CWE, gdy go nie ma albo ma ponad miesiac. Zwraca opis."""
+    from ..models import CweEntry
+
+    stan = db.execute(
+        select(CveFeed).where(CveFeed.source == "cwe", CveFeed.release == "mitre")
+    ).scalar_one_or_none()
+    pobrano = as_utc(stan.fetched_at) if stan else None
+    if pobrano and utcnow() - pobrano < timedelta(days=CWE_CO_ILE_DNI):
+        return None
+    try:
+        wpisy = wpisy_cwe(_pobierz(ADRES_CWE))
+    except BladKanalu as exc:
+        log.warning("katalog CWE: %s", exc)
+        _zapisz_stan(db, "cwe", "mitre", "blad", str(exc)[:500])
+        db.commit()
+        return f"blad: {exc}"
+    db.execute(delete(CweEntry))
+    db.bulk_save_objects([CweEntry(**w) for w in wpisy])
+    _zapisz_stan(db, "cwe", "mitre", STATUS_OK, None, len(wpisy))
+    db.commit()
+    return f"{len(wpisy)} slabosci"
+
+
+# --- szczegoly jednej podatnosci ------------------------------------------------
+
+_NUMER_CVE = re.compile(r"^CVE-\d{4}-\d{4,}$")
+
+
+def szczegoly_cve(db: Session, numer: str, zrodlo: str | None = None) -> dict | None:
+    """Wszystko, co wiemy o jednym CVE - do okna szczegolow.
+
+    zrodlo ("ubuntu/noble", "rhel/9") dobiera dane dystrybucji maszyny, z ktorej
+    otwarto okno: jej wage, ocene i odnosnik.
+    """
+    from ..models import CveScore, CveUbuntu, CweEntry
+
+    numer = (numer or "").strip().upper()
+    if not _NUMER_CVE.match(numer):
+        return None
+    dystrybucja, _, wydanie = (zrodlo or "").partition("/")
+    nvd = db.get(CveScore, numer)
+    ubuntu = db.get(CveUbuntu, numer)
+    wpis = None
+    if dystrybucja and wydanie:
+        wpis = db.execute(
+            select(CveEntry).where(CveEntry.source == dystrybucja, CveEntry.release == wydanie,
+                                   CveEntry.cve == numer).limit(1)
+        ).scalar_one_or_none()
+
+    ocena, waga, wektor, zrodlo_oceny = None, None, None, None
+    if nvd and nvd.base_score is not None:
+        ocena, waga, wektor, zrodlo_oceny = nvd.base_score, nvd.severity, nvd.vector, "NVD"
+    elif ubuntu and ubuntu.base_score is not None:
+        ocena, waga, wektor, zrodlo_oceny = ubuntu.base_score, ubuntu.severity, ubuntu.vector, "Ubuntu"
+    elif wpis and wpis.cvss_score is not None:
+        ocena, wektor, zrodlo_oceny = wpis.cvss_score, wpis.cvss_vector, "Red Hat"
+        waga = _waga_cvss(ocena)
+
+    priorytet = None
+    if dystrybucja == "rhel" and wpis and wpis.severity:
+        priorytet = ("Red Hat", wpis.severity)
+    elif ubuntu and ubuntu.priority:
+        priorytet = ("Ubuntu", ubuntu.priority.capitalize())
+    elif dystrybucja == "debian" and wpis and wpis.severity and wpis.severity != "not yet assigned":
+        priorytet = ("Debian", wpis.severity)
+
+    opis = (nvd.summary if nvd else None) or (ubuntu.summary if ubuntu else None)
+    if not opis and wpis and dystrybucja != "ubuntu":
+        opis = wpis.description
+
+    numery_cwe: list[str] = []
+    for zrodlo_cwe in ((nvd.cwe if nvd else None), (wpis.cwe if wpis else None)):
+        for n in _NUMER_CWE.findall(zrodlo_cwe or ""):
+            if n not in numery_cwe:
+                numery_cwe.append(n)
+    katalog = {c.id: c for c in db.execute(
+        select(CweEntry).where(CweEntry.id.in_(numery_cwe))).scalars()} if numery_cwe else {}
+    slabosci = []
+    for n in numery_cwe:
+        c = katalog.get(n)
+        slabosci.append({
+            "id": f"CWE-{n}", "name": c.name if c else None,
+            "description": c.description if c else None,
+            "consequences": (c.consequences or []) if c else [],
+            "link": f"https://cwe.mitre.org/data/definitions/{n}.html",
+        })
+
+    return {
+        "cve": numer,
+        "published": nvd.published if nvd else None,
+        "base_score": ocena, "severity": waga, "vector": wektor, "score_source": zrodlo_oceny,
+        "priority": priorytet,
+        "description": opis,
+        "advisory": wpis.description if (wpis and dystrybucja == "rhel") else None,
+        "fixed_version": wpis.fixed_version if wpis else None,
+        "weaknesses": slabosci,
+        "link": odnosnik(zrodlo, numer) if dystrybucja else None,
+        "distro": {"debian": "Debian", "ubuntu": "Ubuntu", "rhel": "Red Hat"}.get(dystrybucja),
+        "nvd_link": ODNOSNIK_NVD.format(cve=numer),
+    }

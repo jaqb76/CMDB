@@ -732,6 +732,25 @@ class CveEntry(Base):
     # gdy NVD jeszcze nie ocenil luki.
     cvss_score: Mapped[float | None] = mapped_column(Float)
     cvss_vector: Mapped[str | None] = mapped_column(String(128))
+    # Slabosci (CWE) wskazane przez dystrybucje, np. "CWE-787,CWE-20".
+    cwe: Mapped[str | None] = mapped_column(String(255))
+
+
+class CweEntry(Base):
+    """Opis slabosci z katalogu MITRE CWE - do okna szczegolow podatnosci.
+
+    NVD mowi tylko "CWE-787". Co to znaczy i czym grozi (naruszenie pamieci,
+    wykonanie kodu, odmowa uslugi) opisuje katalog MITRE; te same tresci
+    pokazuja strony Red Hata w sekcji "Understanding the Weakness".
+    """
+
+    __tablename__ = "cwe_entries"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)   # "787"
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # [{"scopes": ["Integrity"], "impacts": ["Modify Memory"], "note": "..."}]
+    consequences: Mapped[list | None] = mapped_column(JSONType)
 
 
 class CveSyncStatus(Base):
@@ -798,6 +817,8 @@ class CveScore(Base):
     # Krotki opis luki z NVD (po angielsku) - zeby z listy bylo widac, czego
     # dotyczy, bez otwierania kazdego CVE. Pusty napis: NVD opisu nie ma.
     summary: Mapped[str | None] = mapped_column(Text)
+    # Slabosci wedlug NVD ("CWE-787,CWE-20"); pusty napis - NVD nie podal.
+    cwe: Mapped[str | None] = mapped_column(String(255))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # Pusty wynik tez zapamietujemy - inaczej przy kazdym odswiezeniu pytalibysmy
     # o te same CVE, ktorych NVD nie zna (np. swieze, jeszcze nieopisane).

@@ -132,6 +132,20 @@ Przy każdym CVE jest rozwijany opis **„co to jest”** — krótki opis luki
 z NVD (po angielsku, pobierany razem z oceną), a dla Debiana opis z jego
 trackera — oraz odnośniki do strony dystrybucji i do NVD.
 
+## Okno szczegółów CVE
+
+Kliknięcie numeru CVE na karcie maszyny otwiera okno z tym, co wiemy o luce:
+ocena CVSS (NVD, a gdy jej brak — Ubuntu albo Red Hat), priorytet
+dystrybucji, pełny opis z NVD, wersja z poprawką oraz **na czym polega
+słabość (CWE)** — nazwa, opis i skutki techniczne (np. „Integrity: Modify
+Memory; Execute Unauthorized Code”) z katalogu MITRE CWE, tak jak w sekcji
+„Understanding the Weakness” na stronach Red Hata. Dopiero z okna prowadzą
+odnośniki do strony dystrybucji, NVD i opisu CWE.
+
+Numery CWE pochodzą z NVD (pobierane razem z oceną) i z danych OVAL Red Hata.
+Katalog MITRE (`cwe.mitre.org/data/xml/cwec_latest.xml.zip`, kilka MB) serwer
+pobiera sam raz w miesiącu — potrzebny jest dostęp do `cwe.mitre.org`.
+
 ## Co zaktualizować
 
 Liczba CVE bywa myląca: maszyna z jądrem sprzed roku ma tysiące pozycji, bo

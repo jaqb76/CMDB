@@ -783,3 +783,43 @@
     });
   });
 })();
+
+// Okno szczegolow CVE na karcie maszyny. Link prowadzi do pelnej strony
+// (dziala bez skryptu); ze skryptem pobieramy sama tresc i pokazujemy ja
+// w oknie, zeby nie tracic miejsca na dlugiej liscie podatnosci.
+(function () {
+  "use strict";
+  var okno = null;
+
+  function dajOkno() {
+    if (okno) { return okno; }
+    okno = document.createElement("dialog");
+    okno.className = "modal-card modal-szeroki";
+    okno.id = "okno-cve";
+    document.body.appendChild(okno);
+    okno.addEventListener("click", function (event) {
+      if (event.target === okno || event.target.closest("[data-dialog-close]")) { okno.close(); }
+    });
+    return okno;
+  }
+
+  document.addEventListener("click", function (event) {
+    var link = event.target.closest("a[data-cve-szczegoly]");
+    if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) { return; }
+    var dialog = dajOkno();
+    if (typeof dialog.showModal !== "function") { return; }
+    event.preventDefault();
+    var komunikat = document.createElement("p");
+    komunikat.className = "muted";
+    komunikat.textContent = "Wczytywanie " + link.textContent.trim() + "…";
+    dialog.replaceChildren(komunikat);
+    dialog.showModal();
+    fetch(link.href, { headers: { "X-Fragment": "1" }, credentials: "same-origin" })
+      .then(function (odpowiedz) {
+        if (!odpowiedz.ok) { throw new Error(odpowiedz.status); }
+        return odpowiedz.text();
+      })
+      .then(function (html) { dialog.innerHTML = html; })
+      .catch(function () { window.location.href = link.href; });
+  });
+})();

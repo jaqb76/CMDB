@@ -1,0 +1,72 @@
+{# Tresc okna szczegolow CVE. Wstawiana w <dialog> na karcie maszyny albo
+   renderowana jako osobna strona (cve_szczegoly.html). #}
+<div class="modal-head">
+  <h2><code>{{ p.cve }}</code></h2>
+  <button type="button" class="btn btn-small" data-dialog-close>Zamknij</button>
+</div>
+
+<div class="cve-oceny">
+  <div>
+    <div class="muted tekst-drobny">Ocena CVSS</div>
+    {% if p.base_score is not none %}
+      <span class="badge {{ 'badge-danger' if p.base_score >= 7 else ('badge-warn' if p.base_score >= 4 else '') }} cve-ocena">
+        {{ '%.1f' | format(p.base_score) }} {{ p.severity or '' }}</span>
+      <div class="muted tekst-drobny">źródło: {{ p.score_source }}</div>
+    {% else %}
+      <span class="muted">brak — NVD i dystrybucja jeszcze nie oceniły</span>
+    {% endif %}
+  </div>
+  {% if p.priority %}
+  {% set pr = p.priority[1] | lower %}
+  <div>
+    <div class="muted tekst-drobny">Priorytet {{ p.priority[0] }}</div>
+    <span class="badge {{ 'badge-danger' if pr in ('critical', 'high', 'important')
+                          else ('badge-warn' if pr in ('medium', 'moderate') else '') }} cve-ocena">{{ p.priority[1] }}</span>
+  </div>
+  {% endif %}
+  {% if p.published %}
+  <div>
+    <div class="muted tekst-drobny">Opublikowano</div>
+    <span>{{ p.published }}</span>
+  </div>
+  {% endif %}
+</div>
+{% if p.vector %}<p class="muted tekst-drobny"><code>{{ p.vector }}</code></p>{% endif %}
+
+<h3>Opis</h3>
+{% if p.description %}
+  <p>{{ p.description }}</p>
+{% else %}
+  <p class="muted">Opisu jeszcze nie pobrano — serwer dobiera opisy z NVD w tle, razem z ocenami.</p>
+{% endif %}
+{% if p.advisory %}<p class="muted small">Biuletyn: {{ p.advisory }}</p>{% endif %}
+{% if p.fixed_version %}<p class="small">Poprawka w wersji <code>{{ p.fixed_version }}</code>.</p>{% endif %}
+
+{% if p.weaknesses %}
+<h3>Na czym polega słabość (CWE)</h3>
+{% for w in p.weaknesses %}
+  <div class="cwe-karta">
+    <p class="strong">
+      <a href="{{ w.link }}" target="_blank" rel="noopener noreferrer">{{ w.id }}</a>{% if w.name %}: {{ w.name }}{% endif %}
+    </p>
+    {% if w.description %}<p class="small">{{ w.description }}</p>{% endif %}
+    {% for c in w.consequences %}
+      <div class="cwe-skutek">
+        <div class="strong small">{{ c.scopes | join(', ') }}</div>
+        {% if c.impacts %}<div class="small"><b>Skutek techniczny:</b> {{ c.impacts | join('; ') }}</div>{% endif %}
+        {% if c.note %}<div class="small muted">{{ c.note }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    {% if not w.name %}
+      <p class="muted small">Opis słabości pojawi się po pobraniu katalogu MITRE CWE (raz w miesiącu, w tle).</p>
+    {% endif %}
+  </div>
+{% endfor %}
+{% endif %}
+
+<h3>Więcej</h3>
+<p class="cve-linki">
+  {% if p.link %}<a class="btn btn-small" href="{{ p.link }}" target="_blank" rel="noopener noreferrer">Strona {{ p.distro }} ↗</a>{% endif %}
+  <a class="btn btn-small" href="{{ p.nvd_link }}" target="_blank" rel="noopener noreferrer">NVD ↗</a>
+  {% for w in p.weaknesses %}<a class="btn btn-small" href="{{ w.link }}" target="_blank" rel="noopener noreferrer">{{ w.id }} ↗</a>{% endfor %}
+</p>

@@ -665,12 +665,18 @@ def test_opis_z_nvd_trafia_do_znaleziska(kanal_debian, monkeypatch):
     odpowiedz = json.loads(json.dumps(ODPOWIEDZ_NVD))
     odpowiedz["vulnerabilities"][0]["cve"]["descriptions"] = [
         {"lang": "es", "value": "no"}, {"lang": "en", "value": "curl  mishandles\ncookies"}]
+    odpowiedz["vulnerabilities"][0]["cve"]["weaknesses"] = [
+        {"description": [{"lang": "en", "value": "CWE-787"}]},
+        {"description": [{"lang": "en", "value": "NVD-CWE-Other"}]}]
     _podstaw_nvd(monkeypatch, [odpowiedz])
     with SessionLocal() as db:
         cve.pobierz_oceny(db, ["CVE-2025-10148"])
         wynik = cve.dopasuj(db, _raport([_pakiet("curl", "7.88.1-10+deb12u14")]))
     pozycja = wynik["entries"][0]
     assert pozycja["summary"] == "curl mishandles cookies"
+    from cmdb_server.models import CveScore
+    with SessionLocal() as db:
+        assert db.get(CveScore, "CVE-2025-10148").cwe == "CWE-787"
     assert pozycja["nvd_link"] == "https://nvd.nist.gov/vuln/detail/CVE-2025-10148"
 
 
@@ -715,6 +721,7 @@ def test_karta_maszyny_pokazuje_co_zaktualizowac(client, tenant_a, make_user, ka
     assert "Co zaktualizować" in strona
     assert "curl mishandles something" in strona          # opis z Debiana
     assert "https://nvd.nist.gov/vuln/detail/CVE-2025-10148" in strona
+    assert "/podatnosci/cve/CVE-2025-10148?zrodlo=debian/bookworm" in strona
 
 
 # --- oceny Ubuntu -------------------------------------------------------------

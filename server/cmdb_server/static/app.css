@@ -1593,3 +1593,13 @@ progress {
   height: 10px;
   accent-color: var(--accent, #3b82f6);
 }
+
+/* --- okno szczegolow CVE -------------------------------------------------- */
+.modal-szeroki { width: min(860px, calc(100vw - 32px)); }
+.cve-oceny { display: flex; flex-wrap: wrap; gap: 24px; margin: 12px 0 4px; }
+.cve-ocena { font-size: 1rem; padding: 4px 10px; }
+.cwe-karta { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin: 10px 0; }
+.cwe-karta p { margin: 0 0 8px; }
+.cwe-skutek { border-left: 3px solid var(--border); padding: 4px 0 4px 12px; margin: 8px 0; }
+.cve-linki { display: flex; flex-wrap: wrap; gap: 8px; }
+.cve-strona .modal-head [data-dialog-close] { display: none; }
