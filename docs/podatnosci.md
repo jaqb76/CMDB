@@ -128,7 +128,7 @@ Odnośnik przy każdym CVE prowadzi do strony **dystrybucji**, nie do NVD —
 dystrybucja zrobiła z konkretnym pakietem, co jest praktyczniejsze niż sam
 opis luki.
 
-Przy każdym CVE jest rozwijany opis **„co to jest”** — krótki opis luki
+Kliknięcie przycisku z numerem CVE otwiera okno szczegółów (niżej) — krótki opis luki
 z NVD (po angielsku, pobierany razem z oceną), a dla Debiana opis z jego
 trackera — oraz odnośniki do strony dystrybucji i do NVD.
 

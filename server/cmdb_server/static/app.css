@@ -1603,3 +1603,4 @@ progress {
 .cwe-skutek { border-left: 3px solid var(--border); padding: 4px 0 4px 12px; margin: 8px 0; }
 .cve-linki { display: flex; flex-wrap: wrap; gap: 8px; }
 .cve-strona .modal-head [data-dialog-close] { display: none; }
+.btn-cve { font-family: var(--font-mono, ui-monospace, monospace); white-space: nowrap; }

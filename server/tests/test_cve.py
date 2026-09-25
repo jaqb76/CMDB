@@ -719,8 +719,8 @@ def test_karta_maszyny_pokazuje_co_zaktualizowac(client, tenant_a, make_user, ka
                             json=raport)
     strona = client.get(f"/assets/{odpowiedz.json()['asset_id']}").text
     assert "Co zaktualizować" in strona
-    assert "curl mishandles something" in strona          # opis z Debiana
-    assert "https://nvd.nist.gov/vuln/detail/CVE-2025-10148" in strona
+    # Opis i odnosniki sa w oknie szczegolow - na liscie zostaje przycisk.
+    assert "co to jest" not in strona
     assert "/podatnosci/cve/CVE-2025-10148?zrodlo=debian/bookworm" in strona
 
 
