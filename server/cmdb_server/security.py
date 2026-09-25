@@ -136,3 +136,22 @@ def check_csrf_token(raw: str, session_id: str, max_age: int = 86400) -> bool:
     except (BadSignature, SignatureExpired):
         return False
     return hmac.compare_digest(str(value), session_id)
+
+
+# Drugi krok logowania (kod TOTP). Po poprawnym hasle przegladarka dostaje
+# krotko wazny, podpisany znacznik zamiast sesji - sesja powstaje dopiero po
+# kodzie. Znacznik niesie wersje sesji, wiec zmiana hasla go uniewaznia.
+MFA_MAX_AGE = 5 * 60
+
+
+def sign_mfa(user_id: str, session_version: int, konfiguracja: bool = False) -> str:
+    return _serializer("cmdb-mfa").dumps(
+        {"uid": user_id, "sv": session_version, "nowe": konfiguracja})
+
+
+def load_mfa(raw: str) -> dict | None:
+    try:
+        dane = _serializer("cmdb-mfa").loads(raw, max_age=MFA_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+    return dane if isinstance(dane, dict) and dane.get("uid") else None

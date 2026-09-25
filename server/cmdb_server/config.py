@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     login_max_failures: int = 3
     login_lockout_hours: int = 24
 
+    # Weryfikacja dwuetapowa (TOTP) obowiazkowa dla lokalnych kont
+    # superadmina. Domyslnie wylaczona, zeby aktualizacja nie zaskoczyla
+    # nikogo ekranem konfiguracji - zalecamy wlaczenie na produkcji.
+    mfa_superadmin: bool = False
+    # Waznosc linkow jednorazowych.
+    zaproszenie_dni: int = Field(default=7, ge=1, le=60)
+    reset_hasla_minut: int = Field(default=60, ge=10, le=24 * 60)
+
     # Wymuszenie HTTPS (Secure cookie + HSTS + redirect). Wylaczane tylko w dev.
     require_https: bool = False
 

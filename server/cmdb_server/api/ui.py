@@ -390,9 +390,12 @@ def _require_write(ctx: TenantContext) -> None:
 def login_form(request: Request, user: PortalUser | None = Depends(current_user)) -> Response:
     if user is not None:
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    komunikat = ("Hasło ustawione. Zaloguj się nowym hasłem."
+                 if request.query_params.get("haslo") == "zmienione" else None)
     return templates.TemplateResponse(
         request, "login.html",
-        {"request": request, "error": None, "motyw": motyw_z_ciasteczka(request)},
+        {"request": request, "error": None, "komunikat": komunikat,
+         "motyw": motyw_z_ciasteczka(request)},
     )
 
 
@@ -464,29 +467,9 @@ def login_submit(
         return odmow(tozsamosc.KOMUNIKATY["haslo"])
 
     logowanie.wyczysc(db, email, ip)
-    user.last_login_at = utcnow()
-    audit(
-        db,
-        None,
-        action="login.ok",
-        target=user.email,
-        detail={"sposob": wynik.sposob},
-        ip=client_ip(request),
-        actor=user.email,
-    )
-    db.commit()
+    from .logowanie_ui import po_hasle
 
-    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(
-        settings.session_cookie,
-        sign_session({"uid": user.id, "sv": user.session_version}),
-        max_age=settings.session_max_age,
-        httponly=True,
-        secure=settings.require_https,
-        samesite="lax",
-        path="/",
-    )
-    return response
+    return po_hasle(request, db, user, wynik.sposob)
 
 
 @router.post("/logout")
@@ -2032,6 +2015,8 @@ def widok_konta(
     Kontekst firmy jest tu opcjonalny: konto globalne zadnej firmy nie ma,
     a haslo zmienic musi. Dlatego widok nie zalezy od resolve_tenant.
     """
+    from .logowanie_ui import dane_mfa_konta
+
     ctx = None
     if user.tenant_id:
         tenant = db.get(Tenant, user.tenant_id)
@@ -2046,6 +2031,8 @@ def widok_konta(
         zmienione=bool(zmienione),
         blad=blad,
         min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
+        mfa=dane_mfa_konta(db, user, bool(request.query_params.get("mfa_konfiguracja"))),
+        komunikat_mfa=request.query_params.get("mfa", "")[:300],
     )
 
 
@@ -2072,6 +2059,8 @@ def zmien_wlasne_haslo(
             f"/konto?blad={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
         )
 
+    if user.zrodlo != "lokalne":
+        return odmow("To konto loguje się hasłem domenowym - zmień je w Windows lub u działu IT.")
     if not verify_password(obecne, user.password_hash):
         audit(db, None, action="haslo.zmiana_odrzucona", target=user.email,
               ip=client_ip(request), actor=user.email)

@@ -1619,3 +1619,8 @@ progress {
 /* Pole wyboru z opisem w jednej linii (formularze katalogow AD). */
 label.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; color: var(--text); }
 label.check input { width: auto; margin-top: 3px; }
+
+/* Kod QR weryfikacji dwuetapowej i linki pod formularzem logowania. */
+.kod-qr { display: flex; justify-content: center; margin: 6px 0 10px; }
+.kod-qr svg { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 6px; }
+.login-linki { margin: 12px 0 0; text-align: center; }

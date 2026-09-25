@@ -82,6 +82,21 @@
   </section>
 
   <section class="panel">
+    <h2>Logowanie</h2>
+    <input type="hidden" name="pola_logowania" value="1">
+    <div class="stack">
+      <label class="check"><input type="checkbox" name="logowanie_lokalne" value="true" {% if firma.logowanie_lokalne %}checked{% endif %}>
+        Wolno logować się kontami lokalnymi CMDB (e-mail i hasło w CMDB)</label>
+      <div class="muted small">Wyłącz, jeśli firma ma logować się wyłącznie kontem domenowym
+        (<a href="/admin/katalogi">Katalogi AD</a>). Superadmina i techników to nie dotyczy.</div>
+      <label class="check"><input type="checkbox" name="wymagaj_mfa" value="true" {% if firma.wymagaj_mfa %}checked{% endif %}>
+        Konta lokalne muszą mieć weryfikację dwuetapową (kod z aplikacji w telefonie)</label>
+      <div class="muted small">Kto jej nie ma, ustawi ją przy najbliższym logowaniu. Konta z AD
+        zabezpiecza AD.</div>
+    </div>
+  </section>
+
+  <section class="panel">
     <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
     <a class="btn btn-ghost" href="/admin/tenants/{{ firma.id }}/upgrade">Maszyny i aktualizacje</a>
     <a class="btn btn-ghost" href="/switch-tenant?slug={{ firma.slug }}">Podgląd firmy</a>

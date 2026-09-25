@@ -1,0 +1,30 @@
+{% extends "_logowanie_baza.html" %}
+{% block tytul %}{{ 'Zaproszenie' if zaproszenie else 'Nowe hasło' }}{% endblock %}
+{% block karta %}
+  {% if not link %}
+  <div class="login-card">
+    <h1>CMDB</h1>
+    <div class="alert alert-error">Ten link jest nieważny: wygasł, został już użyty albo zastąpił go nowszy.</div>
+    <p class="small">Poproś o nowy link administratora CMDB{% if not zaproszenie %} albo <a href="/haslo/zapomniane">zamów go ponownie</a>{% endif %}.</p>
+    <p class="small"><a href="/login">← Logowanie</a></p>
+  </div>
+  {% else %}
+  <form method="post" class="login-card">
+    <h1>CMDB</h1>
+    {% if zaproszenie %}
+      <p class="muted">Zaproszenie dla {{ link.email }}</p>
+      <p class="small">Ustaw hasło do swojego konta. Po zapisaniu od razu się zalogujesz.</p>
+    {% else %}
+      <p class="muted">Nowe hasło dla {{ link.email }}</p>
+    {% endif %}
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+    <label for="nowe">Hasło</label>
+    <input id="nowe" name="nowe" type="password" required minlength="{{ min_dlugosc_hasla }}" autocomplete="new-password" autofocus>
+    <label for="powtorzone">Powtórz hasło</label>
+    <input id="powtorzone" name="powtorzone" type="password" required minlength="{{ min_dlugosc_hasla }}" autocomplete="new-password">
+    <p class="small muted">Co najmniej {{ min_dlugosc_hasla }} znaków.</p>
+    <button type="submit" class="btn btn-primary btn-block">{{ 'Załóż konto' if zaproszenie else 'Ustaw hasło' }}</button>
+    {% block zewnetrzne %}{% endblock %}
+  </form>
+  {% endif %}
+{% endblock %}

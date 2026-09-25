@@ -118,6 +118,9 @@ class Tenant(Base):
     # a osoba usunieta z AD nie ma juz zapasowego hasla w CMDB. Superadmin,
     # audytor i technicy nie naleza do firmy, wiec ich to nie dotyczy.
     logowanie_lokalne: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Konta lokalne tej firmy musza miec weryfikacje dwuetapowa (TOTP).
+    # Kto jej nie ma, ustawia ja przy najblizszym logowaniu.
+    wymagaj_mfa: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")
 
@@ -174,6 +177,12 @@ class PortalUser(Base):
     # Wylaczenie przez superadmina. Synchronizacja z AD przywraca dostep
     # kontom, ktore sama wylaczyla - recznie wylaczonego nie ruszy.
     wylaczone_recznie: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Weryfikacja dwuetapowa kont lokalnych: sekret TOTP zaszyfrowany (trzeba
+    # go odczytac, zeby policzyc kod) i numer ostatnio uzytego okna czasu -
+    # ten sam kod nie przejdzie drugi raz.
+    totp_szyfr: Mapped[str | None] = mapped_column(Text)
+    totp_wlaczone: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    totp_ostatni_krok: Mapped[int | None] = mapped_column(Integer)
 
     tenant: Mapped[Tenant | None] = relationship()
 
@@ -2245,3 +2254,38 @@ class MapowanieGrupy(Base):
 
     katalog: Mapped[KatalogTozsamosci] = relationship(back_populates="mapowania")
     tenant: Mapped[Tenant | None] = relationship()
+
+
+# --- jednorazowe linki: zaproszenia i reset hasla ---------------------------
+
+LINK_ZAPROSZENIE = "zaproszenie"
+LINK_RESET = "reset"
+
+
+class JednorazowyLink(Base):
+    """Zaproszenie do zalozenia konta albo link do ustawienia nowego hasla.
+
+    W bazie jest tylko skrot tokenu - link pokazujemy raz. Zaproszenie niesie
+    wszystko, co bedzie mialo konto (firma, rola), wiec osoba zapraszana nie
+    moze niczego zmienic - ustawia tylko wlasne haslo.
+    """
+
+    __tablename__ = "linki_jednorazowe"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    rodzaj: Mapped[str] = mapped_column(String(16), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="CASCADE"), index=True
+    )
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    zakres: Mapped[str | None] = mapped_column(String(16))
+    rola: Mapped[str | None] = mapped_column(String(16))
+    full_name: Mapped[str | None] = mapped_column(String(200))
+    wygasa: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    uzyto: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    utworzyl: Mapped[str | None] = mapped_column(String(255))
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

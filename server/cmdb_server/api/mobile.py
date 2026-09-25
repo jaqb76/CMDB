@@ -32,7 +32,8 @@ from ..models import (
     utcnow,
 )
 from ..security import load_session, sign_session
-from ..services import logowanie, raporty, rodzaje, scoping, slowniki, tozsamosc, ustawienia
+from ..services import (konta_lokalne, logowanie, raporty, rodzaje, scoping, slowniki,
+                        tozsamosc, ustawienia)
 from ..services.auth import (
     authenticate_user,
     client_ip,
@@ -49,6 +50,9 @@ router = APIRouter(prefix="/api/v1/mobile", tags=["mobile"])
 class LoginBody(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=1, max_length=1024)
+    # Kod z aplikacji uwierzytelniajacej - tylko dla kont z weryfikacja
+    # dwuetapowa. Brak kodu konczy sie 401 z naglowkiem X-CMDB-MFA: wymagany.
+    code: str | None = Field(default=None, max_length=12)
 
 
 class DictionaryBody(BaseModel):
@@ -208,6 +212,24 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> d
         )
         raise HTTPException(401, "nieprawidlowy e-mail lub haslo")
     logowanie.wyczysc(db, body.email, ip)
+    if konta_lokalne.potrzebny_drugi_krok(db, user):
+        if not user.totp_wlaczone:
+            # Konfiguracja wymaga pokazania kodu QR - robi sie ja w panelu WWW.
+            raise HTTPException(403, "Twoje konto wymaga weryfikacji dwuetapowej. Włącz ją, "
+                                     "logując się raz w panelu WWW, potem wróć do aplikacji.")
+        if not body.code:
+            raise HTTPException(401, "Podaj kod z aplikacji uwierzytelniającej.",
+                                headers={"X-CMDB-MFA": "wymagany"})
+        klucz = "mfa:" + user.email
+        if logowanie.zablokowane_do(db, klucz, ip) is not None:
+            raise HTTPException(429, "Zbyt wiele błędnych kodów. Logowanie jest czasowo zablokowane.")
+        if not konta_lokalne.zweryfikuj_i_zapisz(user, body.code):
+            audit(db, None, action="mfa.zly_kod", target=user.email, ip=ip, actor=user.email)
+            db.commit()
+            logowanie.odnotuj_niepowodzenie(db, klucz, ip, settings.login_max_failures + 2,
+                                            settings.login_lockout_hours)
+            raise HTTPException(401, "Kod się nie zgadza.", headers={"X-CMDB-MFA": "wymagany"})
+        logowanie.wyczysc(db, klucz, ip)
     user.last_login_at = utcnow()
     audit(db, None, action="mobile.login.ok", target=user.email, ip=ip, actor=user.email)
     db.commit()

@@ -9,6 +9,9 @@
 {% if blad %}
   <div class="alert alert-error">{{ blad }}</div>
 {% endif %}
+{% if komunikat_mfa %}
+  <div class="alert alert-ok">{{ komunikat_mfa }}</div>
+{% endif %}
 
 <div class="two-col">
   <section class="panel">
@@ -33,6 +36,13 @@
     </form>
   </section>
 
+  {% if not mfa.lokalne %}
+  <section class="panel">
+    <h2>Hasło</h2>
+    <p>To konto loguje się kontem domenowym (Active Directory). Hasło zmieniasz w Windows
+      albo u działu IT, a uprawnienia wynikają z grup w AD{% if user.uprawnienia_z %}: {{ user.uprawnienia_z | join(', ') }}{% endif %}.</p>
+  </section>
+  {% else %}
   <section class="panel">
     <h2>Zmiana hasła</h2>
     <p class="small muted">
@@ -59,5 +69,51 @@
       <button type="submit" class="btn btn-primary">Zmień hasło</button>
     </form>
   </section>
+  {% endif %}
 </div>
+
+{% if mfa.lokalne %}
+<section class="panel" id="mfa">
+  <h2>Weryfikacja dwuetapowa</h2>
+  {% if mfa.wlaczone %}
+    <p><span class="badge badge-ok">włączona</span> Przy logowaniu podajesz kod z aplikacji uwierzytelniającej.</p>
+    {% if mfa.wymagane %}
+      <p class="muted small">Twoja firma wymaga weryfikacji dwuetapowej – nie można jej wyłączyć.
+        Zgubiony telefon? Administrator CMDB może ją zresetować – ustawisz ją od nowa przy logowaniu.</p>
+    {% else %}
+    <details>
+      <summary class="small">Wyłącz weryfikację dwuetapową</summary>
+      <form method="post" action="/konto/mfa/wylacz" class="stack odstep-s">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="mfa-haslo">Hasło</label>
+        <input id="mfa-haslo" name="haslo" type="password" required autocomplete="current-password">
+        <label for="mfa-kod-w">Kod z aplikacji</label>
+        <input id="mfa-kod-w" name="kod" type="text" inputmode="numeric" maxlength="7" required autocomplete="one-time-code">
+        <button type="submit" class="btn btn-danger btn-small">Wyłącz</button>
+      </form>
+    </details>
+    {% endif %}
+  {% elif mfa.konfiguracja %}
+    <p class="small">Zeskanuj kod aplikacją Google Authenticator, Microsoft Authenticator albo podobną
+      i wpisz 6 cyfr, które pokaże.</p>
+    <div class="kod-qr">{{ mfa.konfiguracja.kod_qr }}</div>
+    <p class="muted small">Klucz do wpisania ręcznie: <code>{{ mfa.konfiguracja.sekret }}</code></p>
+    <form method="post" action="/konto/mfa/potwierdz" class="row-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div>
+        <label for="mfa-kod">Kod z aplikacji</label>
+        <input id="mfa-kod" name="kod" type="text" inputmode="numeric" maxlength="7" required autocomplete="one-time-code">
+      </div>
+      <div><button type="submit" class="btn btn-primary">Włącz</button></div>
+    </form>
+  {% else %}
+    <p>Oprócz hasła logowanie może wymagać kodu z aplikacji w telefonie. Ktoś, kto pozna Twoje
+      hasło, nie zaloguje się bez telefonu.</p>
+    <form method="post" action="/konto/mfa/nowy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-primary">Włącz weryfikację dwuetapową</button>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
 {% endblock %}
