@@ -72,6 +72,14 @@ def cmd_user_create(args: argparse.Namespace) -> None:
     with session_scope() as db:
         if db.execute(select(PortalUser).where(PortalUser.email == email)).scalar_one_or_none():
             sys.exit(f"blad: uzytkownik {email} juz istnieje")
+        from .services import konta_lokalne
+
+        try:
+            konta_lokalne.sprawdz_adres(db, email)
+        except ValueError as blad:
+            # Takie konto i tak by sie nie zalogowalo: haslo dla tej domeny
+            # sprawdza AD, nie CMDB.
+            sys.exit(f"blad: {blad}")
 
         if args.superadmin and args.audytor:
             sys.exit("blad: konto jest albo superadminem, albo audytorem - nie obydwoma")
@@ -126,7 +134,16 @@ def cmd_user_password(args: argparse.Namespace) -> None:
         ).scalar_one_or_none()
         if konto is None:
             sys.exit(f"blad: nie ma uzytkownika {email}")
+        if konto.zrodlo != "lokalne":
+            sys.exit(f"blad: {email} loguje sie przez {konto.zrodlo} - haslo zmienia sie tam")
         konto.password_hash = hash_password(password)
+        konto.session_version = PortalUser.session_version + 1
+        if args.bez_2fa:
+            # Zgubiony telefon jedynego superadmina - bez tego nie ma wyjscia.
+            konto.totp_wlaczone = False
+            konto.totp_szyfr = None
+            konto.totp_ostatni_krok = None
+            print("zdjeto weryfikacje dwuetapowa")
         print(f"ustawiono nowe haslo konta {email}")
 
 
@@ -355,6 +372,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("user-password", help="ustawia nowe haslo istniejacemu kontu")
     p.add_argument("--email", required=True)
     p.add_argument("--password", help="pominiete = zapyta interaktywnie")
+    p.add_argument("--bez-2fa", action="store_true",
+                   help="zdejmuje tez weryfikacje dwuetapowa (zgubiony telefon)")
     p.set_defaults(func=cmd_user_password)
 
     p = sub.add_parser("token-issue", help="wydaje token rejestracyjny dla firmy")

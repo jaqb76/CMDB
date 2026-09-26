@@ -15,6 +15,14 @@
 </div>
 
 {% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+{% if jednorazowy %}
+<div class="alert alert-ok">
+  <div><b>{{ 'Zaproszenie dla' if jednorazowy.rodzaj == 'zaproszenie' else 'Link do ustawienia hasła dla' }} {{ jednorazowy.email }}</b>
+    {% if jednorazowy.wyslane %}– wysłany pocztą firmy.{% else %}– przekaż go tej osobie sam (firma nie ma skonfigurowanej poczty albo konto nie należy do firmy).{% endif %}</div>
+  <code class="token-value">{{ jednorazowy.link }}</code>
+  <div class="small">Link pokazujemy tylko teraz. {{ 'Jest ważny kilka dni i działa raz.' if jednorazowy.rodzaj == 'zaproszenie' else 'Jest ważny krótko i działa raz.' }}</div>
+</div>
+{% endif %}
 
 <section class="panel tabela-przewijana">
   <h2>Konta ({{ konta | length }})</h2>
@@ -31,12 +39,23 @@
       <tr {% if not k.is_active %}class="row-muted"{% endif %}>
         <td>
           <b>{{ k.full_name or k.email }}</b>
+          {% if k.z_katalogu %}<span class="badge badge-nowy" title="Konto z Active Directory">AD</span>{% else %}<span class="badge">lokalne</span>{% endif %}
+          {% if k.totp_wlaczone %}<span class="badge badge-ok" title="Weryfikacja dwuetapowa włączona">2FA</span>{% endif %}
+          {% for d in w.zewnetrzne %}<span class="badge" title="Loguje się także kontem {{ d }}">{{ d }}</span>{% endfor %}
           <div class="muted small">{{ k.email }}</div>
           {% if w.wpisow_czasu %}
             <div class="muted small">{{ w.wpisow_czasu }} wpisów czasu pracy</div>
           {% endif %}
         </td>
         <td>
+          {% if k.z_katalogu %}
+          <p class="small">
+            {% if k.is_superadmin %}superadmin{% elif k.is_global_viewer %}audytor wszystkich firm{% elif k.tenant_id %}{{ 'admin' if k.role == 'admin' else 'viewer' }} w {{ w.firma }}{% else %}technik helpdesku{% endif %}
+            🔒
+          </p>
+          <p class="muted small">Uprawnienia wynikają z grup w AD{% if k.uprawnienia_z %}: {{ k.uprawnienia_z | join(', ') }}{% endif %}.
+            Zmienia się je w AD albo w <a href="/admin/katalogi/{{ k.katalog_id }}">mapowaniu grup</a>.</p>
+          {% else %}
           <form method="post" action="/admin/users/{{ k.id }}/zakres" class="stack" data-konto-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label for="zakres-{{ k.id }}">Rodzaj konta</label>
@@ -69,6 +88,7 @@
 
             <button type="submit" class="btn btn-small">Zapisz rodzaj</button>
           </form>
+          {% endif %}
           {% if w.niespojne %}
           <p class="small tekst-uwaga odstep-xs">
             To konto ma jednocześnie firmy helpdesku i uprawnienie audytora, które
@@ -116,9 +136,29 @@
         <td class="small">{{ k.last_login_at | ago }}</td>
         <td>
           <div class="konto-akcje">
+            {% if not k.z_katalogu %}
             <button type="button" class="btn btn-small btn-ghost"
                     data-haslo-akcja="/admin/users/{{ k.id }}/haslo"
                     data-haslo-konto="{{ k.email }}">Hasło</button>
+            <form method="post" action="/admin/users/{{ k.id }}/link-hasla" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-small btn-ghost" title="Osoba sama ustawi nowe hasło">Link do hasła</button>
+            </form>
+            {% endif %}
+            {% if w.telefony %}
+            <form method="post" action="/admin/users/{{ k.id }}/urzadzenia/odlacz" class="inline-form"
+                  data-potwierdz="Odłączyć telefony ({{ w.telefony }}) konta {{ k.email }}? Logowanie odciskiem palca przestanie na nich działać.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-small btn-ghost">Odłącz telefony ({{ w.telefony }})</button>
+            </form>
+            {% endif %}
+            {% if k.totp_wlaczone and k.id != user.id %}
+            <form method="post" action="/admin/users/{{ k.id }}/mfa-reset" class="inline-form"
+                  data-potwierdz="Zdjąć weryfikację dwuetapową z konta {{ k.email }}? Zrób to tylko, gdy ta osoba zgubiła telefon.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-small btn-ghost">Zdejmij 2FA</button>
+            </form>
+            {% endif %}
             <form method="post" action="/admin/users/{{ k.id }}/active" class="inline-form">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="powrot" value="/admin/konta">
@@ -161,8 +201,8 @@
         <input id="nowe-nazwa" name="full_name" placeholder="Władek Nowak">
       </div>
       <div>
-        <label for="nowe-haslo">Hasło (min. {{ min_dlugosc_hasla }} znaków)</label>
-        <input id="nowe-haslo" name="password" type="password" required minlength="{{ min_dlugosc_hasla }}">
+        <label for="nowe-haslo">Hasło (min. {{ min_dlugosc_hasla }} znaków) – albo zaproszenie</label>
+        <input id="nowe-haslo" name="password" type="password" minlength="{{ min_dlugosc_hasla }}">
       </div>
     </div>
     <div class="row-form" data-konto-form>
@@ -190,12 +230,42 @@
           <option value="viewer">viewer — tylko odczyt</option>
         </select>
       </div>
-      <div><button type="submit" class="btn btn-primary">Załóż konto</button></div>
+      <div class="konto-akcje">
+        <button type="submit" class="btn btn-primary" formaction="/admin/zaproszenia" formnovalidate>Wyślij zaproszenie</button>
+        <button type="submit" class="btn">Załóż z hasłem</button>
+      </div>
     </div>
     <p class="muted small bez-marginesu" data-konto-opis>{{ opisy_zakresu['technik'] }}</p>
     <p class="muted small odstep-s">
-      Hasło konto zmieni samo pod <code>/konto</code>; tutaj ustawiasz pierwsze.
+      <b>Zaproszenie</b>: osoba dostaje link i sama ustawia hasło – nie musisz go wymyślać
+      ani przekazywać. <b>Z hasłem</b>: ustawiasz pierwsze hasło, konto zmieni je pod <code>/konto</code>.
+      Osoby z domeny firmy, która loguje się przez AD, nie potrzebują konta – założy się samo.
     </p>
   </form>
 </section>
+
+{% if zaproszenia %}
+<section class="panel tabela-przewijana">
+  <h2>Oczekujące zaproszenia ({{ zaproszenia | length }})</h2>
+  <table class="table">
+    <thead><tr><th>Adres</th><th>Rodzaj</th><th>Zaprosił</th><th>Ważne do</th><th></th></tr></thead>
+    <tbody>
+      {% for z in zaproszenia %}
+      <tr>
+        <td>{{ z.email }}{% if z.full_name %}<div class="muted small">{{ z.full_name }}</div>{% endif %}</td>
+        <td class="small">{{ zakresy.get(z.zakres, z.zakres) }}{% if z.zakres == 'firma' %}, {{ z.rola }}{% endif %}</td>
+        <td class="small">{{ z.utworzyl or '' }}</td>
+        <td class="small">{{ z.wygasa | dt }}</td>
+        <td>
+          <form method="post" action="/admin/zaproszenia/{{ z.id }}/odwolaj" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-ghost">Odwołaj</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
 {% endblock %}

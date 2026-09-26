@@ -6,12 +6,14 @@ nie jest tokenem agenta i nie jest akceptowany przez endpointy agentow.
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from math import ceil
 from typing import Annotated
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -27,12 +29,14 @@ from ..models import (
     DefinicjaRaportu,
     PortalUser,
     Tenant,
+    UrzadzenieMobilne,
     WpisSlownika,
     ZRODLO_AGENT,
     utcnow,
 )
 from ..security import load_session, sign_session
-from ..services import logowanie, raporty, rodzaje, scoping, slowniki, ustawienia
+from ..services import (biometria, konta_lokalne, logowanie, raporty, rodzaje, scoping, slowniki,
+                        tozsamosc, ustawienia)
 from ..services.auth import (
     authenticate_user,
     client_ip,
@@ -49,6 +53,9 @@ router = APIRouter(prefix="/api/v1/mobile", tags=["mobile"])
 class LoginBody(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=1, max_length=1024)
+    # Kod z aplikacji uwierzytelniajacej - tylko dla kont z weryfikacja
+    # dwuetapowa. Brak kodu konczy sie 401 z naglowkiem X-CMDB-MFA: wymagany.
+    code: str | None = Field(default=None, max_length=12)
 
 
 class DictionaryBody(BaseModel):
@@ -91,7 +98,27 @@ def mobile_user(request: Request, db: Session = Depends(get_db)) -> PortalUser:
     user = db.get(PortalUser, data["uid"])
     if user is None or not user.is_active or data.get("sv") != user.session_version:
         raise HTTPException(401, "sesja zostala wycofana")
+    if data.get("dev"):
+        # Token po biometrii: krotki i zwiazany z urzadzeniem - odlaczenie
+        # urzadzenia w panelu dziala od razu, nie po wygasnieciu tokenu.
+        if time.time() - float(data.get("iat", 0)) > biometria.WAZNOSC_TOKENU_BIOMETRII:
+            raise HTTPException(401, "token aplikacji wygasl",
+                                headers={"X-CMDB-Biometria": "odnow"})
+        urzadzenie = db.get(UrzadzenieMobilne, data["dev"])
+        if urzadzenie is None or urzadzenie.odlaczono is not None:
+            raise HTTPException(401, "to urzadzenie zostalo odlaczone od konta")
+    request.state.token_mobilny = data
     return user
+
+
+def wymagaj_potwierdzenia(request: Request) -> None:
+    """Operacje zapisu po biometrii wymagaja jej swiezej - telefon zostawiony
+    odblokowany nie wystarcza. Aplikacja na naglowek X-CMDB-Potwierdz prosi
+    o palec, pobiera nowy token i ponawia zapytanie."""
+    data = getattr(request.state, "token_mobilny", None) or {}
+    if data.get("dev") and time.time() - float(data.get("iat", 0)) > biometria.SWIEZOSC_POTWIERDZENIA:
+        raise HTTPException(401, "potwierdz operacje biometria",
+                            headers={"X-CMDB-Potwierdz": "biometria"})
 
 
 def kontekst_firmy(
@@ -192,7 +219,14 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> d
             "Zbyt wiele błędnych prób. Logowanie jest czasowo zablokowane.",
             headers={"Retry-After": str(seconds)},
         )
-    user = authenticate_user(db, body.email, body.password)
+    wynik = tozsamosc.uwierzytelnij(db, body.email, body.password)
+    user = wynik.user
+    if user is None and wynik.powod in ("katalog", "brak_dostepu", "lokalne_wylaczone"):
+        audit(db, None, action=f"mobile.login.odmowa.{wynik.powod}", target=body.email,
+              ip=ip, actor=body.email)
+        db.commit()
+        raise HTTPException(503 if wynik.powod == "katalog" else 403,
+                            tozsamosc.KOMUNIKATY[wynik.powod])
     if user is None:
         audit(db, None, action="mobile.login.failed", target=body.email, ip=ip, actor=body.email)
         db.commit()
@@ -201,16 +235,210 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> d
         )
         raise HTTPException(401, "nieprawidlowy e-mail lub haslo")
     logowanie.wyczysc(db, body.email, ip)
+    if konta_lokalne.potrzebny_drugi_krok(db, user):
+        if not user.totp_wlaczone:
+            # Konfiguracja wymaga pokazania kodu QR - robi sie ja w panelu WWW.
+            raise HTTPException(403, "Twoje konto wymaga weryfikacji dwuetapowej. Włącz ją, "
+                                     "logując się raz w panelu WWW, potem wróć do aplikacji.")
+        if not body.code:
+            raise HTTPException(401, "Podaj kod z aplikacji uwierzytelniającej.",
+                                headers={"X-CMDB-MFA": "wymagany"})
+        klucz = "mfa:" + user.email
+        if logowanie.zablokowane_do(db, klucz, ip) is not None:
+            raise HTTPException(429, "Zbyt wiele błędnych kodów. Logowanie jest czasowo zablokowane.")
+        if not konta_lokalne.zweryfikuj_i_zapisz(user, body.code):
+            audit(db, None, action="mfa.zly_kod", target=user.email, ip=ip, actor=user.email)
+            db.commit()
+            logowanie.odnotuj_niepowodzenie(db, klucz, ip, settings.login_max_failures + 2,
+                                            settings.login_lockout_hours)
+            raise HTTPException(401, "Kod się nie zgadza.", headers={"X-CMDB-MFA": "wymagany"})
+        logowanie.wyczysc(db, klucz, ip)
+    return _odpowiedz_logowania(db, user, ip, "mobile.login.ok", wynik.sposob)
+
+
+def _odpowiedz_logowania(db: Session, user: PortalUser, ip: str, akcja: str,
+                         sposob: str) -> dict:
+    """Token aplikacji po udanym logowaniu - jedno miejsce, w ktorym powstaje."""
+    settings = get_settings()
     user.last_login_at = utcnow()
-    audit(db, None, action="mobile.login.ok", target=user.email, ip=ip, actor=user.email)
+    audit(db, None, action=akcja, target=user.email, detail={"sposob": sposob}, ip=ip,
+          actor=user.email)
     db.commit()
-    token = sign_session({"kind": "mobile", "uid": user.id, "sv": user.session_version})
+    teraz = int(time.time())
+    # "pl" to chwila pelnego logowania - rejestracja urzadzenia do biometrii
+    # wymaga, zeby byla swieza.
+    token = sign_session({"kind": "mobile", "uid": user.id, "sv": user.session_version,
+                          "iat": teraz, "pl": teraz})
     tenant = db.get(Tenant, user.tenant_id) if user.tenant_id else None
     return {
         "access_token": token,
         "token_type": "bearer",
         "expires_in": settings.session_max_age,
         "user": _user_item(user, tenant),
+        "policy": biometria.polityka(db, user).jako_slownik(),
+    }
+
+
+# --- biometria --------------------------------------------------------------
+
+class DeviceBody(BaseModel):
+    name: str = Field(default="Telefon", max_length=200)
+    public_key: str = Field(min_length=40, max_length=2000)
+    replaces: str | None = Field(default=None, max_length=36)
+
+
+class ChallengeBody(BaseModel):
+    device_id: str = Field(min_length=1, max_length=36)
+
+
+class BiometricBody(BaseModel):
+    device_id: str = Field(min_length=1, max_length=36)
+    challenge: str = Field(min_length=10, max_length=500)
+    signature: str = Field(min_length=10, max_length=500)
+
+
+def _urzadzenie_item(u: UrzadzenieMobilne) -> dict:
+    return {"id": u.id, "name": u.nazwa, "added": _iso(u.dodano),
+            "last_used": _iso(u.ostatnio_uzyte), "last_full_login": _iso(u.ostatnie_pelne_logowanie)}
+
+
+@router.post("/devices")
+def register_device(body: DeviceBody, request: Request, user: PortalUser = Depends(mobile_user),
+                    db: Session = Depends(get_db)) -> dict:
+    """Wlacza biometrie na tym telefonie. Tylko zaraz po pelnym logowaniu."""
+    data = request.state.token_mobilny
+    if data.get("dev") or time.time() - float(data.get("pl", 0)) > biometria.SWIEZOSC_REJESTRACJI:
+        raise HTTPException(401, "zaloguj sie haslem, zeby wlaczyc biometrie",
+                            headers={"X-CMDB-Biometria": "pelne_logowanie"})
+    try:
+        urzadzenie = biometria.zarejestruj(db, user, body.name, body.public_key, body.replaces)
+    except biometria.BladBiometrii as blad:
+        raise HTTPException(403 if blad.kod == "wylaczona" else 400, str(blad)) from blad
+    audit(db, None, action="mobile.urzadzenie_dodane", target=user.email,
+          detail={"urzadzenie": urzadzenie.nazwa}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    return {"device": _urzadzenie_item(urzadzenie),
+            "policy": biometria.polityka(db, user).jako_slownik()}
+
+
+@router.get("/devices")
+def list_devices(user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db)) -> list[dict]:
+    return [_urzadzenie_item(u) for u in biometria.urzadzenia_konta(db, user.id)]
+
+
+@router.delete("/devices/{device_id}")
+def remove_device(device_id: str, request: Request, user: PortalUser = Depends(mobile_user),
+                  db: Session = Depends(get_db)) -> dict:
+    urzadzenie = db.get(UrzadzenieMobilne, device_id)
+    if urzadzenie is None or urzadzenie.user_id != user.id:
+        raise HTTPException(404, "nie ma takiego urzadzenia")
+    biometria.odlacz(urzadzenie, "wyłączone w aplikacji")
+    audit(db, None, action="mobile.urzadzenie_odlaczone", target=user.email,
+          detail={"urzadzenie": urzadzenie.nazwa, "przez": "aplikacja"},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/auth/challenge")
+def challenge(body: ChallengeBody) -> dict:
+    # Wyzwanie niczego nie zdradza i nie wymaga logowania: jest podpisane,
+    # wazne minute i przywiazane do identyfikatora urzadzenia.
+    return {"challenge": biometria.wyzwanie(body.device_id),
+            "expires_in": biometria.WAZNOSC_WYZWANIA}
+
+
+@router.post("/auth/biometric")
+def login_biometric(body: BiometricBody, request: Request, db: Session = Depends(get_db)) -> dict:
+    ip = client_ip(request)
+    try:
+        urzadzenie, user = biometria.zaloguj(db, body.device_id, body.challenge, body.signature)
+    except biometria.BladBiometrii as blad:
+        audit(db, None, action="mobile.biometria.odmowa", target=body.device_id,
+              detail={"powod": blad.kod}, ip=ip, actor="aplikacja")
+        db.commit()
+        raise HTTPException(401, str(blad), headers={"X-CMDB-Biometria": blad.kod}) from blad
+    user.last_login_at = utcnow()
+    audit(db, None, action="mobile.login.ok", target=user.email,
+          detail={"sposob": "biometria", "urzadzenie": urzadzenie.nazwa}, ip=ip, actor=user.email)
+    db.commit()
+    teraz = int(time.time())
+    token = sign_session({"kind": "mobile", "uid": user.id, "sv": user.session_version,
+                          "iat": teraz, "dev": urzadzenie.id})
+    tenant = db.get(Tenant, user.tenant_id) if user.tenant_id else None
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": biometria.WAZNOSC_TOKENU_BIOMETRII,
+        "user": _user_item(user, tenant),
+        "policy": biometria.polityka(db, user).jako_slownik(),
+    }
+
+
+# --- logowanie kontem zewnetrznym w aplikacji --------------------------------
+#
+# Aplikacja otwiera przegladarke systemowa na /login/zewn/<dostawca>?cel=mobile
+# &wyzwanie=<S256 weryfikatora>. Po powrocie od dostawcy serwer przekierowuje
+# na adres aplikacji z jednorazowym kodem (RFC 8252), a aplikacja wymienia kod
+# na token, podajac weryfikator. Kod przechwycony przez inna aplikacje, ktora
+# zarejestrowala ten sam schemat adresu, jest bez weryfikatora bezuzyteczny.
+
+ADRES_APLIKACJI = "pl.hubzso.cmdb:/logowanie"
+
+
+def przekaz_do_aplikacji(request: Request, db: Session, konto: PortalUser, sposob: str,
+                         wyzwanie: str | None) -> Response:
+    from fastapi.responses import RedirectResponse
+
+    from ..models import LINK_MOBILE
+
+    if not wyzwanie:
+        raise HTTPException(400, "brak wyzwania PKCE aplikacji")
+    kod = konta_lokalne.utworz_link(db, LINK_MOBILE, konto.email, user=konto, wyzwanie=wyzwanie,
+                                    utworzyl=sposob)
+    audit(db, None, action="mobile.zewn.kod", target=konto.email, detail={"sposob": sposob},
+          ip=client_ip(request), actor=konto.email)
+    db.commit()
+    odp = RedirectResponse(f"{ADRES_APLIKACJI}?kod={kod}", status_code=303)
+    odp.delete_cookie("cmdb_oauth", path="/")
+    return odp
+
+
+class KodBody(BaseModel):
+    code: str = Field(min_length=10, max_length=200)
+    verifier: str = Field(min_length=43, max_length=128)
+
+
+@router.post("/auth/kod")
+def login_kodem(body: KodBody, request: Request, db: Session = Depends(get_db)) -> dict:
+    import base64
+    import hashlib
+    import hmac
+
+    from ..models import LINK_MOBILE
+
+    ip = client_ip(request)
+    link = konta_lokalne.znajdz_link(db, body.code, LINK_MOBILE)
+    wyzwanie = base64.urlsafe_b64encode(
+        hashlib.sha256(body.verifier.encode()).digest()).rstrip(b"=").decode()
+    if link is None or not link.wyzwanie or not hmac.compare_digest(link.wyzwanie, wyzwanie):
+        raise HTTPException(401, "kod logowania jest nieprawidlowy albo wygasl")
+    link.uzyto = utcnow()
+    user = db.get(PortalUser, link.user_id) if link.user_id else None
+    if user is None or not user.is_active:
+        db.commit()
+        raise HTTPException(401, "konto jest wylaczone")
+    return _odpowiedz_logowania(db, user, ip, "mobile.login.ok", link.utworzyl or "zewnetrzne")
+
+
+@router.get("/auth/sposoby")
+def sposoby_logowania(login: str = Query("", max_length=320), db: Session = Depends(get_db)) -> dict:
+    """Dla ekranu logowania aplikacji: czy login to AD i jacy dostawcy sa wlaczeni."""
+    from ..services import zewnetrzne
+
+    return {
+        **(tozsamosc.sposob_logowania(db, login) if login else {}),
+        "external": [{"key": d.klucz, "name": d.nazwa} for d in zewnetrzne.wlaczeni()],
     }
 
 
@@ -324,6 +552,7 @@ def asset_detail(asset_id: str, ctx: TenantContext = Depends(mobile_context), db
 def update_assignment(body: AssignmentBody, asset_id: str, request: Request,
                       ctx: TenantContext = Depends(mobile_context), db: Session = Depends(get_db)) -> dict:
     require_write(ctx)
+    wymagaj_potwierdzenia(request)
     row = scoping.get_asset(db, ctx, asset_id)
     if row is None:
         raise HTTPException(404, "nie znaleziono zasobu")

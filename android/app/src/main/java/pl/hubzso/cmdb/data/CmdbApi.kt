@@ -24,6 +24,12 @@ import java.util.concurrent.TimeUnit
 
 interface CmdbApi {
     @POST("api/v1/mobile/auth/login") suspend fun login(@Body body: LoginRequest): LoginResponse
+    @POST("api/v1/mobile/auth/kod") suspend fun loginWithCode(@Body body: CodeLoginRequest): LoginResponse
+    @GET("api/v1/mobile/auth/sposoby") suspend fun loginMethods(@Query("login") login: String = ""): LoginMethods
+    @POST("api/v1/mobile/auth/challenge") suspend fun challenge(@Body body: ChallengeRequest): ChallengeResponse
+    @POST("api/v1/mobile/auth/biometric") suspend fun loginBiometric(@Body body: BiometricRequest): LoginResponse
+    @POST("api/v1/mobile/devices") suspend fun registerDevice(@Body body: DeviceRequest): DeviceResponse
+    @DELETE("api/v1/mobile/devices/{id}") suspend fun removeDevice(@Path("id") id: String)
     @GET("api/v1/mobile/tenants") suspend fun tenants(): List<Tenant>
     @GET("api/v1/mobile/me") suspend fun me(): User
     @GET("api/v1/mobile/dashboard") suspend fun dashboard(): Dashboard
@@ -135,6 +141,13 @@ class ApiFactory(private val session: SessionStore) {
 
     var tenantSlug: String? = null
 
+    /**
+     * Wolane, gdy serwer odrzuci token aplikacji (401) przy zwyklym zapytaniu.
+     * Przy wlaczonej biometrii oznacza to zwykle, ze godzinny token wygasl -
+     * aplikacja prosi wtedy o palec zamiast wylogowywac.
+     */
+    var onUnauthorized: (() -> Unit)? = null
+
     fun create(baseUrl: String): CmdbApi {
         val normalized = baseUrl.trim().trimEnd('/') + "/"
         require(normalized.startsWith("https://")) { "Serwer musi używać HTTPS" }
@@ -149,7 +162,13 @@ class ApiFactory(private val session: SessionStore) {
                     tenantSlug?.let { header("X-CMDB-Tenant", it) }
                     if (!token.isNullOrBlank()) header("Authorization", "Bearer $token")
                 }.build()
-                chain.proceed(request)
+                val response = chain.proceed(request)
+                val logowanie = request.url.encodedPath.contains("/api/v1/mobile/auth/")
+                // Prosba o swieze potwierdzenie operacji obsluguje sam wywolujacy.
+                if (response.code == 401 && !logowanie && response.header("X-CMDB-Potwierdz") == null) {
+                    onUnauthorized?.invoke()
+                }
+                response
             }
             .addInterceptor(logger)
             .build()
@@ -163,10 +182,24 @@ class ApiFactory(private val session: SessionStore) {
     }
 }
 
+/** Szczegol bledu z serwera (pole "detail"), jesli jest tekstem. */
+fun HttpException.detail(): String? = runCatching {
+    val body = response()?.errorBody()?.string().orEmpty()
+    (Json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject)
+        ?.get("detail")?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content
+}.getOrNull()
+
+fun Throwable.naglowek(nazwa: String): String? =
+    (this as? HttpException)?.response()?.headers()?.get(nazwa)
+
 fun Throwable.userMessage(): String = when (this) {
+    is Biometria.KluczUniewazniony -> message.orEmpty()
+    is Biometria.Anulowano -> message ?: "Anulowano."
     is HttpException -> when (code()) {
-        401 -> "Sesja wygasła albo dane logowania są nieprawidłowe."
-        403 -> "To konto nie ma uprawnień do tej operacji."
+        401 -> detail()?.takeIf { naglowek("X-CMDB-Biometria") != null || naglowek("X-CMDB-MFA") != null }
+            ?: "Sesja wygasła albo dane logowania są nieprawidłowe."
+        503 -> detail() ?: "Serwer jest chwilowo niedostępny."
+        403 -> detail() ?: "To konto nie ma uprawnień do tej operacji."
         404 -> "Nie znaleziono danych."
         429 -> {
             val seconds = response()?.headers()?.get("Retry-After")?.toLongOrNull()

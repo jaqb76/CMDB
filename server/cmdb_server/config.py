@@ -34,6 +34,25 @@ class Settings(BaseSettings):
     login_max_failures: int = 3
     login_lockout_hours: int = 24
 
+    # Weryfikacja dwuetapowa (TOTP) obowiazkowa dla lokalnych kont
+    # superadmina. Domyslnie wylaczona, zeby aktualizacja nie zaskoczyla
+    # nikogo ekranem konfiguracji - zalecamy wlaczenie na produkcji.
+    mfa_superadmin: bool = False
+    # Waznosc linkow jednorazowych.
+    zaproszenie_dni: int = Field(default=7, ge=1, le=60)
+    reset_hasla_minut: int = Field(default=60, ge=10, le=24 * 60)
+
+    # Logowanie kontem zewnetrznym - wylacznie dla osob z zaproszeniem.
+    # Dostawca jest wlaczony, gdy ma ustawiony identyfikator i sekret
+    # aplikacji zarejestrowanej u niego. Adres zwrotny do zarejestrowania:
+    # <CMDB_PUBLIC_URL>/login/zewn/callback
+    google_client_id: str = ""
+    google_client_secret: SecretStr = SecretStr("")
+    microsoft_client_id: str = ""
+    microsoft_client_secret: SecretStr = SecretStr("")
+    github_client_id: str = ""
+    github_client_secret: SecretStr = SecretStr("")
+
     # Wymuszenie HTTPS (Secure cookie + HSTS + redirect). Wylaczane tylko w dev.
     require_https: bool = False
 

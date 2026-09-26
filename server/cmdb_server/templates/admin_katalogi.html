@@ -1,0 +1,68 @@
+{% extends "base_admin.html" %}
+{% block title %}Katalogi AD - administracja CMDB{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Katalogi AD</h1>
+    <p class="muted">
+      Firma z Active Directory loguje się kontem domenowym. CMDB rozpoznaje katalog
+      po domenie loginu (<code>jan@abc.pl</code> albo <code>ABC\jan</code>), sprawdza
+      hasło w AD, a rolę ustala z grup. Konta z AD zakładają się same przy pierwszym logowaniu
+      i co 15 minut są synchronizowane: osoba wyłączona w AD albo usunięta z grupy traci dostęp.
+    </p>
+    <p class="muted small">
+      Katalog firmy daje tylko role w tej firmie. Superadmina, audytora i techników
+      helpdesku nadaje wyłącznie <b>katalog operatora</b>, bo administrator AD klienta może
+      dopisać się do dowolnej grupy u siebie.
+    </p>
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+{% if blad %}<div class="alert alert-error">{{ blad }}</div>{% endif %}
+
+<section class="panel tabela-przewijana">
+  <h2>Katalogi ({{ katalogi | length }})</h2>
+  {% if katalogi %}
+  <table class="table">
+    <thead><tr><th>Firma</th><th>Domeny loginu</th><th>Konta lokalne</th><th>Aktywnych kont z AD</th><th>Stan</th><th></th></tr></thead>
+    <tbody>
+      {% for k in katalogi %}
+      <tr {% if not k.aktywny %}class="row-muted"{% endif %}>
+        <td><b>{{ k.tenant.name if k.tenant else 'Operator (uprawnienia globalne)' }}</b>
+          <div class="muted small">{{ k.nazwa }}</div></td>
+        <td><code>{{ k.domeny | join(', ') }}</code></td>
+        <td>{% if k.tenant %}{{ 'dozwolone' if k.tenant.logowanie_lokalne else 'wyłączone' }}{% else %}<span class="muted">nie dotyczy</span>{% endif %}</td>
+        <td class="lp">{{ konta.get(k.id, 0) }}</td>
+        <td>
+          {% if not k.aktywny %}<span class="badge">wyłączony</span>
+          {% elif k.ostatni_blad %}<span class="badge badge-warn">błąd synchronizacji</span>
+          {% elif k.ostatnia_synchronizacja %}<span class="badge badge-ok">działa</span>
+          {% else %}<span class="badge">jeszcze nie synchronizowany</span>{% endif %}
+          <div class="muted small">{{ k.ostatnia_synchronizacja | ago if k.ostatnia_synchronizacja else '' }}</div>
+        </td>
+        <td><a class="btn btn-small" href="/admin/katalogi/{{ k.id }}">Otwórz</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Nie ma jeszcze żadnego katalogu. Wszyscy logują się kontami lokalnymi.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Dodaj katalog</h2>
+  <form method="post" action="/admin/katalogi" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="k-firma">Dla kogo</label>
+    <select id="k-firma" name="tenant_id">
+      {% for f in firmy_bez_katalogu %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+      {% if not jest_operatora %}<option value="">Operator – uprawnienia globalne (superadmin, audytor, technicy)</option>{% endif %}
+    </select>
+    {% include "_katalog_pola.html" %}
+    <button type="submit" class="btn btn-primary">Dodaj katalog</button>
+  </form>
+</section>
+{% endblock %}

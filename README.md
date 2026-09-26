@@ -75,6 +75,12 @@ między firmami tak samo jak superadmin, ale nie dostaje żadnego formularza
 zapisu — prawo do zapisu powstaje w jednym miejscu w kodzie i temu kontu nie
 jest przyznawane nigdzie.
 
+Logować można się kontem lokalnym, kontem **Active Directory** (uprawnienia
+z grup AD, synchronizacja co 15 minut), kontem Google/Microsoft/GitHub
+wyłącznie z zaproszenia, a w aplikacji Android — odciskiem palca. Konta
+lokalne mogą mieć weryfikację dwuetapową. Szczegóły:
+[`docs/autoryzacja.md`](docs/autoryzacja.md).
+
 Hasło zmienia się pod `/konto`, zawsze po podaniu dotychczasowego — również
 administrator. Superadmin może ustawić hasło dowolnemu kontu w `/admin/firmy`;
 to jedyne wyjście z sytuacji, w której administrator firmy zapomniał swojego.
@@ -361,6 +367,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | Dokument | Zawartość |
 |---|---|
 | [`docs/architektura.md`](docs/architektura.md) | model danych, przepływ raportu, deduplikacja, dodawanie kolejnych systemów |
+| [`docs/autoryzacja.md`](docs/autoryzacja.md) | logowanie: AD/LDAP i grupy → role, konta lokalne, 2FA, zaproszenia, Google/Microsoft/GitHub, biometria w aplikacji |
 | [`docs/bezpieczenstwo.md`](docs/bezpieczenstwo.md) | model zagrożeń, tokeny, TLS, izolacja firm, dane wrażliwe |
 | [`docs/agent-windows.md`](docs/agent-windows.md) | co i jak agent zbiera, instalacja, wdrożenie masowe, diagnostyka |
 | [`docs/agent-linux.md`](docs/agent-linux.md) | instalacja na Ubuntu/Raspberry Pi, systemd, architektury procesorów |

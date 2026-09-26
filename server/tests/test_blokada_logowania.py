@@ -96,8 +96,8 @@ def test_komunikat_nie_zdradza_czy_konto_istnieje(client, konto):
     nieistniejace = _zaloguj(client, "nie-ma-takiego@blokada.pl", "zle")
 
     assert istniejace.status_code == nieistniejace.status_code == 401
-    assert "Nieprawidlowy e-mail lub haslo" in istniejace.text
-    assert "Nieprawidlowy e-mail lub haslo" in nieistniejace.text
+    assert "Nieprawidłowy login lub hasło." in istniejace.text
+    assert "Nieprawidłowy login lub hasło." in nieistniejace.text
 
 
 # --- zdejmowanie blokady ----------------------------------------------------

@@ -1,0 +1,206 @@
+{% extends "base_admin.html" %}
+{% block title %}{{ kat.nazwa }} - Katalogi AD{% endblock %}
+{% block content %}
+
+<a class="muted small" href="/admin/katalogi">← Katalogi AD</a>
+<div class="page-head">
+  <div>
+    <h1>{{ kat.tenant.name if kat.tenant else 'Katalog operatora' }}</h1>
+    <p class="muted">
+      {% if kat.operatora %}
+        Grupy z tego katalogu dają uprawnienia ponad firmami: superadmina, audytora
+        wszystkich firm i technika helpdesku wybranych firm.
+      {% else %}
+        Grupy z tego katalogu dają role wyłącznie w firmie „{{ kat.tenant.name }}”.
+        Rola jest liczona przy każdym logowaniu i co 15 minut w tle.
+      {% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    <form method="post" action="/admin/katalogi/{{ kat.id }}/sprawdz" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn">Sprawdź połączenie</button>
+    </form>
+    <form method="post" action="/admin/katalogi/{{ kat.id }}/synchronizuj" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn">Synchronizuj teraz</button>
+    </form>
+  </div>
+</div>
+
+{% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
+{% if blad %}<div class="alert alert-error">{{ blad }}</div>{% endif %}
+{% if kat.ostatni_blad %}
+<div class="alert alert-warn">Ostatnia synchronizacja nie powiodła się ({{ kat.ostatnia_synchronizacja | ago }}): {{ kat.ostatni_blad }}. Konta pozostały bez zmian.</div>
+{% endif %}
+
+<section class="panel tabela-przewijana">
+  <h2>Grupy i role</h2>
+  {% if kat.mapowania %}
+  <table class="table">
+    <thead><tr><th>Grupa w katalogu</th><th>Rola w CMDB</th><th></th></tr></thead>
+    <tbody>
+      {% for m in kat.mapowania %}
+      <tr>
+        <td><b>{{ m.nazwa }}</b>
+          <div class="muted small"><code>{{ m.dn or m.identyfikator }}</code></div></td>
+        <td>{{ nazwy_rol[m.rola] }}{% if m.tenant_id %}: {{ nazwy_firm.get(m.tenant_id, '?') }}{% endif %}</td>
+        <td>
+          <form method="post" action="/admin/katalogi/{{ kat.id }}/mapowania/{{ m.id }}/usun" class="inline-form"
+                data-confirm="Usunąć grupę {{ m.nazwa }}? Osoby, którym dawała dostęp, stracą go przy najbliższej synchronizacji.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-small btn-ghost">Usuń</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Żadna grupa nie daje jeszcze dostępu{% if kat.bez_grupy == 'odmowa' %} – nikt z tego katalogu nie zaloguje się{% endif %}.</p>
+  {% endif %}
+
+  <h3 class="odstep-l">Dodaj grupę</h3>
+  <form method="get" action="/admin/katalogi/{{ kat.id }}" class="row-form">
+    <div>
+      <label for="szukaj">Szukaj grupy w katalogu</label>
+      <input id="szukaj" name="szukaj" type="text" value="{{ szukaj }}" placeholder="np. CMDB">
+    </div>
+    <div><button type="submit" class="btn">Szukaj</button></div>
+  </form>
+  {% if blad_szukania %}<div class="alert alert-error odstep-s">Wyszukiwanie nieudane: {{ blad_szukania }}</div>{% endif %}
+  {% if grupy_znalezione is not none %}
+    {% if grupy_znalezione %}
+    <table class="table odstep-s">
+      <thead><tr><th>Grupa</th><th>Daje rolę</th></tr></thead>
+      <tbody>
+        {% for g in grupy_znalezione %}
+        <tr>
+          <td><b>{{ g.nazwa }}</b><div class="muted small"><code>{{ g.dn }}</code></div></td>
+          <td>
+            <form method="post" action="/admin/katalogi/{{ kat.id }}/mapowania" class="row-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="identyfikator" value="{{ g.identyfikator }}">
+              <input type="hidden" name="nazwa" value="{{ g.nazwa }}">
+              <input type="hidden" name="dn" value="{{ g.dn or '' }}">
+              <div>
+                <select name="rola" aria-label="Rola dla grupy {{ g.nazwa }}">
+                  {% for klucz, opis in role %}<option value="{{ klucz }}">{{ opis }}</option>{% endfor %}
+                </select>
+              </div>
+              {% if kat.operatora %}
+              <div>
+                <select name="tenant_id" aria-label="Firma technika">
+                  <option value="">— firma (tylko dla technika) —</option>
+                  {% for f in firmy %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+                </select>
+              </div>
+              {% endif %}
+              <div><button type="submit" class="btn btn-small btn-primary">Dodaj</button></div>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted odstep-s">Nie znaleziono grup pasujących do „{{ szukaj }}”.</p>
+    {% endif %}
+  {% endif %}
+
+  <details class="odstep-m">
+    <summary class="muted small">Dodaj grupę ręcznie (SID albo DN)</summary>
+    <form method="post" action="/admin/katalogi/{{ kat.id }}/mapowania" class="stack odstep-s">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="m-id">SID grupy (S-1-5-21-…) albo DN</label>
+      <input id="m-id" name="identyfikator" type="text" required>
+      <label for="m-nazwa">Nazwa do wyświetlania</label>
+      <input id="m-nazwa" name="nazwa" type="text">
+      <label for="m-rola">Rola</label>
+      <select id="m-rola" name="rola">
+        {% for klucz, opis in role %}<option value="{{ klucz }}">{{ opis }}</option>{% endfor %}
+      </select>
+      {% if kat.operatora %}
+      <label for="m-firma">Firma (tylko dla technika)</label>
+      <select id="m-firma" name="tenant_id">
+        <option value="">—</option>
+        {% for f in firmy %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <button type="submit" class="btn btn-small">Dodaj</button>
+    </form>
+  </details>
+</section>
+
+<section class="panel">
+  <h2>Sprawdź użytkownika</h2>
+  <p class="muted small">Pokazuje grupy osoby w katalogu i rolę, jaką dostanie w CMDB. Nie loguje jej i niczego nie zmienia.</p>
+  <form method="get" action="/admin/katalogi/{{ kat.id }}" class="row-form">
+    <div>
+      <label for="sprawdz">Login</label>
+      <input id="sprawdz" name="sprawdz" type="text" value="{{ sprawdz }}" placeholder="jan.kowalski">
+    </div>
+    <div><button type="submit" class="btn">Sprawdź</button></div>
+  </form>
+  {% if wynik_sprawdzenia %}
+    {% set w = wynik_sprawdzenia %}
+    {% if w.blad %}<div class="alert alert-error odstep-s">Katalog nie odpowiada: {{ w.blad }}</div>
+    {% elif w.brak %}<p class="odstep-s">Nie znaleziono w katalogu osoby „{{ w.login }}” (albo login jest niejednoznaczny).</p>
+    {% else %}
+    <div class="odstep-s">
+      <b>{{ w.wpis.nazwa or w.wpis.login }}</b>
+      <span class="muted">· {{ w.wpis.email or '' }} · {{ 'konto aktywne w AD' if w.wpis.aktywne else 'konto WYŁĄCZONE w AD' }}</span>
+      <ul class="small">
+        {% for g in w.grupy %}
+        <li>{% if g.rola %}<b>{{ g.nazwa }} → {{ g.rola }}</b>{% else %}<span class="muted">{{ g.nazwa }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      <div class="alert {{ 'alert-ok' if w.dostep else 'alert-warn' }}">Wynik: {{ w.wynik }}{% if w.dostep and not kat.operatora %}. Gdy pasuje kilka grup, wygrywa wyższa rola.{% endif %}</div>
+    </div>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Połączenie</h2>
+  <form method="post" action="/admin/katalogi/{{ kat.id }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="check"><input type="checkbox" name="aktywny" value="true" {% if kat.aktywny %}checked{% endif %}> Katalog włączony</label>
+    {% if kat.tenant %}
+    <label class="check"><input type="checkbox" name="logowanie_lokalne" value="true" {% if kat.tenant.logowanie_lokalne %}checked{% endif %}>
+      W firmie {{ kat.tenant.name }} wolno też logować się kontami lokalnymi CMDB</label>
+    <p class="muted small">Wyłącz, jeśli firma ma logować się wyłącznie przez AD. Konta lokalne zostaną, ale nie zalogują się.</p>
+    {% endif %}
+    {% include "_katalog_pola.html" %}
+    <p class="muted small">Ostatnia synchronizacja: {{ kat.ostatnia_synchronizacja | ago if kat.ostatnia_synchronizacja else 'jeszcze nie było' }}</p>
+    <button type="submit" class="btn btn-primary">Zapisz</button>
+  </form>
+  <form method="post" action="/admin/katalogi/{{ kat.id }}/usun" class="odstep-m"
+        data-confirm="Usunąć katalog {{ kat.nazwa }}? Wszystkie konta z tego katalogu zostaną wyłączone.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-danger btn-small">Usuń katalog</button>
+  </form>
+</section>
+
+<section class="panel tabela-przewijana">
+  <h2>Konta z tego katalogu ({{ konta | length }})</h2>
+  {% if konta %}
+  <table class="table">
+    <thead><tr><th>Osoba</th><th>Uprawnienia</th><th>Skąd</th><th>Stan</th><th>Synchronizacja</th></tr></thead>
+    <tbody>
+      {% for k in konta %}
+      <tr {% if not k.is_active %}class="row-muted"{% endif %}>
+        <td><b>{{ k.full_name or k.email }}</b><div class="muted small">{{ k.email }}</div></td>
+        <td>{% if k.is_superadmin %}superadmin{% elif k.is_global_viewer %}audytor{% elif k.tenant_id %}{{ nazwy_rol[k.role] }}{% else %}technik helpdesku{% endif %}</td>
+        <td class="small">{{ (k.uprawnienia_z or []) | join(', ') }}</td>
+        <td>{% if k.is_active %}<span class="badge badge-ok">aktywne</span>{% elif k.wylaczone_recznie %}<span class="badge badge-warn">wyłączone w CMDB</span>{% else %}<span class="badge badge-warn">bez dostępu</span>{% endif %}</td>
+        <td class="small">{{ k.ostatnia_synchronizacja | ago if k.ostatnia_synchronizacja else '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Nikt jeszcze nie zalogował się przez ten katalog.</p>
+  {% endif %}
+</section>
+{% endblock %}

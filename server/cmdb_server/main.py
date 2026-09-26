@@ -18,6 +18,8 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 from .api import admin as admin_api
+from .api import katalogi_admin
+from .api import logowanie_ui
 from .api import agent as agent_api
 from .api import download as download_api
 from .api import raporty_ui
@@ -170,6 +172,8 @@ def create_app() -> FastAPI:
     app.include_router(agent_api.router)
     app.include_router(download_api.router)
     app.include_router(admin_api.router)
+    app.include_router(katalogi_admin.router)
+    app.include_router(logowanie_ui.router)
     app.include_router(ui_api.router)
     app.include_router(raporty_ui.router)
     app.include_router(asset_management.router)

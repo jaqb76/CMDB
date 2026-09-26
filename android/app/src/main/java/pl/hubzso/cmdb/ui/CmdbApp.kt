@@ -1,6 +1,16 @@
 package pl.hubzso.cmdb.ui
 
 import android.app.Application
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.SystemClock
+import android.util.Base64
+import androidx.fragment.app.FragmentActivity
+import java.security.MessageDigest
+import java.security.SecureRandom
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -23,6 +33,7 @@ import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -87,7 +98,16 @@ import pl.hubzso.cmdb.data.DictionaryEntry
 import pl.hubzso.cmdb.data.DictionarySchema
 import pl.hubzso.cmdb.data.DictionaryWrite
 import pl.hubzso.cmdb.data.HelpdeskCatalog
+import pl.hubzso.cmdb.data.Biometria
+import pl.hubzso.cmdb.data.BiometricRequest
+import pl.hubzso.cmdb.data.ChallengeRequest
+import pl.hubzso.cmdb.data.CodeLoginRequest
+import pl.hubzso.cmdb.data.DeviceRequest
+import pl.hubzso.cmdb.data.ExternalProvider
 import pl.hubzso.cmdb.data.LoginRequest
+import pl.hubzso.cmdb.data.LoginResponse
+import pl.hubzso.cmdb.data.MobilePolicy
+import pl.hubzso.cmdb.data.naglowek
 import pl.hubzso.cmdb.data.NewMessage
 import pl.hubzso.cmdb.data.NewTicket
 import pl.hubzso.cmdb.data.ReportCatalog
@@ -152,6 +172,17 @@ data class AppState(
     // jest bledem, ale technik musi go zobaczyc - zwlaszcza wtedy, gdy mowi,
     // ze mail NIE wyszedl mimo zapisanej odpowiedzi.
     val notice: String? = null,
+    // --- logowanie ---
+    // Aplikacja czeka na odcisk palca (start, powrot z tla, wygasly token
+    // albo potwierdzenie operacji). Tresc jest wtedy zasloneta.
+    val locked: Boolean = false,
+    val lockReason: String? = null,
+    val biometricsEnabled: Boolean = false,
+    // Po pelnym logowaniu: propozycja wlaczenia biometrii (zasady firmy).
+    val biometricOffer: MobilePolicy? = null,
+    // Konto ma weryfikacje dwuetapowa - formularz prosi o kod.
+    val mfaRequired: Boolean = false,
+    val externalProviders: List<ExternalProvider> = emptyList(),
 )
 
 /**
@@ -207,6 +238,7 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
             user = scopedUser,
             tenants = available,
             tenantRequired = selected == null,
+            biometricsEnabled = session.biometricsEnabled,
         )
         if (selected != null) {
             session.saveTenant(selected.slug)
@@ -240,10 +272,29 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        factory.onUnauthorized = {
+            // Wolane z watku OkHttp. Przy biometrii 401 znaczy zwykle wygasly
+            // godzinny token - prosimy o palec zamiast wylogowywac.
+            viewModelScope.launch(Dispatchers.Main) {
+                if (session.biometricsEnabled && _state.value.user != null && !_state.value.locked) {
+                    _state.value = _state.value.copy(locked = true, lockReason = "Sesja wygasła – potwierdź odciskiem palca.")
+                }
+            }
+        }
         viewModelScope.launch {
             session.restore()
             val server = session.serverUrl
-            if (!server.isNullOrBlank() && !session.token.isNullOrBlank()) {
+            if (!server.isNullOrBlank() && session.biometricsEnabled) {
+                // Z biometria kazde uruchomienie zaczyna sie od odcisku palca -
+                // zapisany token nie wystarcza.
+                _state.value = AppState(
+                    restoring = false,
+                    rememberedServer = server,
+                    rememberedEmail = session.loginEmail.orEmpty(),
+                    locked = true,
+                    biometricsEnabled = true,
+                )
+            } else if (!server.isNullOrBlank() && !session.token.isNullOrBlank()) {
                 runCatching {
                     api = factory.create(server)
                     establishTenant(api!!.me())
@@ -266,23 +317,255 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Dane logowania czekajace na kod weryfikacji dwuetapowej. Tylko w pamieci.
+    private var pendingLogin: Triple<String, String, String>? = null
+
     fun login(server: String, email: String, password: String) = viewModelScope.launch {
+        pendingLogin = null
+        loginWith(server, email, password, null)
+    }
+
+    fun submitCode(code: String) = viewModelScope.launch {
+        val (server, email, password) = pendingLogin ?: return@launch
+        loginWith(server, email, password, code.filter { it.isDigit() })
+    }
+
+    fun cancelCode() {
+        pendingLogin = null
+        _state.value = _state.value.copy(mfaRequired = false)
+    }
+
+    private suspend fun loginWith(server: String, email: String, password: String, code: String?) {
         _state.value = _state.value.copy(loading = true, error = null)
         runCatching {
             require(server.trim().startsWith("https://")) { "Adres musi rozpoczynać się od https://" }
             session.saveLogin(server, email)
             val temporary = factory.create(session.serverUrl!!)
-            val result = temporary.login(LoginRequest(session.loginEmail!!, password))
-            session.saveSession(result.accessToken)
-            api = factory.create(server)
-            establishTenant(result.user)
+            temporary.login(LoginRequest(session.loginEmail!!, password, code))
+        }.onSuccess { result ->
+            pendingLogin = null
+            afterFullLogin(result)
         }.onFailure {
-            _state.value = _state.value.copy(loading = false, error = it.userMessage())
+            if (it.naglowek("X-CMDB-MFA") != null) {
+                pendingLogin = Triple(server, email, password)
+                _state.value = _state.value.copy(
+                    loading = false, mfaRequired = true,
+                    error = if (code != null) "Kod się nie zgadza. Sprawdź zegar telefonu." else null,
+                )
+            } else {
+                _state.value = _state.value.copy(loading = false, error = it.userMessage())
+            }
         }
+    }
+
+    /** Pelne logowanie (haslo, AD, konto zewnetrzne) zakonczone sukcesem. */
+    private suspend fun afterFullLogin(result: LoginResponse) {
+        val server = session.serverUrl!!
+        session.saveSession(result.accessToken)
+        session.savePolicy(result.policy)
+        api = factory.create(server)
+        val context = getApplication<Application>()
+        val policy = result.policy
+        if (policy.biometrics == "wylaczona" && session.deviceId != null) {
+            session.forgetDevice()
+        }
+        // Telefon z wlaczona biometria dostaje przy kazdym pelnym logowaniu nowy
+        // klucz - serwer liczy od tej chwili okres do nastepnego pelnego logowania.
+        if (session.deviceId != null && policy.biometrics != "wylaczona" &&
+            Biometria.dostepna(context, policy.allowDeviceCredential) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        ) {
+            runCatching {
+                val klucz = Biometria.nowyKlucz(policy.allowDeviceCredential)
+                val device = api!!.registerDevice(DeviceRequest(nazwaTelefonu(), klucz, session.deviceId))
+                session.saveDevice(device.device.id, device.policy)
+            }.onFailure { session.forgetDevice() }
+        }
+        establishTenant(result.user)
+        val offer = policy.biometrics != "wylaczona" && !session.biometricsEnabled &&
+            Biometria.dostepna(context, policy.allowDeviceCredential)
+        _state.value = _state.value.copy(
+            biometricOffer = if (offer) policy else null,
+            biometricsEnabled = session.biometricsEnabled,
+            notice = if (policy.biometrics == "wymagana" && !offer && !session.biometricsEnabled)
+                "Twoja firma wymaga logowania odciskiem palca, ale ten telefon go nie obsługuje (potrzebny Android 11 i zapisany odcisk)."
+            else _state.value.notice,
+        )
+    }
+
+    private fun nazwaTelefonu(): String =
+        listOf(Build.MANUFACTURER.replaceFirstChar { it.uppercase() }, Build.MODEL)
+            .distinct().joinToString(" ").take(200)
+
+    // --- biometria ---------------------------------------------------------
+
+    fun enableBiometrics() = viewModelScope.launch {
+        val service = api ?: return@launch
+        val policy = _state.value.biometricOffer ?: MobilePolicy(allowDeviceCredential = session.allowDeviceCredential)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@launch
+        _state.value = _state.value.copy(biometricOffer = null)
+        runCatching {
+            val klucz = Biometria.nowyKlucz(policy.allowDeviceCredential)
+            service.registerDevice(DeviceRequest(nazwaTelefonu(), klucz, session.deviceId))
+        }.onSuccess {
+            session.saveDevice(it.device.id, it.policy)
+            _state.value = _state.value.copy(
+                biometricsEnabled = true,
+                notice = "Logowanie odciskiem palca włączone na tym telefonie.",
+            )
+        }.onFailure {
+            Biometria.usunKlucz()
+            val powod = if (it.naglowek("X-CMDB-Biometria") == "pelne_logowanie")
+                "Żeby włączyć biometrię, wyloguj się i zaloguj ponownie hasłem." else it.userMessage()
+            _state.value = _state.value.copy(error = powod)
+        }
+    }
+
+    fun declineBiometrics() {
+        _state.value = _state.value.copy(biometricOffer = null)
+    }
+
+    fun disableBiometrics() = viewModelScope.launch {
+        val id = session.deviceId
+        runCatching { if (id != null) api?.removeDevice(id) }
+        session.forgetDevice()
+        _state.value = _state.value.copy(biometricsEnabled = false, notice = "Logowanie odciskiem palca wyłączone.")
+    }
+
+    fun toggleBiometrics() {
+        if (session.biometricsEnabled) disableBiometrics()
+        else {
+            val context = getApplication<Application>()
+            if (!Biometria.dostepna(context, session.allowDeviceCredential)) {
+                _state.value = _state.value.copy(error = "Ten telefon nie ma zapisanego odcisku palca albo ma Androida starszego niż 11.")
+            } else {
+                _state.value = _state.value.copy(biometricOffer = MobilePolicy(allowDeviceCredential = session.allowDeviceCredential))
+            }
+        }
+    }
+
+    // Co zrobic po odblokowaniu (np. ponowic zapis, ktory wymagal potwierdzenia).
+    private var afterUnlock: (() -> Unit)? = null
+
+    fun unlock(activity: FragmentActivity) = viewModelScope.launch {
+        val server = session.serverUrl
+        val deviceId = session.deviceId
+        if (server.isNullOrBlank() || deviceId.isNullOrBlank()) { usePassword(); return@launch }
+        _state.value = _state.value.copy(loading = true, error = null)
+        runCatching {
+            val temporary = factory.create(server)
+            val challenge = temporary.challenge(ChallengeRequest(deviceId)).challenge
+            val signature = Biometria.podpisz(
+                activity, challenge, session.allowDeviceCredential,
+                _state.value.lockReason ?: "Odblokuj CMDB",
+            )
+            temporary.loginBiometric(BiometricRequest(deviceId, challenge, signature))
+        }.onSuccess { result ->
+            session.saveSession(result.accessToken)
+            session.savePolicy(result.policy)
+            api = factory.create(server)
+            val ponow = afterUnlock
+            afterUnlock = null
+            if (_state.value.user != null) {
+                // Aplikacja byla otwarta - zostawiamy ekran, na ktorym ktos byl.
+                _state.value = _state.value.copy(loading = false, locked = false, lockReason = null)
+                if (ponow != null) ponow() else refreshAll()
+            } else {
+                establishTenant(result.user)
+            }
+        }.onFailure {
+            val powod = it.naglowek("X-CMDB-Biometria")
+            when {
+                it is Biometria.Anulowano -> _state.value = _state.value.copy(loading = false)
+                it is Biometria.KluczUniewazniony || (powod != null && powod in setOf("odlaczone", "wylaczona", "konto")) -> {
+                    session.forgetDevice()
+                    wrocDoLogowania(it.userMessage())
+                }
+                powod == "pelne_logowanie" -> wrocDoLogowania(it.userMessage())
+                else -> _state.value = _state.value.copy(loading = false, error = it.userMessage())
+            }
+        }
+    }
+
+    fun usePassword() = viewModelScope.launch { wrocDoLogowania(null) }
+
+    private suspend fun wrocDoLogowania(komunikat: String?) {
+        afterUnlock = null
+        session.clear()
+        factory.tenantSlug = null
+        api = null
+        _state.value = AppState(
+            restoring = false,
+            rememberedServer = session.serverUrl.orEmpty(),
+            rememberedEmail = session.loginEmail.orEmpty(),
+            biometricsEnabled = session.biometricsEnabled,
+            error = komunikat,
+        )
+    }
+
+    private var wTle: Long? = null
+
+    fun wentBackground() { wTle = SystemClock.elapsedRealtime() }
+
+    fun cameForeground() {
+        val od = wTle ?: return
+        wTle = null
+        val minuty = session.lockAfterMinutes
+        if (session.biometricsEnabled && _state.value.user != null && !_state.value.locked &&
+            SystemClock.elapsedRealtime() - od >= minuty * 60_000L
+        ) {
+            _state.value = _state.value.copy(locked = true, lockReason = "Odblokuj CMDB")
+        }
+    }
+
+    // --- logowanie kontem zewnetrznym ---------------------------------------
+
+    fun loadExternalProviders(server: String) = viewModelScope.launch {
+        runCatching {
+            require(server.trim().startsWith("https://")) { "Adres musi rozpoczynać się od https://" }
+            factory.create(server).loginMethods().external
+        }.onSuccess {
+            _state.value = _state.value.copy(
+                externalProviders = it,
+                error = if (it.isEmpty()) "Na tym serwerze nie włączono logowania kontem zewnętrznym." else null,
+            )
+        }.onFailure { _state.value = _state.value.copy(error = it.userMessage()) }
+    }
+
+    fun startExternal(context: Context, server: String, provider: String) = viewModelScope.launch {
+        val bajty = ByteArray(48).also { SecureRandom().nextBytes(it) }
+        val weryfikator = Base64.encodeToString(bajty, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        val wyzwanie = Base64.encodeToString(
+            MessageDigest.getInstance("SHA-256").digest(weryfikator.toByteArray()),
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
+        )
+        session.saveLogin(server, _state.value.rememberedEmail)
+        session.savePendingVerifier(weryfikator)
+        val adres = session.serverUrl + "/login/zewn/" + Uri.encode(provider) +
+            "?cel=mobile&wyzwanie=" + wyzwanie
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(adres)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /** Powrot z przegladarki: pl.hubzso.cmdb:/logowanie?kod=... */
+    fun finishExternal(code: String) = viewModelScope.launch {
+        val weryfikator = session.pendingVerifier()
+        val server = session.serverUrl
+        session.savePendingVerifier(null)
+        if (weryfikator == null || server.isNullOrBlank()) {
+            _state.value = _state.value.copy(error = "Logowanie wygasło. Zacznij od nowa.")
+            return@launch
+        }
+        _state.value = _state.value.copy(loading = true, error = null)
+        runCatching { factory.create(server).loginWithCode(CodeLoginRequest(code, weryfikator)) }
+            .onSuccess { afterFullLogin(it) }
+            .onFailure { _state.value = _state.value.copy(loading = false, error = it.userMessage()) }
     }
 
     fun logout() = viewModelScope.launch {
         assetSearch?.cancel()
+        // Wylogowanie jest swiadome - telefon przestaje tez logowac sie palcem.
+        val id = session.deviceId
+        if (id != null) runCatching { api?.removeDevice(id) }
+        session.forgetDevice()
         session.clear()
         factory.tenantSlug = null
         api = null
@@ -401,7 +684,18 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun deleteDictionary(category: String, id: String) { mutate { it.deleteDictionaryEntry(category, id) } }
     fun updateAssignment(assetId: String, body: AssignmentWrite) { mutate { service ->
-        service.updateAssignment(assetId, body)
+        try {
+            service.updateAssignment(assetId, body)
+        } catch (error: retrofit2.HttpException) {
+            if (error.naglowek("X-CMDB-Potwierdz") != null) {
+                // Zapis po biometrii wymaga swiezego potwierdzenia: prosimy
+                // o palec i po odblokowaniu ponawiamy ten sam zapis.
+                afterUnlock = { updateAssignment(assetId, body) }
+                _state.value = _state.value.copy(locked = true, lockReason = "Potwierdź zmianę odciskiem palca")
+                return@mutate
+            }
+            throw error
+        }
         val detail = service.asset(assetId)
         _state.value = _state.value.copy(selectedAsset = detail)
     } }
@@ -599,12 +893,29 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
     val preferences = remember { context.getSharedPreferences("cmdb_appearance", 0) }
     var theme by remember { mutableStateOf(preferences.getString("theme", "system") ?: "system") }
     val darkMode = if (theme == "system") systemDark else theme == "dark"
+    val activity = remember(context) { context.fragmentActivity() }
+    // Ekran blokady od razu pokazuje okno biometrii - przycisk jest na wypadek anulowania.
+    LaunchedEffect(state.locked) {
+        if (state.locked && activity != null) vm.unlock(activity)
+    }
     CmdbVisualTheme(darkMode) {
         when {
             state.restoring -> ModernLoadingScreen()
+            state.locked -> ModernLockScreen(
+                state.rememberedEmail, state.lockReason, state.loading, state.error,
+                onUnlock = { activity?.let { vm.unlock(it) } },
+                onPassword = { vm.usePassword() },
+                onErrorShown = vm::clearError,
+            )
             state.user == null -> ModernLoginScreen(
                 state.rememberedServer, state.rememberedEmail,
                 state.loading, state.error, vm::login, vm::clearError,
+                mfaRequired = state.mfaRequired,
+                onCode = { vm.submitCode(it) },
+                onCancelCode = vm::cancelCode,
+                providers = state.externalProviders,
+                onLoadProviders = { vm.loadExternalProviders(it) },
+                onExternal = { server, key -> vm.startExternal(context, server, key) },
             )
             state.tenantRequired -> ModernTenantScreen(state, vm::selectTenant, vm::logout)
             else -> ModernMainScreen(state, vm::refreshAll, vm::logout, {
@@ -629,9 +940,38 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
                     onAsset = vm::changeTicketAsset,
                     onSearchAssets = vm::searchHelpdeskAssets,
                     onOpenAttachment = vm::openAttachment,
-                ))
+                ),
+                onToggleBiometrics = vm::toggleBiometrics)
+        }
+        state.biometricOffer?.let { polityka ->
+            AlertDialog(
+                onDismissRequest = { if (polityka.biometrics != "wymagana") vm.declineBiometrics() },
+                title = { Text("Logować się odciskiem palca?") },
+                text = {
+                    Text(
+                        "Na tym telefonie zamiast hasła wystarczy odcisk palca. Odcisk nie opuszcza " +
+                            "telefonu. Co ${polityka.fullLoginDays} dni poprosimy o pełne logowanie."
+                    )
+                },
+                confirmButton = { TextButton(onClick = { vm.enableBiometrics() }) { Text("Włącz") } },
+                dismissButton = {
+                    if (polityka.biometrics != "wymagana") {
+                        TextButton(onClick = { vm.declineBiometrics() }) { Text("Nie teraz") }
+                    }
+                },
+            )
         }
     }
+}
+
+/** Aktywnosc potrzebna oknu biometrii - Compose daje kontekst, czasem opakowany. */
+private fun Context.fragmentActivity(): FragmentActivity? {
+    var kontekst: Context? = this
+    while (kontekst is ContextWrapper) {
+        if (kontekst is FragmentActivity) return kontekst
+        kontekst = kontekst.baseContext
+    }
+    return null
 }
 
 @Composable private fun LoadingScreen() = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

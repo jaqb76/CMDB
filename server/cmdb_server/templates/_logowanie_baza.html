@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pl"{% if motyw %} data-theme="{{ motyw }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block tytul %}Logowanie{% endblock %} - CMDB</title>
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="{{ zasob('app.css') }}">
+</head>
+<body class="login-page">
+{% if instancja %}
+{#
+  Oznaczenie instancji. Pusta etykieta znaczy produkcje i wtedy nie ma tu nic.
+  Barwa jest KLASA, nie stylem: Content-Security-Policy ma style-src 'self',
+  wiec atrybut style="" przegladarka odrzuca.
+#}
+<div class="pasek-instancji pasek-{{ instancja_barwa }}">{{ instancja }}</div>
+{% endif %}
+
+    {% block karta %}{% endblock %}
+</body>
+</html>

@@ -428,6 +428,7 @@ def utworz_konto(
         raise HTTPException(status_code=400, detail="nieznana rola")
     if db.execute(select(PortalUser).where(PortalUser.email == adres)).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="konto o tym adresie juz istnieje")
+    _sprawdz_adres_lokalny(db, adres)
 
     db.add(
         PortalUser(
@@ -443,6 +444,15 @@ def utworz_konto(
     db.commit()
     log.info("superadmin %s utworzyl konto %s w firmie %s", user.email, adres, firma.slug)
     return RedirectResponse("/admin/firmy", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _sprawdz_adres_lokalny(db: Session, adres: str) -> None:
+    from ..services import konta_lokalne
+
+    try:
+        konta_lokalne.sprawdz_adres(db, adres)
+    except ValueError as blad:
+        raise HTTPException(status_code=400, detail=str(blad)) from blad
 
 
 def _powrot(wskazany: str) -> str:
@@ -467,6 +477,7 @@ def przelacz_konto(
     sprawdz_csrf(user, csrf_token)
     konto = _konto_do_zmiany(db, user, user_id)
     konto.is_active = not konto.is_active
+    konto.wylaczone_recznie = not konto.is_active
     # Wylaczone konto ma stracic dostep natychmiast, a nie z wygasnieciem
     # ciasteczka: sesja sprawdza wersje przy kazdym zapytaniu.
     konto.session_version = PortalUser.session_version + 1
@@ -555,6 +566,7 @@ def utworz_konto_globalne(
         )
     if db.execute(select(PortalUser).where(PortalUser.email == adres)).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="konto o tym adresie juz istnieje")
+    _sprawdz_adres_lokalny(db, adres)
 
     db.add(
         PortalUser(
@@ -598,14 +610,20 @@ def ustaw_haslo_konta(
     konto = db.get(PortalUser, user_id)
     if konto is None:
         raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    if konto.z_katalogu:
+        raise HTTPException(status_code=400,
+                            detail="konto z AD loguje się hasłem domenowym - zmień je w AD")
     if len(password) < MIN_DLUGOSC_HASLA:
         raise HTTPException(
             status_code=400,
             detail=f"haslo musi miec co najmniej {MIN_DLUGOSC_HASLA} znakow",
         )
 
+    from ..services import biometria
+
     konto.session_version = PortalUser.session_version + 1
     konto.password_hash = hash_password(password)
+    biometria.odlacz_wszystkie(db, konto.id, "hasło ustawione przez administratora")
     audit(db, None, action="haslo.ustawione_przez_admina", target=konto.email,
           detail={"tenant": konto.tenant.slug if konto.tenant else None},
           ip=client_ip(request), actor=user.email)
@@ -680,6 +698,13 @@ def zapisz_ustawienia(
     stale_after_hours: str = Form(""),
     snapshot_retention: str = Form(""),
     notes: str = Form(""),
+    pola_logowania: str = Form(""),
+    logowanie_lokalne: bool = Form(False),
+    wymagaj_mfa: bool = Form(False),
+    biometria: str = Form("dozwolona"),
+    biometria_dni: str = Form("30"),
+    biometria_pin: bool = Form(False),
+    blokada_aplikacji_minut: str = Form("5"),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
@@ -732,9 +757,22 @@ def zapisz_ustawienia(
     firma.stale_after_hours = prog
     firma.snapshot_retention = retencja
     firma.notes = notes.strip() or None
+    # Pola logowania zmieniamy tylko z formularza, ktory je pokazuje - zapis
+    # ze starszego formularza nie moze po cichu wylaczyc kont lokalnych.
+    if pola_logowania:
+        if biometria not in ("dozwolona", "wymagana", "wylaczona"):
+            raise HTTPException(status_code=400, detail="nieznane ustawienie biometrii")
+        firma.logowanie_lokalne = logowanie_lokalne
+        firma.wymagaj_mfa = wymagaj_mfa
+        firma.biometria = biometria
+        firma.biometria_dni = liczba(biometria_dni, "pełne logowanie co ile dni", 1, 365) or 30
+        firma.biometria_pin = biometria_pin
+        firma.blokada_aplikacji_minut = liczba(
+            blokada_aplikacji_minut, "blokada aplikacji po minutach", 0, 240) or 0
 
     audit(db, None, action="tenant.settings_changed", target=firma.slug,
-          detail={"z": poprzednie, "interwal_h": godziny, "prog_h": prog, "retencja": retencja},
+          detail={"z": poprzednie, "interwal_h": godziny, "prog_h": prog, "retencja": retencja,
+                  "logowanie_lokalne": firma.logowanie_lokalne, "wymagaj_mfa": firma.wymagaj_mfa},
           ip=client_ip(request), actor=user.email)
     db.commit()
     log.info("superadmin %s zmienil ustawienia firmy %s", user.email, firma.slug)
@@ -1367,6 +1405,11 @@ def widok_kont(
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> Response:
+    return _strona_kont(request, user, db, komunikat)
+
+
+def _strona_kont(request: Request, user: PortalUser, db: Session, komunikat: str = "",
+                 jednorazowy: dict | None = None) -> Response:
     """Wszystkie konta panelu na jednej liscie.
 
     Konta byly dotad pokazywane pod firmami, a technik helpdesku do zadnej
@@ -1385,6 +1428,21 @@ def widok_kont(
     nazwy_firm = dict(db.execute(select(Tenant.id, Tenant.name)).all())
     czasy = dict(db.execute(
         select(CzasPracy.technik_id, func.count(CzasPracy.id)).group_by(CzasPracy.technik_id)
+    ).all())
+
+    from ..models import TozsamoscZewnetrzna
+
+    zewnetrzne: dict[str, list[str]] = {}
+    for user_id, dostawca in db.execute(
+        select(TozsamoscZewnetrzna.user_id, TozsamoscZewnetrzna.dostawca)
+    ).all():
+        zewnetrzne.setdefault(user_id, []).append(dostawca)
+
+    from ..models import UrzadzenieMobilne
+
+    telefony = dict(db.execute(
+        select(UrzadzenieMobilne.user_id, func.count(UrzadzenieMobilne.id))
+        .where(UrzadzenieMobilne.odlaczono.is_(None)).group_by(UrzadzenieMobilne.user_id)
     ).all())
 
     konta = []
@@ -1406,6 +1464,8 @@ def widok_kont(
             # nie daja. Taki stan da sie odziedziczyc po starszych danych i lepiej
             # go nazwac, niz pozwolic komus liczyc, ze technik dziala.
             "niespojne": bool(firmy_konta) and konto.is_global_viewer,
+            "zewnetrzne": sorted(zewnetrzne.get(konto.id, [])),
+            "telefony": telefony.get(konto.id, 0),
         })
 
     return render_admin(
@@ -1417,7 +1477,156 @@ def widok_kont(
         opisy_zakresu=OPISY_ZAKRESU,
         min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
         komunikat=komunikat,
+        jednorazowy=jednorazowy,
+        zaproszenia=_otwarte_zaproszenia(db),
     )
+
+
+def _otwarte_zaproszenia(db: Session) -> list:
+    from ..models import LINK_ZAPROSZENIE, JednorazowyLink
+
+    return db.execute(
+        select(JednorazowyLink).where(
+            JednorazowyLink.rodzaj == LINK_ZAPROSZENIE, JednorazowyLink.uzyto.is_(None),
+            JednorazowyLink.wygasa > utcnow(),
+        ).order_by(JednorazowyLink.utworzono.desc())
+    ).scalars().all()
+
+
+@router.post("/zaproszenia")
+def zapros(
+    request: Request,
+    email: str = Form(...),
+    full_name: str = Form(""),
+    zakres: str = Form(ZAKRES_FIRMA),
+    tenant_id: str = Form(""),
+    role: str = Form("viewer"),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zaproszenie do konta lokalnego: osoba sama ustawia haslo z linku.
+
+    Administrator nie wymysla ani nie zna cudzego hasla. Link pokazujemy raz
+    i - jesli firma ma poczte - wysylamy go od razu.
+    """
+    from ..models import LINK_ZAPROSZENIE
+    from ..services import konta_lokalne
+    from .download import adres_publiczny
+
+    sprawdz_csrf(user, csrf_token)
+    adres = email.strip().lower()
+    if "@" not in adres or len(adres) > 255:
+        raise HTTPException(status_code=400, detail="podaj adres e-mail")
+    if db.execute(select(PortalUser).where(PortalUser.email == adres)).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="konto o tym adresie juz istnieje")
+    _sprawdz_adres_lokalny(db, adres)
+    if zakres not in ZAKRESY:
+        raise HTTPException(status_code=400, detail="nieznany rodzaj konta")
+    if role not in {"admin", "viewer"}:
+        raise HTTPException(status_code=400, detail="nieznana rola")
+    firma = znajdz_firme(db, tenant_id) if zakres == ZAKRES_FIRMA else None
+
+    token = konta_lokalne.utworz_link(
+        db, LINK_ZAPROSZENIE, adres, tenant_id=firma.id if firma else None, zakres=zakres,
+        rola="viewer" if zakres == ZAKRES_AUDYTOR else role,
+        full_name=full_name.strip() or None, utworzyl=user.email,
+    )
+    db.flush()
+    link = konta_lokalne.adres_linku(adres_publiczny(request), LINK_ZAPROSZENIE, token)
+    wyslane = konta_lokalne.wyslij_link(db, firma.id if firma else None, adres,
+                                        LINK_ZAPROSZENIE, link)
+    audit(db, None, action="zaproszenie.wyslane", target=adres,
+          detail={"zakres": zakres, "rola": role, "firma": firma.slug if firma else None,
+                  "wyslane_poczta": wyslane},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return _strona_kont(request, user, db, jednorazowy={
+        "email": adres, "link": link, "wyslane": wyslane, "rodzaj": "zaproszenie"})
+
+
+@router.post("/zaproszenia/{link_id}/odwolaj")
+def odwolaj_zaproszenie(link_id: str, request: Request, csrf_token: str = Form(""),
+                        user: PortalUser = Depends(require_superadmin),
+                        db: Session = Depends(get_db)) -> Response:
+    from ..models import LINK_ZAPROSZENIE, JednorazowyLink
+
+    sprawdz_csrf(user, csrf_token)
+    link = db.get(JednorazowyLink, link_id)
+    if link is None or link.rodzaj != LINK_ZAPROSZENIE:
+        raise HTTPException(status_code=404, detail="nie ma takiego zaproszenia")
+    link.uzyto = utcnow()
+    audit(db, None, action="zaproszenie.odwolane", target=link.email, ip=client_ip(request),
+          actor=user.email)
+    db.commit()
+    return RedirectResponse(f"/admin/konta?komunikat={quote('Zaproszenie odwołane.')}",
+                            status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/users/{user_id}/link-hasla")
+def link_hasla(user_id: str, request: Request, csrf_token: str = Form(""),
+               user: PortalUser = Depends(require_superadmin),
+               db: Session = Depends(get_db)) -> Response:
+    """Link do ustawienia nowego hasla - zamiast wymyslania hasla za kogos."""
+    from ..models import LINK_RESET
+    from ..services import konta_lokalne
+    from .download import adres_publiczny
+
+    sprawdz_csrf(user, csrf_token)
+    konto = db.get(PortalUser, user_id)
+    if konto is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    if konto.zrodlo != "lokalne":
+        raise HTTPException(status_code=400,
+                            detail="to konto nie loguje się hasłem CMDB - hasło zmienia się u dostawcy tożsamości")
+    token = konta_lokalne.utworz_link(db, LINK_RESET, konto.email, user=konto, utworzyl=user.email)
+    db.flush()
+    link = konta_lokalne.adres_linku(adres_publiczny(request), LINK_RESET, token)
+    wyslane = konta_lokalne.wyslij_link(db, konto.tenant_id, konto.email, LINK_RESET, link)
+    audit(db, None, action="haslo.link_wydany", target=konto.email,
+          detail={"wyslane_poczta": wyslane}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    return _strona_kont(request, user, db, jednorazowy={
+        "email": konto.email, "link": link, "wyslane": wyslane, "rodzaj": "reset"})
+
+
+@router.post("/users/{user_id}/urzadzenia/odlacz")
+def odlacz_urzadzenia_konta(user_id: str, request: Request, csrf_token: str = Form(""),
+                            user: PortalUser = Depends(require_superadmin),
+                            db: Session = Depends(get_db)) -> Response:
+    """Zgubiony albo skradziony telefon: biometria na nim przestaje dzialac od razu."""
+    from ..services import biometria
+
+    sprawdz_csrf(user, csrf_token)
+    konto = db.get(PortalUser, user_id)
+    if konto is None:
+        raise HTTPException(status_code=404, detail="nie znaleziono konta")
+    ile = biometria.odlacz_wszystkie(db, konto.id, f"odłączone przez administratora {user.email}")
+    audit(db, None, action="mobile.urzadzenia_odlaczone", target=konto.email,
+          detail={"ile": ile}, ip=client_ip(request), actor=user.email)
+    db.commit()
+    return RedirectResponse(
+        f"/admin/konta?komunikat={quote(f'{konto.email}: odłączono telefonów: {ile}.')}",
+        status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/users/{user_id}/mfa-reset")
+def resetuj_mfa(user_id: str, request: Request, csrf_token: str = Form(""),
+                user: PortalUser = Depends(require_superadmin),
+                db: Session = Depends(get_db)) -> Response:
+    """Zgubiony telefon: zdejmuje TOTP. Gdy firma go wymaga, osoba ustawi go od nowa."""
+    sprawdz_csrf(user, csrf_token)
+    konto = _konto_do_zmiany(db, user, user_id)
+    konto.totp_wlaczone = False
+    konto.totp_szyfr = None
+    konto.totp_ostatni_krok = None
+    konto.session_version = PortalUser.session_version + 1
+    audit(db, None, action="mfa.zresetowane", target=konto.email, ip=client_ip(request),
+          actor=user.email)
+    db.commit()
+    return RedirectResponse(
+        f"/admin/konta?komunikat={quote(f'{konto.email}: weryfikacja dwuetapowa zdjęta.')}",
+        status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/konta")
@@ -1448,6 +1657,7 @@ def utworz_konto_dowolne(
         )
     if db.execute(select(PortalUser).where(PortalUser.email == adres)).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="konto o tym adresie juz istnieje")
+    _sprawdz_adres_lokalny(db, adres)
     if zakres not in ZAKRESY:
         raise HTTPException(status_code=400, detail="nieznany rodzaj konta")
     if role not in {"admin", "viewer"}:
@@ -1502,6 +1712,12 @@ def zmien_zakres_konta(
     """
     sprawdz_csrf(user, csrf_token)
     konto = _konto_do_zmiany(db, user, user_id)
+    if konto.z_katalogu:
+        raise HTTPException(
+            status_code=400,
+            detail="uprawnienia konta z AD wynikają z grup w katalogu - zmień grupę w AD "
+                   "albo mapowanie grup w ekranie Katalogi AD",
+        )
     if zakres not in ZAKRESY:
         raise HTTPException(status_code=400, detail="nieznany rodzaj konta")
     if role not in {"admin", "viewer"}:

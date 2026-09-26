@@ -82,6 +82,41 @@
   </section>
 
   <section class="panel">
+    <h2>Logowanie</h2>
+    <input type="hidden" name="pola_logowania" value="1">
+    <div class="stack">
+      <label class="check"><input type="checkbox" name="logowanie_lokalne" value="true" {% if firma.logowanie_lokalne %}checked{% endif %}>
+        Wolno logować się kontami lokalnymi CMDB (e-mail i hasło w CMDB)</label>
+      <div class="muted small">Wyłącz, jeśli firma ma logować się wyłącznie kontem domenowym
+        (<a href="/admin/katalogi">Katalogi AD</a>). Superadmina i techników to nie dotyczy.</div>
+      <label class="check"><input type="checkbox" name="wymagaj_mfa" value="true" {% if firma.wymagaj_mfa %}checked{% endif %}>
+        Konta lokalne muszą mieć weryfikację dwuetapową (kod z aplikacji w telefonie)</label>
+      <div class="muted small">Kto jej nie ma, ustawi ją przy najbliższym logowaniu. Konta z AD
+        zabezpiecza AD.</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Aplikacja mobilna</h2>
+    <div class="stack">
+      <label for="biometria">Logowanie odciskiem palca</label>
+      <select id="biometria" name="biometria">
+        <option value="dozwolona" {% if firma.biometria == 'dozwolona' %}selected{% endif %}>dozwolone – użytkownik sam decyduje</option>
+        <option value="wymagana" {% if firma.biometria == 'wymagana' %}selected{% endif %}>wymagane – aplikacja zawsze prosi o palec</option>
+        <option value="wylaczona" {% if firma.biometria == 'wylaczona' %}selected{% endif %}>wyłączone – zawsze hasło</option>
+      </select>
+      <div class="muted small">Odcisk palca nie opuszcza telefonu. Telefon potwierdza tylko, że to ta sama osoba, która zalogowała się hasłem.</div>
+      <label for="biometria_dni">Pełne logowanie (hasłem lub AD) co ile dni</label>
+      <input id="biometria_dni" name="biometria_dni" type="number" min="1" max="365" value="{{ firma.biometria_dni }}">
+      <label for="blokada_aplikacji_minut">Po ilu minutach w tle aplikacja znowu prosi o palec (0 = od razu)</label>
+      <input id="blokada_aplikacji_minut" name="blokada_aplikacji_minut" type="number" min="0" max="240" value="{{ firma.blokada_aplikacji_minut }}">
+      <label class="check"><input type="checkbox" name="biometria_pin" value="true" {% if firma.biometria_pin %}checked{% endif %}>
+        PIN lub wzór telefonu może zastąpić odcisk palca</label>
+      <div class="muted small">Domyślnie wyłączone: PIN telefonu zna często więcej osób niż jego właściciel.</div>
+    </div>
+  </section>
+
+  <section class="panel">
     <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
     <a class="btn btn-ghost" href="/admin/tenants/{{ firma.id }}/upgrade">Maszyny i aktualizacje</a>
     <a class="btn btn-ghost" href="/switch-tenant?slug={{ firma.slug }}">Podgląd firmy</a>

@@ -1,0 +1,22 @@
+{% extends "_logowanie_baza.html" %}
+{% block tytul %}Kod weryfikacyjny{% endblock %}
+{% block karta %}
+  <form method="post" action="/login/kod" class="login-card" autocomplete="off">
+    <h1>CMDB</h1>
+    {% if konfiguracja %}
+      <p class="muted">Ustaw weryfikację dwuetapową dla {{ email }}</p>
+      <p class="small">To konto musi mieć weryfikację dwuetapową. Zeskanuj kod aplikacją
+        Google Authenticator, Microsoft Authenticator albo podobną i wpisz 6 cyfr, które pokaże.</p>
+      <div class="kod-qr">{{ konfiguracja.kod_qr }}</div>
+      <p class="muted small">Nie możesz zeskanować? Wpisz w aplikacji klucz:<br><code class="token-value">{{ konfiguracja.sekret }}</code></p>
+    {% else %}
+      <p class="muted">Podaj kod z aplikacji uwierzytelniającej</p>
+    {% endif %}
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+    <label for="kod">Kod (6 cyfr)</label>
+    <input id="kod" name="kod" type="text" inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7"
+           autocomplete="one-time-code" required autofocus>
+    <button type="submit" class="btn btn-primary btn-block">Potwierdź</button>
+    <p class="small"><a href="/login">← Wróć do logowania</a></p>
+  </form>
+{% endblock %}

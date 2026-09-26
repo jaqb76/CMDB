@@ -1,0 +1,21 @@
+{% extends "_logowanie_baza.html" %}
+{% block tytul %}Nowe hasło{% endblock %}
+{% block karta %}
+  <form method="post" action="/haslo/zapomniane" class="login-card">
+    <h1>CMDB</h1>
+    <p class="muted">Nie pamiętasz hasła?</p>
+    {% if wyslane %}
+      <div class="alert alert-ok">Jeśli pod tym adresem jest konto lokalne CMDB, wysłaliśmy na niego
+        link do ustawienia nowego hasła. Link jest ważny godzinę.</div>
+      <p class="small muted">Nic nie przyszło? Poproś administratora CMDB o link – nie każda firma
+        ma skonfigurowaną pocztę.</p>
+    {% else %}
+      <p class="small">Podaj adres konta. Wyślemy link do ustawienia nowego hasła.</p>
+      <label for="email">E-mail</label>
+      <input id="email" name="email" type="email" required autocomplete="username" autofocus>
+      <button type="submit" class="btn btn-primary btn-block">Wyślij link</button>
+      <p class="small muted">Konto domenowe (AD)? Hasło zmienia się w Windows albo u administratora IT.</p>
+    {% endif %}
+    <p class="small"><a href="/login">← Wróć do logowania</a></p>
+  </form>
+{% endblock %}

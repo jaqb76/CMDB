@@ -67,7 +67,7 @@ from ..security import (
 )
 from ..services import (
     changes, cve, duplicates, funkcje_agenta, logowanie, mobilna, monitoring, nutanix, pakiet, qr,
-    rodzaje, scoping, slowniki, upgrades, ustawienia,
+    rodzaje, scoping, slowniki, tozsamosc, upgrades, ustawienia, zewnetrzne,
 )
 from ..services import schemat as definicje_pol
 from ..services import wiedza_dopasowanie
@@ -390,10 +390,23 @@ def _require_write(ctx: TenantContext) -> None:
 def login_form(request: Request, user: PortalUser | None = Depends(current_user)) -> Response:
     if user is not None:
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    komunikat = ("Hasło ustawione. Zaloguj się nowym hasłem."
+                 if request.query_params.get("haslo") == "zmienione" else None)
     return templates.TemplateResponse(
         request, "login.html",
-        {"request": request, "error": None, "motyw": motyw_z_ciasteczka(request)},
+        {"request": request, "error": None, "komunikat": komunikat,
+         "motyw": motyw_z_ciasteczka(request), "zewnetrzni": zewnetrzne.wlaczeni()},
     )
+
+
+@router.get("/login/sposob")
+def login_sposob(login: str = Query("", max_length=320), db: Session = Depends(get_db)) -> dict:
+    """Jak zostanie sprawdzone haslo dla tego loginu - do podpowiedzi w formularzu.
+
+    Odpowiedz zalezy wylacznie od domeny, nie od tego, czy konto istnieje,
+    wiec nie da sie nia sprawdzac, kto ma konto.
+    """
+    return tozsamosc.sposob_logowania(db, login)
 
 
 @router.post("/login")
@@ -410,7 +423,8 @@ def login_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"request": request, "error": komunikat, "motyw": motyw_z_ciasteczka(request)},
+            {"request": request, "error": komunikat, "motyw": motyw_z_ciasteczka(request),
+             "login": email, "zewnetrzni": zewnetrzne.wlaczeni()},
             status_code=kod,
         )
 
@@ -426,7 +440,16 @@ def login_submit(
             status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
-    user = authenticate_user(db, email, password)
+    wynik = tozsamosc.uwierzytelnij(db, email, password)
+    user = wynik.user
+    if user is None and wynik.powod in ("katalog", "brak_dostepu", "lokalne_wylaczone"):
+        # Awaria katalogu albo brak grupy to nie jest zgadywanie hasla -
+        # nie liczymy tego do blokady, ale zostawiamy slad w audycie.
+        audit(db, None, action=f"login.odmowa.{wynik.powod}", target=email, ip=ip, actor=email)
+        db.commit()
+        return odmow(tozsamosc.KOMUNIKATY[wynik.powod],
+                     status.HTTP_503_SERVICE_UNAVAILABLE if wynik.powod == "katalog"
+                     else status.HTTP_403_FORBIDDEN)
     if user is None:
         audit(db, None, action="login.failed", target=email, ip=ip, actor=email)
         db.commit()
@@ -441,31 +464,12 @@ def login_submit(
             )
         # Komunikat jest ten sam dla zlego adresu i zlego hasla - inaczej
         # dalby sie uzyc do sprawdzania, ktore konta istnieja.
-        return odmow("Nieprawidlowy e-mail lub haslo.")
+        return odmow(tozsamosc.KOMUNIKATY["haslo"])
 
     logowanie.wyczysc(db, email, ip)
-    user.last_login_at = utcnow()
-    audit(
-        db,
-        None,
-        action="login.ok",
-        target=user.email,
-        ip=client_ip(request),
-        actor=user.email,
-    )
-    db.commit()
+    from .logowanie_ui import po_hasle
 
-    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(
-        settings.session_cookie,
-        sign_session({"uid": user.id, "sv": user.session_version}),
-        max_age=settings.session_max_age,
-        httponly=True,
-        secure=settings.require_https,
-        samesite="lax",
-        path="/",
-    )
-    return response
+    return po_hasle(request, db, user, wynik.sposob)
 
 
 @router.post("/logout")
@@ -480,7 +484,10 @@ def logout(request: Request) -> Response:
 def logout_all(request: Request, csrf_token: str = Form(""),
                user: PortalUser = Depends(require_user), db: Session = Depends(get_db)) -> Response:
     verify_csrf(request, user, csrf_token)
+    from ..services import biometria
+
     user.session_version = PortalUser.session_version + 1
+    biometria.odlacz_wszystkie(db, user.id, "wylogowanie ze wszystkich urządzeń")
     audit(db, None, action="session.revoke_all", actor=user.email, ip=client_ip(request))
     db.commit()
     response = RedirectResponse("/login", status_code=303)
@@ -2011,6 +2018,9 @@ def widok_konta(
     Kontekst firmy jest tu opcjonalny: konto globalne zadnej firmy nie ma,
     a haslo zmienic musi. Dlatego widok nie zalezy od resolve_tenant.
     """
+    from ..services.biometria import urzadzenia_konta as biometria_konta
+    from .logowanie_ui import dane_mfa_konta, dane_zewnetrzne_konta
+
     ctx = None
     if user.tenant_id:
         tenant = db.get(Tenant, user.tenant_id)
@@ -2025,6 +2035,11 @@ def widok_konta(
         zmienione=bool(zmienione),
         blad=blad,
         min_dlugosc_hasla=MIN_DLUGOSC_HASLA,
+        mfa=dane_mfa_konta(db, user, bool(request.query_params.get("mfa_konfiguracja"))),
+        komunikat_mfa=(request.query_params.get("mfa", "")
+                       or request.query_params.get("info", ""))[:300],
+        zewn=dane_zewnetrzne_konta(db, user),
+        urzadzenia=biometria_konta(db, user.id),
     )
 
 
@@ -2051,6 +2066,8 @@ def zmien_wlasne_haslo(
             f"/konto?blad={quote(komunikat)}", status_code=status.HTTP_303_SEE_OTHER
         )
 
+    if user.zrodlo != "lokalne":
+        return odmow("To konto loguje się hasłem domenowym - zmień je w Windows lub u działu IT.")
     if not verify_password(obecne, user.password_hash):
         audit(db, None, action="haslo.zmiana_odrzucona", target=user.email,
               ip=client_ip(request), actor=user.email)
@@ -2063,8 +2080,11 @@ def zmien_wlasne_haslo(
     if nowe == obecne:
         return odmow("Nowe haslo musi rozni sie od dotychczasowego.")
 
+    from ..services import biometria
+
     user.session_version = PortalUser.session_version + 1
     user.password_hash = hash_password(nowe)
+    biometria.odlacz_wszystkie(db, user.id, "zmiana hasła")
     audit(db, None, action="haslo.zmienione", target=user.email,
           ip=client_ip(request), actor=user.email)
     db.commit()

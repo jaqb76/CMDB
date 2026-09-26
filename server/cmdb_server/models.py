@@ -11,6 +11,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -113,8 +114,32 @@ class Tenant(Base):
     stale_after_hours: Mapped[int | None] = mapped_column(Integer)
     snapshot_retention: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Czy w tej firmie wolno logowac sie kontem lokalnym (haslo w CMDB).
+    # Firma z wlasnym AD moze to wylaczyc - wtedy jedyna droga jest katalog,
+    # a osoba usunieta z AD nie ma juz zapasowego hasla w CMDB. Superadmin,
+    # audytor i technicy nie naleza do firmy, wiec ich to nie dotyczy.
+    logowanie_lokalne: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Konta lokalne tej firmy musza miec weryfikacje dwuetapowa (TOTP).
+    # Kto jej nie ma, ustawia ja przy najblizszym logowaniu.
+    wymagaj_mfa: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Biometria w aplikacji Android: "dozwolona", "wymagana" albo "wylaczona".
+    biometria: Mapped[str] = mapped_column(String(16), default="dozwolona", nullable=False)
+    # Co ile dni pelne logowanie (haslo/AD) mimo biometrii.
+    biometria_dni: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    # Czy PIN/wzor telefonu moze zastapic odcisk palca.
+    biometria_pin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Po ilu minutach w tle aplikacja prosi o ponowne potwierdzenie.
+    blokada_aplikacji_minut: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
     assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")
+
+
+ZRODLO_LOKALNE = "lokalne"
+ZRODLO_AD = "ad"
+
+# Haslo-atrapa kont, ktore nie loguja sie haslem CMDB. Nie jest poprawnym
+# skrotem Argon2, wiec zadne haslo do niego nie pasuje.
+HASLO_NIEUZYWANE = "!"
 
 
 class PortalUser(Base):
@@ -144,7 +169,35 @@ class PortalUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Skad pochodzi tozsamosc konta: "lokalne" (haslo w CMDB) albo "ad"
+    # (katalog LDAP/AD). Konto z katalogu ma haslo-atrape - sprawdza je AD,
+    # a jego uprawnienia wynikaja z grup i nadpisuje je kazda synchronizacja.
+    zrodlo: Mapped[str] = mapped_column(String(16), default=ZRODLO_LOKALNE, nullable=False)
+    katalog_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("katalogi.id", ondelete="SET NULL"), index=True
+    )
+    # Staly identyfikator w katalogu (objectGUID). Po nim, a nie po adresie
+    # e-mail, laczymy konto z osoba: adres sie zmienia, GUID nie.
+    zewnetrzny_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Grupy, z ktorych wynika obecna rola - do pokazania w panelu, skad
+    # ktos ma dostep.
+    uprawnienia_z: Mapped[list | None] = mapped_column(JSONType)
+    ostatnia_synchronizacja: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Wylaczenie przez superadmina. Synchronizacja z AD przywraca dostep
+    # kontom, ktore sama wylaczyla - recznie wylaczonego nie ruszy.
+    wylaczone_recznie: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Weryfikacja dwuetapowa kont lokalnych: sekret TOTP zaszyfrowany (trzeba
+    # go odczytac, zeby policzyc kod) i numer ostatnio uzytego okna czasu -
+    # ten sam kod nie przejdzie drugi raz.
+    totp_szyfr: Mapped[str | None] = mapped_column(Text)
+    totp_wlaczone: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    totp_ostatni_krok: Mapped[int | None] = mapped_column(Integer)
+
     tenant: Mapped[Tenant | None] = relationship()
+
+    @property
+    def z_katalogu(self) -> bool:
+        return self.zrodlo == ZRODLO_AD
 
 
 class EnrollmentToken(Base):
@@ -1594,6 +1647,10 @@ class HelpdeskDostep(Base):
     utworzono: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+    # "reczne" nadaje superadmin, "ad" wynika z grupy w katalogu operatora.
+    # Synchronizacja dotyka tylko swoich wpisow - recznie nadanego dostepu
+    # nie odbierze.
+    zrodlo: Mapped[str] = mapped_column(String(16), default="reczne", nullable=False)
 
     user: Mapped[PortalUser] = relationship()
     tenant: Mapped[Tenant] = relationship()
@@ -2125,3 +2182,181 @@ class WiedzaWersja(Base):
     opis_zmiany: Mapped[str | None] = mapped_column(String(300))
     zmiany: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
     tresc_przed: Mapped[str | None] = mapped_column(Text)
+
+
+# --- katalogi tozsamosci (AD / LDAP) ------------------------------------------
+
+# Role, jakie grupa katalogu moze dac. Katalog firmy daje tylko role W TEJ
+# firmie. Uprawnienia przekraczajace granice firmy - superadmin, audytor,
+# technik - daje wylacznie katalog operatora: administrator domeny klienta
+# moze dopisac sie do dowolnej grupy u siebie i nie moze przez to zobaczyc
+# innych firm.
+ROLE_KATALOGU_FIRMY = ("admin", "viewer")
+ROLE_KATALOGU_OPERATORA = ("superadmin", "audytor", "helpdesk")
+
+
+class KatalogTozsamosci(Base):
+    """Polaczenie z AD/LDAP - jednej firmy albo operatora (tenant_id NULL)."""
+
+    __tablename__ = "katalogi"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_katalog_firmy"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    nazwa: Mapped[str] = mapped_column(String(200), nullable=False)
+    aktywny: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Adresy serwerow po przecinku, w kolejnosci proby: ldaps://dc1:636, ...
+    serwery: Mapped[str] = mapped_column(Text, nullable=False)
+    starttls: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Certyfikat CA w PEM, gdy AD ma certyfikat z wewnetrznego urzedu.
+    certyfikat_ca: Mapped[str | None] = mapped_column(Text)
+    base_dn: Mapped[str] = mapped_column(String(512), nullable=False)
+    bind_dn: Mapped[str] = mapped_column(String(512), nullable=False)
+    bind_haslo_szyfr: Mapped[str | None] = mapped_column(Text)
+    filtr_uzytkownika: Mapped[str | None] = mapped_column(String(1000))
+    # Domeny loginu: ["abc.pl", "abc\\"] - po nich rozpoznajemy katalog.
+    domeny: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
+    # Co z osoba, ktora nie nalezy do zadnej zmapowanej grupy:
+    # "odmowa" (domyslnie) albo "viewer".
+    bez_grupy: Mapped[str] = mapped_column(String(16), default="odmowa", nullable=False)
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ostatnia_synchronizacja: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ostatni_blad: Mapped[str | None] = mapped_column(Text)
+
+    tenant: Mapped[Tenant | None] = relationship()
+    mapowania: Mapped[list["MapowanieGrupy"]] = relationship(
+        back_populates="katalog", cascade="all, delete-orphan",
+        order_by="MapowanieGrupy.nazwa",
+    )
+
+    @property
+    def operatora(self) -> bool:
+        return self.tenant_id is None
+
+
+class MapowanieGrupy(Base):
+    """Grupa katalogu i rola, ktora daje w CMDB."""
+
+    __tablename__ = "mapowania_grup"
+    __table_args__ = (
+        UniqueConstraint("katalog_id", "identyfikator", "rola", "tenant_id",
+                         name="uq_mapowanie_grupy"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    katalog_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("katalogi.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # SID grupy (AD) albo jej DN (inne LDAP). SID nie zmienia sie przy
+    # przeniesieniu grupy do innej OU, DN tak.
+    identyfikator: Mapped[str] = mapped_column(String(512), nullable=False)
+    nazwa: Mapped[str] = mapped_column(String(300), nullable=False)
+    dn: Mapped[str | None] = mapped_column(String(1000))
+    rola: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Tylko dla roli "helpdesk" w katalogu operatora: ktora firme obsluguje.
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    katalog: Mapped[KatalogTozsamosci] = relationship(back_populates="mapowania")
+    tenant: Mapped[Tenant | None] = relationship()
+
+
+# --- jednorazowe linki: zaproszenia i reset hasla ---------------------------
+
+LINK_ZAPROSZENIE = "zaproszenie"
+LINK_RESET = "reset"
+# Kod przekazywany aplikacji mobilnej po logowaniu kontem zewnetrznym
+# w przegladarce - wazny dwie minuty, wymieniany na token aplikacji.
+LINK_MOBILE = "mobile"
+
+
+class JednorazowyLink(Base):
+    """Zaproszenie do zalozenia konta albo link do ustawienia nowego hasla.
+
+    W bazie jest tylko skrot tokenu - link pokazujemy raz. Zaproszenie niesie
+    wszystko, co bedzie mialo konto (firma, rola), wiec osoba zapraszana nie
+    moze niczego zmienic - ustawia tylko wlasne haslo.
+    """
+
+    __tablename__ = "linki_jednorazowe"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    rodzaj: Mapped[str] = mapped_column(String(16), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="CASCADE"), index=True
+    )
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    zakres: Mapped[str | None] = mapped_column(String(16))
+    rola: Mapped[str | None] = mapped_column(String(16))
+    full_name: Mapped[str | None] = mapped_column(String(200))
+    # Skrot weryfikatora PKCE od aplikacji mobilnej (tylko LINK_MOBILE): kod
+    # przechwycony przez inna aplikacje jest bez weryfikatora bezuzyteczny.
+    wyzwanie: Mapped[str | None] = mapped_column(String(128))
+    wygasa: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    uzyto: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    utworzyl: Mapped[str | None] = mapped_column(String(255))
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# --- konta zewnetrzne (Google, Microsoft, GitHub) ---------------------------
+
+class TozsamoscZewnetrzna(Base):
+    """Konto u zewnetrznego dostawcy powiazane z kontem CMDB.
+
+    Wiazemy po parze (dostawca, sub) - staly identyfikator u dostawcy.
+    Adres e-mail zapisujemy tylko do pokazania: GitHub czy prywatny Google nie
+    sa dowodem, ze ktos jest wlascicielem adresu w danej domenie. Powiazanie
+    powstaje wylacznie z zaproszenia albo z zalogowanego konta.
+    """
+
+    __tablename__ = "tozsamosci_zewnetrzne"
+    __table_args__ = (UniqueConstraint("dostawca", "sub", name="uq_tozsamosc_zewnetrzna"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    dostawca: Mapped[str] = mapped_column(String(16), nullable=False)
+    sub: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255))
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ostatnio_uzyta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# --- urzadzenia mobilne (biometria) -----------------------------------------
+
+class UrzadzenieMobilne(Base):
+    """Telefon, ktory po pelnym logowaniu moze logowac sie biometria.
+
+    Klucz prywatny lezy w sprzetowym sejfie telefonu (Android Keystore)
+    i wymaga biometrii przy kazdym uzyciu - serwer zna tylko klucz publiczny
+    i sprawdza nim podpis jednorazowego wyzwania. Odcisk palca nigdy nie
+    opuszcza telefonu. Odlaczenie urzadzenia dziala natychmiast.
+    """
+
+    __tablename__ = "urzadzenia_mobilne"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("portal_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nazwa: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Klucz publiczny EC P-256, SubjectPublicKeyInfo w DER, base64.
+    klucz_publiczny: Mapped[str] = mapped_column(Text, nullable=False)
+    dodano: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ostatnio_uzyte: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ostatnie_pelne_logowanie: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False)
+    # Znacznik czasu (ms) ostatnio przyjetego wyzwania - kazde wyzwanie
+    # przechodzi raz, a starsze od juz uzytego wcale.
+    ostatnie_wyzwanie: Mapped[int | None] = mapped_column(BigInteger)
+    odlaczono: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    powod_odlaczenia: Mapped[str | None] = mapped_column(String(200))

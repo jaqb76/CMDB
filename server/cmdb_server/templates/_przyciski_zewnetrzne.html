@@ -1,0 +1,12 @@
+{# Przyciski logowania kontem zewnetrznym. adres_bazowy dostaje klucz dostawcy. #}
+{% if zewnetrzni %}
+<div class="login-zewn">
+  <div class="login-lub"><span>{{ naglowek_zewn or 'albo' }}</span></div>
+  {% for d in zewnetrzni %}
+  <a class="btn btn-block login-zewn-{{ d.klucz }}" href="/login/zewn/{{ d.klucz }}{{ parametry_zewn or '' }}">
+    <span class="login-zewn-znak" aria-hidden="true">{{ {'google': 'G', 'microsoft': '⊞', 'github': '⌥'}[d.klucz] }}</span>
+    {{ etykieta_zewn or 'Zaloguj przez' }} {{ d.nazwa }}</a>
+  {% endfor %}
+  {% if opis_zewn %}<p class="muted small">{{ opis_zewn }}</p>{% endif %}
+</div>
+{% endif %}

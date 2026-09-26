@@ -1,0 +1,38 @@
+{# Pola polaczenia z katalogiem - wspolne dla dodawania i edycji. #}
+<label for="k-nazwa">Nazwa (dla Ciebie)</label>
+<input id="k-nazwa" name="nazwa" type="text" maxlength="200" value="{{ kat.nazwa if kat else '' }}" placeholder="np. AD ABC">
+
+<label for="k-serwery">Serwery, po kolei</label>
+<input id="k-serwery" name="serwery" type="text" required value="{{ kat.serwery if kat else '' }}"
+       placeholder="ldaps://dc1.abc.local:636, ldaps://dc2.abc.local:636">
+<label class="check"><input type="checkbox" name="starttls" value="true" {% if kat and kat.starttls %}checked{% endif %}>
+  StartTLS (dla adresów <code>ldap://</code> na porcie 389)</label>
+<p class="muted small">Połączenie musi być szyfrowane – przez nie idą hasła użytkowników.</p>
+
+<label for="k-ca">Certyfikat CA w formacie PEM (gdy AD ma certyfikat z wewnętrznego urzędu)</label>
+<textarea id="k-ca" name="certyfikat_ca" rows="3" placeholder="-----BEGIN CERTIFICATE-----">{{ kat.certyfikat_ca or '' if kat else '' }}</textarea>
+
+<label for="k-base">Gdzie szukać kont i grup (base DN)</label>
+<input id="k-base" name="base_dn" type="text" required value="{{ kat.base_dn if kat else '' }}" placeholder="DC=abc,DC=local">
+
+<label for="k-bind">Konto serwisowe (tylko odczyt)</label>
+<input id="k-bind" name="bind_dn" type="text" required value="{{ kat.bind_dn if kat else '' }}" placeholder="svc-cmdb@abc.local">
+<label for="k-haslo">Hasło konta serwisowego{% if kat %} (puste = bez zmian){% endif %}</label>
+<input id="k-haslo" name="bind_haslo" type="password" autocomplete="new-password" {% if not kat %}required{% endif %}>
+
+<label for="k-domeny">Domeny loginu, po przecinku</label>
+<input id="k-domeny" name="domeny" type="text" required value="{{ kat.domeny | join(', ') if kat else '' }}" placeholder="abc.pl, ABC\">
+<p class="muted small">Po tych domenach CMDB rozpoznaje, że hasło sprawdza ten katalog. Jedna domena należy do jednego katalogu.</p>
+
+<label for="k-filtr">Filtr wyszukiwania użytkownika (puste = domyślny dla AD)</label>
+<input id="k-filtr" name="filtr" type="text" value="{{ kat.filtr_uzytkownika or '' if kat else '' }}" placeholder="{{ filtr_domyslny }}">
+
+{% if not kat or not kat.operatora %}
+<label for="k-bez">Kto nie należy do żadnej zmapowanej grupy</label>
+<select id="k-bez" name="bez_grupy">
+  <option value="odmowa" {% if not kat or kat.bez_grupy == 'odmowa' %}selected{% endif %}>nie może się zalogować (zalecane)</option>
+  <option value="viewer" {% if kat and kat.bez_grupy == 'viewer' %}selected{% endif %}>loguje się z prawem odczytu – każdy z domeny zobaczy całą inwentaryzację</option>
+</select>
+{% else %}
+<input type="hidden" name="bez_grupy" value="odmowa">
+{% endif %}
