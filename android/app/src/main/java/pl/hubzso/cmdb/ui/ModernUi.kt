@@ -3,7 +3,13 @@ package pl.hubzso.cmdb.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -91,8 +97,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -122,6 +128,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -584,6 +591,9 @@ internal data class HelpdeskActions(
     val onAsset: (String, String, String) -> Unit,
     val onSearchAssets: (String, String) -> Unit,
     val onOpenAttachment: (TicketAttachment) -> Unit,
+    // Zgloszenie z powiadomienia - otwierane, gdy helpdesk jest juz dostepny.
+    val pendingTicket: String? = null,
+    val onPendingShown: () -> Unit = {},
 )
 
 private enum class ModernPage(val label: String, val icon: ImageVector) {
@@ -648,6 +658,27 @@ internal fun ModernMainScreen(
             tab = ModernTab.DASHBOARD
             helpdeskView = HelpdeskView.LIST
         }
+    }
+    // Stukniecie w powiadomienie: prosto na karte zgloszenia. Czekamy, az
+    // katalog helpdesku potwierdzi dostep - zaraz po starcie jeszcze go nie ma.
+    LaunchedEffect(helpdesk.pendingTicket, state.helpdesk.available) {
+        val id = helpdesk.pendingTicket ?: return@LaunchedEffect
+        if (!state.helpdesk.available) return@LaunchedEffect
+        onCloseAsset()
+        page = null
+        tab = ModernTab.HELPDESK
+        helpdeskView = HelpdeskView.TICKET
+        helpdesk.onOpen(id)
+        helpdesk.onPendingShown()
+    }
+    // Android 13+ pyta o zgode na powiadomienia. Pytamy dopiero wtedy, gdy
+    // konto ma helpdesk - bez niego aplikacja nie ma o czym powiadamiac.
+    val kontekst = LocalContext.current
+    val prosbaOPowiadomienia = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(state.helpdesk.available) {
+        if (state.helpdesk.available && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(kontekst, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) prosbaOPowiadomienia.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
     // Zalozone zgloszenie otwiera sie samo: technik wlasnie je opisal i chce
     // zobaczyc numer, a nie wrocic na liste i go szukac.
@@ -1384,16 +1415,20 @@ private fun osColor(os: String?): Color = when {
             }
         }
         item {
-            val tabs = listOf("Podsumowanie", "Sprzęt", "System", "Sieć")
-            TabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.surface) {
-                tabs.forEachIndexed { index, title -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title, maxLines = 1, fontSize = 11.sp) }) }
+            // Szesc zakladek nie miesci sie na szerokosc telefonu - pasek sie
+            // przewija, zamiast ucinac nazwy ("Podsumow").
+            val tabs = listOf("Podsumowanie", "Sprzęt", "Podatności", "Aktualizacje", "System", "Sieć")
+            ScrollableTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.surface, edgePadding = 8.dp) {
+                tabs.forEachIndexed { index, title -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title, maxLines = 1) }) }
             }
         }
         when (tab) {
             0 -> item { AssetOverview(data) }
-            1 -> item { JsonSection("Sprzęt", data.facts) }
-            2 -> item { JsonSection("System i dane agenta", data.currentReport.orEmpty()) }
-            else -> item { JsonSection("Sieć i atrybuty", data.attributes) }
+            1 -> item { HardwareTab(data.facts, data.currentReport) }
+            2 -> item { VulnerabilitiesTab(data.vulnerabilities) }
+            3 -> item { UpdatesTab(data.currentReport) }
+            4 -> item { ReportTab("System i dane agenta", data.currentReport, skip = setOf("network")) }
+            else -> item { NetworkTab(data.currentReport, data.attributes) }
         }
     }
 }
@@ -1427,25 +1462,6 @@ private fun osColor(os: String?): Color = when {
         Text(value, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-}
-
-@Composable private fun JsonSection(title: String, values: Map<String, JsonElement>) {
-    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionHeading(title)
-        if (values.isEmpty()) EmptyState("Brak danych w tej sekcji")
-        values.forEach { (key, value) ->
-            ElevatedCmdbCard { Text(humanize(key), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary); Spacer(Modifier.height(5.dp)); Text(jsonDisplay(value), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
-    }
-}
-
-private fun JsonObject?.orEmpty(): Map<String, JsonElement> = this ?: emptyMap()
-private fun humanize(value: String) = value.replace('_', ' ').replaceFirstChar { it.uppercase() }
-private fun jsonDisplay(value: JsonElement): String = when (value) {
-    JsonNull -> "—"
-    is JsonPrimitive -> value.contentOrNull ?: value.toString()
-    is JsonObject -> value.entries.take(5).joinToString("\n") { "${humanize(it.key)}: ${jsonDisplay(it.value)}" }
-    else -> value.toString().take(600)
 }
 
 @Composable private fun ModernAssignmentEditor(

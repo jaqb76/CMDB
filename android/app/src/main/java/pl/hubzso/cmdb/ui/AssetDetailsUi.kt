@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.DeveloperBoard
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Lan
@@ -53,6 +54,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,6 +67,8 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
+import pl.hubzso.cmdb.data.Vulnerabilities
+import pl.hubzso.cmdb.data.Vulnerability
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -468,7 +472,7 @@ private fun formatNumber(value: Double): String =
     else String.format(Locale.forLanguageTag("pl"), "%.1f", value)
 
 private fun summaryOf(value: JsonElement): String? = when (value) {
-    is JsonArray -> "${value.size} ${if (value.size == 1) "pozycja" else if (value.size % 10 in 2..4 && value.size % 100 !in 12..14) "pozycje" else "pozycji"}"
+    is JsonArray -> "${value.size} ${odmiana(value.size, "pozycja", "pozycje", "pozycji")}"
     is JsonObject -> null
     else -> null
 }
@@ -489,3 +493,216 @@ private fun JsonObject?.at(path: List<String>): JsonElement? {
 private fun JsonObject.str(key: String): String? = (get(key) as? JsonPrimitive)?.takeUnless { it is JsonNull }?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
 private fun JsonObject.long(key: String): Long? = (get(key) as? JsonPrimitive)?.let { it.longOrNull ?: it.contentOrNull?.toLongOrNull() }
 private fun JsonObject.double(key: String): Double? = (get(key) as? JsonPrimitive)?.let { it.doubleOrNull ?: it.contentOrNull?.toDoubleOrNull() }
+
+// ---------------------------------------------------------------------------
+// Zakladka "Podatnosci"
+// ---------------------------------------------------------------------------
+
+@Composable internal fun VulnerabilitiesTab(data: Vulnerabilities?) {
+    val kolory = LocalCmdbColors.current
+    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionHeading("Podatności")
+        if (data == null) {
+            InfoCard(Icons.Outlined.Info, "Brak danych", "Serwer nie przesłał informacji o podatnościach. Zaktualizuj serwer CMDB.")
+            return@Column
+        }
+        // "Nieznany" to nie zero - mowimy wprost, ze nie sprawdzilismy.
+        if (data.status != "ok") {
+            InfoCard(Icons.Outlined.Info, "Nie sprawdzono", data.detail ?: "Nie udało się ustalić podatności tej maszyny.")
+            return@Column
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CountTile("Do naprawy", data.fixableCount, if ((data.fixableCount ?: 0) > 0) kolory.warn else kolory.ok, Modifier.weight(1f))
+            CountTile("Krytyczne (CVSS ≥ 7)", data.criticalCount, if ((data.criticalCount ?: 0) > 0) kolory.danger else kolory.ok, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CountTile("Bez poprawki", data.openCount, MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+            CountTile("Drobne", data.minorCount, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
+        }
+        data.source?.let { Text("Dane: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+
+        if (data.packages.isNotEmpty()) {
+            ExpandableCard("Pakiety do aktualizacji", data.packages.size.toString(), Icons.Outlined.Apps, "podatnosci-pakiety") {
+                PagedList(data.packages, "podatnosci-pakiety") { p ->
+                    ItemBox {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(p.packageName ?: "—", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            ScoreBadge(p.maxScore)
+                        }
+                        val opis = listOfNotNull(
+                            "${p.count} ${odmiana(p.count, "luka", "luki", "luk")}",
+                            p.critical.takeIf { it > 0 }?.let { "$it ${odmiana(it, "krytyczna", "krytyczne", "krytycznych")}" },
+                        ).joinToString(" · ")
+                        Text(opis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        p.installedVersion?.let { KeyValueRow("Zainstalowana", it) }
+                        p.fixedVersion?.let { KeyValueRow("Naprawiona w", it) }
+                    }
+                }
+            }
+        }
+        val doNaprawy = data.entries.filter { it.status == "resolved" }
+        val bezPoprawki = data.entries.filter { it.status != "resolved" && !it.minor }
+        val drobne = data.entries.filter { it.status != "resolved" && it.minor }
+        VulnerabilityGroup("Do naprawy", doNaprawy, Icons.Outlined.Security, "podatnosci-naprawa")
+        VulnerabilityGroup("Bez poprawki", bezPoprawki, Icons.Outlined.ErrorOutline, "podatnosci-otwarte")
+        VulnerabilityGroup("Drobne", drobne, Icons.Outlined.Info, "podatnosci-drobne")
+        if (data.count == 0) InfoCard(Icons.Outlined.Security, "Brak znanych podatności", "Żaden zainstalowany pakiet nie ma zgłoszonych luk.")
+        if (data.truncated > 0) {
+            Text("Pokazano pierwsze ${data.entries.size} pozycji, pozostało ${data.truncated}. Pełna lista jest w panelu WWW.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable private fun VulnerabilityGroup(title: String, items: List<Vulnerability>, icon: ImageVector, key: String) {
+    if (items.isEmpty()) return
+    val uri = LocalUriHandler.current
+    ExpandableCard(title, items.size.toString(), icon, key) {
+        PagedList(items, key) { v ->
+            val link = v.link
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).then(
+                if (link != null) Modifier.clickable { runCatching { uri.openUri(link) } } else Modifier,
+            )) {
+                ItemBox {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(v.cve, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        ScoreBadge(v.baseScore)
+                    }
+                    val wersje = listOfNotNull(v.installedVersion, v.fixedVersion?.let { "→ $it" }).joinToString(" ")
+                    Text(listOfNotNull(v.packageName, wersje.ifBlank { null }).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    v.priority?.let { Text("Priorytet dystrybucji: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    v.summary?.let {
+                        Spacer(Modifier.height(4.dp))
+                        Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun ScoreBadge(score: Double?) {
+    val kolory = LocalCmdbColors.current
+    val (text, color) = when {
+        score == null -> "brak oceny" to MaterialTheme.colorScheme.onSurfaceVariant
+        score >= 9.0 -> "${formatNumber(score)} krytyczna" to kolory.danger
+        score >= 7.0 -> "${formatNumber(score)} wysoka" to kolory.danger
+        score >= 4.0 -> "${formatNumber(score)} średnia" to kolory.warn
+        else -> "${formatNumber(score)} niska" to kolory.ok
+    }
+    Plakietka(text, color)
+}
+
+// ---------------------------------------------------------------------------
+// Zakladka "Aktualizacje"
+// ---------------------------------------------------------------------------
+
+@Composable internal fun UpdatesTab(report: JsonObject?) {
+    val kolory = LocalCmdbColors.current
+    val software = report?.get("software") as? JsonObject
+    val pending = software?.get("updates_pending") as? JsonObject
+    val installed = software?.get("updates") as? JsonArray
+    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionHeading("Aktualizacje")
+        when {
+            pending == null -> InfoCard(Icons.Outlined.Info, "Nie sprawdzono oczekujących aktualizacji",
+                "Agent nie przesłał tej informacji. Sprawdzanie może być wyłączone w ustawieniach agenta albo agent jest w starszej wersji.")
+            pending.str("status") != "ok" -> InfoCard(Icons.Outlined.ErrorOutline, "Nie udało się sprawdzić",
+                pending.str("detail") ?: "Agent nie dostał odpowiedzi od menedżera aktualizacji.")
+            else -> {
+                val count = pending.long("count")?.toInt()
+                val security = pending.long("security_count")?.toInt()
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CountTile("Czeka na instalację", count, if ((count ?: 0) > 0) kolory.warn else kolory.ok, Modifier.weight(1f))
+                    CountTile("Poprawki bezpieczeństwa", security, if ((security ?: 0) > 0) kolory.danger else kolory.ok, Modifier.weight(1f))
+                }
+                val sprawdzono = pending.str("checked_at")?.let { formatPrimitive("checked_at", JsonPrimitive(it)) }
+                val zrodlo = pending.str("source")
+                Text(listOfNotNull(sprawdzono?.let { "Sprawdzono $it" }, zrodlo).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val entries = (pending["entries"] as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()
+                if (entries.isEmpty()) InfoCard(Icons.Outlined.SystemUpdate, "System jest aktualny", "Nie ma aktualizacji czekających na instalację.")
+                else ExpandableCard("Oczekujące aktualizacje", entries.size.toString(), Icons.Outlined.SystemUpdate, "aktualizacje-oczekujace") {
+                    PagedList(entries, "aktualizacje-oczekujace") { PendingUpdateRow(it) }
+                }
+            }
+        }
+        if (!installed.isNullOrEmpty()) {
+            ExpandableCard("Zainstalowane aktualizacje", installed.size.toString(), Icons.Outlined.History, "aktualizacje-zainstalowane") {
+                JsonBody(installed, "updates")
+            }
+        }
+    }
+}
+
+@Composable private fun PendingUpdateRow(update: JsonObject) {
+    val kolory = LocalCmdbColors.current
+    val title = update.str("title") ?: update.str("id") ?: "Aktualizacja"
+    ItemBox {
+        Text(title, fontWeight = FontWeight.SemiBold)
+        val id = update.str("id")?.takeIf { it != title }
+        val wersje = listOfNotNull(update.str("current_version"), update.str("new_version")?.let { "→ $it" }).joinToString(" ")
+        val opis = listOfNotNull(id, wersje.ifBlank { null }, update.str("source_repo")).joinToString(" · ")
+        if (opis.isNotEmpty()) Text(opis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val security = (update["security"] as? JsonPrimitive)?.booleanOrNull == true
+        val severity = update.str("severity")
+        if (security || severity != null) {
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (security) Plakietka("bezpieczeństwo", kolory.danger)
+                severity?.let { Plakietka(it, kolory.warn) }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Drobne elementy wspolne dla zakladek
+// ---------------------------------------------------------------------------
+
+/** Lista z przyciskiem "Pokaż więcej" - pierwsze 15 pozycji, potem po 30. */
+@Composable private fun <T> PagedList(items: List<T>, key: String, row: @Composable (T) -> Unit) {
+    var limit by rememberSaveable(key, items.size) { mutableStateOf(PAGE) }
+    items.take(limit).forEach { row(it) }
+    if (items.size > limit) {
+        TextButton(onClick = { limit += PAGE * 2 }) { Text("Pokaż więcej (${items.size - limit} pozostało)") }
+    }
+}
+
+@Composable private fun CountTile(label: String, value: Int?, color: Color, modifier: Modifier) {
+    ElevatedCmdbCard(modifier) {
+        Text(value?.toString() ?: "—", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = color)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable private fun InfoCard(icon: ImageVector, title: String, text: String) {
+    ElevatedCmdbCard {
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable private fun Plakietka(text: String, color: Color) {
+    Text(
+        text,
+        Modifier.clip(RoundedCornerShape(20.dp)).background(color.copy(alpha = .16f)).padding(horizontal = 8.dp, vertical = 3.dp),
+        color = color,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+    )
+}
+
+private fun odmiana(n: Int, jeden: String, kilka: String, wiele: String): String = when {
+    n == 1 -> jeden
+    n % 10 in 2..4 && n % 100 !in 12..14 -> kilka
+    else -> wiele
+}

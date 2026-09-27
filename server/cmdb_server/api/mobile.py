@@ -35,7 +35,7 @@ from ..models import (
     utcnow,
 )
 from ..security import load_session, sign_session
-from ..services import (biometria, konta_lokalne, logowanie, raporty, rodzaje, scoping, slowniki,
+from ..services import (biometria, cve, konta_lokalne, logowanie, raporty, rodzaje, scoping, slowniki,
                         tozsamosc, ustawienia)
 from ..services.auth import (
     authenticate_user,
@@ -544,8 +544,66 @@ def asset_detail(asset_id: str, ctx: TenantContext = Depends(mobile_context), db
     if row is None:
         raise HTTPException(404, "nie znaleziono zasobu")
     reading = scoping.current_reading(db, ctx, asset_id)
+    payload = reading.payload if reading else None
+    # Jak w panelu WWW: podatnosci liczymy przy wyswietleniu, bo dane o lukach
+    # zmieniaja sie niezaleznie od maszyny.
+    podatnosci = podatnosci_dla_telefonu(cve.dopasuj(db, payload)) if payload else None
     return {"asset": asset_item(row), "facts": row.facts or {}, "attributes": row.atrybuty or {},
-            "current_report": reading.payload if reading else None}
+            "current_report": payload, "vulnerabilities": podatnosci}
+
+
+# Telefon pokazuje liste do przewiniecia palcem, a nie zestawienie do eksportu.
+# Na Debianie potrafi byc kilkaset pozycji - ponad ten limit karta mowi, ile
+# zostalo, i odsyla do panelu WWW.
+PODATNOSCI_NA_TELEFON = 200
+
+
+def podatnosci_dla_telefonu(wynik: dict) -> dict:
+    """Wynik cve.dopasuj okrojony do tego, co pokazuje karta w aplikacji.
+
+    Stan "nieznany" zostaje nieznanym: liczniki przychodza jako null, a nie
+    zero, zeby aplikacja nie pokazala "brak podatnosci" dla maszyny, ktorej
+    nie dalo sie sprawdzic.
+    """
+    pozycje = [p for p in wynik.get("entries") or [] if not p.get("inactive_kernel")]
+    return {
+        "status": wynik.get("status"),
+        "detail": wynik.get("detail"),
+        "source": wynik.get("source"),
+        "count": wynik.get("count"),
+        "fixable_count": wynik.get("fixable_count"),
+        "critical_count": wynik.get("critical_count"),
+        "open_count": wynik.get("open_count"),
+        "minor_count": wynik.get("minor_count"),
+        "packages": [
+            {
+                "package": g.get("package"),
+                "count": g.get("count"),
+                "critical": g.get("critical"),
+                "max_score": g.get("max_score"),
+                "installed_version": g.get("installed_version"),
+                "fixed_version": g.get("fixed_version"),
+            }
+            for g in (wynik.get("packages_summary") or [])[:50]
+        ],
+        "entries": [
+            {
+                "cve": p.get("cve"),
+                "package": p.get("source_package"),
+                "installed_version": p.get("compared_version"),
+                "fixed_version": p.get("fixed_version"),
+                "status": p.get("status"),
+                "minor": bool(p.get("no_fix_reason")),
+                "base_score": p.get("base_score"),
+                "severity": p.get("cvss_severity"),
+                "priority": p.get("priority"),
+                "summary": p.get("summary") or p.get("description"),
+                "link": p.get("link"),
+            }
+            for p in pozycje[:PODATNOSCI_NA_TELEFON]
+        ],
+        "truncated": max(0, len(pozycje) - PODATNOSCI_NA_TELEFON),
+    }
 
 
 @router.put("/assets/{asset_id}/assignment")

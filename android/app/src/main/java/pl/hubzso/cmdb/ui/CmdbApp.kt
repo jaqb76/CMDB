@@ -76,6 +76,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import pl.hubzso.cmdb.data.PowiadomieniaHelpdesku
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -504,9 +505,14 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
 
     private var wTle: Long? = null
 
-    fun wentBackground() { wTle = SystemClock.elapsedRealtime() }
+    fun wentBackground() {
+        wTle = SystemClock.elapsedRealtime()
+        helpdeskNaZywo?.cancel()
+        helpdeskNaZywo = null
+    }
 
     fun cameForeground() {
+        sprawdzajHelpdesk()
         val od = wTle ?: return
         wTle = null
         val minuty = session.lockAfterMinutes
@@ -562,6 +568,8 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
 
     fun logout() = viewModelScope.launch {
         assetSearch?.cancel()
+        helpdeskNaZywo?.cancel()
+        PowiadomieniaHelpdesku.wylacz(getApplication<Application>())
         // Wylogowanie jest swiadome - telefon przestaje tez logowac sie palcem.
         val id = session.deviceId
         if (id != null) runCatching { api?.removeDevice(id) }
@@ -717,8 +725,41 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
         // wiec jego blad znaczy naprawde blad - i tylko wtedy go pokazujemy.
         val katalog = runCatching { service.helpdeskCatalog() }.getOrNull() ?: return
         ustawHelpdesk { copy(available = katalog.available, catalog = katalog) }
-        if (katalog.available) pobierzZgloszenia(1)
+        if (katalog.available) {
+            PowiadomieniaHelpdesku.wlacz(getApplication<Application>())
+            pobierzZgloszenia(1)
+        }
     }
+
+    // --- powiadomienia helpdesku --------------------------------------------
+
+    private var helpdeskNaZywo: Job? = null
+
+    /**
+     * Przy otwartej aplikacji sprawdzamy helpdesk co minute - praca w tle
+     * chodzi najczesciej co 15 minut, a technik z aplikacja w reku oczekuje
+     * szybszej reakcji. Nowosc od razu odswieza tez liste zgloszen.
+     */
+    private fun sprawdzajHelpdesk() {
+        if (helpdeskNaZywo?.isActive == true) return
+        helpdeskNaZywo = viewModelScope.launch {
+            while (true) {
+                delay(60_000)
+                val stan = _state.value
+                if (stan.user == null || stan.locked || !stan.helpdesk.available) continue
+                val nowosci = PowiadomieniaHelpdesku.sprawdz(getApplication<Application>()) ?: continue
+                if (nowosci > 0 && !helpdesk().loading) pobierzZgloszenia(1)
+            }
+        }
+    }
+
+    /** Zgloszenie do otwarcia po stuknieciu w powiadomienie. Czeka na zalogowanie. */
+    private val _skokDoZgloszenia = MutableStateFlow<String?>(null)
+    val skokDoZgloszenia: StateFlow<String?> = _skokDoZgloszenia.asStateFlow()
+
+    fun openFromNotification(id: String) { _skokDoZgloszenia.value = id }
+
+    fun notificationHandled() { _skokDoZgloszenia.value = null }
 
     private suspend fun pobierzZgloszenia(page: Int) {
         val service = api ?: return
@@ -888,6 +929,7 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
 @Composable
 fun CmdbApp(vm: CmdbViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val skokDoZgloszenia by vm.skokDoZgloszenia.collectAsStateWithLifecycle()
     val systemDark = isSystemInDarkTheme()
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("cmdb_appearance", 0) }
@@ -940,6 +982,8 @@ fun CmdbApp(vm: CmdbViewModel = viewModel()) {
                     onAsset = vm::changeTicketAsset,
                     onSearchAssets = vm::searchHelpdeskAssets,
                     onOpenAttachment = vm::openAttachment,
+                    pendingTicket = skokDoZgloszenia,
+                    onPendingShown = vm::notificationHandled,
                 ),
                 onToggleBiometrics = vm::toggleBiometrics)
         }
