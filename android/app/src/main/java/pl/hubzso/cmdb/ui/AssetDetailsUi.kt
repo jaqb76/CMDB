@@ -156,8 +156,10 @@ private val factSpecs: Map<String, FactSpec> = linkedMapOf(
     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeading("Sprzęt")
         if (facts.isEmpty()) EmptyState("Brak danych w tej sekcji")
-        // Znane klucze w ustalonej kolejnosci, nieznane na koncu.
-        val keys = factSpecs.keys.filter { it in facts } + facts.keys.filter { it !in factSpecs }
+        // Znane klucze w ustalonej kolejnosci, nieznane na koncu. Pola
+        // dopisane do karty innego pola nie dostaja wlasnej karty.
+        val folded = foldedFacts.filterValues { it in facts }.keys
+        val keys = (factSpecs.keys.filter { it in facts } + facts.keys.filter { it !in factSpecs }) - folded
         keys.forEach { key ->
             val value = facts.getValue(key)
             val spec = factSpecs[key] ?: FactSpec(labelFor(key), Icons.Outlined.Info)
@@ -167,7 +169,7 @@ private val factSpecs: Map<String, FactSpec> = linkedMapOf(
                 listValue != null -> if (listValue.isEmpty()) "brak" else listValue.size.toString()
                 spec.unit != null -> "${formatPrimitive(key, value)} ${spec.unit}"
                 else -> formatPrimitive(key, value)
-            }
+            } + foldedSummary(key, facts)
             val expandable = detail != null || (listValue != null && listValue.isNotEmpty())
             ExpandableCard(spec.label, summary, spec.icon, "fakt-$key", expandable) {
                 when {
@@ -178,6 +180,32 @@ private val factSpecs: Map<String, FactSpec> = linkedMapOf(
             }
         }
     }
+}
+
+/**
+ * Pola, ktore dopisujemy do karty innego pola zamiast pokazywac osobno:
+ * "Pojemność dysków" to ta sama rzecz co "Dyski", rdzenie to czesc
+ * "Procesora". Wartosc to pole, do ktorego karty trafiaja.
+ */
+private val foldedFacts = mapOf(
+    "storage_gb" to "disks",
+    "cpu_cores" to "cpu_model",
+    "cpu_threads" to "cpu_model",
+    "services_running" to "services_total",
+)
+
+private fun foldedSummary(key: String, facts: Map<String, JsonElement>): String {
+    fun int(k: String) = (facts[k] as? JsonPrimitive)?.let { it.longOrNull ?: it.doubleOrNull?.toLong() }?.toInt()
+    val extra = when (key) {
+        "disks" -> facts["storage_gb"]?.takeUnless { it is JsonNull }?.let { "razem ${formatPrimitive("storage_gb", it)} GB" }
+        "cpu_model" -> listOfNotNull(
+            int("cpu_cores")?.let { "$it ${odmiana(it, "rdzeń", "rdzenie", "rdzeni")}" },
+            int("cpu_threads")?.let { "$it ${odmiana(it, "wątek", "wątki", "wątków")}" },
+        ).joinToString(", ").ifEmpty { null }
+        "services_total" -> int("services_running")?.let { "$it ${odmiana(it, "uruchomiona", "uruchomione", "uruchomionych")}" }
+        else -> null
+    }
+    return extra?.let { " · $it" }.orEmpty()
 }
 
 @Composable private fun StorageDetails(storage: JsonObject?) {
