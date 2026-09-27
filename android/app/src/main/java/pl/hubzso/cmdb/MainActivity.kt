@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.fragment.app.FragmentActivity
+import pl.hubzso.cmdb.data.PowiadomieniaHelpdesku
 import pl.hubzso.cmdb.ui.CmdbApp
 import pl.hubzso.cmdb.ui.CmdbViewModel
 
@@ -39,8 +40,13 @@ class MainActivity : FragmentActivity() {
         if (!isChangingConfigurations) vm.wentBackground()
     }
 
-    /** Powrot z przegladarki po logowaniu kontem zewnetrznym. */
+    /** Powrot z przegladarki po logowaniu kontem zewnetrznym albo stukniecie w powiadomienie. */
     private fun obsluzPowrot(intent: Intent?) {
+        intent?.getStringExtra(PowiadomieniaHelpdesku.EXTRA_ZGLOSZENIE)?.let {
+            // Usuwamy, zeby obrot ekranu nie otwieral zgloszenia drugi raz.
+            intent?.removeExtra(PowiadomieniaHelpdesku.EXTRA_ZGLOSZENIE)
+            vm.openFromNotification(it)
+        }
         val adres = intent?.data ?: return
         if (adres.scheme == "pl.hubzso.cmdb" && adres.path == "/logowanie") {
             adres.getQueryParameter("kod")?.let { vm.finishExternal(it) }

@@ -801,3 +801,45 @@ def test_migracja_poszerza_kolumny_wektorow():
     dlugosc = {k["name"]: getattr(k["type"], "length", None)
                for k in inspect(engine).get_columns("cve_scores")}
     assert dlugosc["vector"] == 512
+
+
+# --- aplikacja mobilna ------------------------------------------------------
+
+def test_telefon_dostaje_podatnosci_maszyny(client, tenant_a, make_user, kanal_debian):
+    from cmdb_server.models import Asset, AssetCurrentReport
+
+    make_user(tenant_a["id"], "admin@a.pl", "bardzo-dlugie-haslo")
+    with SessionLocal() as db:
+        asset = Asset(tenant_id=tenant_a["id"], machine_id="deb-1", hostname="DEB")
+        db.add(asset)
+        db.flush()
+        db.add(AssetCurrentReport(
+            asset_id=asset.id, tenant_id=tenant_a["id"], collected_at=utcnow(),
+            payload=_raport([_pakiet("curl", "7.88.1-10+deb12u14")]), payload_hash="x",
+        ))
+        db.commit()
+        asset_id = asset.id
+
+    token = client.post("/api/v1/mobile/auth/login", json={
+        "email": "admin@a.pl", "password": "bardzo-dlugie-haslo"}).json()["access_token"]
+    dane = client.get(f"/api/v1/mobile/assets/{asset_id}",
+                      headers={"Authorization": f"Bearer {token}"}).json()
+
+    podatnosci = dane["vulnerabilities"]
+    assert podatnosci["status"] == "ok"
+    assert podatnosci["fixable_count"] == 1
+    assert podatnosci["entries"][0]["cve"] == "CVE-2025-10148"
+    assert podatnosci["entries"][0]["fixed_version"] == "7.88.1-10+deb12u15"
+    assert podatnosci["packages"][0]["package"] == "curl"
+
+
+def test_telefon_nie_dostaje_zera_dla_nierozpoznanej_maszyny():
+    """Windows nie jest sprawdzany - liczby maja byc puste, a nie zerowe."""
+    from cmdb_server.api.mobile import podatnosci_dla_telefonu
+
+    with SessionLocal() as db:
+        wynik = podatnosci_dla_telefonu(cve.dopasuj(db, {"os": {"name": "Windows 10"}}))
+    assert wynik["status"] == "nieznany"
+    assert wynik["count"] is None
+    assert wynik["fixable_count"] is None
+    assert wynik["entries"] == []

@@ -98,6 +98,49 @@ import kotlinx.serialization.Serializable
     val facts: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(),
     val attributes: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(),
     @SerialName("current_report") val currentReport: kotlinx.serialization.json.JsonObject? = null,
+    // Starszy serwer nie przysyla tego pola - wtedy zakladka mowi, ze brak danych.
+    val vulnerabilities: Vulnerabilities? = null,
+)
+
+/**
+ * Podatnosci maszyny. Przy stanie "nieznany" liczniki sa null, a nie zero:
+ * zero znaczyloby "sprawdzone, czysto", a tego wlasnie nie wiemy.
+ */
+@Serializable data class Vulnerabilities(
+    val status: String = "nieznany",
+    val detail: String? = null,
+    val source: String? = null,
+    val count: Int? = null,
+    @SerialName("fixable_count") val fixableCount: Int? = null,
+    @SerialName("critical_count") val criticalCount: Int? = null,
+    @SerialName("open_count") val openCount: Int? = null,
+    @SerialName("minor_count") val minorCount: Int? = null,
+    val packages: List<VulnerablePackage> = emptyList(),
+    val entries: List<Vulnerability> = emptyList(),
+    val truncated: Int = 0,
+)
+
+@Serializable data class VulnerablePackage(
+    @SerialName("package") val packageName: String? = null,
+    val count: Int = 0,
+    val critical: Int = 0,
+    @SerialName("max_score") val maxScore: Double? = null,
+    @SerialName("installed_version") val installedVersion: String? = null,
+    @SerialName("fixed_version") val fixedVersion: String? = null,
+)
+
+@Serializable data class Vulnerability(
+    val cve: String,
+    @SerialName("package") val packageName: String? = null,
+    @SerialName("installed_version") val installedVersion: String? = null,
+    @SerialName("fixed_version") val fixedVersion: String? = null,
+    val status: String? = null,
+    val minor: Boolean = false,
+    @SerialName("base_score") val baseScore: Double? = null,
+    val severity: String? = null,
+    val priority: String? = null,
+    val summary: String? = null,
+    val link: String? = null,
 )
 
 @Serializable data class DictionaryEntry(
