@@ -41,7 +41,7 @@ STATIC = Path(__file__).resolve().parents[1] / "cmdb_server" / "static"
 
 EKRANY = {
     "komputer": {"viewport": {"width": 1440, "height": 900}, "device_scale_factor": 1},
-    "telefon": {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 2,
+    "przegladarka-telefon": {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 2,
                 "is_mobile": True, "has_touch": True},
 }
 
