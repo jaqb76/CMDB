@@ -156,47 +156,43 @@
     </div>
 
     <section class="panel pulpit-panel">
-      <h2 class="pulpit-h2">{{ ikona('komputer') }} Szczegóły zasobów</h2>
-      {% if wiersze %}
+      <div class="pulpit-panel-naglowek">
+        <h2 class="pulpit-h2">{{ ikona('tarcza') }} Najbardziej podatne maszyny</h2>
+        <a class="small" href="/?odswiez=1" title="Policz podatności od nowa">{{ ikona('odswiez') }} policzono {{ podatne.policzono | ago }}</a>
+      </div>
+      {% if podatne.pozycje %}
       <div class="pulpit-tabela-ramka">
       <table class="table pulpit-tabela">
-        <thead><tr><th>Nazwa</th><th>Typ sprzętu</th><th>OS</th><th>Wersja agenta</th><th>Status</th><th>Ostatnio widziano</th></tr></thead>
+        <thead><tr>
+          <th>Nazwa</th><th>OS</th>
+          <th class="lp" title="Podatności, dla których dystrybucja wydała poprawkę">Do naprawy</th>
+          <th class="lp" title="Do naprawy i CVSS ≥ 7">Poważne</th>
+          <th class="lp" title="Bez poprawki od dystrybucji">Bez poprawki</th>
+          <th class="lp">Najwyższy CVSS</th>
+        </tr></thead>
         <tbody>
-        {% for a, status, klasa in wiersze %}
+        {% for p in podatne.pozycje %}
           <tr>
-            <td>
-              <span class="stan-kropka stan-{{ klasa }}" aria-hidden="true"></span>
-              <a href="/assets/{{ a.id }}" class="strong">{{ a.hostname }}</a>
-              <div class="muted small">{{ typy.get(a.typ, a.typ or '—') }}</div>
-            </td>
-            <td class="pulpit-typ" title="{{ typy.get(a.typ, a.typ or '—') }}">{{ ikona(ikony_typow.get(a.typ, 'inne')) }}</td>
-            <td class="small">{% if a.os_name or a.os_family %}<span class="os-komorka">{{ znak_systemu(a.os_family) }} <span>{{ a.os_name or nazwa_systemu(a.os_family) }}</span></span>{% else %}<span class="muted">—</span>{% endif %}</td>
-            <td class="small">{{ a.agent_version or '—' }}</td>
-            <td><span class="badge {{ klasa }}">{{ status }}</span></td>
-            <td class="muted small">{{ a.last_seen | ago }}</td>
+            <td><a href="/assets/{{ p.id }}#podatnosci" class="strong">{{ p.hostname }}</a></td>
+            <td class="small"><span class="os-komorka">{{ znak_systemu(p.os_family) }} <span>{{ p.os_name or nazwa_systemu(p.os_family) }}</span></span></td>
+            <td class="lp"><b>{{ p.do_naprawy }}</b></td>
+            <td class="lp">{% if p.powazne %}<span class="badge badge-danger">{{ p.powazne }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+            <td class="lp">{% if p.bez_poprawki %}<span class="badge badge-warn">{{ p.bez_poprawki }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+            <td class="lp">{% if p.najwyzsza is not none %}<span class="{{ 'cvss-wysoki' if p.najwyzsza >= 7 else 'cvss-sredni' if p.najwyzsza >= 4 else 'muted' }}">{{ '%.1f' | format(p.najwyzsza) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
       </div>
-      <div class="pulpit-stopka">
-        <span class="muted small">Pokazano {{ wiersze | length }} z {{ total }} zasobów</span>
-        {% if stron > 1 %}
-        <nav class="pulpit-strony" aria-label="Strony">
-          {% if strona > 1 %}<a href="/?strona={{ strona - 1 }}" aria-label="Poprzednia">‹</a>{% endif %}
-          {% for n in range(1, stron + 1) %}
-            {% if n == 1 or n == stron or (n - strona) | abs <= 2 %}
-              {% if n == strona %}<span class="is-active" aria-current="page">{{ n }}</span>{% else %}<a href="/?strona={{ n }}">{{ n }}</a>{% endif %}
-            {% elif (n - strona) | abs == 3 %}<span class="muted">…</span>{% endif %}
-          {% endfor %}
-          {% if strona < stron %}<a href="/?strona={{ strona + 1 }}" aria-label="Następna">›</a>{% endif %}
-        </nav>
-        {% endif %}
-      </div>
+      {% elif podatne.zbadanych %}
+        <p class="muted">Żadna ze sprawdzonych maszyn ({{ podatne.zbadanych }}) nie ma znanych podatności.</p>
       {% else %}
-        <p class="muted">Żaden zasób nie jest jeszcze zapisany. Wygeneruj token w zakładce
-          <a href="/tokens">Tokeny agentów</a> i zainstaluj agenta na maszynie.</p>
+        <p class="muted">Brak danych o podatnościach. Liczone są maszyny z agentem na Linuksie
+          (Debian, Ubuntu, RHEL i pochodne), gdy pobrano już kanał podatności ich dystrybucji.</p>
       {% endif %}
+      <p class="muted small pulpit-przypis">
+        Sprawdzono {{ podatne.zbadanych }} maszyn{% if podatne.z_podatnosciami > podatne.pozycje | length %}, podatności ma {{ podatne.z_podatnosciami }} — lista pokazuje {{ podatne.pozycje | length }} najgorszych{% endif %}{% if podatne.bez_danych %}; {{ podatne.bez_danych }} bez danych (nierozpoznana dystrybucja albo brak kanału){% endif %}.
+      </p>
     </section>
   </div>
 

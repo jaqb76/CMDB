@@ -7,14 +7,14 @@ i wysokosci slupkow ida w atrybutach SVG, nie w CSS.
 from __future__ import annotations
 
 import re
+import threading
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import ZRODLO_AGENT, Asset, utcnow
-from . import wykresy
-from .auth import naive_utc
+from ..models import LIFECYCLE_AKTYWNY, ZRODLO_AGENT, Asset, AssetCurrentReport, utcnow
+from . import cve, wykresy
 
 # Rodziny systemow, ktore agent zglasza, w zapisie znanym ludziom.
 NAZWY_SYSTEMOW = {
@@ -28,7 +28,12 @@ NAZWY_SYSTEMOW = {
 POZYCJI_W_LEGENDZIE = 4
 # Ile najnowszych wersji agenta ma wlasny wiersz; starsze sa razem.
 WERSJI_AGENTA = 4
-WIERSZY_NA_STRONE = 8
+# Ile maszyn pokazuje lista najbardziej podatnych.
+NAJBARDZIEJ_PODATNYCH = 10
+# Jak dlugo pulpit pokazuje policzone juz podatnosci. Zestawienie pakietow
+# z kanalem kazdej maszyny to najciezsza rzecz na tej stronie, a kanaly
+# odswiezaja sie co kilka godzin - liczenie przy kazdym wejsciu nic nie daje.
+WAZNOSC_PODATNOSCI = timedelta(minutes=10)
 
 
 def _udzialy(pozycje: list[tuple[str | None, str, int]], inne: str) -> dict:
@@ -93,15 +98,63 @@ def wersje_agentow(db: Session, tenant_id: str) -> dict:
     return {"pozycje": pozycje, "suma": suma, "najwiecej": najwiecej}
 
 
-def status(asset: Asset, granica: datetime) -> tuple[str, str]:
-    """(etykieta, klasa znacznika) dla wiersza tabeli."""
-    if asset.zrodlo != ZRODLO_AGENT:
-        return "Brak agenta", "badge-neutral"
-    widziany = naive_utc(asset.last_seen)
-    if widziany and widziany >= naive_utc(granica):
-        return "Online", "badge-ok"
-    return "Bez kontaktu", "badge-warn"
-
-
 def od_tygodnia() -> datetime:
     return utcnow() - timedelta(days=7)
+
+
+_pamiec_podatnosci: dict[str, dict] = {}
+_blokada = threading.Lock()
+
+
+def najbardziej_podatne(db: Session, tenant_id: str, odswiez: bool = False) -> dict:
+    """Maszyny z najwieksza liczba podatnosci do naprawienia.
+
+    Kolejnosc: najpierw powazne (CVSS >= 7) z dostepna poprawka, potem
+    wszystkie do naprawienia, potem otwarte bez poprawki. Liczymy tylko
+    maszyny z agentem na Linuksie - dla innych kanal podatnosci nie istnieje.
+    """
+    teraz = utcnow()
+    with _blokada:
+        zapamietane = _pamiec_podatnosci.get(tenant_id)
+    if zapamietane and not odswiez and teraz - zapamietane["policzono"] < WAZNOSC_PODATNOSCI:
+        return zapamietane
+
+    wiersze = db.execute(
+        select(Asset, AssetCurrentReport.payload)
+        .join(AssetCurrentReport, AssetCurrentReport.asset_id == Asset.id)
+        .where(Asset.tenant_id == tenant_id, Asset.zrodlo == ZRODLO_AGENT,
+               Asset.lifecycle == LIFECYCLE_AKTYWNY, Asset.os_family == "linux")
+    ).all()
+
+    pozycje, zbadanych, bez_danych = [], 0, 0
+    for maszyna, raport in wiersze:
+        wynik = cve.dopasuj(db, raport or {})
+        if wynik["status"] != cve.STATUS_OK:
+            bez_danych += 1
+            continue
+        zbadanych += 1
+        if not (wynik["fixable_count"] or wynik["open_count"]):
+            continue
+        oceny = [p.get("base_score") for p in wynik["entries"] if p.get("base_score") is not None]
+        pozycje.append({
+            "id": maszyna.id,
+            "hostname": maszyna.hostname,
+            "os_family": maszyna.os_family,
+            "os_name": maszyna.os_name,
+            "do_naprawy": wynik["fixable_count"],
+            "powazne": wynik["critical_count"],
+            "bez_poprawki": wynik["open_count"],
+            "najwyzsza": max(oceny) if oceny else None,
+        })
+
+    pozycje.sort(key=lambda p: (p["powazne"], p["do_naprawy"], p["bez_poprawki"]), reverse=True)
+    wynik = {
+        "pozycje": pozycje[:NAJBARDZIEJ_PODATNYCH],
+        "z_podatnosciami": len(pozycje),
+        "zbadanych": zbadanych,
+        "bez_danych": bez_danych,
+        "policzono": teraz,
+    }
+    with _blokada:
+        _pamiec_podatnosci[tenant_id] = wynik
+    return wynik
