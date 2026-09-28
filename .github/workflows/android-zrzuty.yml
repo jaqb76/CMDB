@@ -1,0 +1,85 @@
+name: CMDB Android screenshots
+# Zrzuty ekranow aplikacji Android do docs/zrzuty/aplikacja. Rysuje je
+# Paparazzi na JVM (bez telefonu i emulatora) z danych zapisanych przez
+# server/tests/zrzuty_ekranu.py. Obrazy trafiaja commitem na te sama galaz,
+# z ktorej przyszedl przebieg - w pull requeście da sie je obejrzec przed
+# scaleniem. Commit tokenem GITHUB_TOKEN nie uruchamia workflowow ponownie.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/os-data-collection-agent-gfz2o8"]
+    paths:
+      - "android/**"
+      - ".github/workflows/android-zrzuty.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-zrzuty.yml"
+permissions:
+  contents: read
+concurrency:
+  group: android-zrzuty-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  zrzuty:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # W pull requeście pracujemy na jego galezi, a nie na scalonym
+          # podgladzie - inaczej nie byloby gdzie dopisac obrazow.
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Render app screens
+        working-directory: android
+        run: gradle --no-daemon :app:recordPaparazziDebug
+      - name: Copy screenshots to docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cel=docs/zrzuty/aplikacja
+          mkdir -p "$cel"
+          rm -f "$cel"/*.png
+          # Paparazzi nazywa pliki pakiet_Klasa_metoda.png - zostaje sama metoda.
+          for plik in android/app/src/test/snapshots/images/*.png; do
+            nazwa="${plik##*_}"
+            cp "$plik" "$cel/$nazwa"
+          done
+          ls -la "$cel"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zrzuty-aplikacji
+          path: docs/zrzuty/aplikacja/*.png
+          retention-days: 3
+      - name: Commit screenshots
+        # Wylacznie galezie tego repozytorium - token przebiegu z forka i tak
+        # nie ma prawa zapisu.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/zrzuty/aplikacja
+          if git diff --cached --quiet; then
+            echo "Zrzuty bez zmian."
+            exit 0
+          fi
+          git commit -m "Zrzuty ekranow aplikacji Android (automatycznie z CI)"
+          for proba in 1 2 3; do
+            git pull --rebase --autostash && git push && exit 0
+            sleep 5
+          done
+          exit 1

@@ -154,9 +154,8 @@ def _html(client, adres: str) -> str:
     return html.replace('src="/static/', f'src="{STATIC.as_uri()}/').replace('href="/static/', f'href="{STATIC.as_uri()}/')
 
 
-def test_zrzuty_ekranu(client, tenant_a, tenant_b, make_user, kanal_debian, tmp_path):  # noqa: F811
-    from playwright.sync_api import sync_playwright
-
+def _przyklad(client, tenant_a, tenant_b) -> str:
+    """Przykladowa instalacja: dwie firmy, flota, podatnosci, ruch. Zwraca id SRV-FS01."""
     random.seed(7)
     _pobierz_kanal()
     with SessionLocal() as db:
@@ -171,7 +170,13 @@ def test_zrzuty_ekranu(client, tenant_a, tenant_b, make_user, kanal_debian, tmp_
     _flota(tenant_a["id"], 46, "PRZ")
     _flota(tenant_b["id"], 18, "BRN")
     _ruch()
+    return windows
 
+
+def test_zrzuty_ekranu(client, tenant_a, tenant_b, make_user, kanal_debian, tmp_path):  # noqa: F811
+    from playwright.sync_api import sync_playwright
+
+    windows = _przyklad(client, tenant_a, tenant_b)
     make_user(tenant_a["id"], "admin@przyklad.pl", "haslo-do-zrzutow-123")
     make_user(None, "root@cmdb.local", "haslo-do-zrzutow-123")
 
@@ -216,3 +221,63 @@ def test_zrzuty_ekranu(client, tenant_a, tenant_b, make_user, kanal_debian, tmp_
                 strona.screenshot(path=str(cel / f"{nazwa}.jpg"), full_page=True, type="jpeg", quality=80)
             strona.close()
         przegladarka.close()
+
+
+# --- dane dla zrzutow aplikacji Android -----------------------------------------
+#
+# Aplikacja ma wlasne, natywne ekrany. Zrzuty rysuje test Paparazzi w CI
+# (android/app/src/test/.../ZrzutyEkranow.kt) - bez telefonu i bez serwera,
+# z odpowiedzi API mobilnego zapisanych tutaj. Dzieki temu ekrany pokazuja
+# dokladnie to, co zwraca serwer, a nie dane zmyslone w Kotlinie.
+
+DANE_APLIKACJI = (Path(__file__).resolve().parents[2] / "android" / "app" / "src" / "test"
+                  / "resources" / "zrzuty")
+
+
+def test_dane_dla_aplikacji(client, tenant_a, tenant_b, kanal_debian):  # noqa: F811
+    import json
+
+    from .test_mobile_helpdesk import HASLO, _firma, _naglowki, _technik
+
+    windows = _przyklad(client, tenant_a, tenant_b)
+    _firma(tenant_a["id"], "PRZ", ("przyklad.pl",))
+    from cmdb_server.services import helpdesk
+
+    with SessionLocal() as db:
+        for temat, email, tresc in (
+            ("Drukarka w księgowości nie drukuje", "anna.wisniewska@przyklad.pl",
+             "Od rana drukarka PRN-007 pokazuje błąd papieru, choć papier jest."),
+            ("Brak dostępu do udziału \\\\SRV-FS01\\kadry", "piotr.zielinski@przyklad.pl",
+             "Po zmianie hasła nie otwiera się folder kadr."),
+            ("Nowy laptop dla pracownika", "kadry@przyklad.pl",
+             "Od poniedziałku zaczyna nowa osoba w dziale handlowym."),
+            ("VPN rozłącza się co kilka minut", "tomasz.lewandowski@przyklad.pl",
+             "Pracuję zdalnie, połączenie zrywa się średnio co 5 minut."),
+        ):
+            helpdesk.utworz_zgloszenie(db, tenant_id=tenant_a["id"], temat=temat, tresc=tresc,
+                                       zglaszajacy_email=email, message_id=f"<{abs(hash(temat))}@przyklad.pl>")
+        db.commit()
+    _technik("technik@przyklad.pl", [tenant_a["id"]], nazwa="Marek Technik")
+    naglowki = _naglowki(client, "technik@przyklad.pl", HASLO)
+    naglowki["X-CMDB-Tenant"] = "przyklad"
+
+    def pobierz(adres):
+        odpowiedz = client.get(adres, headers=naglowki)
+        assert odpowiedz.status_code == 200, (adres, odpowiedz.text)
+        return odpowiedz.json()
+
+    zgloszenia = pobierz("/api/v1/mobile/helpdesk/tickets")
+    dane = {
+        "me": pobierz("/api/v1/mobile/me"),
+        "dashboard": pobierz("/api/v1/mobile/dashboard"),
+        "assets": pobierz("/api/v1/mobile/assets"),
+        "asset": pobierz(f"/api/v1/mobile/assets/{windows}"),
+        "changes": pobierz("/api/v1/mobile/changes"),
+        "helpdesk_catalog": pobierz("/api/v1/mobile/helpdesk/catalog"),
+        "tickets": zgloszenia,
+        "ticket": pobierz(f"/api/v1/mobile/helpdesk/tickets/{zgloszenia['items'][0]['id']}"),
+    }
+    DANE_APLIKACJI.mkdir(parents=True, exist_ok=True)
+    for nazwa, tresc in dane.items():
+        (DANE_APLIKACJI / f"{nazwa}.json").write_text(
+            json.dumps(tresc, ensure_ascii=False, indent=1), encoding="utf-8")

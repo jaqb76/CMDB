@@ -1,0 +1,12 @@
+{
+ "id": "37bc6abf-caf1-4d06-96ac-acd40f20957a",
+ "email": "technik@przyklad.pl",
+ "full_name": "Marek Technik",
+ "role": "admin",
+ "can_write": true,
+ "tenant": {
+  "id": "51946a01-4c25-4367-9989-087b49a631db",
+  "name": "Przykładowa Sp. z o.o.",
+  "slug": "przyklad"
+ }
+}

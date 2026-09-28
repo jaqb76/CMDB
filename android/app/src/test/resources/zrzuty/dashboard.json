@@ -1,0 +1,229 @@
+{
+ "total": 48,
+ "stale": 2,
+ "unassigned": 48,
+ "with_agent": 28,
+ "by_os": [
+  {
+   "key": "linux",
+   "label": "linux",
+   "count": 4
+  },
+  {
+   "key": "windows",
+   "label": "windows",
+   "count": 24
+  }
+ ],
+ "by_type": [
+  {
+   "key": "komputer",
+   "label": "Komputer / serwer",
+   "count": 26
+  },
+  {
+   "key": "laptop",
+   "label": "laptop",
+   "count": 9
+  },
+  {
+   "key": "monitor",
+   "label": "Monitor",
+   "count": 6
+  },
+  {
+   "key": "drukarka",
+   "label": "Drukarka / skaner",
+   "count": 4
+  },
+  {
+   "key": "siec",
+   "label": "Sprzęt sieciowy",
+   "count": 3
+  }
+ ],
+ "recent": [
+  {
+   "id": "da53bfdc-7966-43cb-a670-cfb58c891bda",
+   "hostname": "SRV-WWW01",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "linux",
+   "primary_ip": "10.10.5.21",
+   "last_seen": "2026-09-28T18:05:40.164141+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "5ef74762-83b5-410f-9cdd-83e424d02cf5",
+   "hostname": "SRV-FS01",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": "10.10.5.21",
+   "last_seen": "2026-09-28T18:05:40.075703+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "c1f0ecd6-f54b-4841-8a2b-870a1f73a789",
+   "hostname": "PRZ-WS-044",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": null,
+   "last_seen": "2026-09-28T17:05:40.188663+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "8dc2e25f-1fe0-42ca-84ec-763355d5bbdc",
+   "hostname": "PRZ-WS-040",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": null,
+   "last_seen": "2026-09-28T17:05:40.188663+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "de83e007-35ea-4a09-8f1a-5d472f56b492",
+   "hostname": "PRZ-WS-038",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": null,
+   "last_seen": "2026-09-28T17:05:40.188663+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "4f9881cc-a5f0-49da-930d-fa5be0e46a80",
+   "hostname": "PRZ-NB-035",
+   "type": "laptop",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": null,
+   "last_seen": "2026-09-28T17:05:40.188663+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "110127ce-a2a0-4aef-8dfd-81c684caa671",
+   "hostname": "PRZ-WS-034",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": null,
+   "last_seen": "2026-09-28T17:05:40.188663+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "60ac13e7-e31c-484f-8a7f-79be28b353d7",
+   "hostname": "PRZ-WS-032",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": null,
+   "last_seen": "2026-09-28T17:05:40.188663+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "9f94d35c-0f8e-44e1-bd56-765e10933711",
+   "hostname": "PRZ-WS-023",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": null,
+   "last_seen": "2026-09-28T17:05:40.188663+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "0c88cd33-de8f-408e-9f12-864e31f8e3fb",
+   "hostname": "PRZ-WS-019",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": null,
+   "last_seen": "2026-09-28T17:05:40.188663+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  }
+ ],
+ "changed": [
+  {
+   "id": "da53bfdc-7966-43cb-a670-cfb58c891bda",
+   "hostname": "SRV-WWW01",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "linux",
+   "primary_ip": "10.10.5.21",
+   "last_seen": "2026-09-28T18:05:40.164141+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  },
+  {
+   "id": "5ef74762-83b5-410f-9cdd-83e424d02cf5",
+   "hostname": "SRV-FS01",
+   "type": "komputer",
+   "source": "agent",
+   "os_family": "windows",
+   "primary_ip": "10.10.5.21",
+   "last_seen": "2026-09-28T18:05:40.075703+00:00",
+   "lifecycle": "aktywny",
+   "owner": null,
+   "user": null,
+   "location": null,
+   "role_label": null,
+   "place": null
+  }
+ ]
+}

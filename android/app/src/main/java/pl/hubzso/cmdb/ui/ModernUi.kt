@@ -564,6 +564,15 @@ internal fun ModernTenantScreen(state: AppState, onSelect: (pl.hubzso.cmdb.data.
 // Dolny pasek ma cztery pozycje: trzy stale i helpdesk, ktory pojawia sie
 // tylko kontu obslugujacemu zgloszenia. Reszta ekranow wchodzi przez "Więcej" -
 // wiecej podpisow nie miesci sie bez scinania.
+/**
+ * Zakladka, od ktorej startuje ekran glowny i karta maszyny.
+ *
+ * W aplikacji zawsze 0 - pulpit i podsumowanie. Inna wartosc podaje wylacznie
+ * test zrzutow ekranu (ZrzutyEkranow), ktory rysuje ekrany bez klikania.
+ */
+internal val LocalZakladkaStartowa = staticCompositionLocalOf { 0 }
+internal val LocalZakladkaKartyStartowa = staticCompositionLocalOf { 0 }
+
 private enum class ModernTab(val label: String, val icon: ImageVector) {
     DASHBOARD("Pulpit", Icons.Outlined.Home),
     ASSETS("Maszyny", Icons.Outlined.Storage),
@@ -626,7 +635,8 @@ internal fun ModernMainScreen(
     helpdesk: HelpdeskActions,
     onToggleBiometrics: () -> Unit = {},
 ) {
-    var tab by rememberSaveable { mutableStateOf(ModernTab.DASHBOARD) }
+    val zakladkaStartowa = LocalZakladkaStartowa.current
+    var tab by rememberSaveable { mutableStateOf(ModernTab.entries[zakladkaStartowa]) }
     var page by rememberSaveable { mutableStateOf<ModernPage?>(null) }
     var helpdeskView by rememberSaveable { mutableStateOf(HelpdeskView.LIST) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -1378,7 +1388,8 @@ private fun osColor(os: String?): Color = when {
     onSaveAssignment: (String, AssignmentWrite) -> Unit,
 ) {
     var editAssignment by remember(data.asset.id) { mutableStateOf(false) }
-    var tab by rememberSaveable(data.asset.id) { mutableIntStateOf(0) }
+    val zakladkaStartowa = LocalZakladkaKartyStartowa.current
+    var tab by rememberSaveable(data.asset.id) { mutableIntStateOf(zakladkaStartowa) }
     val kolory = LocalCmdbColors.current
     LaunchedEffect(mutationVersion) { editAssignment = false }
     if (editAssignment) {

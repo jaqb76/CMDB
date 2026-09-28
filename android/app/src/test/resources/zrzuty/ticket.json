@@ -1,0 +1,71 @@
+{
+ "ticket": {
+  "id": "5d78df70-c93f-4a63-b52a-41a78ceee228",
+  "number": "PRZ-4",
+  "subject": "VPN rozłącza się co kilka minut",
+  "status": "nowe",
+  "status_label": "Nowe",
+  "type": null,
+  "type_label": "",
+  "tenant_id": "51946a01-4c25-4367-9989-087b49a631db",
+  "tenant": "Przykładowa Sp. z o.o.",
+  "requester_email": "tomasz.lewandowski@przyklad.pl",
+  "requester_name": null,
+  "technician_id": null,
+  "technician": null,
+  "created_at": "2026-09-28T18:05:45.436250+00:00",
+  "last_activity": "2026-09-28T18:05:45.436250+00:00",
+  "closed_at": null,
+  "waiting": true,
+  "waiting_since": "2026-09-28T18:05:45.436250+00:00",
+  "assets": [],
+  "minutes": 0
+ },
+ "entries": [
+  {
+   "id": "be0ece60-514a-4f1f-8f43-4751629a1658",
+   "kind": "od_klienta",
+   "author": "tomasz.lewandowski@przyklad.pl",
+   "author_email": "tomasz.lewandowski@przyklad.pl",
+   "mine": false,
+   "content": "Pracuję zdalnie, połączenie zrywa się średnio co 5 minut.",
+   "created_at": "2026-09-28T18:05:45.436250+00:00",
+   "sent_at": null,
+   "error": null,
+   "attachments": []
+  },
+  {
+   "id": "9dd20194-eaae-4fac-aec3-3d8287744d11",
+   "kind": "system",
+   "author": "system",
+   "author_email": null,
+   "mine": false,
+   "content": "zgłoszenie utworzone (e-mail) jako PRZ-4",
+   "created_at": "2026-09-28T18:05:45.440568+00:00",
+   "sent_at": null,
+   "error": null,
+   "attachments": []
+  }
+ ],
+ "requester": {
+  "email": "tomasz.lewandowski@przyklad.pl",
+  "name": null,
+  "known": false,
+  "fields": []
+ },
+ "candidates": [],
+ "technicians": [
+  {
+   "id": "37bc6abf-caf1-4d06-96ac-acd40f20957a",
+   "name": "Marek Technik",
+   "email": "technik@przyklad.pl"
+  }
+ ],
+ "time": {
+  "total": 0,
+  "total_label": "-",
+  "shares": []
+ },
+ "closing_email": false,
+ "mailbox": false
+}

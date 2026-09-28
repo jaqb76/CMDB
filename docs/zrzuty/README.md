@@ -38,6 +38,19 @@ Zwykły przebieg testów go pomija.
 
 ## Aplikacja Android
 
-Natywna aplikacja (Kotlin, Jetpack Compose) — osobny wygląd niż portal
-w przeglądarce. Zrzuty z telefonu trafią do [`aplikacja/`](aplikacja/);
-kod i instalacja: [`android/README.md`](../../android/README.md).
+Natywna aplikacja (Kotlin, Jetpack Compose) ma własne ekrany, inne niż portal
+w przeglądarce. Zrzuty rysuje w CI narzędzie Paparazzi — bez telefonu
+i emulatora — z prawdziwych odpowiedzi API mobilnego zapisanych na tych samych
+przykładowych danych (`android/app/src/test/resources/zrzuty/`). Odświeżają się
+same po każdej zmianie w `android/` (workflow `android-zrzuty.yml`).
+
+| Logowanie | Pulpit | Pulpit (jasny) | Maszyny |
+|---|---|---|---|
+| ![](aplikacja/logowanie.png) | ![](aplikacja/pulpit.png) | ![](aplikacja/pulpitJasny.png) | ![](aplikacja/maszyny.png) |
+
+| Karta maszyny | Podatności maszyny | Helpdesk | Więcej |
+|---|---|---|---|
+| ![](aplikacja/kartaMaszyny.png) | ![](aplikacja/kartaMaszynyPodatnosci.png) | ![](aplikacja/helpdesk.png) | ![](aplikacja/wiecej.png) |
+
+Test: [`ZrzutyEkranow.kt`](../../android/app/src/test/java/pl/hubzso/cmdb/ui/ZrzutyEkranow.kt).
+Nowe dane dla aplikacji: `ZRZUTY=1 python -m pytest tests/zrzuty_ekranu.py -k dane` (z katalogu `server`).
