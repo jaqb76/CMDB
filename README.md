@@ -20,6 +20,14 @@ maszyny, a agent posługuje się tokenem przypisanym do konkretnej firmy.
                                    PostgreSQL (JSONB + GIN)
 ```
 
+## Jak to wygląda
+
+| Pulpit firmy | Przegląd administratora | Telefon |
+|---|---|---|
+| [![Pulpit](docs/zrzuty/komputer/01-pulpit.jpg)](docs/zrzuty/komputer/01-pulpit.jpg) | [![Przegląd](docs/zrzuty/komputer/10-przeglad-administratora.jpg)](docs/zrzuty/komputer/10-przeglad-administratora.jpg) | [![Telefon](docs/zrzuty/telefon/01-pulpit.jpg)](docs/zrzuty/telefon/01-pulpit.jpg) |
+
+Więcej ekranów, w wersji na komputer i na telefon: [`docs/zrzuty`](docs/zrzuty/README.md).
+
 ## Co system zbiera
 
 | Obszar | Dane |
@@ -366,6 +374,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 
 | Dokument | Zawartość |
 |---|---|
+| [`docs/zrzuty/README.md`](docs/zrzuty/README.md) | przykładowe zrzuty ekranów — portal firmowy i administracja, komputer i telefon |
 | [`docs/architektura.md`](docs/architektura.md) | model danych, przepływ raportu, deduplikacja, dodawanie kolejnych systemów |
 | [`docs/autoryzacja.md`](docs/autoryzacja.md) | logowanie: AD/LDAP i grupy → role, konta lokalne, 2FA, zaproszenia, Google/Microsoft/GitHub, biometria w aplikacji |
 | [`docs/bezpieczenstwo.md`](docs/bezpieczenstwo.md) | model zagrożeń, tokeny, TLS, izolacja firm, dane wrażliwe |
