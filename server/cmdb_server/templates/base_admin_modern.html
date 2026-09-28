@@ -51,6 +51,7 @@
       {% endcall %}
 
       {% call grupa('admin-nadzor', 'Nadzór') %}
+      <a class="app-nav-link{% if strona == 'portal' %} is-active{% endif %}" href="/admin/portal" title="Stan portalu"><span class="nav-icon" aria-hidden="true">◉</span><span class="nav-label">Stan portalu</span></a>
       <a class="app-nav-link{% if strona == 'audyt' %} is-active{% endif %}" href="/admin/audyt" title="Audyt operacji"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Audyt operacji</span></a>
       <a class="app-nav-link{% if strona == 'kopie' %} is-active{% endif %}" href="/admin/kopie" title="Kopie zapasowe"><span class="nav-icon" aria-hidden="true">⛁</span><span class="nav-label">Kopie zapasowe</span></a>
       {% endcall %}

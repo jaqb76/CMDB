@@ -46,6 +46,7 @@ from ..models import (
     ReleaseImportStatus,
     Asset,
     AuditLog,
+    BlokadaLogowania,
     CveFeed,
     CveSyncStatus,
     EnrollmentToken,
@@ -374,6 +375,28 @@ def _stan_systemu(db: Session) -> list[dict]:
     if pobieranie is not None and pobieranie.state == "running":
         pozycje[-1]["opis"] += f" · trwa pobieranie ({pobieranie.phase or 'start'})"
 
+    from ..services import stan_portalu
+
+    godzina = stan_portalu.statystyki_ruchu(db, 1)["ostatnia_godzina"]
+    p95, bledy = godzina["p95_ms"], godzina["bledy_5xx"]
+    if not godzina["liczba"]:
+        stan, opis = "uwaga", "brak zarejestrowanego ruchu w ostatniej godzinie"
+    else:
+        stan = "blad" if (bledy and godzina["bledy_proc"] >= 1) or (p95 or 0) > 2500 else (
+            "uwaga" if bledy or (p95 or 0) > 1000 else "ok")
+        opis = (f"{godzina['liczba']} zapytań w ostatniej godzinie, p95 do {int(p95)} ms"
+                + (f", błędów 5xx: {bledy}" if bledy else ""))
+    pozycje.append({"nazwa": "Wydajność portalu", "stan": stan, "opis": opis,
+                    "adres": "/admin/portal"})
+
+    blokady = [b for b in db.execute(select(BlokadaLogowania)).scalars()
+               if b.blokada_do and as_utc(b.blokada_do) > teraz]
+    konta = sum(1 for b in blokady if b.klucz.startswith("konto:"))
+    pozycje.append({"nazwa": "Blokady logowania", "stan": "uwaga" if blokady else "ok",
+                    "opis": (f"{konta} kont, {len(blokady) - konta} adresów zablokowanych"
+                             if blokady else "nikt nie jest zablokowany"),
+                    "adres": "/admin/portal"})
+
     klucz = bool(get_settings().nvd_api_key)
     pozycje.append({"nazwa": "Oceny CVSS (NVD)", "stan": "ok" if klucz else "uwaga",
                     "opis": "klucz API ustawiony" if klucz else "bez klucza API - pobieranie ocen trwa długo",
@@ -403,6 +426,53 @@ def _stan_systemu(db: Session) -> list[dict]:
                             "opis": "wolnego miejsca wystarczy na mniej niż 3 kopie",
                             "adres": "/admin/kopie"})
     return pozycje
+
+
+# --- stan portalu ------------------------------------------------------------
+
+@router.get("/portal", response_class=HTMLResponse)
+def stan_portalu_widok(
+    request: Request,
+    godzin: int = Query(24, ge=1, le=24 * 30),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Portal o sobie: ruch, wydajnosc, zasoby serwera, baza i bezpieczenstwo."""
+    from ..services import stan_portalu
+
+    return render_admin(
+        request, "admin_portal.html", user, "portal",
+        ruch=stan_portalu.statystyki_ruchu(db, godzin),
+        zasoby=stan_portalu.zasoby(),
+        baza=stan_portalu.baza(db),
+        bezpieczenstwo=stan_portalu.bezpieczenstwo(db),
+        godzin=godzin,
+        teraz=utcnow(),
+        wersja_portalu=wersja.opis(),
+    )
+
+
+@router.post("/portal/odblokuj")
+def odblokuj_logowanie(
+    request: Request,
+    klucz: str = Form(..., max_length=320),
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Zdejmuje blokade konta albo adresu przed czasem.
+
+    Kto zna adres e-mail administratora, moze go zablokowac kilkoma blednymi
+    haslami - do tej pory wyjsciem byl wylacznie wiersz polecen na serwerze.
+    """
+    sprawdz_csrf(user, csrf_token)
+    wpis = db.get(BlokadaLogowania, klucz)
+    if wpis is not None:
+        db.delete(wpis)
+        audit(db, None, action="login.unblocked", target=klucz[:255],
+              ip=client_ip(request), actor=user.email)
+        db.commit()
+    return RedirectResponse("/admin/portal", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # --- firmy i konta ----------------------------------------------------------
