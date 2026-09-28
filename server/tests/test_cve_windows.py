@@ -221,3 +221,34 @@ def test_karta_i_pulpit_pokazuja_podatnosci_windows(client, tenant_a, make_user)
 
     pulpit = client.get("/?odswiez=1").text.split("Najbardziej podatne maszyny")[1]
     assert "srv-win" in pulpit
+
+
+# --- kontekst liczby: okno danych i ostatnia aktualizacja zbiorcza ----------------
+
+def test_maszyna_starsza_niz_dane_dostaje_ostrzezenie():
+    """Zgloszenie: 2452 luki na maszynie z poprawkami z 2022, a dane siegaja
+    dwoch lat - liczba jest zanizona i karta musi to powiedziec."""
+    _pobierz_kanal()
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport(poprawka="2600"))
+    assert wynik["windows"]["poza_oknem"] is True
+    assert wynik["windows"]["dane_od"].strftime("%Y-%m") == "2026-09"
+
+
+def test_ostatnia_aktualizacja_zbiorcza_z_lista_poprawek():
+    _pobierz_kanal()
+    raport = _raport(poprawka="2655")
+    raport["software"]["updates"] = [{"id": "KB5042999", "installed_on": "2026-09-10T00:00:00Z"}]
+    with SessionLocal() as db:
+        kontekst = cve.dopasuj(db, raport)["windows"]
+    assert kontekst["poza_oknem"] is False
+    assert kontekst["ostatnia_zbiorcza"] == "KB5042999"
+    assert kontekst["zainstalowano"] == "2026-09-10T00:00:00Z"
+
+
+def test_karta_ostrzega_o_zanizonej_liczbie(client, tenant_a, make_user):
+    _pobierz_kanal()
+    asset_id = _maszyna_windows(tenant_a["id"], poprawka="2600")
+    make_user(tenant_a["id"], "okno@firma.pl", "haslo-do-testow-123")
+    _login(client, "okno@firma.pl", "haslo-do-testow-123")
+    assert "Liczba luk jest zaniżona" in client.get(f"/assets/{asset_id}").text

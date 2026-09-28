@@ -317,3 +317,49 @@ def podsumowanie(znalezione: list[dict], kompilacja: str) -> list[dict]:
         "installed_version": kompilacja,
         "restart": True,
     }]
+
+
+def _miesiac_biuletynu(identyfikator: str) -> datetime | None:
+    """"2024-Oct" -> 2024-10-01. Nazwy miesiecy MSRC sa angielskie."""
+    try:
+        return datetime.strptime(identyfikator, "%Y-%b")
+    except ValueError:
+        return None
+
+
+def kontekst(db: Session, wydanie: str, kompilacja: str, payload: dict) -> dict:
+    """Czego sama liczba CVE nie mowi: czy maszyna nie jest starsza niz dane
+    i kiedy dostala ostatnia aktualizacje zbiorcza.
+
+    Biuletyny siegaja MIESIECY wstecz. Maszyna, ktorej kompilacja jest nizsza
+    niz najstarsza poprawka w danych, nie ma rowniez tego, co naprawiono
+    wczesniej - a tego juz nie liczymy. Liczba jest wtedy zanizona i trzeba
+    to powiedziec wprost, zamiast pokazywac ja jak pelny wynik.
+    """
+    obecna = klucz_kompilacji(kompilacja)
+    wpisy = db.execute(select(CveEntry.fixed_version, CveEntry.package).where(
+        CveEntry.source == ZRODLO, CveEntry.release == wydanie)).all()
+    kompilacje = [(klucz_kompilacji(w), kb) for w, kb in wpisy if klucz_kompilacji(w)]
+    najstarsza = min((k for k, _ in kompilacje), default=None)
+
+    miesiace = [m for m in (_miesiac_biuletynu(k.release) for k in db.execute(
+        select(CveFeed).where(CveFeed.source == ZRODLO_BIULETYNOW)).scalars()) if m]
+    od = min(miesiace) if miesiace else None
+
+    # Aktualizacja zbiorcza, ktora dala maszynie jej kompilacje - o ile jest
+    # w danych - i data jej instalacji z listy poprawek Windows.
+    kb = next((kb for k, kb in kompilacje if k == obecna), None)
+    zainstalowano = None
+    if kb:
+        for poprawka in (payload.get("software") or {}).get("updates") or []:
+            if str(poprawka.get("id") or "").upper() == kb.upper():
+                zainstalowano = poprawka.get("installed_on")
+                break
+    return {
+        "kompilacja": kompilacja,
+        "poza_oknem": bool(obecna and najstarsza and obecna < najstarsza),
+        "dane_od": od,
+        "miesiecy": MIESIECY,
+        "ostatnia_zbiorcza": kb,
+        "zainstalowano": zainstalowano,
+    }

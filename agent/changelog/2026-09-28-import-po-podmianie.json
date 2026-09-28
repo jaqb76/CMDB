@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Windows: po automatycznej aktualizacji agent kończył cykl błędem „Error -3 while decompressing data: incorrect header check” i nie restartował monitorowania. Moduły potrzebne po podmianie pliku są teraz wczytywane przed nią."
+}

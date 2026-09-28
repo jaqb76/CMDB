@@ -249,6 +249,24 @@ def _czy_dziala(plik: Path, expected_version: str) -> tuple[bool, str]:
     return True, opis
 
 
+def zaladuj_potrzebne_po_podmianie() -> None:
+    """Wczytuje moduly, ktorych ten proces uzyje juz PO podmianie pliku.
+
+    Agent z PyInstallera doczytuje modul z wlasnego pliku .exe dopiero przy
+    pierwszym imporcie - i otwiera go po NAZWIE. Po podmianie pod ta nazwa
+    lezy juz nowa wersja, wiec import konczyl sie bledem "Error -3 while
+    decompressing data: incorrect header check": zgloszenie z maszyny, na
+    ktorej aktualizacja do 0.6.149 przerwala cykl zaraz po instalacji.
+    Dotyczy to kazdego modulu, takze biblioteki standardowej - dlatego
+    wszystko, co idzie po podmianie (restart monitorowania, ponowne
+    uruchomienie), musi byc w pamieci przed nia.
+    """
+    from . import uslugi  # noqa: F401
+
+    if sys.platform == "win32":
+        from .collectors import windows  # noqa: F401
+
+
 def _podmien(biezacy: Path, nowy: Path) -> Path:
     """Podmienia plik agenta i zwraca sciezke kopii poprzedniej wersji.
 
@@ -256,6 +274,7 @@ def _podmien(biezacy: Path, nowy: Path) -> Path:
     PRZEMIANOWAC - i z tego korzystamy. Proces dziala dalej z pliku pod nowa
     nazwa, a w jego miejsce wchodzi nowa wersja.
     """
+    zaladuj_potrzebne_po_podmianie()
     stara = sciezka_starej(biezacy)
     biezacy.rename(stara)
     try:

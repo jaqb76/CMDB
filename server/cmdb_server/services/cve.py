@@ -797,7 +797,7 @@ def _dopasuj_windows(db: Session, payload: dict, wydanie: str) -> dict:
 
     znalezione = cve_windows.znajdz(db, wydanie, kompilacja)
     _dolacz_oceny(db, cve_windows.ZRODLO, wydanie, znalezione, False)
-    return _wynik(
+    wynik = _wynik(
         STATUS_OK,
         None,
         packages_summary=cve_windows.podsumowanie(znalezione, kompilacja),
@@ -806,6 +806,8 @@ def _dopasuj_windows(db: Session, payload: dict, wydanie: str) -> dict:
         feed_age_hours=_wiek_kanalu(stan),
         feed_entries=stan.entries,
     )
+    wynik["windows"] = cve_windows.kontekst(db, wydanie, kompilacja, payload)
+    return wynik
 
 
 # Kto wystawil ocene albo priorytet, gdy pochodzi z kanalu, a nie z NVD.

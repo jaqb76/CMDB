@@ -250,6 +250,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px;
 .alert-ok { background: var(--ok-bg); color: var(--ok-fg); }
 .alert-warn { background: var(--warn-bg); color: var(--warn-fg); }
 .alert-error { background: var(--danger-bg); color: var(--danger-fg); }
+.alert-info { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 .token-value {
   display: block; margin: 8px 0; padding: 10px; background: var(--surface);
   border: 1px dashed currentColor; border-radius: 5px; font-family: var(--mono);
