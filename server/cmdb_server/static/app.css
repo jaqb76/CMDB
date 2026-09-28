@@ -1716,23 +1716,9 @@ label.check input { width: auto; margin-top: 3px; }
 .pulpit-tabela th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
 .pulpit-tabela .muted.small, .pulpit-tabela td:nth-child(4), .pulpit-tabela td:last-child { white-space: nowrap; }
 .pulpit-tabela td { vertical-align: middle; padding: 10px; }
-.stan-kropka { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--muted); vertical-align: middle; }
-.pulpit-tabela td:first-child .muted { padding-left: 15px; }
 .os-komorka { display: flex; align-items: center; gap: 7px; min-width: 130px; }
 .os-komorka .os-znak { flex: none; }
-.stan-badge-ok { background: var(--ok-fg); }
-.stan-badge-warn { background: var(--warn-fg); }
-.pulpit-typ { font-size: 22px; color: var(--muted); }
-.badge-neutral { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); border-color: transparent; }
 .pulpit-tabela .badge { font-size: 12px; padding: 3px 10px; border-radius: 6px; white-space: nowrap; }
-.pulpit-stopka { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
-.pulpit-strony { display: flex; align-items: center; gap: 4px; }
-.pulpit-strony a, .pulpit-strony span {
-  min-width: 30px; height: 30px; display: grid; place-items: center; padding: 0 6px;
-  border-radius: 6px; color: var(--text); font-size: 13px;
-}
-.pulpit-strony a:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); text-decoration: none; }
-.pulpit-strony .is-active { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
 
 .pulpit-wersje { list-style: none; margin: 0; padding: 0; }
 .pulpit-wersje li {
@@ -1781,3 +1767,9 @@ label.check input { width: auto; margin-top: 3px; }
   .kafel-ikona { width: 40px; height: 40px; font-size: 20px; }
   .pulpit-aktualizacja { width: 100%; justify-content: space-between; }
 }
+.pulpit-panel-naglowek { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.pulpit-panel-naglowek .ikona { vertical-align: -0.15em; }
+.pulpit-tabela .lp { text-align: right; white-space: nowrap; }
+.cvss-wysoki { color: var(--danger-fg); font-weight: 700; }
+.cvss-sredni { color: var(--warn-fg); font-weight: 600; }
+.pulpit-tabela td:first-child { white-space: nowrap; }

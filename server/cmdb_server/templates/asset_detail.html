@@ -950,11 +950,20 @@
 
         {% if podatnosci.packages_summary %}
         <h3>Co zaktualizować</h3>
+        {% if (podatnosci.source or '').startswith('msrc/') %}
+        <p class="muted small">
+          Aktualizacje Windows są zbiorcze: najnowsza zamyka wszystko, co naprawiły
+          poprzednie. Wystarczy zainstalować ją (albo nowszą) i uruchomić ponownie maszynę.
+          Porównanie dotyczy samego systemu — Office, .NET i inne produkty Microsoftu
+          nie są tu liczone.
+        </p>
+        {% else %}
         <p class="muted small">
           Liczba CVE mówi niewiele: jedna nieaktualna paczka potrafi odpowiadać za
           setki pozycji, a zamyka je jedna aktualizacja. Poniżej pakiety źródłowe
           uporządkowane od tych, które zamykają najwięcej poważnych luk.
         </p>
+        {% endif %}
         <table class="table">
           <thead>
             <tr><th>Pakiet</th><th>Luk do zamknięcia</th><th>W tym CVSS ≥ 7</th>
@@ -967,6 +976,9 @@
                 {{ g.package }}
                 {% if g.kernel %}
                   <div class="muted">jądro systemu — po aktualizacji wymagany restart</div>
+                {% endif %}
+                {% if g.restart %}
+                  <div class="muted">po instalacji wymagany restart</div>
                 {% endif %}
               </td>
               <td class="small">{{ g.count }}</td>

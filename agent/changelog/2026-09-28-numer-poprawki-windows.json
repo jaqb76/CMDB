@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Windows: agent podaje numer poprawki kompilacji (np. 20348.2700) i wersję wydania (np. 23H2). Na tej podstawie panel wylicza podatności CVE maszyn z Windows z danych Microsoftu."
+}

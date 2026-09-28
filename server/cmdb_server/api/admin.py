@@ -840,11 +840,19 @@ def strona_podatnosci(
     db: Session = Depends(get_db),
 ) -> Response:
     """Stan kanalow danych o podatnosciach i wydania w uzyciu we flocie."""
-    kanaly = db.execute(select(CveFeed).order_by(CveFeed.source, CveFeed.release)).scalars().all()
+    wydania = cve.wydania_we_flocie(db)
+    # Biuletyny MSRC opisuja wszystkie kompilacje Windows naraz - pokazujemy
+    # tylko te, ktore sa we flocie, a znaczniki przetworzonych biuletynow
+    # sa wewnetrzne.
+    kanaly = [
+        k for k in db.execute(select(CveFeed).order_by(CveFeed.source, CveFeed.release)).scalars()
+        if k.source != "msrc-biuletyn"
+        and (k.source != "msrc" or k.release in wydania.get("msrc", set()))
+    ]
     return render_admin(
         request, "admin_podatnosci.html", user, "podatnosci",
         kanaly=kanaly,
-        wydania=cve.wydania_we_flocie(db),
+        wydania=wydania,
         przestarzaly_po=cve.PRZESTARZALY_PO_GODZINACH,
         co_ile_godzin=get_settings().cve_refresh_hours,
         pobieranie=db.get(CveSyncStatus, 1),

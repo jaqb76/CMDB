@@ -538,7 +538,7 @@ def switch_tenant(
 @router.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request,
-    strona: int = Query(1, ge=1, le=10000),
+    odswiez: bool = Query(False),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
@@ -577,17 +577,9 @@ def dashboard(
     ).all()
     typy = rodzaje.etykiety(db, ctx)
 
-    # Szczegoly zasobow: ostatnio widziane na gorze. Wpis reczny dostaje
-    # status "Brak agenta", a nie date kontaktu, ktorego nie bylo.
-    stron = max(1, -(-total // pulpit.WIERSZY_NA_STRONE))
-    strona = min(strona, stron)
-    zasoby = db.execute(
-        scoping.assets_query(ctx)
-        .order_by(Asset.last_seen.desc(), Asset.hostname)
-        .offset((strona - 1) * pulpit.WIERSZY_NA_STRONE)
-        .limit(pulpit.WIERSZY_NA_STRONE)
-    ).scalars().all()
-    wiersze = [(a, *pulpit.status(a, stale_before)) for a in zasoby]
+    # Zamiast przegladu wszystkich zasobow - maszyny, od ktorych trzeba
+    # zaczac: najwiecej podatnosci z gotowa poprawka.
+    podatne = pulpit.najbardziej_podatne(db, ctx.tenant_id, odswiez=odswiez)
 
     # Klasyczny pulpit wciaz pokazuje osobno zgloszenia agentow i wpisy reczne.
     recent = db.execute(
@@ -627,12 +619,9 @@ def dashboard(
         wykres_systemy=pulpit.systemy(by_os),
         wersje=pulpit.wersje_agentow(db, ctx.tenant_id),
         nazwa_systemu=pulpit.nazwa_systemu,
-        wiersze=wiersze,
+        podatne=podatne,
         recent=recent,
         reczne=reczne,
-        strona=strona,
-        stron=stron,
-        na_strone=pulpit.WIERSZY_NA_STRONE,
         changed=changed,
         teraz=utcnow(),
         # Monitorowane uslugi trafiaja na pulpit, bo awaria uslugi jest

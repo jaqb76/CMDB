@@ -267,3 +267,26 @@ def test_brak_brakujacych_aktualizacji_to_pusta_lista(monkeypatch):
     kolektor = _windows_collector(monkeypatch, {"status": "ok", "items": None})
     wynik = kolektor.collect_pending_updates()
     assert wynik["status"] == "ok" and wynik["entries"] == []
+
+
+# --- numer poprawki kompilacji Windows ---------------------------------------
+#
+# Serwer porownuje maszyne z kompilacjami, w ktorych Microsoft naprawil
+# podatnosci ("10.0.20348.2700"). Sam BuildNumber (20348) nie zmienia sie od
+# instalacji wydania - bez UBR kazda maszyna wygladalaby na nieaktualizowana.
+
+def test_system_windows_podaje_numer_poprawki(monkeypatch):
+    kolektor = _windows_collector(monkeypatch, {
+        "os_caption": "Microsoft Windows Server 2022 Standard", "os_version": "10.0.20348",
+        "os_build": "20348", "os_ubr": "2700", "os_display": "21H2",
+    })
+    system = kolektor.collect_os()
+    assert system["build"] == "20348"
+    assert system["build_revision"] == "2700"
+    assert system["display_version"] == "21H2"
+
+
+def test_brak_numeru_poprawki_to_none(monkeypatch):
+    kolektor = _windows_collector(monkeypatch, {"os_caption": "Microsoft Windows 11 Pro",
+                                                "os_build": "22631", "os_ubr": ""})
+    assert kolektor.collect_os()["build_revision"] is None

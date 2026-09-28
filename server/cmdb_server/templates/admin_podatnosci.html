@@ -119,6 +119,12 @@
     Pobieramy dane wyłącznie dla tych wydan. Kanał Debiana ma 86 MB, więc wpisy
     dla wydania, którego nikt nie używa, były by czystym obciążeniem.
   </p>
+  <p class="muted small">
+    Windows (<code>msrc</code>): biuletyny Microsoftu z ostatnich 24 miesięcy.
+    Wydanie to numer kompilacji i klasa systemu, np. <code>20348-server</code>
+    (Windows Server 2022). Porównanie wymaga agenta, który podaje numer poprawki
+    kompilacji (UBR).
+  </p>
   {% if wydania %}
   <ul class="chips">
     {% for zrodlo, lista in wydania.items() %}
