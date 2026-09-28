@@ -939,6 +939,28 @@
           </div>
         </div>
 
+        {% set win = podatnosci.windows %}
+        {% if win %}
+        <div class="alert {{ 'alert-warn' if win.poza_oknem else 'alert-info' }} small">
+          {% if win.poza_oknem %}
+            <b>Liczba luk jest zaniżona.</b> Kompilacja <code>{{ win.kompilacja }}</code> jest starsza
+            niż najstarsze dane Microsoftu, jakie mamy
+            (biuletyny od {{ win.dane_od.strftime('%m.%Y') if win.dane_od else '—' }}, {{ win.miesiecy }} miesięcy wstecz).
+            Maszyna nie ma też poprawek wydanych wcześniej — tych tu nie liczymy.
+          {% else %}
+            Kompilacja systemu: <code>{{ win.kompilacja }}</code>.
+          {% endif %}
+          {% if win.ostatnia_zbiorcza %}
+            Ostatnia zainstalowana aktualizacja zbiorcza: <b>{{ win.ostatnia_zbiorcza }}</b>{% if win.zainstalowano %},
+            zainstalowana {{ win.zainstalowano | dt }}{% endif %}.
+          {% elif win.poza_oknem %}
+            Ostatnia aktualizacja zbiorcza pochodzi sprzed {{ win.dane_od.strftime('%m.%Y') if win.dane_od else 'okresu danych' }}.
+          {% endif %}
+          Windows Update pokazuje zwykle jedną brakującą aktualizację zbiorczą — ona zawiera wszystkie
+          poprzednie, więc zamyka całą tę listę.
+        </div>
+        {% endif %}
+
         {% if podatnosci.feed_age_hours and podatnosci.feed_age_hours > 168 %}
         <div class="alert alert-warn">
           <b>Dane o podatnosciach maja
