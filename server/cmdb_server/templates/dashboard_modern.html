@@ -188,10 +188,11 @@
         <p class="muted">Żadna ze sprawdzonych maszyn ({{ podatne.zbadanych }}) nie ma znanych podatności.</p>
       {% else %}
         <p class="muted">Brak danych o podatnościach. Liczone są maszyny z agentem na Linuksie
-          (Debian, Ubuntu, RHEL i pochodne), gdy pobrano już kanał podatności ich dystrybucji.</p>
+          (Debian, Ubuntu, RHEL i pochodne) i Windows, gdy pobrano już dane o podatnościach
+          ich systemu.</p>
       {% endif %}
       <p class="muted small pulpit-przypis">
-        Sprawdzono {{ podatne.zbadanych }} maszyn{% if podatne.z_podatnosciami > podatne.pozycje | length %}, podatności ma {{ podatne.z_podatnosciami }} — lista pokazuje {{ podatne.pozycje | length }} najgorszych{% endif %}{% if podatne.bez_danych %}; {{ podatne.bez_danych }} bez danych (nierozpoznana dystrybucja albo brak kanału){% endif %}.
+        Sprawdzono {{ podatne.zbadanych }} maszyn{% if podatne.z_podatnosciami > podatne.pozycje | length %}, podatności ma {{ podatne.z_podatnosciami }} — lista pokazuje {{ podatne.pozycje | length }} najgorszych{% endif %}{% if podatne.bez_danych %}; {{ podatne.bez_danych }} bez danych (nierozpoznany system, brak danych o podatnościach albo agent bez numeru poprawki Windows){% endif %}.
       </p>
     </section>
   </div>

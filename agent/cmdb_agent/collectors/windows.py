@@ -140,6 +140,8 @@ class WindowsCollector(BaseCollector):
                 $tz   = Get-CimInstance Win32_TimeZone;
                 $guid = $null;
                 try { $guid = (Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography' -Name MachineGuid).MachineGuid } catch {}
+                $cv = $null;
+                try { $cv = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' } catch {}
                 @{
                   computer_name = $cs.Name;
                   dns_hostname  = $cs.DNSHostName;
@@ -161,6 +163,8 @@ class WindowsCollector(BaseCollector):
                   os_caption    = $os.Caption;
                   os_version    = $os.Version;
                   os_build      = $os.BuildNumber;
+                  os_ubr        = $(if ($cv) { [string]$cv.UBR });
+                  os_display    = $(if ($cv) { $cv.DisplayVersion });
                   os_arch       = $os.OSArchitecture;
                   os_install    = (Fmt-Date $os.InstallDate);
                   os_boot       = (Fmt-Date $os.LastBootUpTime);
@@ -286,6 +290,13 @@ class WindowsCollector(BaseCollector):
             "name": clean(info.get("os_caption")),
             "version": clean(info.get("os_version")),
             "build": clean(info.get("os_build")),
+            # Numer poprawki kompilacji (UBR): 20348.2700 zamiast samego 20348.
+            # Tylko z nim da sie porownac maszyne z kompilacja, w ktorej
+            # Microsoft naprawil podatnosc - sam BuildNumber jest staly od
+            # instalacji wydania.
+            "build_revision": clean(info.get("os_ubr")),
+            # "23H2", "24H2" - wydanie w nazewnictwie Microsoftu.
+            "display_version": clean(info.get("os_display")),
             "edition": _edition_from_caption(clean(info.get("os_caption"))),
             "architecture": clean(info.get("os_arch")),
             "install_date": clean(info.get("os_install")),

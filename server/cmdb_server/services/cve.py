@@ -41,7 +41,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..models import CveEntry, CveFeed, as_utc, utcnow
-from . import wersje_pakietow
+from . import cve_windows, wersje_pakietow
 
 log = logging.getLogger(__name__)
 
@@ -71,9 +71,9 @@ class BladKanalu(RuntimeError):
     """Nie udalo sie pobrac albo odczytac kanalu danych."""
 
 
-def _pobierz(adres: str) -> bytes:
+def _pobierz(adres: str, naglowki: dict | None = None) -> bytes:
     try:
-        zadanie = urllib.request.Request(adres, headers=NAGLOWKI)
+        zadanie = urllib.request.Request(adres, headers={**NAGLOWKI, **(naglowki or {})})
         with urllib.request.urlopen(zadanie, timeout=CZAS_POBIERANIA) as odpowiedz:
             dane = odpowiedz.read(LIMIT_POBIERANIA + 1)
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
@@ -438,6 +438,11 @@ def odswiez(db: Session, wydania: dict[str, set[str]]) -> dict:
         zapisz_kanal(db, "rhel", wydanie, wpisy)
         podsumowanie[klucz] = f"{len(wpisy)} wpisow"
 
+    # Windows: jeden zestaw biuletynow MSRC na wszystkie wydania.
+    if wydania.get(cve_windows.ZRODLO):
+        podsumowanie[cve_windows.ZRODLO] = cve_windows.odswiez(
+            db, _pobierz, wydania[cve_windows.ZRODLO])
+
     return podsumowanie
 
 
@@ -596,6 +601,9 @@ def _modul_pasuje(zainstalowana: str, naprawiona: str | None) -> bool:
 
 def dopasuj(db: Session, payload: dict) -> dict:
     """Podatnosci maszyny na podstawie jej ostatniego raportu."""
+    wydanie_windows = cve_windows.wydanie_maszyny(payload)
+    if wydanie_windows is not None:
+        return _dopasuj_windows(db, payload, wydanie_windows)
     wydanie = wydanie_maszyny(payload)
     if wydanie is None:
         return _wynik(
@@ -744,6 +752,69 @@ def dopasuj(db: Session, payload: dict) -> dict:
     znalezione = [z for z in wszystkie if not z.get("inactive_kernel")]
     zalegajace_jadra = sorted({z["compared_version"] for z in nieaktywne})
 
+    _dolacz_oceny(db, source, release, znalezione, rpm)
+    return _wynik(
+        STATUS_OK,
+        None,
+        packages_summary=_podsumowanie_pakietow(znalezione, rpm),
+        entries=znalezione,
+        stale_kernels=zalegajace_jadra,
+        stale_kernel_count=len(nieaktywne),
+        source=f"{source}/{release}",
+        feed_age_hours=_wiek_kanalu(stan),
+        feed_entries=stan.entries,
+    )
+
+
+def _wiek_kanalu(stan: CveFeed) -> float | None:
+    pobrano = as_utc(stan.fetched_at)
+    if not pobrano:
+        return None
+    # Data przepuszczona przez as_utc - odejmowanie daty bez strefy
+    # od daty ze strefa konczy sie TypeError.
+    return round((utcnow() - pobrano) / timedelta(hours=1), 1)
+
+
+def _dopasuj_windows(db: Session, payload: dict, wydanie: str) -> dict:
+    """Windows: kompilacja maszyny kontra kompilacje z poprawkami z MSRC."""
+    kompilacja = cve_windows.kompilacja_maszyny(payload)
+    if kompilacja is None:
+        return _wynik(
+            STATUS_NIEZNANY,
+            "agent nie podaje numeru poprawki kompilacji Windows (UBR) - "
+            "zaktualizuj agenta; bez tego nie da sie porownac maszyny "
+            "z danymi Microsoftu",
+        )
+    stan = db.execute(select(CveFeed).where(
+        CveFeed.source == cve_windows.ZRODLO, CveFeed.release == wydanie)).scalar_one_or_none()
+    if stan is None or stan.fetched_at is None:
+        return _wynik(STATUS_NIEZNANY,
+                      f"nie pobrano jeszcze danych Microsoftu dla kompilacji {wydanie}")
+    if not stan.entries:
+        return _wynik(STATUS_NIEZNANY,
+                      f"dane Microsoftu nie opisuja kompilacji {wydanie} - "
+                      "to wydanie moze byc juz bez wsparcia")
+
+    znalezione = cve_windows.znajdz(db, wydanie, kompilacja)
+    _dolacz_oceny(db, cve_windows.ZRODLO, wydanie, znalezione, False)
+    return _wynik(
+        STATUS_OK,
+        None,
+        packages_summary=cve_windows.podsumowanie(znalezione, kompilacja),
+        entries=znalezione,
+        source=f"{cve_windows.ZRODLO}/{wydanie}",
+        feed_age_hours=_wiek_kanalu(stan),
+        feed_entries=stan.entries,
+    )
+
+
+# Kto wystawil ocene albo priorytet, gdy pochodzi z kanalu, a nie z NVD.
+DOSTAWCY = {"rhel": "Red Hat", "msrc": "Microsoft"}
+
+
+def _dolacz_oceny(db: Session, source: str, release: str, znalezione: list[dict],
+                  rpm: bool) -> None:
+    """Oceny CVSS, priorytety i odnosniki - wspolne dla Linuksa i Windows."""
     # Oceny doklejamy jednym zapytaniem - z bufora, bez ruchu sieciowego.
     from ..models import CveScore
 
@@ -772,11 +843,11 @@ def dopasuj(db: Session, payload: dict) -> dict:
         if z["base_score"] is None and z.get("distro_score") is not None:
             z["base_score"], z["vector"] = z["distro_score"], z.get("distro_vector")
             z["cvss_severity"] = _waga_cvss(z["base_score"])
-            z["score_source"] = "Red Hat"
+            z["score_source"] = DOSTAWCY.get(source, source)
         z["ubuntu_priority"] = (u.priority or None) if u else None
         # Priorytet nadany przez dystrybucje - pokazywany obok oceny CVSS.
-        if rpm and z.get("severity"):
-            z["priority_label"], z["priority"] = "Red Hat", z["severity"]
+        if (rpm or source == cve_windows.ZRODLO) and z.get("severity"):
+            z["priority_label"], z["priority"] = DOSTAWCY.get(source, source), z["severity"]
         elif z["ubuntu_priority"]:
             z["priority_label"], z["priority"] = "Ubuntu", z["ubuntu_priority"].capitalize()
         else:
@@ -793,24 +864,6 @@ def dopasuj(db: Session, payload: dict) -> dict:
             -(z["base_score"] if z["base_score"] is not None else -1),
             z["cve"],
         )
-    )
-    wiek = None
-    pobrano = as_utc(stan.fetched_at)
-    if pobrano:
-        # Data przepuszczona przez as_utc - odejmowanie daty bez strefy
-        # od daty ze strefa konczy sie TypeError.
-        wiek = round((utcnow() - pobrano) / timedelta(hours=1), 1)
-
-    return _wynik(
-        STATUS_OK,
-        None,
-        packages_summary=_podsumowanie_pakietow(znalezione, rpm),
-        entries=znalezione,
-        stale_kernels=zalegajace_jadra,
-        stale_kernel_count=len(nieaktywne),
-        source=f"{source}/{release}",
-        feed_age_hours=wiek,
-        feed_entries=stan.entries,
     )
 
 
@@ -926,11 +979,15 @@ def wydania_we_flocie(db: Session) -> dict[str, set[str]]:
     podzapytanie = (
         select(InventorySnapshot.payload)
         .join(Asset, Asset.id == InventorySnapshot.asset_id)
-        .where(Asset.os_family == "linux")
+        .where(Asset.os_family.in_(("linux", "windows")))
         .order_by(InventorySnapshot.collected_at.desc())
         .limit(500)
     )
     for (payload,) in db.execute(podzapytanie):
+        windows = cve_windows.wydanie_maszyny(payload or {})
+        if windows:
+            wynik.setdefault(cve_windows.ZRODLO, set()).add(windows)
+            continue
         wydanie = wydanie_maszyny(payload or {})
         if wydanie:
             source, release = wydanie
@@ -959,6 +1016,7 @@ ODNOSNIKI = {
     "debian": "https://security-tracker.debian.org/tracker/{cve}",
     "ubuntu": "https://ubuntu.com/security/{cve}",
     "rhel": "https://access.redhat.com/security/cve/{cve}",
+    "msrc": "https://msrc.microsoft.com/update-guide/vulnerability/{cve}",
 }
 ODNOSNIK_NVD = "https://nvd.nist.gov/vuln/detail/{cve}"
 
@@ -1110,7 +1168,7 @@ def cve_we_flocie(db: Session, source: str | None = None) -> list[str]:
     podzapytanie = (
         select(InventorySnapshot.payload, InventorySnapshot.asset_id)
         .join(Asset, Asset.id == InventorySnapshot.asset_id)
-        .where(Asset.os_family == "linux")
+        .where(Asset.os_family.in_(("linux", "windows")))
         .order_by(InventorySnapshot.collected_at.desc())
     )
     obsluzone: set[str] = set()
@@ -1309,12 +1367,13 @@ def szczegoly_cve(db: Session, numer: str, zrodlo: str | None = None) -> dict | 
     elif ubuntu and ubuntu.base_score is not None:
         ocena, waga, wektor, zrodlo_oceny = ubuntu.base_score, ubuntu.severity, ubuntu.vector, "Ubuntu"
     elif wpis and wpis.cvss_score is not None:
-        ocena, wektor, zrodlo_oceny = wpis.cvss_score, wpis.cvss_vector, "Red Hat"
+        ocena, wektor = wpis.cvss_score, wpis.cvss_vector
+        zrodlo_oceny = DOSTAWCY.get(dystrybucja, dystrybucja)
         waga = _waga_cvss(ocena)
 
     priorytet = None
-    if dystrybucja == "rhel" and wpis and wpis.severity:
-        priorytet = ("Red Hat", wpis.severity)
+    if dystrybucja in ("rhel", "msrc") and wpis and wpis.severity:
+        priorytet = (DOSTAWCY[dystrybucja], wpis.severity)
     elif ubuntu and ubuntu.priority:
         priorytet = ("Ubuntu", ubuntu.priority.capitalize())
     elif dystrybucja == "debian" and wpis and wpis.severity and wpis.severity != "not yet assigned":
@@ -1351,6 +1410,7 @@ def szczegoly_cve(db: Session, numer: str, zrodlo: str | None = None) -> dict | 
         "fixed_version": wpis.fixed_version if wpis else None,
         "weaknesses": slabosci,
         "link": odnosnik(zrodlo, numer) if dystrybucja else None,
-        "distro": {"debian": "Debian", "ubuntu": "Ubuntu", "rhel": "Red Hat"}.get(dystrybucja),
+        "distro": {"debian": "Debian", "ubuntu": "Ubuntu", "rhel": "Red Hat",
+                   "msrc": "Microsoft"}.get(dystrybucja),
         "nvd_link": ODNOSNIK_NVD.format(cve=numer),
     }

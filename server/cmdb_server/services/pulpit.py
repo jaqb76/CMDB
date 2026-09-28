@@ -110,8 +110,8 @@ def najbardziej_podatne(db: Session, tenant_id: str, odswiez: bool = False) -> d
     """Maszyny z najwieksza liczba podatnosci do naprawienia.
 
     Kolejnosc: najpierw powazne (CVSS >= 7) z dostepna poprawka, potem
-    wszystkie do naprawienia, potem otwarte bez poprawki. Liczymy tylko
-    maszyny z agentem na Linuksie - dla innych kanal podatnosci nie istnieje.
+    wszystkie do naprawienia, potem otwarte bez poprawki. Liczymy maszyny
+    z agentem na Linuksie (kanaly dystrybucji) i Windows (biuletyny MSRC).
     """
     teraz = utcnow()
     with _blokada:
@@ -123,7 +123,8 @@ def najbardziej_podatne(db: Session, tenant_id: str, odswiez: bool = False) -> d
         select(Asset, AssetCurrentReport.payload)
         .join(AssetCurrentReport, AssetCurrentReport.asset_id == Asset.id)
         .where(Asset.tenant_id == tenant_id, Asset.zrodlo == ZRODLO_AGENT,
-               Asset.lifecycle == LIFECYCLE_AKTYWNY, Asset.os_family == "linux")
+               Asset.lifecycle == LIFECYCLE_AKTYWNY,
+               Asset.os_family.in_(("linux", "windows")))
     ).all()
 
     pozycje, zbadanych, bez_danych = [], 0, 0
