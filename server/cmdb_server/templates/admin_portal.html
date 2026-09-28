@@ -1,0 +1,274 @@
+{% extends "base_admin.html" %}
+{% block title %}Stan portalu - administracja CMDB{% endblock %}
+{% from "_pulpit.html" import ikona with context %}
+
+{% macro czas_trwania(sekundy) -%}
+{%- if sekundy is none -%}—
+{%- elif sekundy >= 86400 -%}{{ (sekundy // 86400) | int }} d {{ ((sekundy % 86400) // 3600) | int }} h
+{%- elif sekundy >= 3600 -%}{{ (sekundy // 3600) | int }} h {{ ((sekundy % 3600) // 60) | int }} min
+{%- else -%}{{ (sekundy // 60) | int }} min{%- endif -%}
+{%- endmacro %}
+
+{% macro ms(wartosc) -%}
+{%- if wartosc is none -%}—{%- elif wartosc > 2500 -%}&gt; 2,5 s{%- elif wartosc >= 1000 -%}{{ '%.1f' | format(wartosc / 1000) }} s{%- else -%}{{ wartosc | round | int }} ms{%- endif -%}
+{%- endmacro %}
+
+{# Pasek zajetosci 0-100% z progami uwagi i alarmu. #}
+{% macro pasek(procent) -%}
+<svg class="zajetosc-pasek" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+  <rect class="pasek-tlo" x="0" y="0" width="100" height="8" rx="4"/>
+  <rect class="{{ 'zajetosc-alarm' if procent >= 90 else 'zajetosc-uwaga' if procent >= 75 else 'zajetosc-ok' }}" x="0" y="0" width="{{ [procent, 100] | min }}" height="8" rx="4"/>
+</svg>
+{%- endmacro %}
+
+{% block content %}
+{% set r = ruch %}
+{% set b = bezpieczenstwo %}
+<header class="dashboard-head pulpit-naglowek">
+  <div class="pulpit-tytul">
+    <span class="pulpit-tytul-ikona">{{ ikona('usluga') }}</span>
+    <div>
+      <h1>Stan portalu</h1>
+      <p class="muted">Ruch, wydajność i zasoby samego portalu oraz bezpieczeństwo logowania.</p>
+    </div>
+  </div>
+  <div class="pulpit-aktualizacja">
+    <nav class="pulpit-filtr-lista" aria-label="Okres">
+      {% for g, etykieta in ((1, '1 h'), (24, '24 h'), (168, '7 dni'), (720, '30 dni')) %}
+        <a class="pulpit-filtr{% if godzin == g %} is-active{% endif %}" href="/admin/portal?godzin={{ g }}">{{ etykieta }}</a>
+      {% endfor %}
+    </nav>
+    <a class="pulpit-odswiez" href="/admin/portal?godzin={{ godzin }}" title="Odśwież" aria-label="Odśwież">{{ ikona('odswiez') }}</a>
+  </div>
+</header>
+
+<section class="cards dashboard-cards pulpit-kafle">
+  <div class="card kafel kafel-niebieski">
+    <span class="kafel-ikona">{{ ikona('slupki') }}</span>
+    <div>
+      <div class="card-label">Zapytania</div>
+      <div class="card-value">{{ r.razem.liczba }}</div>
+      <div class="kafel-opis">teraz {{ r.na_minute }} / min</div>
+    </div>
+  </div>
+  {% set p95 = r.ostatnia_godzina.p95_ms %}
+  <div class="card kafel {% if p95 and p95 > 1000 %}kafel-czerwony card-danger{% elif p95 and p95 > 250 %}kafel-pomaranczowy card-warn{% else %}kafel-zielony{% endif %}">
+    <span class="kafel-ikona">{{ ikona('zegar') }}</span>
+    <div>
+      <div class="card-label">Czas odpowiedzi p95</div>
+      <div class="card-value">{{ ms(p95) }}</div>
+      <div class="kafel-opis">ostatnia godzina, średnio {{ ms(r.ostatnia_godzina.srednia_ms) }}</div>
+    </div>
+  </div>
+  <div class="card kafel {% if r.razem.bledy_5xx %}kafel-czerwony card-danger{% else %}kafel-turkusowy{% endif %}">
+    <span class="kafel-ikona">{{ ikona('brak') }}</span>
+    <div>
+      <div class="card-label">Błędy serwera (5xx)</div>
+      <div class="card-value">{{ r.razem.bledy_5xx }}</div>
+      <div class="kafel-opis">{{ r.razem.bledy_proc if r.razem.bledy_proc is not none else 0 }}% zapytań · 4xx: {{ r.razem.bledy_4xx }}</div>
+    </div>
+  </div>
+  <div class="card kafel {% if b.zablokowane_konta or b.zablokowane_adresy %}kafel-pomaranczowy card-warn{% else %}kafel-zielony{% endif %}">
+    <span class="kafel-ikona">{{ ikona('tarcza') }}</span>
+    <div>
+      <div class="card-label">Zablokowane</div>
+      <div class="card-value">{{ b.zablokowane_konta + b.zablokowane_adresy }}</div>
+      <div class="kafel-opis">{{ b.zablokowane_konta }} kont · {{ b.zablokowane_adresy }} adresów</div>
+    </div>
+  </div>
+  <div class="card kafel {% if b.logowania_nieudane > b.logowania_udane and b.logowania_nieudane > 10 %}kafel-czerwony card-danger{% else %}kafel-fioletowy{% endif %}">
+    <span class="kafel-ikona">{{ ikona('agent') }}</span>
+    <div>
+      <div class="card-label">Logowania (doba)</div>
+      <div class="card-value">{{ b.logowania_udane }}</div>
+      <div class="kafel-opis">nieudane: {{ b.logowania_nieudane }}</div>
+    </div>
+  </div>
+</section>
+
+<div class="pulpit-uklad">
+  <div class="pulpit-glowna">
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('slupki') }} Ruch w czasie</h2>
+      {% if r.najwiecej %}
+      {% set n = r.godziny | length %}
+      {% set krok = 560 / n %}
+      <svg class="ruch-wykres" viewBox="0 0 600 125" role="img" aria-label="Zapytania na godzinę">
+        <line class="os-linia" x1="36" y1="95" x2="598" y2="95"/>
+        <text class="os-opis" x="30" y="98">0</text>
+        <text class="os-opis" x="30" y="19">{{ r.najwiecej }}</text>
+        {% for g in r.godziny %}
+          {% set x = 38 + krok * loop.index0 %}
+          {% set wys = [g.wysokosc, 0.5 if g.liczba else 0] | max %}
+          <rect class="ruch-slupek" x="{{ x }}" y="{{ 95 - wys }}" width="{{ [krok - 2, 1] | max }}" height="{{ wys }}" rx="1">
+            <title>{{ g.godzina | dt }}: {{ g.liczba }} zapytań, p95 {{ ms(g.p95_ms) }}, błędów 5xx: {{ g.bledy }}</title>
+          </rect>
+          {% if g.bledy %}<rect class="ruch-bledy" x="{{ x }}" y="91" width="{{ [krok - 2, 1] | max }}" height="4"/>{% endif %}
+          {% if n <= 24 or loop.index0 % (n // 12) == 0 %}
+          <text class="os-opis os-opis-x" x="{{ x + krok / 2 }}" y="110">{{ g.godzina.strftime('%H') if n <= 48 else g.godzina.strftime('%d.%m') }}</text>
+          {% endif %}
+        {% endfor %}
+      </svg>
+      <p class="muted small pulpit-przypis">Słupek to jedna godzina (UTC); czerwony pasek u dołu — były błędy serwera. Bez plików statycznych.</p>
+      {% else %}
+      <p class="muted">Brak zarejestrowanego ruchu w tym okresie. Statystyki zbierają się od wdrożenia tej wersji, zapis co 30 s.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('serwer') }} Ruch według części portalu</h2>
+      <div class="pulpit-tabela-ramka">
+      <table class="table pulpit-tabela">
+        <thead><tr>
+          <th>Część</th><th class="lp">Zapytania</th><th class="lp">Średnio</th><th class="lp">p50</th>
+          <th class="lp">p95</th><th class="lp">Najdłużej</th><th class="lp">4xx</th><th class="lp">5xx</th>
+        </tr></thead>
+        <tbody>
+        {% for klucz, g in r.grupy.items() %}
+          <tr>
+            <td class="strong">{{ g.nazwa }}</td>
+            <td class="lp">{{ g.liczba }}</td>
+            <td class="lp">{{ ms(g.srednia_ms) }}</td>
+            <td class="lp">{{ ms(g.p50_ms) }}</td>
+            <td class="lp">{% if g.p95_ms and g.p95_ms > 1000 %}<span class="cvss-wysoki">{{ ms(g.p95_ms) }}</span>{% else %}{{ ms(g.p95_ms) }}{% endif %}</td>
+            <td class="lp muted">{{ ms(g.maks_ms if g.liczba else none) }}</td>
+            <td class="lp">{{ g.bledy_4xx or '0' }}</td>
+            <td class="lp">{% if g.bledy_5xx %}<span class="badge badge-danger">{{ g.bledy_5xx }}</span>{% else %}0{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="muted small pulpit-przypis">
+        p50 i p95 to górne granice przedziałów (50, 100, 250, 500 ms, 1 s, 2,5 s) — dokładność wystarcza,
+        żeby zauważyć, że coś zwalnia. 4xx to głównie brak uprawnień i nieistniejące adresy; 5xx to błędy portalu.
+      </p>
+    </section>
+
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('tarcza') }} Blokady logowania</h2>
+      {% if b.blokady %}
+      <div class="pulpit-tabela-ramka">
+      <table class="table pulpit-tabela">
+        <thead><tr><th>Co</th><th>Rodzaj</th><th class="lp">Nieudane próby</th><th>Blokada do</th><th>Ostatnia próba</th><th></th></tr></thead>
+        <tbody>
+        {% for w in b.blokady %}
+          <tr>
+            <td class="strong">{{ w.co }}</td>
+            <td class="small admin-akcje">{{ 'konto' if w.rodzaj == 'konto' else 'adres IP' }}</td>
+            <td class="lp">{{ w.licznik }}</td>
+            <td class="small">{{ w.do | dt }}</td>
+            <td class="small muted">{{ w.ostatnia | ago }}</td>
+            <td>
+              <form method="post" action="/admin/portal/odblokuj" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="klucz" value="{{ w.klucz }}">
+                <button type="submit" class="btn btn-small">Odblokuj</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="muted">Żadne konto ani adres nie jest teraz zablokowane.</p>
+      {% endif %}
+
+      {% if b.podejrzane_adresy %}
+      <h3 class="pulpit-filtr-naglowek">Nieudane próby bez blokady (doba)</h3>
+      <ul class="pulpit-zmiany">
+        {% for w in b.podejrzane_adresy %}
+        <li><span>{{ w.co }}</span><span class="muted small">{{ w.licznik }} prób · {{ w.ostatnia | ago }}</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      <p class="muted small pulpit-przypis">
+        Blokowane jest konto (chroni hasło użytkownika) i adres, z którego przychodzą próby (chroni przed
+        zgadywaniem wielu kont naraz). Zdjęcie blokady trafia do audytu.
+      </p>
+    </section>
+  </div>
+
+  <aside class="pulpit-boczna">
+    {% set z = zasoby %}
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('serwer') }} Serwer</h2>
+      <ul class="zajetosc">
+        {% if z.obciazenie_proc is not none %}
+        <li>
+          <span>Procesor</span>{{ pasek(z.obciazenie_proc) }}<b>{{ z.obciazenie_proc }}%</b>
+          <div class="muted small">obciążenie {{ z.obciazenie | join(' / ') }} (1/5/15 min) na {{ z.procesory }} rdzeni</div>
+        </li>
+        {% endif %}
+        {% if z.pamiec %}
+        <li>
+          <span>Pamięć</span>{{ pasek(z.pamiec.procent) }}<b>{{ z.pamiec.procent }}%</b>
+          <div class="muted small">{{ z.pamiec.uzyte | bytes }} z {{ z.pamiec.calosc | bytes }} ({{ z.pamiec.zrodlo }})</div>
+        </li>
+        {% endif %}
+        {% if z.dysk %}
+        <li>
+          <span>Dysk</span>{{ pasek(z.dysk.procent) }}<b>{{ z.dysk.procent }}%</b>
+          <div class="muted small">{{ z.dysk.uzyte | bytes }} z {{ z.dysk.calosc | bytes }}</div>
+        </li>
+        {% endif %}
+      </ul>
+      <ul class="stan-systemu">
+        <li><span>Czas pracy serwera</span><b>{{ czas_trwania(z.czas_pracy_s) }}</b></li>
+        <li><span>Od ostatniego wdrożenia</span><b>{{ czas_trwania(z.proces_s) }}</b></li>
+        <li><span>Wersja portalu</span><b class="small">{{ wersja_portalu }}</b></li>
+      </ul>
+    </section>
+
+    {% set d = baza %}
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('slupki') }} Baza danych</h2>
+      <ul class="zajetosc">
+        <li>
+          <span>Połączenia</span>{{ pasek((d.polaczenia * 100 / d.maks_polaczen) | round(1)) }}<b>{{ d.polaczenia }}</b>
+          <div class="muted small">{{ d.aktywne }} aktywnych, limit {{ d.maks_polaczen }}</div>
+        </li>
+      </ul>
+      <ul class="stan-systemu">
+        <li><span>Rozmiar bazy</span><b>{{ d.rozmiar | bytes }}</b></li>
+        <li><span>Odczyty z pamięci podręcznej</span><b>{{ d.trafienia_proc if d.trafienia_proc is not none else '—' }}%</b></li>
+      </ul>
+      <h3 class="pulpit-filtr-naglowek">Największe tabele</h3>
+      <ul class="pulpit-wersje tabele-bazy">
+        {% for t in d.tabele %}
+        <li>
+          <span class="wersja-etykieta" title="{{ t.nazwa }}">{{ t.nazwa }}</span>
+          <svg class="wersja-pasek" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+            <rect class="pasek-tlo" x="0" y="0" width="100" height="8" rx="4"/>
+            <rect class="zajetosc-ok" x="0" y="0" width="{{ t.szerokosc }}" height="8" rx="4"/>
+          </svg>
+          <b class="small">{{ t.rozmiar | bytes }}</b>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('agent') }} Konta i dostęp</h2>
+      <ul class="stan-systemu">
+        <li><span>Konta aktywne</span><b>{{ b.konta.aktywne }}</b></li>
+        <li><span>Konta wyłączone</span><b>{{ b.konta.wylaczone }}</b></li>
+        <li><span>Administratorzy główni</span><b>{{ b.konta.superadmini }}</b></li>
+        <li><span>Konta z 2FA</span><b>{{ b.konta.z_2fa }}</b></li>
+        <li><span>Zalogowani w ciągu doby</span><b>{{ b.konta.zalogowani_doba }}</b></li>
+        <li><span>Zdarzenia audytu (doba)</span><b><a href="/admin/audyt">{{ b.zdarzenia_audytu_doba }}</a></b></li>
+      </ul>
+    </section>
+
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('tarcza') }} Agenty</h2>
+      <ul class="stan-systemu">
+        <li><span>Raporty przyjęte (doba)</span><b>{{ b.raporty_doba }}</b></li>
+        <li><span>Odwołane klucze agentów</span><b>{{ b.odwolane_klucze_agentow }}</b></li>
+        <li><span>Maszyny z zablokowaną rejestracją</span><b>{% if b.zablokowana_rejestracja %}<span class="badge badge-warn">{{ b.zablokowana_rejestracja }}</span>{% else %}0{% endif %}</b></li>
+      </ul>
+    </section>
+  </aside>
+</div>
+{% endblock %}

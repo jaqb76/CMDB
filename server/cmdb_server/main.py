@@ -5,6 +5,8 @@ import asyncio
 import contextlib
 import logging
 import sys
+import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -29,6 +31,7 @@ from .api import ui as ui_api
 from .config import get_settings
 from .db import init_db
 from .middleware import GzipRequestMiddleware
+from .services import ruch
 from .services.auth import LoginRequired, SuperadminRequired
 
 log = logging.getLogger("cmdb")
@@ -94,9 +97,17 @@ async def lifespan(app: FastAPI):
     # przyjmuje wyniki. Sprzatanie starych okien i przerw jedzie z istniejacym
     # harmonogramem raportow - to jedyna praca w tle, jaka po nim zostaje.
     zadania = (zadanie, import_job, poczta_job, podatnosci_job)
+    # Statystyki ruchu zapisuje osobny watek: zapis nie moze czekac na
+    # petle zdarzen zajeta obsluga zapytan, ktore wlasnie mierzymy.
+    stop_ruchu = threading.Event()
+    watek_ruchu = threading.Thread(target=ruch.petla, args=(stop_ruchu,),
+                                   name="statystyki-ruchu", daemon=True)
+    watek_ruchu.start()
     try:
         yield
     finally:
+        stop_ruchu.set()
+        watek_ruchu.join(timeout=5)
         for tlo in zadania:
             tlo.cancel()
         for tlo in zadania:
@@ -242,7 +253,12 @@ def create_app() -> FastAPI:
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 )
 
+        start = time.perf_counter()
         response: Response = await call_next(request)
+        if request.url.path != SCIEZKA_ZDROWIA:
+            # Sprawdzenie zywotnosci co kilka sekund zaszumiloby statystyki.
+            ruch.zanotuj(request.url.path, response.status_code,
+                         (time.perf_counter() - start) * 1000)
 
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")

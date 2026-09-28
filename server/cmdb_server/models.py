@@ -902,6 +902,39 @@ class BlokadaLogowania(Base):
     )
 
 
+class StatystykaRuchu(Base):
+    """Zapytania do portalu zliczone w minutach i grupach adresow.
+
+    Kazdy proces roboczy liczy w pamieci i co pol minuty dopisuje swoje
+    liczby do wiersza (minuta, grupa) - baza sumuje je sama, wiec wynik jest
+    wspolny dla wszystkich procesow. Pojedyncze zapytania nie sa zapisywane:
+    tabela rosnie o najwyzej kilka wierszy na minute, niezaleznie od ruchu.
+
+    Czasy odpowiedzi sa w przedzialach (do 50 ms, do 100 ms, ...), bo
+    z przedzialow da sie policzyc percentyl, a ze sredniej nie - jedna
+    minutowa odpowiedz ginie w tysiacu szybkich.
+    """
+
+    __tablename__ = "statystyki_ruchu"
+
+    minuta: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    grupa: Mapped[str] = mapped_column(String(24), primary_key=True)
+    liczba: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bledy_4xx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bledy_5xx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    suma_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    maks_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Liczba odpowiedzi w przedzialach czasu. Osobne kolumny, a nie lista,
+    # bo dopisanie przy konflikcie klucza musi je zsumowac w samej bazie.
+    do_50: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    do_100: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    do_250: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    do_500: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    do_1000: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    do_2500: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    powyzej: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 # --- raporty i poczta -------------------------------------------------------
 
 class UstawieniaPoczty(Base):
