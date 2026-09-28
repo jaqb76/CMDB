@@ -1633,3 +1633,151 @@ label.check input { width: auto; margin-top: 3px; }
 .login-lub::before, .login-lub::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 .login-zewn-znak { width: 18px; text-align: center; font-weight: 800; }
 .lista-prosta { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* --- pulpit: podsumowanie zasobow ---------------------------------------- */
+/* Wykresy rysuje serwer jako SVG; barwy segmentow ida w atrybutach, tu sa
+   tylko obramowania, tla i typografia. */
+.ikona { width: 1em; height: 1em; flex: none; vertical-align: -0.15em; }
+.pulpit-naglowek { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.pulpit-tytul { display: flex; align-items: center; gap: 14px; }
+.pulpit-tytul-ikona { font-size: 34px; color: var(--accent); display: flex; }
+.pulpit-tytul h1 { font-size: 24px; }
+.pulpit-aktualizacja { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.pulpit-aktualizacja-ikona { font-size: 22px; color: var(--muted); display: flex; }
+.pulpit-odswiez {
+  display: grid; place-items: center; width: 36px; height: 36px; margin-left: 6px;
+  border-radius: 8px; color: var(--accent); font-size: 20px;
+}
+.pulpit-odswiez:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+.pulpit-kafle { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.kafel {
+  --kafel: var(--accent);
+  align-items: center; gap: 14px;
+  border-color: color-mix(in srgb, var(--kafel) 45%, var(--border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--kafel) 16%, var(--surface)), var(--surface) 75%);
+}
+.dashboard-cards .kafel { flex-direction: row; justify-content: flex-start; }
+.kafel:hover { border-color: var(--kafel); }
+.kafel-niebieski { --kafel: #3b82f6; }
+.kafel-zielony { --kafel: #22c55e; }
+.kafel-fioletowy { --kafel: #a855f7; }
+.kafel-pomaranczowy { --kafel: #f59e0b; }
+.kafel-czerwony { --kafel: #ef4444; }
+.kafel-turkusowy { --kafel: #06b6d4; }
+.kafel-ikona {
+  display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%;
+  font-size: 22px; color: var(--kafel);
+  background: color-mix(in srgb, var(--kafel) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kafel) 45%, transparent);
+}
+.kafel > div { min-width: 0; }
+.kafel .card-label { margin: 0 0 2px; color: var(--text); font-weight: 500; }
+.kafel .card-value { font-size: 32px; }
+.kafel-zmiana { font-size: 13px; font-weight: 600; color: var(--ok-fg); margin-left: 6px; vertical-align: middle; }
+.kafel-opis { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+.pulpit-uklad { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 16px; align-items: start; }
+.pulpit-glowna, .pulpit-boczna { min-width: 0; }
+.pulpit-wykresy { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pulpit-panel { border-radius: 10px; }
+.pulpit-h2 {
+  display: flex; align-items: center; gap: 9px; text-transform: none; letter-spacing: 0;
+  font-size: 16px; color: var(--text); margin-bottom: 14px;
+}
+.pulpit-h2 .ikona { color: var(--accent); font-size: 20px; }
+
+.pulpit-wykres { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.pulpit-pierscien { width: 136px; height: 136px; flex: none; }
+.pierscien-tlo { stroke: var(--border); }
+.pierscien-suma { text-anchor: middle; font-size: 26px; font-weight: 700; fill: var(--text); }
+.pierscien-podpis { text-anchor: middle; font-size: 12px; fill: var(--muted); }
+.pulpit-legenda { list-style: none; margin: 0; padding: 0; flex: 1 1 200px; min-width: 0; }
+.pulpit-legenda li > a, .pulpit-legenda li > span {
+  display: grid; grid-template-columns: 10px 20px minmax(0, 1fr) auto 34px; align-items: center; gap: 7px;
+  padding: 6px 4px; color: var(--text); font-size: 14px; border-radius: 6px;
+}
+.pulpit-legenda li > a:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); text-decoration: none; }
+.legenda-probka { width: 10px; height: 10px; }
+.legenda-ikona { display: flex; color: var(--muted); font-size: 18px; }
+.legenda-nazwa { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legenda-procent { color: var(--muted); font-size: 12px; text-align: right; }
+.pulpit-przypis { margin: 10px 0 0; }
+
+.os-znak {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px;
+  font-size: 11px; font-weight: 700; color: #fff; background: #64748b; vertical-align: middle;
+}
+.os-windows { background: #0078d4; }
+.os-linux { background: #e95420; }
+.os-macos, .os-darwin { background: #6b7280; }
+
+.pulpit-tabela-ramka { overflow-x: auto; }
+.pulpit-tabela th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+.pulpit-tabela .muted.small, .pulpit-tabela td:nth-child(4), .pulpit-tabela td:last-child { white-space: nowrap; }
+.pulpit-tabela td { vertical-align: middle; padding: 10px; }
+.stan-kropka { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--muted); vertical-align: middle; }
+.pulpit-tabela td:first-child .muted { padding-left: 15px; }
+.os-komorka { display: flex; align-items: center; gap: 7px; min-width: 130px; }
+.os-komorka .os-znak { flex: none; }
+.stan-badge-ok { background: var(--ok-fg); }
+.stan-badge-warn { background: var(--warn-fg); }
+.pulpit-typ { font-size: 22px; color: var(--muted); }
+.badge-neutral { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); border-color: transparent; }
+.pulpit-tabela .badge { font-size: 12px; padding: 3px 10px; border-radius: 6px; white-space: nowrap; }
+.pulpit-stopka { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.pulpit-strony { display: flex; align-items: center; gap: 4px; }
+.pulpit-strony a, .pulpit-strony span {
+  min-width: 30px; height: 30px; display: grid; place-items: center; padding: 0 6px;
+  border-radius: 6px; color: var(--text); font-size: 13px;
+}
+.pulpit-strony a:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); text-decoration: none; }
+.pulpit-strony .is-active { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+
+.pulpit-wersje { list-style: none; margin: 0; padding: 0; }
+.pulpit-wersje li {
+  display: grid; grid-template-columns: 72px minmax(0, 1fr) 28px 40px; align-items: center; gap: 10px;
+  padding: 6px 0; font-size: 13px;
+}
+.wersja-etykieta {
+  padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px; text-align: center;
+  font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wersja-pasek { width: 100%; height: 10px; }
+.pasek-tlo { fill: var(--border); }
+.pulpit-wersje b { text-align: right; }
+.pulpit-wersje .small { text-align: right; }
+
+.pulpit-slupki { width: 100%; height: auto; }
+.os-linia { stroke: var(--border); stroke-width: 1; }
+.os-opis { fill: var(--muted); font-size: 10.5px; text-anchor: end; }
+.os-opis-x { text-anchor: middle; }
+.slupek-wartosc { fill: var(--text); font-size: 11px; font-weight: 600; text-anchor: middle; }
+
+.pulpit-filtr-naglowek { margin: 12px 0 6px; font-size: 13px; font-weight: 600; color: var(--accent); }
+.pulpit-filtr-naglowek:first-of-type { margin-top: 0; }
+.pulpit-filtr-lista { display: flex; flex-wrap: wrap; gap: 6px; }
+.pulpit-filtr {
+  padding: 4px 12px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 12.5px;
+}
+.pulpit-filtr:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); text-decoration: none; }
+.pulpit-filtr-wszystkie { display: inline-block; margin-top: 12px; }
+
+.pulpit-zmiany { list-style: none; margin: 0 0 8px; padding: 0; }
+.pulpit-zmiany li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.pulpit-zmiany li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1600px) { .kafel { gap: 10px; padding: 14px 12px; } .kafel-ikona { width: 36px; height: 36px; font-size: 18px; } }
+@media (max-width: 1300px) { .pulpit-kafle { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1250px) {
+  .pulpit-uklad { grid-template-columns: 1fr; }
+  .pulpit-boczna { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 16px; }
+}
+@media (max-width: 900px) { .pulpit-wykresy { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .pulpit-kafle { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) {
+  .pulpit-kafle { grid-template-columns: 1fr; }
+  .kafel-ikona { width: 40px; height: 40px; font-size: 20px; }
+  .pulpit-aktualizacja { width: 100%; justify-content: space-between; }
+}

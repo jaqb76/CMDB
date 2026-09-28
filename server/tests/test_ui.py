@@ -239,7 +239,7 @@ def test_pulpit_jest_nowym_widokiem_startowym(client, tenant_a, make_user):
     strona = client.get("/").text
     assert "dashboard-head" in strona
     assert "dashboard-cards" in strona
-    assert "Najważniejsze informacje o zasobach" in strona
+    assert "Podsumowanie zasobów" in strona
 
 
 def test_skrypt_pamieta_szerokosc_menu():
