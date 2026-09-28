@@ -113,8 +113,12 @@ def _pola(html: str, kontekst: dict[str, str] | None) -> str:
     return "".join(k if k.startswith("<") else _POLE.sub(zamien, k) for k in kawalki)
 
 
-def renderuj(tresc: str, kontekst: dict[str, str] | None = None) -> Markup:
-    """HTML artykulu, gotowy do wstawienia w szablon."""
+def renderuj(tresc: str, kontekst: dict[str, str] | None = None, *, edycja: bool = False) -> Markup:
+    """HTML artykulu, gotowy do wstawienia w szablon.
+
+    ``edycja`` - HTML dla edytora wizualnego: pola maszyny zostaja zwyklym
+    tekstem ``{hostname}``, bo edytor zamienia tresc z powrotem na Markdown.
+    """
     czesci: list[str] = []
     for rodzaj, podtyp, tekst in _podziel(tresc or ""):
         if rodzaj == "md":
@@ -126,7 +130,8 @@ def renderuj(tresc: str, kontekst: dict[str, str] | None = None) -> Markup:
             f'<div class="kb-panel-tytul">{escape(tytul or PANELE[podtyp])}</div>'
             f"{_md.render(wnetrze)}</div>"
         )
-    return Markup(_pola("".join(czesci), kontekst))
+    html = "".join(czesci)
+    return Markup(html if edycja else _pola(html, kontekst))
 
 
 def kontekst_maszyny(asset, payload: dict | None = None) -> dict[str, str]:

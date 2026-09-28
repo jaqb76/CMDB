@@ -36,10 +36,12 @@ from ..models import (
     WiedzaSlownik,
     WiedzaWersja,
     WiedzaZalacznik,
+    new_id,
     utcnow,
 )
 from . import wiedza_dopasowanie as dopasowanie
 from . import wiedza_tresc as tresc_mod
+from .helpdesk_poczta import do_podgladu
 from .scoping import TenantContext
 
 log = logging.getLogger(__name__)
@@ -631,11 +633,68 @@ class Plik:
     nazwa: str
     typ_mime: str | None
     dane: bytes
+    # Nadany z gory - obraz wklejony w edytorze ma adres w tresci, zanim
+    # powstanie wiersz zalacznika.
+    id: str | None = None
+
+
+# Obraz wklejony w edytorze, ktory jeszcze nie jest zalacznikiem: edytor
+# wysyla go razem z formularzem, a w tresci zostawia ![opis](kb-obraz:N),
+# gdzie N to numer pliku w polu "obrazy".
+_WKLEJONY_OBRAZ = re.compile(r"!\[([^\]\n]*)\]\(kb-obraz:(\d{1,3})\)")
+MAKS_OBRAZOW = 20
+
+
+def adres_obrazu(zalacznik_id: str) -> str:
+    return f"/wiedza/zalacznik/{zalacznik_id}/podglad"
+
+
+def wklejone_obrazy(tresc: str, pliki: list[Plik]) -> tuple[str, list[Plik]]:
+    """Podmienia znaczniki ``kb-obraz:N`` na adresy przyszlych zalacznikow.
+
+    Zwraca tresc i pliki do zapisania jako zalaczniki (z nadanym ``id``) -
+    tylko te, do ktorych tresc sie odwoluje. Znacznik bez pliku znika.
+    Plik musi byc obrazem, ktory portal umie pokazac (typ zgodny z poczatkiem
+    pliku) - inaczej w tresci bylby obrazek, ktorego nikt nie zobaczy.
+    """
+    uzyte: dict[int, Plik] = {}
+
+    def zamien(dopasowanie_: re.Match) -> str:
+        numer = int(dopasowanie_.group(2))
+        if numer >= len(pliki) or not pliki[numer].dane:
+            return ""
+        plik = uzyte.get(numer)
+        if plik is None:
+            plik = pliki[numer]
+            if do_podgladu(plik.typ_mime, plik.dane[:16]) is None:
+                raise ValueError(f"wklejony plik „{plik.nazwa[:60]}” nie jest obrazem PNG, JPEG, GIF ani WebP")
+            plik.id = new_id()
+            uzyte[numer] = plik
+        return f"![{dopasowanie_.group(1)}]({adres_obrazu(plik.id)})"
+
+    tresc = _WKLEJONY_OBRAZ.sub(zamien, tresc or "")
+    if len(uzyte) > MAKS_OBRAZOW:
+        raise ValueError(f"najwyżej {MAKS_OBRAZOW} wklejonych obrazów przy jednym zapisie")
+    return tresc, list(uzyte.values())
+
+
+def bez_wklejonych_obrazow(tresc: str) -> tuple[str, bool]:
+    """Tresc bez znacznikow ``kb-obraz:N`` i informacja, czy jakis byl.
+
+    Formularz pokazany ponownie po bledzie nie ma juz plikow - znacznik
+    wskazywalby na nic.
+    """
+    wynik, ile = _WKLEJONY_OBRAZ.subn("", tresc or "")
+    return wynik, bool(ile)
 
 
 def dodaj_zalaczniki(db: Session, ctx: TenantContext, art: WiedzaArtykul,
-                     pliki: list[Plik]) -> WiedzaWersja | None:
-    """Zapisuje pliki na dysk i opisuje je w bazie - jedna wersja na wysylke."""
+                     pliki: list[Plik], wersja: WiedzaWersja | None = None) -> WiedzaWersja | None:
+    """Zapisuje pliki na dysk i opisuje je w bazie - jedna wersja na wysylke.
+
+    ``wersja`` - wersja powstala przy tym samym zapisie (obrazy wklejone
+    w edytorze): zalaczniki dopisujemy do niej zamiast tworzyc kolejna.
+    """
     pliki = [p for p in pliki if p.nazwa and p.dane]
     if not pliki:
         return None
@@ -651,12 +710,17 @@ def dodaj_zalaczniki(db: Session, ctx: TenantContext, art: WiedzaArtykul,
         wzgledna = f"{art.id}/{uuid.uuid4().hex}{_rozszerzenie(nazwa, plik.typ_mime)}"
         (katalog_zalacznikow() / wzgledna).write_bytes(plik.dane)
         db.add(WiedzaZalacznik(
-            tenant_id=ctx.tenant_id, artykul_id=art.id, nazwa=nazwa,
+            id=plik.id or new_id(), tenant_id=ctx.tenant_id, artykul_id=art.id, nazwa=nazwa,
             typ_mime=(plik.typ_mime or "")[:120] or None, rozmiar=len(plik.dane),
             sha256=hashlib.sha256(plik.dane).hexdigest(), sciezka=wzgledna, dodal=ctx.actor,
         ))
     db.flush()
     po = [z.nazwa for z in zalaczniki(db, art)]
+    if wersja is not None:
+        # Nowy slownik, nie zmiana w miejscu - inaczej SQLAlchemy nie zauwazy
+        # zmiany w kolumnie JSON.
+        wersja.zmiany = {**(wersja.zmiany or {}), "zalaczniki": {"old": przed, "new": po}}
+        return wersja
     art.wersja += 1
     art.zmieniono, art.zmienil = utcnow(), ctx.actor
     return _dopisz_wersje(db, ctx, art, "zmiana", {"zalaczniki": {"old": przed, "new": po}},
