@@ -703,17 +703,16 @@ def test_wpis_reczny_nie_pokazuje_zakladek_agenta(client, tenant_a, make_user):
 
 
 def test_pulpit_rozdziela_zgloszenia_od_wpisow_recznych(client, tenant_a, make_user):
-    """Wpis ręczny nigdy sie nie zglasza, wiec jego obecnosc w "Ostatnim
-    kontakcie" sugerowala kontakt, ktorego nie bylo."""
+    """Wpis reczny nie ma agenta: liczy sie do zasobow i rodzajow sprzetu,
+    ale nie do agentow ani do listy podatnosci, ktorej nie da sie dla niego
+    policzyc."""
     _admin_firmy(client, tenant_a, make_user)
     _dodaj_sprzet(client, nazwa="SW-PULPIT", typ="siec")
 
     strona = client.get("/").text
-    assert "wpisów w ewidencji" in strona, "monitor nie jest maszyna"
-    assert "Rodzaje sprzętu" in strona
+    assert "Wszystkie zasoby" in strona, "monitor nie jest maszyna"
+    assert "Typy sprzętu" in strona
     assert "Sprzęt sieciowy" in strona, "widac, co to za urzadzenia"
-    assert "Wpisy ręczne" in strona
-    # W tabeli zgloszen agentow wpisu recznego nie ma.
-    zgloszenia = strona.split("Ostatni kontakt")[1].split("Wpisy ręczne")[0] \
-        if "Ostatni kontakt" in strona and "Wpisy ręczne" in strona.split("Ostatni kontakt")[1] else ""
-    assert "SW-PULPIT" not in zgloszenia
+    assert "zrodlo=bez_agenta" in strona
+    podatne = strona.split("Najbardziej podatne maszyny")[1].split("</section>")[0]
+    assert "SW-PULPIT" not in podatne

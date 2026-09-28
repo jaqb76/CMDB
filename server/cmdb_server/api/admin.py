@@ -264,11 +264,18 @@ def _oficjalne(db: Session, wersje: dict) -> dict:
 @router.get("/", response_class=HTMLResponse)
 def przeglad(
     request: Request,
+    odswiez: bool = Query(False),
     user: PortalUser = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Przeglad calej instalacji - to, czego nie widac z pulpitu jednej firmy:
+    porownanie firm, agenty do aktualizacji, podatnosci we wszystkich firmach
+    i stan samego systemu (dane o podatnosciach, kopie zapasowe)."""
+    from ..services import pulpit
+
     rozklad, aktywne, nieaktywne = _statystyki_agentow(db)
     _, wersje, _ = _wydania(db)
+    oficjalne = _oficjalne(db, wersje)
 
     cele: dict[str, dict[str, AgentRelease]] = {}
     for cel in db.execute(select(TenantAgentTarget)).scalars():
@@ -277,16 +284,35 @@ def przeglad(
             cele.setdefault(cel.tenant_id, {})[cel.os_family] = wydanie
 
     firmy = db.execute(select(Tenant).order_by(Tenant.name)).scalars().all()
-    wiersze = [
-        {
+    zasoby = dict(db.execute(
+        select(Asset.tenant_id, func.count(Asset.id))
+        .where(Asset.lifecycle == LIFECYCLE_AKTYWNY).group_by(Asset.tenant_id)).all())
+    podatne = pulpit.najbardziej_podatne(db, None, odswiez=odswiez)
+
+    # Agent do aktualizacji: jego wersja rozni sie od docelowej firmy
+    # (wlasnej albo oficjalnej). Bez ustawionego celu nie ma z czym porownac.
+    do_aktualizacji: dict[str, int] = {}
+    for firma in firmy:
+        for agent in rozklad.get(firma.id, []):
+            cel = cele.get(firma.id, {}).get(agent["os_family"]) or oficjalne.get(agent["os_family"])
+            if cel is not None and agent["wersja"] != cel.version:
+                do_aktualizacji[firma.id] = do_aktualizacji.get(firma.id, 0) + agent["ile"]
+
+    wiersze = []
+    for firma in firmy:
+        agenci = aktywne.get(firma.id, 0) + nieaktywne.get(firma.id, 0)
+        wiersze.append({
             "firma": firma,
+            "zasoby": zasoby.get(firma.id, 0),
             "aktywne": aktywne.get(firma.id, 0),
             "nieaktywne": nieaktywne.get(firma.id, 0),
+            # Pasek: czesc aktywna w jednostkach viewBox 0..100.
+            "pasek": round(aktywne.get(firma.id, 0) * 100 / agenci, 1) if agenci else 0,
+            "do_aktualizacji": do_aktualizacji.get(firma.id, 0),
+            "podatne": podatne["wedlug_firmy"].get(firma.id, {"maszyn": 0, "powazne": 0}),
             "agenci": rozklad.get(firma.id, []),
             "cele": cele.get(firma.id, {}),
-        }
-        for firma in firmy
-    ]
+        })
 
     return render_admin(
         request, "admin_przeglad.html", user, "przeglad",
@@ -294,13 +320,89 @@ def przeglad(
         podsumowanie={
             "firmy": len(firmy),
             "firmy_aktywne": sum(1 for f in firmy if f.is_active),
+            "zasoby": sum(zasoby.values()),
             "aktywne": sum(aktywne.values()),
             "nieaktywne": sum(nieaktywne.values()),
+            "do_aktualizacji": sum(do_aktualizacji.values()),
         },
-        oficjalne=_oficjalne(db, wersje),
+        oficjalne=oficjalne,
         systemy=SYSTEMY,
         stale_after_hours=get_settings().stale_after_hours,
+        rozklad_wersji=pulpit.wersje_agentow(db, None),
+        podatne=podatne,
+        firmy_wg_id={f.id: f for f in firmy},
+        nazwa_systemu=pulpit.nazwa_systemu,
+        stan_systemu=_stan_systemu(db),
+        teraz=utcnow(),
     )
+
+
+def _stan_systemu(db: Session) -> list[dict]:
+    """Rzeczy, ktore psuja sie po cichu: dane o podatnosciach i kopie.
+
+    Kazda pozycja ma stan "ok", "uwaga" albo "blad" - ten sam, ktory
+    administrator nadalby jej po wejsciu na odpowiednia strone.
+    """
+    from ..services import kopie
+
+    pozycje = []
+    teraz = utcnow()
+
+    we_flocie = cve.wydania_we_flocie(db)
+    kanaly = [
+        k for k in db.execute(select(CveFeed)).scalars()
+        if k.release in we_flocie.get(k.source, set())
+    ]
+    potrzebne = sum(len(w) for w in we_flocie.values())
+    bledne = [k for k in kanaly if k.status != "ok"]
+    daty = [as_utc(k.fetched_at) for k in kanaly if k.fetched_at]
+    najstarszy = round((teraz - min(daty)).total_seconds() / 3600) if daty else None
+    if not potrzebne:
+        stan, opis = "uwaga", "żadna maszyna nie zgłosiła rozpoznawalnego systemu"
+    elif len(daty) < potrzebne:
+        stan, opis = "blad", f"pobrano {len(daty)} z {potrzebne} potrzebnych kanałów"
+    elif bledne:
+        stan, opis = "uwaga", f"{len(bledne)} kanałów z błędem ostatniego pobrania"
+    elif najstarszy is not None and najstarszy > cve.PRZESTARZALY_PO_GODZINACH:
+        stan, opis = "uwaga", f"najstarsze dane mają {najstarszy} h"
+    else:
+        stan, opis = "ok", f"{potrzebne} kanałów, najstarsze sprzed {najstarszy} h"
+    pozycje.append({"nazwa": "Dane o podatnościach", "stan": stan, "opis": opis,
+                    "adres": "/admin/podatnosci"})
+
+    pobieranie = db.get(CveSyncStatus, 1)
+    if pobieranie is not None and pobieranie.state == "running":
+        pozycje[-1]["opis"] += f" · trwa pobieranie ({pobieranie.phase or 'start'})"
+
+    klucz = bool(get_settings().nvd_api_key)
+    pozycje.append({"nazwa": "Oceny CVSS (NVD)", "stan": "ok" if klucz else "uwaga",
+                    "opis": "klucz API ustawiony" if klucz else "bez klucza API - pobieranie ocen trwa długo",
+                    "adres": "/admin/podatnosci"})
+
+    try:
+        lista = kopie.lista()
+        wolne, _ = kopie.miejsce_na_dysku()
+    except Exception:  # noqa: BLE001 - brak katalogu kopii nie moze polozyc przegladu
+        lista, wolne = None, None
+    if lista is None:
+        pozycje.append({"nazwa": "Kopie zapasowe", "stan": "blad",
+                        "opis": "nie da się odczytać katalogu kopii", "adres": "/admin/kopie"})
+    elif not lista:
+        pozycje.append({"nazwa": "Kopie zapasowe", "stan": "blad",
+                        "opis": "nie ma żadnej kopii", "adres": "/admin/kopie"})
+    else:
+        ostatnia = lista[0]
+        godzin = round((teraz - ostatnia.utworzono).total_seconds() / 3600)
+        # Kopia nocna powstaje co dobe - dwie doby bez nowej to juz awaria.
+        stan = "ok" if godzin <= 26 else ("uwaga" if godzin <= 48 else "blad")
+        pozycje.append({"nazwa": "Kopie zapasowe", "stan": stan,
+                        "opis": f"ostatnia {godzin} h temu, {len(lista)} na dysku",
+                        "adres": "/admin/kopie"})
+        if wolne is not None and ostatnia.rozmiar and wolne < 3 * ostatnia.rozmiar:
+            pozycje.append({"nazwa": "Miejsce na kopie", "stan": "uwaga",
+                            "opis": "wolnego miejsca wystarczy na mniej niż 3 kopie",
+                            "adres": "/admin/kopie"})
+    return pozycje
 
 
 # --- firmy i konta ----------------------------------------------------------

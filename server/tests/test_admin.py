@@ -149,8 +149,9 @@ def test_widok_globalny_pokazuje_wszystkie_firmy(client, tenant_a, tenant_b, mak
     _superadmin(client, make_user)
     strona = client.get("/admin").text
     assert "Firma A" in strona and "Firma B" in strona
-    assert "agentów aktywnych" in strona
-    assert "agentów nieaktywnych" in strona
+    assert "Agenci aktywni" in strona
+    assert "Agenci bez kontaktu" in strona
+    assert "Stan systemu" in strona
 
 
 # --- zakladanie firm, kont i tokenow ---------------------------------------

@@ -72,3 +72,30 @@ def test_filtr_bez_agenta(client, tenant_a, make_user):
     lista = client.get("/assets?zrodlo=bez_agenta").text
     assert "drukarka-12" in lista
     assert "srv-nowy" not in lista
+
+
+def test_przejscie_do_maszyny_innej_firmy_tylko_na_karte(client, tenant_a, make_user):
+    make_user(None, "root-pulpit@cmdb.pl", "haslo-do-testow-123")
+    _login(client, "root-pulpit@cmdb.pl", "haslo-do-testow-123")
+
+    dobra = client.get("/switch-tenant?slug=firma-a&dalej=/assets/abc-123%23podatnosci",
+                       follow_redirects=False)
+    assert dobra.headers["location"] == "/assets/abc-123#podatnosci"
+    # Dowolny adres zrobilby z tej trasy otwarte przekierowanie.
+    for zly in ("https://zly.example/", "//zly.example/", "/admin/konta"):
+        odpowiedz = client.get("/switch-tenant", params={"slug": "firma-a", "dalej": zly},
+                               follow_redirects=False)
+        assert odpowiedz.headers["location"] == "/", zly
+
+
+def test_przeglad_administratora_pokazuje_cala_instalacje(client, tenant_a, make_user):
+    _zasoby(tenant_a["id"])
+    make_user(None, "root-przeglad@cmdb.pl", "haslo-do-testow-123")
+    _login(client, "root-przeglad@cmdb.pl", "haslo-do-testow-123")
+
+    strona = client.get("/admin").text
+    assert "Przegląd instalacji" in strona
+    assert "Najbardziej podatne maszyny — wszystkie firmy" in strona
+    assert "Kopie zapasowe" in strona
+    assert "Agenci do aktualizacji" in strona
+    assert 'style="' not in strona.split('<main')[1]
