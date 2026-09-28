@@ -75,10 +75,15 @@ def _klucz_wersji(wersja: str) -> tuple:
     return tuple(int(czesc) for czesc in re.findall(r"\d+", wersja))
 
 
-def wersje_agentow(db: Session, tenant_id: str) -> dict:
+def _firma(tenant_id: str | None) -> list:
+    """Warunek zawezajacy do firmy; None znaczy wszystkie (panel administratora)."""
+    return [Asset.tenant_id == tenant_id] if tenant_id is not None else []
+
+
+def wersje_agentow(db: Session, tenant_id: str | None) -> dict:
     wiersze = db.execute(
         select(Asset.agent_version, func.count(Asset.id))
-        .where(Asset.tenant_id == tenant_id, Asset.zrodlo == ZRODLO_AGENT,
+        .where(*_firma(tenant_id), Asset.zrodlo == ZRODLO_AGENT,
                Asset.agent_version.is_not(None))
         .group_by(Asset.agent_version)
     ).all()
@@ -106,23 +111,25 @@ _pamiec_podatnosci: dict[str, dict] = {}
 _blokada = threading.Lock()
 
 
-def najbardziej_podatne(db: Session, tenant_id: str, odswiez: bool = False) -> dict:
+def najbardziej_podatne(db: Session, tenant_id: str | None, odswiez: bool = False) -> dict:
     """Maszyny z najwieksza liczba podatnosci do naprawienia.
 
     Kolejnosc: najpierw powazne (CVSS >= 7) z dostepna poprawka, potem
     wszystkie do naprawienia, potem otwarte bez poprawki. Liczymy maszyny
     z agentem na Linuksie (kanaly dystrybucji) i Windows (biuletyny MSRC).
+    tenant_id=None liczy cala instalacje - dla panelu administratora.
     """
     teraz = utcnow()
+    klucz = tenant_id or "*"
     with _blokada:
-        zapamietane = _pamiec_podatnosci.get(tenant_id)
+        zapamietane = _pamiec_podatnosci.get(klucz)
     if zapamietane and not odswiez and teraz - zapamietane["policzono"] < WAZNOSC_PODATNOSCI:
         return zapamietane
 
     wiersze = db.execute(
         select(Asset, AssetCurrentReport.payload)
         .join(AssetCurrentReport, AssetCurrentReport.asset_id == Asset.id)
-        .where(Asset.tenant_id == tenant_id, Asset.zrodlo == ZRODLO_AGENT,
+        .where(*_firma(tenant_id), Asset.zrodlo == ZRODLO_AGENT,
                Asset.lifecycle == LIFECYCLE_AKTYWNY,
                Asset.os_family.in_(("linux", "windows")))
     ).all()
@@ -139,6 +146,7 @@ def najbardziej_podatne(db: Session, tenant_id: str, odswiez: bool = False) -> d
         oceny = [p.get("base_score") for p in wynik["entries"] if p.get("base_score") is not None]
         pozycje.append({
             "id": maszyna.id,
+            "tenant_id": maszyna.tenant_id,
             "hostname": maszyna.hostname,
             "os_family": maszyna.os_family,
             "os_name": maszyna.os_name,
@@ -149,7 +157,15 @@ def najbardziej_podatne(db: Session, tenant_id: str, odswiez: bool = False) -> d
         })
 
     pozycje.sort(key=lambda p: (p["powazne"], p["do_naprawy"], p["bez_poprawki"]), reverse=True)
+    # Dla panelu administratora: ile podatnych maszyn ma kazda firma.
+    wedlug_firmy: dict[str, dict] = {}
+    for p in pozycje:
+        firma = wedlug_firmy.setdefault(p["tenant_id"], {"maszyn": 0, "powazne": 0})
+        firma["maszyn"] += 1
+        firma["powazne"] += 1 if p["powazne"] else 0
     wynik = {
+        "wedlug_firmy": wedlug_firmy,
+        "z_powaznymi": sum(1 for p in pozycje if p["powazne"]),
         "pozycje": pozycje[:NAJBARDZIEJ_PODATNYCH],
         "z_podatnosciami": len(pozycje),
         "zbadanych": zbadanych,
@@ -157,5 +173,5 @@ def najbardziej_podatne(db: Session, tenant_id: str, odswiez: bool = False) -> d
         "policzono": teraz,
     }
     with _blokada:
-        _pamiec_podatnosci[tenant_id] = wynik
+        _pamiec_podatnosci[klucz] = wynik
     return wynik

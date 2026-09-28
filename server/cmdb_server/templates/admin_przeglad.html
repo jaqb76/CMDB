@@ -1,125 +1,188 @@
 {% extends "base_admin.html" %}
 {% block title %}Przegląd - administracja CMDB{% endblock %}
+{% from "_pulpit.html" import ikona, znak_systemu, tabela_podatnych, wersje_agentow with context %}
+
 {% block content %}
+<header class="dashboard-head pulpit-naglowek">
+  <div class="pulpit-tytul">
+    <span class="pulpit-tytul-ikona">{{ ikona('serwer') }}</span>
+    <div>
+      <h1>Przegląd instalacji</h1>
+      <p class="muted">Stan agentów we wszystkich obsługiwanych firmach, podatności i zdrowie samego systemu.</p>
+    </div>
+  </div>
+  <div class="pulpit-aktualizacja">
+    <span class="pulpit-aktualizacja-ikona">{{ ikona('zegar') }}</span>
+    <div><span class="muted small">Ostatnia aktualizacja</span><br><strong>{{ teraz | dt }}</strong></div>
+    <a class="pulpit-odswiez" href="/admin?odswiez=1" title="Odśwież i policz podatności od nowa" aria-label="Odśwież">{{ ikona('odswiez') }}</a>
+  </div>
+</header>
 
-<div class="page-head">
-  <div>
-    <h1>Przegląd</h1>
-    <p class="muted">Stan agentów we wszystkich obsługiwanych firmach.</p>
+<section class="cards dashboard-cards pulpit-kafle">
+  <a class="card kafel kafel-niebieski" href="/admin/firmy">
+    <span class="kafel-ikona">{{ ikona('serwer') }}</span>
+    <div>
+      <div class="card-label">Firmy aktywne</div>
+      <div class="card-value">{{ podsumowanie.firmy_aktywne }}<span class="card-sub">/ {{ podsumowanie.firmy }}</span></div>
+      <div class="kafel-opis">{{ podsumowanie.zasoby }} zasobów w ewidencji</div>
+    </div>
+  </a>
+  <div class="card kafel kafel-zielony">
+    <span class="kafel-ikona">{{ ikona('agent') }}</span>
+    <div>
+      <div class="card-label">Agenci aktywni</div>
+      <div class="card-value">{{ podsumowanie.aktywne }}</div>
+      <div class="kafel-opis">z {{ podsumowanie.aktywne + podsumowanie.nieaktywne }} zainstalowanych</div>
+    </div>
   </div>
-</div>
-
-<section class="cards">
-  <div class="card">
-    <div class="card-value">{{ podsumowanie.firmy_aktywne }}<span class="card-sub">/ {{ podsumowanie.firmy }}</span></div>
-    <div class="card-label">firm aktywnych</div>
+  <div class="card kafel kafel-pomaranczowy{% if podsumowanie.nieaktywne %} card-warn{% endif %}">
+    <span class="kafel-ikona">{{ ikona('zegar') }}</span>
+    <div>
+      <div class="card-label">Agenci bez kontaktu</div>
+      <div class="card-value">{{ podsumowanie.nieaktywne }}</div>
+      <div class="kafel-opis">dłużej niż {{ stale_after_hours }} h</div>
+    </div>
   </div>
-  <div class="card card-ok">
-    <div class="card-value">{{ podsumowanie.aktywne }}</div>
-    <div class="card-label">agentów aktywnych</div>
-  </div>
-  <div class="card {% if podsumowanie.nieaktywne %}card-warn{% endif %}">
-    <div class="card-value">{{ podsumowanie.nieaktywne }}</div>
-    <div class="card-label">agentów nieaktywnych (&gt; {{ stale_after_hours }} h)</div>
-  </div>
-  <div class="card">
-    <div class="card-value">{{ podsumowanie.aktywne + podsumowanie.nieaktywne }}</div>
-    <div class="card-label">agentów łącznie</div>
-  </div>
+  <a class="card kafel kafel-fioletowy" href="/admin/wersje">
+    <span class="kafel-ikona">{{ ikona('odswiez') }}</span>
+    <div>
+      <div class="card-label">Agenci do aktualizacji</div>
+      <div class="card-value">{{ podsumowanie.do_aktualizacji }}</div>
+      <div class="kafel-opis">inna wersja niż docelowa</div>
+    </div>
+  </a>
+  <a class="card kafel {% if podatne.z_powaznymi %}kafel-czerwony card-danger{% else %}kafel-turkusowy{% endif %}" href="/admin/podatnosci">
+    <span class="kafel-ikona">{{ ikona('tarcza') }}</span>
+    <div>
+      <div class="card-label">Maszyny z poważnymi lukami</div>
+      <div class="card-value">{{ podatne.z_powaznymi }}</div>
+      <div class="kafel-opis">CVSS ≥ 7 z gotową poprawką</div>
+    </div>
+  </a>
 </section>
 
-{% if oficjalne %}
-<section class="panel">
-  <h2>Wersje oficjalne</h2>
-  <p class="muted small">
-    Z tych wersji korzystają wszystkie firmy, które nie maja własnego ustawienia.
-  </p>
-  <ul class="chips">
-    {% for system, dane in systemy.items() %}
-      <li>
-        <span class="chip">
-          {{ dane.etykieta }}:
-          {% if oficjalne.get(system) %}<b>{{ oficjalne[system].version }}</b>
-          {% else %}<span class="muted">nie ustawiono</span>{% endif %}
-        </span>
-      </li>
-    {% endfor %}
-  </ul>
-</section>
-{% endif %}
+<div class="pulpit-uklad">
+  <div class="pulpit-glowna">
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('serwer') }} Firmy</h2>
+      <div class="pulpit-tabela-ramka">
+      <table class="table pulpit-tabela admin-firmy">
+        <thead>
+          <tr>
+            <th>Firma</th>
+            <th class="lp">Zasoby</th>
+            <th>Agenci</th>
+            <th class="lp" title="Wersja inna niż docelowa firmy">Do aktualizacji</th>
+            <th class="lp" title="Maszyny z podatnościami (w tym z poważnymi)">Podatne</th>
+            <th>Wersje agentów</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for w in wiersze %}
+          <tr {% if not w.firma.is_active %}class="row-muted"{% endif %}>
+            <td>
+              <span class="strong">{{ w.firma.name }}</span>
+              <div class="muted small">
+                <code>{{ w.firma.slug }}</code>
+                {% if not w.firma.is_active %}<span class="badge badge-danger">wyłączona</span>{% endif %}
+              </div>
+            </td>
+            <td class="lp">{{ w.zasoby }}</td>
+            <td class="firma-agenci">
+              {% if w.aktywne or w.nieaktywne %}
+              <svg class="firma-pasek" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+                <rect class="pasek-bez-kontaktu" x="0" y="0" width="100" height="8" rx="4"/>
+                {% if w.pasek %}<rect class="pasek-aktywni" x="0" y="0" width="{{ w.pasek }}" height="8" rx="4"/>{% endif %}
+              </svg>
+              <div class="small">
+                <span class="badge badge-ok">{{ w.aktywne }}</span>
+                {% if w.nieaktywne %}<span class="badge badge-warn" title="bez kontaktu">{{ w.nieaktywne }}</span>{% endif %}
+              </div>
+              {% else %}<span class="muted small">brak agentów</span>{% endif %}
+            </td>
+            <td class="lp">{% if w.do_aktualizacji %}<span class="badge badge-akcent">{{ w.do_aktualizacji }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+            <td class="lp">
+              {% if w.podatne.maszyn %}
+                {{ w.podatne.maszyn }}{% if w.podatne.powazne %} <span class="badge badge-danger" title="z poważnymi">{{ w.podatne.powazne }}</span>{% endif %}
+              {% else %}<span class="muted">0</span>{% endif %}
+            </td>
+            <td class="small firma-wersje">
+              {% for a in w.agenci %}
+                {% set cel = w.cele.get(a.os_family) or oficjalne.get(a.os_family) %}
+                <div>
+                  {{ znak_systemu(a.os_family) }} <b>{{ a.wersja }}</b>
+                  <span class="muted">× {{ a.ile }}</span>
+                  {% if cel and cel.version != a.wersja %}<span class="muted">→ {{ cel.version }}{% if w.cele.get(a.os_family) %} (własna){% endif %}</span>{% endif %}
+                </div>
+              {% else %}<span class="muted">—</span>{% endfor %}
+            </td>
+            <td class="small admin-akcje">
+              <a class="btn btn-small" href="/admin/tenants/{{ w.firma.id }}/upgrade">Maszyny</a>
+              <a class="btn btn-small btn-ghost" href="/switch-tenant?slug={{ w.firma.slug }}">Podgląd</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="muted">Nie zdefiniowano jeszcze żadnej firmy.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="muted small pulpit-przypis">
+        Nieaktywny agent to taki, który nie odezwał się od ponad {{ stale_after_hours }} h (albo progu
+        ustawionego dla firmy). Maszyny wycofane nie są tu liczone.
+      </p>
+    </section>
 
-<section class="panel">
-  <h2>Firmy</h2>
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Firma</th>
-        <th>Aktywni</th>
-        <th>Nieaktywni</th>
-        <th>Wersje agentów</th>
-        <th>Wersja docelowa</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for w in wiersze %}
-      <tr {% if not w.firma.is_active %}class="row-muted"{% endif %}>
-        <td>
-          <span class="strong">{{ w.firma.name }}</span>
-          <div class="muted small">
-            <code>{{ w.firma.slug }}</code>
-            {% if not w.firma.is_active %}<span class="badge badge-danger">wyłączona</span>{% endif %}
+    {{ tabela_podatnych(podatne, '/admin?odswiez=1', firmy=firmy_wg_id, tytul='Najbardziej podatne maszyny — wszystkie firmy') }}
+  </div>
+
+  <aside class="pulpit-boczna">
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('usluga') }} Stan systemu</h2>
+      <ul class="stan-systemu">
+        {% for p in stan_systemu %}
+        <li>
+          <span class="stan-znacznik stan-{{ p.stan }}" aria-hidden="true"></span>
+          <div>
+            <a href="{{ p.adres }}" class="strong">{{ p.nazwa }}</a>
+            <div class="muted small">{{ p.opis }}</div>
           </div>
-        </td>
-        <td>
-          {% if w.aktywne %}<span class="badge badge-ok">{{ w.aktywne }}</span>
-          {% else %}<span class="muted">0</span>{% endif %}
-        </td>
-        <td>
-          {% if w.nieaktywne %}<span class="badge badge-warn">{{ w.nieaktywne }}</span>
-          {% else %}<span class="muted">0</span>{% endif %}
-        </td>
-        <td class="small">
-          {% if w.agenci %}
-            {% for a in w.agenci %}
-              <div>
-                <code>{{ a.os_family }}</code> <b>{{ a.wersja }}</b>
-                <span class="muted">— {{ a.ile }} szt.{% if a.nieaktywne %}, {{ a.nieaktywne }} bez kontaktu{% endif %}</span>
-              </div>
-            {% endfor %}
-          {% else %}<span class="muted">brak agentów</span>{% endif %}
-        </td>
-        <td class="small">
-          {% for a in w.agenci %}
-            {% if loop.first or a.os_family != loop.previtem.os_family %}
-              {% set cel = w.cele.get(a.os_family) %}
-              <div>
-                <code>{{ a.os_family }}</code>
-                {% if cel %}
-                  <b>{{ cel.version }}</b> <span class="badge">własna</span>
-                {% elif oficjalne.get(a.os_family) %}
-                  {{ oficjalne[a.os_family].version }} <span class="muted">(oficjalna)</span>
-                {% else %}
-                  <span class="muted">—</span>
-                {% endif %}
-              </div>
-            {% endif %}
-          {% endfor %}
-          {% if not w.agenci %}<span class="muted">—</span>{% endif %}
-        </td>
-        <td class="small">
-          <a class="btn btn-small" href="/admin/tenants/{{ w.firma.id }}/upgrade">Maszyny</a>
-          <a class="btn btn-small btn-ghost" href="/switch-tenant?slug={{ w.firma.slug }}">Podgląd firmy</a>
-        </td>
-      </tr>
-    {% else %}
-      <tr><td colspan="6" class="muted">Nie zdefiniowano jeszcze żadnej firmy.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <p class="muted small">
-    Nieaktywny agent to taki, który nie odezwał się od ponad {{ stale_after_hours }} h.
-    Maszyny wycofane nie sa tu liczone.
-  </p>
-</section>
+          <span class="badge {{ {'ok': 'badge-ok', 'uwaga': 'badge-warn', 'blad': 'badge-danger'}[p.stan] }}">{{ {'ok': 'OK', 'uwaga': 'uwaga', 'blad': 'błąd'}[p.stan] }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('agent') }} Wersje oficjalne</h2>
+      <p class="muted small">Z tych wersji korzystają firmy bez własnego ustawienia.</p>
+      <ul class="stan-systemu">
+        {% for system, dane in systemy.items() %}
+        <li>
+          {{ znak_systemu(system) }}
+          <span>{{ dane.etykieta }}</span>
+          {% if oficjalne.get(system) %}<b class="wersja-etykieta">{{ oficjalne[system].version }}</b>
+          {% else %}<span class="muted small">nie ustawiono</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <a class="small" href="/admin/wersje">Wydania agentów →</a>
+    </section>
+
+    {{ wersje_agentow(rozklad_wersji) }}
+
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('filtr') }} Szybkie akcje</h2>
+      <div class="pulpit-filtr-lista">
+        <a class="pulpit-filtr" href="/admin/firmy">Firmy i konta</a>
+        <a class="pulpit-filtr" href="/admin/konta">Konta i role</a>
+        <a class="pulpit-filtr" href="/admin/wersje">Wydania agentów</a>
+        <a class="pulpit-filtr" href="/admin/podatnosci">Podatności</a>
+        <a class="pulpit-filtr" href="/admin/kopie">Kopie zapasowe</a>
+        <a class="pulpit-filtr" href="/admin/audyt">Audyt operacji</a>
+      </div>
+    </section>
+  </aside>
+</div>
 {% endblock %}

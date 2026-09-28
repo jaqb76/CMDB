@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import urllib.parse
 
 from markupsafe import Markup
@@ -516,9 +517,13 @@ def unblock_enrollment(asset_id: str, request: Request, csrf_token: str = Form("
     return RedirectResponse(f"/assets/{asset.id}", status_code=303)
 
 
+_KARTA_MASZYNY = re.compile(r"^/assets/[A-Za-z0-9-]{1,64}(#[a-z]{1,32})?$")
+
+
 @router.get("/switch-tenant")
 def switch_tenant(
     slug: str = Query(...),
+    dalej: str = Query("", max_length=200),
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -528,7 +533,10 @@ def switch_tenant(
     tenant = next((t for t in firmy_konta(db, user) if t.slug == slug), None)
     if tenant is None:
         raise HTTPException(status_code=403, detail="to konto nie ma dostepu do tej firmy")
-    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    # Dalej wylacznie na karte maszyny - dowolny adres zrobilby z tej trasy
+    # otwarte przekierowanie.
+    cel = dalej if _KARTA_MASZYNY.match(dalej) else "/"
+    response = RedirectResponse(cel, status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie("cmdb_tenant", tenant.slug, httponly=True, samesite="lax", path="/")
     return response
 
