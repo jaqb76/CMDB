@@ -1,131 +1,287 @@
 {% extends "base.html" %}
 {% block title %}Pulpit - CMDB{% endblock %}
+
+{# Ikony rysowane kreska w kolorze tekstu - bez plikow i bez czcionek ikon,
+   bo CSP dopuszcza tylko zasoby z tego serwera. #}
+{% macro ikona(nazwa) -%}
+<svg class="ikona" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+{%- if nazwa == 'komputer' -%}<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>
+{%- elif nazwa == 'agent' -%}<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>
+{%- elif nazwa == 'brak' -%}<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>
+{%- elif nazwa == 'zegar' -%}<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>
+{%- elif nazwa == 'usluga' -%}<path d="M3 12h4l2-6 4 12 2-6h6"/>
+{%- elif nazwa == 'serwer' -%}<rect x="4" y="3" width="16" height="7" rx="1.5"/><rect x="4" y="14" width="16" height="7" rx="1.5"/><path d="M8 6.5h.01M8 17.5h.01"/>
+{%- elif nazwa == 'laptop' -%}<rect x="5" y="5" width="14" height="10" rx="1.2"/><path d="M2.5 19h19"/>
+{%- elif nazwa == 'siec' -%}<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>
+{%- elif nazwa == 'drukarka' -%}<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="1.5"/><path d="M7 14h10v7H7z"/>
+{%- elif nazwa == 'monitor' -%}<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6"/>
+{%- elif nazwa == 'telefon' -%}<rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/>
+{%- elif nazwa == 'wirtualna' -%}<rect x="3" y="3" width="13" height="13" rx="1.5"/><path d="M8 21h11a2 2 0 002-2V8"/>
+{%- elif nazwa == 'tarcza' -%}<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>
+{%- elif nazwa == 'slupki' -%}<path d="M5 20V11M12 20V5M19 20v-6"/>
+{%- elif nazwa == 'filtr' -%}<path d="M3 5h18l-7 8v6l-4 2v-8z"/>
+{%- elif nazwa == 'okna' -%}<path d="M3 5l8-1v7H3zM13 3.7L21 3v8h-8zM3 13h8v7l-8-1zM13 13h8v8l-8-1z"/>
+{%- elif nazwa == 'odswiez' -%}<path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/>
+{%- else -%}<circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
+{% set ikony_typow = {'komputer': 'serwer', 'laptop': 'laptop', 'siec': 'siec', 'drukarka': 'drukarka',
+                      'monitor': 'monitor', 'telefon': 'telefon', 'vm': 'wirtualna', 'host': 'serwer',
+                      'klaster': 'serwer'} %}
+
+{# Znak systemu: litera w kolorze rodziny zamiast logotypu producenta. #}
+{% macro znak_systemu(rodzina) -%}
+{%- set r = (rodzina or '')|lower -%}
+<span class="os-znak os-{{ r if r in ('windows', 'linux', 'macos', 'darwin') else 'inny' }}" aria-hidden="true">
+  {{- {'windows': 'W', 'linux': 'L', 'macos': 'M', 'darwin': 'M'}.get(r, '•') -}}
+</span>
+{%- endmacro %}
+
+{% macro pierscien(dane, adres, parametr) %}
+  {% if dane.segmenty %}
+  <div class="pulpit-wykres">
+    <svg class="pulpit-pierscien" viewBox="0 0 {{ dane.bok }} {{ dane.bok }}" role="img" aria-label="Podział {{ dane.suma }} zasobów">
+      <circle cx="{{ dane.srodek }}" cy="{{ dane.srodek }}" r="{{ dane.promien }}" fill="none"
+              class="pierscien-tlo" stroke-width="{{ dane.grubosc }}"/>
+      <g transform="rotate(-90 {{ dane.srodek }} {{ dane.srodek }})">
+        {% for s in dane.segmenty %}
+        <circle cx="{{ dane.srodek }}" cy="{{ dane.srodek }}" r="{{ dane.promien }}"
+                fill="none" stroke="{{ s.barwa }}" stroke-width="{{ dane.grubosc }}"
+                stroke-dasharray="{{ s.dasharray }}" stroke-dashoffset="{{ s.dashoffset }}">
+          <title>{{ s.etykieta }}: {{ s.wartosc }} ({{ s.procent }}%)</title>
+        </circle>
+        {% endfor %}
+      </g>
+      <text x="{{ dane.srodek }}" y="{{ dane.srodek + 2 }}" class="pierscien-suma">{{ dane.suma }}</text>
+      <text x="{{ dane.srodek }}" y="{{ dane.srodek + 20 }}" class="pierscien-podpis">zasobów</text>
+    </svg>
+    <ul class="pulpit-legenda">
+      {% for s in dane.segmenty %}
+      <li>
+        {% if s.klucz is not none %}<a href="{{ adres }}?{{ parametr }}={{ s.klucz | urlencode }}">{% else %}<span>{% endif %}
+          <svg class="legenda-probka" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="{{ s.barwa }}"/></svg>
+          {{ caller(s) }}
+          <span class="legenda-nazwa" title="{{ s.etykieta }}">{{ s.etykieta }}</span>
+          <b>{{ s.wartosc }}</b>
+          <span class="legenda-procent">{{ s.procent }}%</span>
+        {% if s.klucz is not none %}</a>{% else %}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <p class="muted">Brak danych.</p>
+  {% endif %}
+{% endmacro %}
+
+{% macro procent(ile) %}{{ ((ile * 100 / total) if total else 0) | round(1) }}%{% endmacro %}
+
 {% block content %}
-<header class="dashboard-head">
-  <h1>Pulpit</h1>
-  <p class="muted">Najważniejsze informacje o zasobach, agentach i ostatnich zmianach.</p>
+<header class="dashboard-head pulpit-naglowek">
+  <div class="pulpit-tytul">
+    <span class="pulpit-tytul-ikona">{{ ikona('komputer') }}</span>
+    <div>
+      <h1>Podsumowanie zasobów</h1>
+      <p class="muted">Najważniejsze informacje o zasobach, agentach i ostatnich zmianach — sprzęt, systemy, agenty.</p>
+    </div>
+  </div>
+  <div class="pulpit-aktualizacja">
+    <span class="pulpit-aktualizacja-ikona">{{ ikona('zegar') }}</span>
+    <div><span class="muted small">Ostatnia aktualizacja</span><br><strong>{{ teraz | dt }}</strong></div>
+    <a class="pulpit-odswiez" href="/" title="Odśwież" aria-label="Odśwież">{{ ikona('odswiez') }}</a>
+  </div>
 </header>
 
-<section class="cards dashboard-cards">
+<section class="cards dashboard-cards pulpit-kafle">
   {# "Maszyn" bylo nietrafione: w ewidencji sa tez monitory i sprzet sieciowy,
-     ktore maszynami nie sa. Obok stoi liczba tych z agentem, bo to ona
-     rzadzi wieksza czescia panelu. #}
-  <a class="card" href="/assets">
-    <div class="card-value">{{ total }}</div>
-    <div class="card-label">wpisów w ewidencji</div>
+     ktore maszynami nie sa. #}
+  <a class="card kafel kafel-niebieski" href="/assets">
+    <span class="kafel-ikona">{{ ikona('komputer') }}</span>
+    <div>
+      <div class="card-label">Wszystkie zasoby</div>
+      <div class="card-value">{{ total }}{% if nowe %} <span class="kafel-zmiana">↑ +{{ nowe }}</span>{% endif %}</div>
+      <div class="kafel-opis">{{ nowe }} nowych w ostatnich 7 dniach</div>
+    </div>
   </a>
-  <a class="card" href="/assets?zrodlo=agent">
-    <div class="card-value">{{ z_agentem }}</div>
-    <div class="card-label">z zainstalowanym agentem</div>
+  <a class="card kafel kafel-zielony" href="/assets?zrodlo=agent">
+    <span class="kafel-ikona">{{ ikona('agent') }}</span>
+    <div>
+      <div class="card-label">Z agentem</div>
+      <div class="card-value">{{ z_agentem }}{% if nowe_z_agentem %} <span class="kafel-zmiana">↑ +{{ nowe_z_agentem }}</span>{% endif %}</div>
+      <div class="kafel-opis">{{ procent(z_agentem) }} całości</div>
+    </div>
   </a>
-  <a class="card {% if stale %}card-warn{% endif %}" href="/assets?state=stale">
-    <div class="card-value">{{ stale }}</div>
-    <div class="card-label">bez kontaktu &gt; {{ stale_after_hours }} h</div>
+  <a class="card kafel kafel-fioletowy" href="/assets?zrodlo=bez_agenta">
+    <span class="kafel-ikona">{{ ikona('brak') }}</span>
+    <div>
+      <div class="card-label">Bez agenta</div>
+      <div class="card-value">{{ bez_agenta }}</div>
+      <div class="kafel-opis">{{ procent(bez_agenta) }} całości</div>
+    </div>
   </a>
-  <a class="card {% if unassigned %}card-warn{% endif %}" href="/assets?owner=none">
-    <div class="card-value">{{ unassigned }}</div>
-    <div class="card-label">bez przypisanego opiekuna</div>
+  <a class="card kafel kafel-pomaranczowy{% if stale %} card-warn{% endif %}" href="/assets?state=stale">
+    <span class="kafel-ikona">{{ ikona('zegar') }}</span>
+    <div>
+      <div class="card-label">Bez kontaktu &gt; {{ stale_after_hours }}h</div>
+      <div class="card-value">{{ stale }}</div>
+      <div class="kafel-opis">{{ procent(stale) }} całości</div>
+    </div>
   </a>
-  <a class="card {% if uslugi and uslugi.awaria %}card-danger{% elif uslugi and uslugi.ostrzezenie %}card-warn{% endif %}" href="/monitoring">
-    <div class="card-value">{{ uslugi.awaria + uslugi.ostrzezenie if uslugi else 0 }}</div>
-    <div class="card-label">usługi wymagające uwagi{% if uslugi and uslugi.razem %} z {{ uslugi.razem }}{% endif %}</div>
+  {% set do_uwagi = uslugi.awaria + uslugi.ostrzezenie if uslugi else 0 %}
+  <a class="card kafel {% if uslugi and uslugi.awaria %}kafel-czerwony card-danger{% elif do_uwagi %}kafel-pomaranczowy card-warn{% else %}kafel-turkusowy{% endif %}" href="/monitoring">
+    <span class="kafel-ikona">{{ ikona('usluga') }}</span>
+    <div>
+      <div class="card-label" title="Usługi wymagające uwagi">Usługi do sprawdzenia</div>
+      <div class="card-value">{{ do_uwagi }}</div>
+      <div class="kafel-opis">{% if uslugi and uslugi.razem %}z {{ uslugi.razem }} monitorowanych{% else %}brak monitorowanych{% endif %}</div>
+    </div>
   </a>
 </section>
 
-<div class="dashboard-section-grid">
-{% if by_typ %}
-<section class="panel">
-  <h2>Rodzaje sprzętu</h2>
-  <ul class="chips">
-    {% for rodzaj, ile in by_typ %}
-      <li><a class="chip" href="/assets?typ={{ rodzaj or '' }}">{{ typy.get(rodzaj, rodzaj or 'nieokreslony') }} <b>{{ ile }}</b></a></li>
-    {% endfor %}
-  </ul>
-</section>
-{% endif %}
+<div class="pulpit-uklad">
+  <div class="pulpit-glowna">
+    <div class="pulpit-wykresy">
+      <section class="panel pulpit-panel">
+        <h2 class="pulpit-h2">{{ ikona('serwer') }} Typy sprzętu</h2>
+        {% call(s) pierscien(wykres_typy, '/assets', 'typ') %}<span class="legenda-ikona">{{ ikona(ikony_typow.get(s.klucz, 'inne')) }}</span>{% endcall %}
+      </section>
 
-{% if by_os %}
-<section class="panel">
-  <h2>Systemy operacyjne</h2>
-  <p class="muted small">Wyłącznie sprzęt z agentem — monitor ani przełącznik nie maja systemu.</p>
-  <ul class="chips">
-    {% for family, count in by_os %}
-      <li><a class="chip" href="/assets?os_family={{ family or '' }}">{{ family or 'nieznany' }} <b>{{ count }}</b></a></li>
-    {% endfor %}
-  </ul>
-</section>
-{% endif %}
-</div>
+      <section class="panel pulpit-panel">
+        <h2 class="pulpit-h2">{{ ikona('okna') }} Systemy operacyjne</h2>
+        {% call(s) pierscien(wykres_systemy, '/assets', 'os_family') %}{{ znak_systemu(s.klucz) }}{% endcall %}
+        <p class="muted small pulpit-przypis">Wyłącznie sprzęt z agentem — monitor ani przełącznik nie mają systemu.</p>
+      </section>
+    </div>
 
-{% if reczne %}
-<section class="panel">
-  <h2>Wpisy ręczne</h2>
-  <p class="muted small">
-    Sprzęt bez agenta: monitory, przełączniki, drukarki. Opisuje go wyłącznie
-    to, co wpisał człowiek, więc data mówi o ostatniej zmianie wpisu.
-  </p>
-  <table class="table">
-    <thead><tr><th>Wpis</th><th>Rodzaj</th><th>Lokalizacja</th><th>Opiekun</th><th>Zmieniony</th></tr></thead>
-    <tbody>
-    {% for a in reczne %}
-      <tr>
-        <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
-        <td class="small">{{ typy.get(a.typ, a.typ or '—') }}</td>
-        <td class="small">{% if a.lokalizacja %}{{ a.lokalizacja.wartosc }}{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="small">{{ a.owner.wartosc if a.owner else '—' }}</td>
-        <td class="muted small">{{ a.last_seen | ago }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</section>
-{% endif %}
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('komputer') }} Szczegóły zasobów</h2>
+      {% if wiersze %}
+      <div class="pulpit-tabela-ramka">
+      <table class="table pulpit-tabela">
+        <thead><tr><th>Nazwa</th><th>Typ sprzętu</th><th>OS</th><th>Wersja agenta</th><th>Status</th><th>Ostatnio widziano</th></tr></thead>
+        <tbody>
+        {% for a, status, klasa in wiersze %}
+          <tr>
+            <td>
+              <span class="stan-kropka stan-{{ klasa }}" aria-hidden="true"></span>
+              <a href="/assets/{{ a.id }}" class="strong">{{ a.hostname }}</a>
+              <div class="muted small">{{ typy.get(a.typ, a.typ or '—') }}</div>
+            </td>
+            <td class="pulpit-typ" title="{{ typy.get(a.typ, a.typ or '—') }}">{{ ikona(ikony_typow.get(a.typ, 'inne')) }}</td>
+            <td class="small">{% if a.os_name or a.os_family %}<span class="os-komorka">{{ znak_systemu(a.os_family) }} <span>{{ a.os_name or nazwa_systemu(a.os_family) }}</span></span>{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="small">{{ a.agent_version or '—' }}</td>
+            <td><span class="badge {{ klasa }}">{{ status }}</span></td>
+            <td class="muted small">{{ a.last_seen | ago }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <div class="pulpit-stopka">
+        <span class="muted small">Pokazano {{ wiersze | length }} z {{ total }} zasobów</span>
+        {% if stron > 1 %}
+        <nav class="pulpit-strony" aria-label="Strony">
+          {% if strona > 1 %}<a href="/?strona={{ strona - 1 }}" aria-label="Poprzednia">‹</a>{% endif %}
+          {% for n in range(1, stron + 1) %}
+            {% if n == 1 or n == stron or (n - strona) | abs <= 2 %}
+              {% if n == strona %}<span class="is-active" aria-current="page">{{ n }}</span>{% else %}<a href="/?strona={{ n }}">{{ n }}</a>{% endif %}
+            {% elif (n - strona) | abs == 3 %}<span class="muted">…</span>{% endif %}
+          {% endfor %}
+          {% if strona < stron %}<a href="/?strona={{ strona + 1 }}" aria-label="Następna">›</a>{% endif %}
+        </nav>
+        {% endif %}
+      </div>
+      {% else %}
+        <p class="muted">Żaden zasób nie jest jeszcze zapisany. Wygeneruj token w zakładce
+          <a href="/tokens">Tokeny agentów</a> i zainstaluj agenta na maszynie.</p>
+      {% endif %}
+    </section>
+  </div>
 
-<div class="two-col">
-  <section class="panel">
-    <h2>Ostatni kontakt</h2>
-    {% if recent %}
-    <table class="table">
-      <thead><tr><th>Maszyna</th><th>Rodzaj</th><th>System</th><th>Opiekun</th><th>Widziana</th></tr></thead>
-      <tbody>
-      {% for a in recent %}
-        <tr>
-          <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
-          <td class="small">{{ typy.get(a.typ, a.typ or '—') }}</td>
-          <td>{{ a.os_name or a.os_family or '-' }}</td>
-          <td>{{ a.owner.wartosc if a.owner else '—' }}</td>
-          <td class="muted">{{ a.last_seen | ago }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-      <p class="muted">Żaden agent jeszcze się nie zgłosił. Wygeneruj token w zakładce
-        <a href="/tokens">Tokeny agentów</a> i zainstaluj agenta na maszynie.</p>
+  <aside class="pulpit-boczna">
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('tarcza') }} Wersje agentów</h2>
+      {% if wersje.pozycje %}
+      <ul class="pulpit-wersje">
+        {% for w in wersje.pozycje %}
+        <li>
+          <span class="wersja-etykieta">{{ w.etykieta }}</span>
+          <svg class="wersja-pasek" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+            <rect class="pasek-tlo" x="0" y="0" width="100" height="8" rx="4"/>
+            {% if w.szerokosc %}<rect x="0" y="0" width="{{ w.szerokosc }}" height="8" rx="4" fill="{{ w.barwa }}"/>{% endif %}
+          </svg>
+          <b>{{ w.ile }}</b>
+          <span class="muted small">{{ w.procent }}%</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">Żaden agent nie zgłosił jeszcze wersji.</p>
+      {% endif %}
+    </section>
+
+    {% if wersje.pozycje %}
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('slupki') }} Rozkład agentów (wersje)</h2>
+      {% set n = wersje.pozycje | length %}
+      {% set krok = 260 / n %}
+      <svg class="pulpit-slupki" viewBox="0 0 300 120" role="img" aria-label="Liczba agentów według wersji">
+        <line class="os-linia" x1="30" y1="95" x2="295" y2="95"/>
+        <text class="os-opis" x="22" y="98">0</text>
+        <text class="os-opis" x="22" y="19">{{ wersje.najwiecej }}</text>
+        {% for w in wersje.pozycje %}
+          {% set x = 35 + krok * loop.index0 %}
+          {% set szer = [krok * 0.6, 40] | min %}
+          {% set srodek = x + krok / 2 %}
+          <rect x="{{ srodek - szer / 2 }}" y="{{ 95 - [w.wysokosc, 1] | max }}" width="{{ szer }}" height="{{ [w.wysokosc, 1] | max }}" rx="2" fill="{{ w.barwa }}">
+            <title>{{ w.etykieta }}: {{ w.ile }}</title>
+          </rect>
+          <text class="slupek-wartosc" x="{{ srodek }}" y="{{ 95 - [w.wysokosc, 1] | max - 4 }}">{{ w.ile }}</text>
+          <text class="os-opis os-opis-x" x="{{ srodek }}" y="110">{{ w.etykieta }}</text>
+        {% endfor %}
+      </svg>
+    </section>
     {% endif %}
-    <p class="muted small">
-      Zgłoszenia agentów. Wpisy ręczne się nie zgłaszają, więc sa niżej —
-      data przy nich mówiłaby o kontakcie, którego nie było.
-    </p>
-  </section>
 
-  <section class="panel">
-    <h2>Ostatnie zmiany konfiguracji</h2>
-    {% if changed %}
-    <table class="table">
-      <thead><tr><th>Maszyna</th><th>Zmiana</th></tr></thead>
-      <tbody>
-      {% for a in changed %}
-        <tr>
-          <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a></td>
-          <td class="muted">{{ a.last_change_at | ago }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-      <p class="muted">Brak zarejestrowanych zmian.</p>
-    {% endif %}
-  </section>
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('filtr') }} Szybkie filtry</h2>
+      {% if by_typ %}
+      <h3 class="pulpit-filtr-naglowek">Typ sprzętu</h3>
+      <div class="pulpit-filtr-lista">
+        {% for rodzaj, ile in by_typ %}<a class="pulpit-filtr" href="/assets?typ={{ (rodzaj or '') | urlencode }}">{{ typy.get(rodzaj, rodzaj or 'nieokreślony') }}</a>{% endfor %}
+      </div>
+      {% endif %}
+      {% if by_os %}
+      <h3 class="pulpit-filtr-naglowek">System operacyjny</h3>
+      <div class="pulpit-filtr-lista">
+        {% for rodzina, ile in by_os %}<a class="pulpit-filtr" href="/assets?os_family={{ (rodzina or '') | urlencode }}">{{ nazwa_systemu(rodzina) }}</a>{% endfor %}
+      </div>
+      {% endif %}
+      <h3 class="pulpit-filtr-naglowek">Status agenta</h3>
+      <div class="pulpit-filtr-lista">
+        <a class="pulpit-filtr" href="/assets?zrodlo=agent">Z agentem</a>
+        <a class="pulpit-filtr" href="/assets?zrodlo=bez_agenta">Bez agenta</a>
+        <a class="pulpit-filtr" href="/assets?state=stale">Bez kontaktu</a>
+        <a class="pulpit-filtr" href="/assets?owner=none">Bez opiekuna ({{ unassigned }})</a>
+      </div>
+      <a class="small pulpit-filtr-wszystkie" href="/assets">↻ Wszystkie zasoby</a>
+    </section>
+
+    <section class="panel pulpit-panel">
+      <h2 class="pulpit-h2">{{ ikona('odswiez') }} Ostatnie zmiany konfiguracji</h2>
+      {% if changed %}
+      <ul class="pulpit-zmiany">
+        {% for a in changed[:5] %}
+        <li><a href="/assets/{{ a.id }}">{{ a.hostname }}</a><span class="muted small">{{ a.last_change_at | ago }}</span></li>
+        {% endfor %}
+      </ul>
+      <a class="small" href="/zmiany">Wszystkie zmiany →</a>
+      {% else %}
+        <p class="muted">Brak zarejestrowanych zmian.</p>
+      {% endif %}
+    </section>
+  </aside>
 </div>
 {% endblock %}

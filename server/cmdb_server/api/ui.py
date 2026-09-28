@@ -66,8 +66,8 @@ from ..security import (
     verify_password,
 )
 from ..services import (
-    changes, cve, duplicates, funkcje_agenta, logowanie, mobilna, monitoring, nutanix, pakiet, qr,
-    rodzaje, scoping, slowniki, tozsamosc, upgrades, ustawienia, zewnetrzne,
+    changes, cve, duplicates, funkcje_agenta, logowanie, mobilna, monitoring, nutanix, pakiet, pulpit,
+    qr, rodzaje, scoping, slowniki, tozsamosc, upgrades, ustawienia, zewnetrzne,
 )
 from ..services import schemat as definicje_pol
 from ..services import wiedza_dopasowanie
@@ -538,28 +538,28 @@ def switch_tenant(
 @router.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request,
+    strona: int = Query(1, ge=1, le=10000),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
     db: Session = Depends(get_db),
 ) -> Response:
     stale_before = ustawienia.granica_aktywnosci(db.get(Tenant, ctx.tenant_id))
+    tydzien_temu = pulpit.od_tygodnia()
 
-    total = db.execute(
-        select(func.count(Asset.id)).where(Asset.tenant_id == ctx.tenant_id)
-    ).scalar_one()
+    def ile(*warunki) -> int:
+        return db.execute(
+            select(func.count(Asset.id)).where(Asset.tenant_id == ctx.tenant_id, *warunki)
+        ).scalar_one()
+
+    total = ile()
+    z_agentem = ile(Asset.zrodlo == ZRODLO_AGENT)
     # Wpisy reczne nie maja agenta - do liczby "bez kontaktu" nie wchodza.
-    stale = db.execute(
-        select(func.count(Asset.id)).where(
-            Asset.tenant_id == ctx.tenant_id,
-            Asset.zrodlo == ZRODLO_AGENT,
-            Asset.last_seen < stale_before,
-        )
-    ).scalar_one()
-    unassigned = db.execute(
-        select(func.count(Asset.id)).where(
-            Asset.tenant_id == ctx.tenant_id, Asset.owner_id.is_(None)
-        )
-    ).scalar_one()
+    stale = ile(Asset.zrodlo == ZRODLO_AGENT, Asset.last_seen < stale_before)
+    unassigned = ile(Asset.owner_id.is_(None))
+    # Przyrost z ostatniego tygodnia: czy ewidencja rosnie, czy stoi.
+    nowe = ile(Asset.first_seen >= tydzien_temu)
+    nowe_z_agentem = ile(Asset.zrodlo == ZRODLO_AGENT, Asset.first_seen >= tydzien_temu)
+
     # Systemy operacyjne opisuja wylacznie sprzet z agentem. Monitor albo
     # przelacznik nie ma systemu i nie powinien powiekszac slupka "nieznany".
     by_os = db.execute(
@@ -575,16 +575,26 @@ def dashboard(
         .group_by(Asset.typ)
         .order_by(func.count(Asset.id).desc())
     ).all()
+    typy = rodzaje.etykiety(db, ctx)
 
-    # "Ostatni kontakt" to zgloszenia agenta. Wpis reczny nigdy sie nie
-    # zglasza, wiec jego obecnosc tutaj sugerowala kontakt, ktorego nie bylo -
-    # data przy nim to tylko chwila zalozenia wpisu.
+    # Szczegoly zasobow: ostatnio widziane na gorze. Wpis reczny dostaje
+    # status "Brak agenta", a nie date kontaktu, ktorego nie bylo.
+    stron = max(1, -(-total // pulpit.WIERSZY_NA_STRONE))
+    strona = min(strona, stron)
+    zasoby = db.execute(
+        scoping.assets_query(ctx)
+        .order_by(Asset.last_seen.desc(), Asset.hostname)
+        .offset((strona - 1) * pulpit.WIERSZY_NA_STRONE)
+        .limit(pulpit.WIERSZY_NA_STRONE)
+    ).scalars().all()
+    wiersze = [(a, *pulpit.status(a, stale_before)) for a in zasoby]
+
+    # Klasyczny pulpit wciaz pokazuje osobno zgloszenia agentow i wpisy reczne.
     recent = db.execute(
         scoping.assets_query(ctx)
         .where(Asset.zrodlo == ZRODLO_AGENT)
         .order_by(Asset.last_seen.desc()).limit(10)
     ).scalars().all()
-    # Wpisy reczne maja wlasna liste: ostatnio dodane albo poprawione.
     reczne = db.execute(
         scoping.assets_query(ctx)
         .where(Asset.zrodlo == ZRODLO_RECZNE)
@@ -608,14 +618,23 @@ def dashboard(
         unassigned=unassigned,
         by_os=by_os,
         by_typ=by_typ,
-        typy=rodzaje.etykiety(db, ctx),
+        typy=typy,
+        z_agentem=z_agentem,
+        bez_agenta=total - z_agentem,
+        nowe=nowe,
+        nowe_z_agentem=nowe_z_agentem,
+        wykres_typy=pulpit.rodzaje_sprzetu(by_typ, typy),
+        wykres_systemy=pulpit.systemy(by_os),
+        wersje=pulpit.wersje_agentow(db, ctx.tenant_id),
+        nazwa_systemu=pulpit.nazwa_systemu,
+        wiersze=wiersze,
         recent=recent,
         reczne=reczne,
+        strona=strona,
+        stron=stron,
+        na_strone=pulpit.WIERSZY_NA_STRONE,
         changed=changed,
-        z_agentem=db.execute(
-            select(func.count(Asset.id)).where(
-                Asset.tenant_id == ctx.tenant_id, Asset.zrodlo == ZRODLO_AGENT)
-        ).scalar_one(),
+        teraz=utcnow(),
         # Monitorowane uslugi trafiaja na pulpit, bo awaria uslugi jest
         # jedyna rzecza w tym panelu, ktora wymaga reakcji TERAZ - reszta
         # opisuje stan, ktory zaczekaja do jutra.
@@ -662,6 +681,9 @@ def asset_list(
         stmt = stmt.where(Asset.typ == typ)
     if zrodlo in (ZRODLO_AGENT, ZRODLO_RECZNE):
         stmt = stmt.where(Asset.zrodlo == zrodlo)
+    elif zrodlo == "bez_agenta":
+        # Wszystko, co nie ma agenta: wpisy reczne i maszyny z wirtualizacji.
+        stmt = stmt.where(Asset.zrodlo != ZRODLO_AGENT)
     if lokalizacja:
         stmt = stmt.where(Asset.lokalizacja_id == lokalizacja)
     # "Ktory agent co robi" - odpowiedz bez osobnej strony w menu, ktora
