@@ -220,3 +220,37 @@ def test_restart_na_windows_uzywa_zadania_a_nie_uslugi(monkeypatch):
     # Konwencja repozytorium - patrz test_powershell_invocation.
     assert "-NoProfile" in zapamietane["cmd"] and "-NonInteractive" in zapamietane["cmd"]
     assert "-EncodedCommand" not in polecenie and "-ExecutionPolicy" not in polecenie
+
+
+# --- import po podmianie pliku -------------------------------------------------
+#
+# Zgloszenie z Windows po aktualizacji 0.6.131 -> 0.6.149:
+#
+#   INFO  cmdb_agent.upgrade: zainstalowano wersje agenta 0.6.149+1
+#   ERROR cmdb_agent: nieoczekiwany blad agenta: Error -3 while decompressing
+#         data: incorrect header check  (main.py: from . import uslugi)
+#
+# PyInstaller czyta moduly z pliku .exe po jego NAZWIE, a pod ta nazwa lezy
+# po podmianie juz nowa wersja. Wszystko, czego proces potrzebuje po podmianie,
+# musi byc wczytane wczesniej.
+
+def test_moduly_potrzebne_po_podmianie_sa_wczytane_przed_nia(instalacja, monkeypatch):
+    import sys
+
+    biezacy, nowy = instalacja
+    import cmdb_agent
+
+    # Stan procesu, ktory modulu jeszcze nie wczytal.
+    monkeypatch.delitem(sys.modules, "cmdb_agent.uslugi", raising=False)
+    monkeypatch.delattr(cmdb_agent, "uslugi", raising=False)
+    wczytane_w_chwili_podmiany = {}
+    prawdziwy_rename = Path.rename
+
+    def rename(self, cel):
+        wczytane_w_chwili_podmiany.setdefault("uslugi", "cmdb_agent.uslugi" in sys.modules)
+        return prawdziwy_rename(self, cel)
+
+    monkeypatch.setattr(Path, "rename", rename)
+    upgrade._podmien(biezacy, nowy)
+    assert wczytane_w_chwili_podmiany["uslugi"] is True
+
