@@ -1,0 +1,66 @@
+{
+ "available": true,
+ "tenants": [
+  {
+   "id": "51946a01-4c25-4367-9989-087b49a631db",
+   "name": "Przykładowa Sp. z o.o."
+  }
+ ],
+ "technicians": [
+  {
+   "id": "37bc6abf-caf1-4d06-96ac-acd40f20957a",
+   "name": "Marek Technik",
+   "email": "technik@przyklad.pl"
+  }
+ ],
+ "statuses": [
+  {
+   "key": "nowe",
+   "label": "Nowe"
+  },
+  {
+   "key": "w_trakcie",
+   "label": "W trakcie"
+  },
+  {
+   "key": "oczekuje",
+   "label": "Oczekuje"
+  },
+  {
+   "key": "zamkniete",
+   "label": "Zamknięte"
+  }
+ ],
+ "types": [
+  {
+   "key": "incydent",
+   "label": "Incydent"
+  },
+  {
+   "key": "prosba",
+   "label": "Prośba / zmiana"
+  },
+  {
+   "key": "inne",
+   "label": "Inne"
+  }
+ ],
+ "sources": [
+  {
+   "key": "telefon",
+   "label": "Telefon"
+  },
+  {
+   "key": "osobiscie",
+   "label": "Osobiście"
+  },
+  {
+   "key": "inne",
+   "label": "Inne"
+  }
+ ],
+ "mailbox": false,
+ "closing_email": false,
+ "attachment_mb": 25,
+ "waiting": 4
+}

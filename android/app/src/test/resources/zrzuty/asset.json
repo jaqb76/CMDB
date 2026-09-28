@@ -1,0 +1,298 @@
+{
+ "asset": {
+  "id": "5ef74762-83b5-410f-9cdd-83e424d02cf5",
+  "hostname": "SRV-FS01",
+  "type": "komputer",
+  "source": "agent",
+  "os_family": "windows",
+  "primary_ip": "10.10.5.21",
+  "last_seen": "2026-09-28T18:05:40.075703+00:00",
+  "lifecycle": "aktywny",
+  "owner": null,
+  "user": null,
+  "location": null,
+  "role_label": null,
+  "place": null
+ },
+ "facts": {
+  "disks": 1,
+  "updates": 2,
+  "packages": 2,
+  "sessions": 1,
+  "cpu_cores": 6,
+  "cpu_model": "Intel Core i5-11500",
+  "last_boot": "2026-08-18T06:00:00Z",
+  "memory_gb": 16.0,
+  "processes": 1,
+  "storage_gb": 475.9,
+  "cpu_threads": 12,
+  "local_users": 2,
+  "ip_addresses": [
+   "10.10.5.21"
+  ],
+  "mac_addresses": [
+   "00:11:22:33:44:55"
+  ],
+  "administrators": [
+   "FIRMA\\Domain Admins"
+  ],
+  "services_total": 2,
+  "collector_errors": 0,
+  "services_running": 1
+ },
+ "attributes": {},
+ "current_report": {
+  "os": {
+   "name": "Microsoft Windows Server 2022 Standard",
+   "build": "20348",
+   "locale": "pl-PL",
+   "edition": "Professional",
+   "version": "10.0.20348",
+   "timezone": "Central European Time",
+   "last_boot": "2026-08-18T06:00:00Z",
+   "architecture": "64-bit",
+   "install_date": "2023-05-04T10:11:00Z",
+   "build_revision": "2600",
+   "uptime_seconds": 1000,
+   "display_version": "21H2"
+  },
+  "agent": {
+   "version": "0.6.149+1",
+   "collector": "windows",
+   "duration_ms": 812,
+   "collected_at": "2026-09-28T18:05:40.002303Z"
+  },
+  "users": {
+   "sessions": [
+    {
+     "user": "FIRMA\\jkowalski",
+     "session_type": "console"
+    }
+   ],
+   "administrators": [
+    {
+     "name": "FIRMA\\Domain Admins",
+     "type": "group"
+    }
+   ],
+   "local_accounts": [
+    {
+     "sid": "S-1-5-21-...-500",
+     "name": "Administrator",
+     "enabled": false
+    },
+    {
+     "sid": "S-1-5-21-...-1001",
+     "name": "jkowalski",
+     "enabled": true,
+     "full_name": "Jan Kowalski"
+    }
+   ]
+  },
+  "errors": [],
+  "network": {
+   "interfaces": [
+    {
+     "name": "Ethernet",
+     "is_up": true,
+     "gateways": [
+      "10.10.5.1"
+     ],
+     "description": "Intel I219-LM",
+     "dns_servers": [
+      "10.10.5.10"
+     ],
+     "mac_address": "00:11:22:33:44:55",
+     "dhcp_enabled": true,
+     "ip_addresses": [
+      "10.10.5.21"
+     ]
+    }
+   ]
+  },
+  "hardware": {
+   "cpu": {
+    "model": "Intel Core i5-11500",
+    "sockets": 1,
+    "architecture": "x64",
+    "logical_cores": 12,
+    "max_clock_mhz": 2700,
+    "physical_cores": 6
+   },
+   "memory": {
+    "modules": [
+     {
+      "slot": "DIMM A",
+      "type": "DDR4",
+      "speed_mhz": 3200,
+      "capacity_bytes": 8589934592
+     }
+    ],
+    "total_bytes": 17179869184,
+    "available_bytes": 8000000000
+   },
+   "system": {
+    "model": "ProLiant DL360 Gen10",
+    "chassis": "Desktop",
+    "manufacturer": "HPE",
+    "serial_number": "SN-ABC-123",
+    "virtualization": null
+   },
+   "storage": {
+    "logical_disks": [
+     {
+      "label": "System",
+      "mount": "C:",
+      "filesystem": "NTFS",
+      "free_bytes": 210000000000,
+      "size_bytes": 511000000000,
+      "used_percent": 58.9
+     }
+    ],
+    "physical_disks": [
+     {
+      "model": "Samsung SSD 980",
+      "media_type": "SSD",
+      "size_bytes": 512110190592
+     }
+    ]
+   },
+   "firmware": {
+    "version": "1.14.0",
+    "release_date": "2024-02-11"
+   }
+  },
+  "identity": {
+   "arch": "amd64",
+   "fqdn": "srv-fs01.przyklad.local",
+   "domain": "przyklad.local",
+   "hostname": "SRV-FS01",
+   "os_family": "windows"
+  },
+  "software": {
+   "updates": [
+    {
+     "id": "KB5042881",
+     "description": "Security Update",
+     "installed_on": "2026-08-14"
+    },
+    {
+     "id": "KB5041160",
+     "description": "Security Update",
+     "installed_on": "2026-07-10"
+    }
+   ],
+   "packages": [
+    {
+     "name": "7-Zip 23.01",
+     "source": "registry",
+     "version": "23.01",
+     "publisher": "Igor Pavlov"
+    },
+    {
+     "name": "Mozilla Firefox",
+     "source": "registry",
+     "version": "128.0",
+     "publisher": "Mozilla"
+    }
+   ],
+   "services": [
+    {
+     "name": "Spooler",
+     "state": "Running",
+     "start_mode": "Auto",
+     "display_name": "Print Spooler"
+    },
+    {
+     "name": "wuauserv",
+     "state": "Stopped",
+     "start_mode": "Manual",
+     "display_name": "Windows Update"
+    }
+   ],
+   "processes": [
+    {
+     "pid": 4321,
+     "name": "explorer.exe",
+     "memory_bytes": 120000000
+    }
+   ],
+   "updates_pending": {
+    "count": 2,
+    "detail": null,
+    "source": "windows-update",
+    "status": "ok",
+    "entries": [
+     {
+      "id": "KB5043050",
+      "title": "2026-09 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5043050)",
+      "security": true,
+      "severity": "Critical"
+     },
+     {
+      "id": "KB5043126",
+      "title": "2026-09 Cumulative Update for .NET Framework 3.5, 4.8 and 4.8.1 (KB5043126)",
+      "security": true,
+      "severity": "Important"
+     }
+    ],
+    "checked_at": "2026-09-28T18:05:40.002346+00:00",
+    "index_refresh": null,
+    "security_count": 2,
+    "index_age_hours": null
+   }
+  },
+  "report_id": null,
+  "machine_id": "przyklad-srv-fs01",
+  "schema_version": 1
+ },
+ "vulnerabilities": {
+  "status": "ok",
+  "detail": null,
+  "source": "msrc/20348-server",
+  "count": 2,
+  "fixable_count": 2,
+  "critical_count": 2,
+  "open_count": 0,
+  "minor_count": 0,
+  "packages": [
+   {
+    "package": "Aktualizacja zbiorcza KB5042881 (lub nowsza)",
+    "count": 2,
+    "critical": 2,
+    "max_score": 9.8,
+    "installed_version": "10.0.20348.2600",
+    "fixed_version": "10.0.20348.2700"
+   }
+  ],
+  "entries": [
+   {
+    "cve": "CVE-2026-1003",
+    "package": "KB5042999",
+    "installed_version": "10.0.20348.2600",
+    "fixed_version": "10.0.20348.2655",
+    "status": "resolved",
+    "minor": false,
+    "base_score": 9.8,
+    "severity": "CRITICAL",
+    "priority": "Critical",
+    "summary": "Windows TCP/IP Remote Code Execution Vulnerability",
+    "link": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-1003"
+   },
+   {
+    "cve": "CVE-2026-1001",
+    "package": "KB5042881",
+    "installed_version": "10.0.20348.2600",
+    "fixed_version": "10.0.20348.2700",
+    "status": "resolved",
+    "minor": false,
+    "base_score": 7.8,
+    "severity": "HIGH",
+    "priority": "Important",
+    "summary": "Windows Kernel Elevation of Privilege Vulnerability",
+    "link": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-1001"
+   }
+  ],
+  "truncated": 0
+ }
+}
