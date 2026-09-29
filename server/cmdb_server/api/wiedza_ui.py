@@ -281,6 +281,8 @@ def _formularz(request: Request, user: PortalUser, ctx: TenantContext, db: Sessi
         tagi=wiedza.podpowiedzi(db, ctx, SLOWNIK_WIEDZY_TAG, limit=500),
         systemy=wiedza.podpowiedzi(db, ctx, SLOWNIK_WIEDZY_SYSTEM, limit=500),
         pola_maszyny=tresc.POLA_MASZYNY, panele=tresc.PANELE,
+        tresc_html=tresc.renderuj(pola.get("tresc") or "", edycja=True),
+        limit_mb=wiedza.limit_zalacznika() // (1024 * 1024),
     )
     odpowiedz.status_code = status_code
     return odpowiedz
@@ -349,6 +351,33 @@ def _pola_formularza(tytul, streszczenie, tresc_, kategoria, przestrzen_id, rodz
     }
 
 
+def _wklejone(obrazy: list[UploadFile]) -> list[wiedza.Plik]:
+    """Obrazy wklejone w edytorze (pole "obrazy"), w kolejnosci numerow kb-obraz:N."""
+    limit = wiedza.limit_zalacznika()
+    # Czytamy o bajt wiecej niz limit - tyle wystarczy, zeby wiedziec, ze
+    # plik jest za duzy; dodaj_zalaczniki odrzuci go z czytelnym bledem.
+    return [wiedza.Plik(o.filename or "obraz.png", o.content_type, o.file.read(limit + 1))
+            for o in obrazy[:wiedza.MAKS_OBRAZOW * 2]]
+
+
+def _bez_obrazow(pola: dict, blad: str) -> str:
+    """Po bledzie formularz wraca bez plikow - zabieramy z tresci znaczniki
+    wklejonych obrazow i mowimy o tym wprost."""
+    pola["tresc"], byly = wiedza.bez_wklejonych_obrazow(pola.get("tresc") or "")
+    return blad + (" Wklejone obrazy nie zostały zapisane - wklej je ponownie." if byly else "")
+
+
+def _zapisz_z_obrazami(db: Session, ctx: TenantContext, pola: dict, obrazy: list[UploadFile],
+                       art: WiedzaArtykul | None, opis_zmiany: str):
+    """Zapis artykulu razem z wklejonymi obrazami - jedna wersja na calosc."""
+    tresc_z_adresami, pliki = wiedza.wklejone_obrazy(pola["tresc"], _wklejone(obrazy))
+    dane = wiedza.sprawdz_dane({**pola, "tresc": tresc_z_adresami})
+    art, nowa = wiedza.zapisz(db, ctx, dane, art, opis_zmiany)
+    if pliki and nowa is not None:
+        wiedza.dodaj_zalaczniki(db, ctx, art, pliki, wersja=nowa)
+    return art, nowa, pliki
+
+
 @router.post("/wiedza/nowy")
 def utworz(
     request: Request,
@@ -368,6 +397,7 @@ def utworz(
     przeglad_co_mies: str = Form("6", max_length=4),
     na_dyzur: str = Form(""),
     opis_zmiany: str = Form("", max_length=300),
+    obrazy: list[UploadFile] = File(default=[]),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
@@ -381,11 +411,13 @@ def utworz(
         pola["przestrzen_id"] = wiedza.zapewnij_przestrzen(db, ctx).id
     _rodzaje_na_klucze(db, ctx, pola)
     try:
-        art, _ = wiedza.zapisz(db, ctx, wiedza.sprawdz_dane(pola), opis_zmiany=opis_zmiany)
+        art, _, pliki = _zapisz_z_obrazami(db, ctx, pola, obrazy, None, opis_zmiany)
     except ValueError as blad:
         db.rollback()
-        return _formularz(request, user, ctx, db, art=None, pola=pola, blad=str(blad), status_code=400)
-    audit(db, ctx, "wiedza.artykul.utworzony", art.tytul, {"id": art.id}, ip=client_ip(request))
+        return _formularz(request, user, ctx, db, art=None, pola=pola,
+                          blad=_bez_obrazow(pola, str(blad)), status_code=400)
+    audit(db, ctx, "wiedza.artykul.utworzony", art.tytul,
+          {"id": art.id, **({"obrazy": [p.nazwa for p in pliki]} if pliki else {})}, ip=client_ip(request))
     db.commit()
     return _wroc(f"/wiedza/a/{art.id}", "Opublikowano artykuł")
 
@@ -425,6 +457,7 @@ def zapisz(
     na_dyzur: str = Form(""),
     opis_zmiany: str = Form("", max_length=300),
     wersja: int = Form(0),
+    obrazy: list[UploadFile] = File(default=[]),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
     ctx: TenantContext = Depends(resolve_tenant),
@@ -444,18 +477,20 @@ def zapisz(
         pola["wersja"] = art.wersja
         return _formularz(
             request, user, ctx, db, art=art, pola=pola, status_code=409,
-            blad=(f"W międzyczasie {art.zmienil or 'ktoś'} zapisał wersję {art.wersja}. "
-                  "Twoja treść jest poniżej - sprawdź historię i zapisz ponownie."))
+            blad=_bez_obrazow(pola, f"W międzyczasie {art.zmienil or 'ktoś'} zapisał wersję {art.wersja}. "
+                                    "Twoja treść jest poniżej - sprawdź historię i zapisz ponownie."))
     try:
-        _, nowa = wiedza.zapisz(db, ctx, wiedza.sprawdz_dane(pola), art, opis_zmiany)
+        _, nowa, pliki = _zapisz_z_obrazami(db, ctx, pola, obrazy, art, opis_zmiany)
     except ValueError as blad:
         db.rollback()
-        return _formularz(request, user, ctx, db, art=art, pola=pola, blad=str(blad), status_code=400)
+        return _formularz(request, user, ctx, db, art=art, pola=pola,
+                          blad=_bez_obrazow(pola, str(blad)), status_code=400)
     if nowa is None:
         db.rollback()
         return _wroc(f"/wiedza/a/{art.id}", "Bez zmian - nowa wersja nie powstała")
     audit(db, ctx, "wiedza.artykul.zmieniony", art.tytul,
-          {"id": art.id, "wersja": art.wersja, "pola": sorted(nowa.zmiany)}, ip=client_ip(request))
+          {"id": art.id, "wersja": art.wersja, "pola": sorted(nowa.zmiany),
+           **({"obrazy": [p.nazwa for p in pliki]} if pliki else {})}, ip=client_ip(request))
     db.commit()
     return _wroc(f"/wiedza/a/{art.id}", f"Zapisano wersję {art.wersja}")
 
@@ -763,13 +798,17 @@ def podglad_dopasowania(
 def podglad_tresci(
     request: Request,
     tresc_: str = Form("", alias="tresc", max_length=wiedza.MAKS_TRESC + 1000),
+    edycja: str = Form(""),
     csrf_token: str = Form(""),
     user: PortalUser = Depends(require_user),
 ) -> HTMLResponse:
     """Podglad tresci w edytorze - renderuje serwer, tym samym kodem co strona
-    artykulu, wiec podglad nie rozni sie od tego, co zobaczy czytelnik."""
+    artykulu, wiec podglad nie rozni sie od tego, co zobaczy czytelnik.
+
+    ``edycja=1`` - HTML dla edytora wizualnego po powrocie z trybu Markdown.
+    """
     verify_csrf(request, user, csrf_token)
-    return HTMLResponse(str(tresc.renderuj(tresc_)))
+    return HTMLResponse(str(tresc.renderuj(tresc_, edycja=bool(edycja))))
 
 
 def _linki(db: Session, ctx: TenantContext, nazwy: list[str]) -> dict[str, str]:

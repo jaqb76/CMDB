@@ -75,9 +75,47 @@ Test-NetConnection {hostname} -Port 5022
   maszyny”) podstawia jej dane; podstawienie działa w tekście i w blokach
   kodu, nigdy wewnątrz atrybutów HTML.
 
-Edytor to pole Markdown z paskiem przycisków i podglądem renderowanym przez
-serwer (ten sam kod co strona artykułu). Działa bez bibliotek z CDN —
-portal pracuje także w sieciach bez internetu.
+### Edytor
+
+Domyślnie **edytor wizualny** (`contenteditable`): treść wygląda jak na
+stronie artykułu, pasek ma style akapitu, pogrubienie, listy, kroki, kod,
+tabele, panele, pola maszyny i obrazy. Zapis w bazie się nie zmienia — przy
+wysyłce formularza edytor zamienia treść na Markdown (`wiedza_wklej.js`,
+`doMarkdown`). Jeśli edytor niczego nie zmienił, idzie Markdown wczytany
+z bazy bez zmian, więc otwarcie i zapis bez edycji nie tworzą wersji ani nie
+przeformatowują starych artykułów. HTML do edycji renderuje serwer
+(`renderuj(..., edycja=True)` — pola `{hostname}` zostają tekstem).
+
+Wklejanie (`oczysc`) przyjmuje `text/html` ze schowka i przepisuje go na
+białą listę znaczników:
+
+* **Word** — listy z akapitów `mso-list` (numerowane i zagnieżdżone),
+  nagłówki, tabele; akapity w Courier/Consolas → blok kodu; style, klasy
+  `Mso*` i `<o:p>` znikają,
+* **Confluence** — panele `confluence-information-macro-*` i
+  `data-panel-type` → panele portalu z tytułem, makro kodu → blok kodu
+  z językiem (`brush:`), listy zadań → ☑/☐,
+* **Excel / TSV** — tabela z pierwszym wierszem jako nagłówkiem, scalone
+  komórki rozbite; w komórce Markdown nie ma akapitów ani list, więc ich
+  treść jest spłaszczana do jednej linii,
+* w bloku kodu i w komórce tabeli wkleja się zawsze sam tekst;
+  Ctrl+Shift+V — sam tekst wszędzie.
+
+Obrazy: zrzut wklejony ze schowka, przeciągnięty albo wybrany przyciskiem
+*Obraz* jedzie z formularzem w polu `obrazy`, a w treści zostaje
+`![opis](kb-obraz:N)`. Serwer sprawdza, że plik jest obrazem (typ zgodny
+z początkiem pliku), zapisuje go jako załącznik z nadanym z góry id
+i podmienia znacznik na `/wiedza/zalacznik/<id>/podglad` — w tej samej
+wersji co zmiana treści. Znacznik bez pliku znika; po błędzie formularza
+znaczniki są usuwane z treści z komunikatem „wklej je ponownie”. Obrazów
+osadzonych w dokumencie Worda (`file:///…`) strona nie może odczytać —
+edytor je liczy i mówi autorowi, a obrazy z obcych serwerów zamienia na
+odnośniki (CSP panelu nie pokazuje obrazków spoza portalu).
+
+Tryb **Markdown** (przełącznik, zapamiętany w przeglądarce) to dawne pole
+z przyciskami i podglądem renderowanym przez serwer. Bez JavaScriptu
+formularz działa jak dotąd — zwykłe pole Markdown. Wszystko bez bibliotek
+z CDN — portal pracuje także w sieciach bez internetu.
 
 ## Model danych
 
@@ -204,5 +242,4 @@ kopii zapasowej obok zrzutu bazy, tak jak załączniki helpdesku.
 * import artykułów z hubzso i z Confluence,
 * artykuły dotyczące maszyny w panelu zgłoszenia helpdesku,
 * komentarze i ocena „pomógł / nieaktualny”,
-* warunki po relacjach (wszystkie VM na hoście X),
-* WYSIWYG w stylu Confluence (zapis pozostanie w Markdown).
+* warunki po relacjach (wszystkie VM na hoście X).

@@ -10,16 +10,17 @@
   <div>
     <h1>{% if art %}Edycja artykułu{% else %}Nowy artykuł{% endif %}</h1>
     <p class="muted">
-      Treść w Markdown: przyciski nad polem wstawiają nagłówki, kroki, bloki kodu
-      i panele. Każde zapisanie zmian to nowa wersja w historii; zapis bez zmian
-      wersji nie tworzy.
+      Pisz jak w edytorze tekstu albo wklej treść z Worda, Confluence czy Excela -
+      nagłówki, listy, tabele, bloki kodu i panele zostaną zachowane. Obraz wklejony
+      ze schowka zapisze się jako załącznik artykułu. Każde zapisanie zmian to nowa
+      wersja w historii; zapis bez zmian wersji nie tworzy.
     </p>
   </div>
 </div>
 
 {% if blad %}<div class="alert alert-error" role="alert">{{ blad }}</div>{% endif %}
 
-<form method="post" action="{% if art %}/wiedza/a/{{ art.id }}{% else %}/wiedza/nowy{% endif %}" id="kb-formularz" class="kb-edytor" data-kb-edytor>
+<form method="post" action="{% if art %}/wiedza/a/{{ art.id }}{% else %}/wiedza/nowy{% endif %}" id="kb-formularz" class="kb-edytor" enctype="multipart/form-data" data-kb-edytor data-limit-mb="{{ limit_mb }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   {% if art %}<input type="hidden" name="wersja" value="{{ pola.wersja }}">{% endif %}
 
@@ -33,28 +34,58 @@
 
       <label for="kb-tresc" class="odstep-s">Treść <span class="wymagane">*</span></label>
       <div class="kb-narzedzia" role="toolbar" aria-label="Formatowanie" data-kb-narzedzia hidden>
-        <button type="button" class="btn btn-small" data-md="**|**" title="Pogrubienie"><b>B</b></button>
-        <button type="button" class="btn btn-small" data-md="`|`" title="Kod w tekście"><code>kod</code></button>
-        <button type="button" class="btn btn-small" data-md-linia="## " title="Nagłówek">Nagłówek</button>
-        <button type="button" class="btn btn-small" data-md-linia="- " title="Lista">• Lista</button>
-        <button type="button" class="btn btn-small" data-md-linia="1. " title="Kroki">1. Kroki</button>
-        <button type="button" class="btn btn-small" data-md="&#10;```&#10;|&#10;```&#10;" title="Blok kodu">Blok kodu</button>
-        <button type="button" class="btn btn-small" data-md="&#10;| Kolumna | Kolumna |&#10;|---|---|&#10;| | |&#10;|" title="Tabela">Tabela</button>
-        {% for kod, nazwa in panele.items() %}
-        <button type="button" class="btn btn-small kb-przycisk-{{ kod }}" data-md="&#10;:::{{ kod }} {{ nazwa }}&#10;|&#10;:::&#10;" title="Panel: {{ nazwa | lower }}">Panel: {{ nazwa | lower }}</button>
-        {% endfor %}
+        <select data-kb-styl aria-label="Styl akapitu" title="Styl akapitu">
+          <option value="p">Zwykły tekst</option>
+          <option value="h2">Nagłówek</option>
+          <option value="h3">Podnagłówek</option>
+          <option value="h4">Mały nagłówek</option>
+        </select>
+        <button type="button" class="btn btn-small" data-wiz="bold" data-md="**|**" title="Pogrubienie (Ctrl+B)"><b>B</b></button>
+        <button type="button" class="btn btn-small" data-wiz="italic" data-md="*|*" title="Kursywa (Ctrl+I)"><i>I</i></button>
+        <button type="button" class="btn btn-small" data-wiz="strikeThrough" data-md="~~|~~" title="Przekreślenie"><s>S</s></button>
+        <button type="button" class="btn btn-small" data-wiz="kod" data-md="`|`" title="Kod w tekście"><code>kod</code></button>
+        <button type="button" class="btn btn-small" data-wiz="link" data-md="[|](https://)" title="Odnośnik">Link</button>
+        <span class="kb-narzedzia-odstep" aria-hidden="true"></span>
+        <button type="button" class="btn btn-small" data-wiz="insertUnorderedList" data-md-linia="- " title="Lista">• Lista</button>
+        <button type="button" class="btn btn-small" data-wiz="insertOrderedList" data-md-linia="1. " title="Kroki">1. Kroki</button>
+        <button type="button" class="btn btn-small" data-wiz="blok-kodu" data-md="&#10;```&#10;|&#10;```&#10;" title="Blok kodu">Blok kodu</button>
+        <button type="button" class="btn btn-small" data-wiz="tabela" data-md="&#10;| Kolumna | Kolumna |&#10;|---|---|&#10;| | |&#10;|" title="Tabela">Tabela</button>
+        <button type="button" class="btn btn-small" data-wiz="obraz" title="Obraz z pliku - zapisze się jako załącznik">Obraz</button>
+        <select data-kb-panel aria-label="Wstaw panel">
+          <option value="">Panel…</option>
+          {% for kod, nazwa in panele.items() %}<option value="{{ kod }}">{{ nazwa }}</option>{% endfor %}
+        </select>
         <select data-md-pole aria-label="Wstaw pole maszyny">
           <option value="">Pole maszyny…</option>
           {% for kod, opis in pola_maszyny.items() %}<option value="{{ '{' ~ kod ~ '}' }}">{{ '{' ~ kod ~ '}' }} — {{ opis }}</option>{% endfor %}
         </select>
-        <button type="button" class="btn btn-small do-prawej" data-kb-podglad-przycisk>Podgląd</button>
+        <button type="button" class="btn btn-small" data-wiz="removeFormat" title="Usuń formatowanie zaznaczenia">T&#x338;</button>
+        <span class="kb-tryb do-prawej" role="group" aria-label="Tryb edycji">
+          <button type="button" class="btn btn-small" data-kb-podglad-przycisk hidden>Podgląd</button>
+          <button type="button" class="btn btn-small" data-kb-tryb="wiz" aria-pressed="true">Edytor</button>
+          <button type="button" class="btn btn-small" data-kb-tryb="md" aria-pressed="false" title="Treść w Markdown - dla znających składnię">Markdown</button>
+        </span>
+      </div>
+      <div class="kb-link-okno" data-kb-link hidden>
+        <label for="kb-adres-linku">Adres odnośnika</label>
+        <input id="kb-adres-linku" type="text" inputmode="url" autocomplete="off" placeholder="https://…" data-kb-adres-linku>
+        <button type="button" class="btn btn-small btn-primary" data-kb-link-wstaw>Wstaw</button>
+        <button type="button" class="btn btn-small" data-kb-link-anuluj>Anuluj</button>
       </div>
       <textarea id="kb-tresc" name="tresc" rows="22" maxlength="200000" required class="kb-pole-tresci" spellcheck="true">{{ pola.tresc or '' }}</textarea>
+      <template data-kb-tresc-html>{{ tresc_html }}</template>
       <div class="kb-tresc kb-podglad" data-kb-podglad hidden></div>
-      <p class="muted small">
+      <input type="file" name="obrazy" multiple accept="image/png,image/jpeg,image/gif,image/webp" hidden data-kb-obrazy>
+      <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden data-kb-wybor-obrazu aria-label="Wybierz obraz">
+      <div class="kb-komunikat" role="status" data-kb-komunikat hidden></div>
+      <p class="muted small" data-kb-pomoc-md>
         Panele: <code>:::uwaga Tytuł</code> … <code>:::</code> (info, uwaga, stop, ok).
         Pola <code>{hostname}</code>, <code>{fqdn}</code>, <code>{ip}</code>, <code>{system}</code>,
         <code>{lokalizacja}</code> wypełniają się, gdy artykuł otworzysz z karty maszyny.
+      </p>
+      <p class="muted small" data-kb-pomoc-wiz hidden>
+        Tab w tabeli przechodzi do następnej komórki, w ostatniej dodaje wiersz. Ctrl+Shift+V wkleja sam tekst.
+        Pola maszyny, np. <code>{hostname}</code>, wypełniają się, gdy artykuł otworzysz z karty maszyny.
       </p>
     </div>
 
@@ -146,7 +177,7 @@
           <label for="kb-notatki-diag">Diagram — opis lub źródło</label>
           <textarea id="kb-notatki-diag" name="notatki_diagramu" rows="2" maxlength="5000">{{ pola.notatki_diagramu or '' }}</textarea>
         </div>
-        {% if not art %}<p class="muted small">Załączniki dodasz na stronie artykułu po opublikowaniu.</p>{% endif %}
+        {% if not art %}<p class="muted small">Obrazy możesz wkleić prosto do treści. Inne pliki dodasz na stronie artykułu po opublikowaniu.</p>{% endif %}
       </div>
     </div>
   </div>
@@ -157,4 +188,4 @@
   <datalist id="kb-lista-lokalizacja">{% for l in lokalizacje %}<option value="{{ l }}"></option>{% endfor %}</datalist>
 </form>
 {% endblock %}
-{% block skrypty %}<script src="{{ zasob('wiedza.js') }}"></script>{% endblock %}
+{% block skrypty %}<script src="{{ zasob('wiedza_wklej.js') }}"></script><script src="{{ zasob('wiedza.js') }}"></script>{% endblock %}

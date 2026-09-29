@@ -1532,6 +1532,8 @@ a.kb-licznik:hover { text-decoration: none; background: var(--accent); color: va
 .kb-tresc table { border-collapse: collapse; margin: 0 0 14px; display: block; overflow-x: auto; max-width: 100%; }
 .kb-tresc th, .kb-tresc td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; vertical-align: top; }
 .kb-tresc th { background: var(--bg); }
+/* Tabele wklejane z Excela: adres czy nazwa hosta nie lamie sie w polowie - tabela przewija sie w poziomie. */
+.kb-tresc th, .kb-tresc td { overflow-wrap: normal; }
 .kb-tresc blockquote { margin: 0 0 12px; padding: 2px 14px; border-left: 3px solid var(--border); color: var(--muted); }
 .kb-tresc img { max-width: 100%; }
 .kb-panel { border-radius: 6px; padding: 10px 14px; margin: 0 0 14px; border: 1px solid var(--border); background: var(--surface); border-left-width: 4px; }
@@ -1565,6 +1567,22 @@ a.kb-licznik:hover { text-decoration: none; background: var(--accent); color: va
 .kb-narzedzia select { width: auto; font-size: 13px; padding: 3px 6px; }
 .kb-narzedzia + .kb-pole-tresci { border-top-left-radius: 0; border-top-right-radius: 0; }
 .kb-podglad { border: 1px dashed var(--border); border-radius: var(--radius); padding: 14px 16px; min-height: 380px; max-width: none; }
+/* edytor wizualny - tresc wyglada jak na stronie artykulu */
+.kb-narzedzia { position: sticky; top: 0; z-index: 3; }
+.kb-narzedzia-odstep { width: 1px; align-self: stretch; margin: 2px 3px; background: var(--border); }
+.kb-tryb { display: inline-flex; gap: 4px; align-items: center; }
+.kb-tryb [aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.kb-wizualny { min-height: 380px; max-width: none; padding: 14px 16px; border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); background: var(--surface); overflow-x: auto; cursor: text; }
+.kb-wizualny:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.kb-wizualny td, .kb-wizualny th { min-width: 60px; }
+.kb-wizualny img { cursor: default; }
+.kb-wizualny img[data-kb-obraz] { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.kb-wizualny .kb-panel-tytul:empty::before { content: "Tytuł panelu"; color: var(--muted); }
+.kb-link-okno { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px; border: 1px solid var(--border); border-bottom: 0; background: var(--bg); }
+.kb-link-okno label { margin: 0; font-size: 13px; }
+.kb-link-okno input { flex: 1 1 220px; width: auto; }
+.kb-komunikat { margin-top: 8px; padding: 8px 12px; border-radius: var(--radius); background: var(--ok-bg); color: var(--ok-fg); font-size: 13.5px; }
+.kb-komunikat.kb-komunikat-uwaga { background: var(--warn-bg); color: var(--warn-fg); }
 .kb-warunek { display: grid; grid-template-columns: minmax(0, 1fr) 24px; gap: 4px 6px; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
 .kb-warunek input { grid-column: 1; }
 .kb-warunek [data-kb-usun-warunek] { grid-column: 2; grid-row: 1 / span 2; }

@@ -607,3 +607,93 @@ def test_kopia_zawiera_katalog_wiedzy():
 
     assert kopie.KATALOGI["wiedza"] == "wiedza_dir"
     assert Path(get_settings().wiedza_dir).name == "wiedza"
+
+
+# --- edytor wizualny: obrazy wklejone ze schowka ------------------------------------------
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
+
+
+def test_obraz_wklejony_w_nowy_artykul_zapisuje_sie_jako_zalacznik(
+        client, tenant_a, make_user, katalog_wiedzy):
+    csrf = zaloguj(client, tenant_a, make_user)
+    odpowiedz = client.post(
+        "/wiedza/nowy",
+        data=formularz(csrf, tresc="Przed\n\n![zrzut](kb-obraz:0)\n\nPo ![](kb-obraz:0)"),
+        files=[("obrazy", ("obraz-1.png", PNG, "image/png"))], follow_redirects=False)
+    assert odpowiedz.status_code == 303, odpowiedz.text
+    artykul_id = odpowiedz.headers["location"].split("/wiedza/a/")[1].split("?")[0]
+    with SessionLocal() as db:
+        art = db.get(WiedzaArtykul, artykul_id)
+        zal = db.execute(select(WiedzaZalacznik)).scalar_one()
+    # Ten sam plik wstawiony dwa razy to jeden zalacznik i dwa odwolania.
+    adres = f"/wiedza/zalacznik/{zal.id}/podglad"
+    assert art.tresc == f"Przed\n\n![zrzut]({adres})\n\nPo ![]({adres})"
+    assert zal.nazwa == "obraz-1.png" and zal.artykul_id == artykul_id
+    assert (katalog_wiedzy / "zalaczniki" / zal.sciezka).read_bytes() == PNG
+    # Obrazy sa czescia utworzenia artykulu - bez osobnej wersji.
+    historia = wersje(artykul_id)
+    assert len(historia) == 1
+    assert historia[0].zmiany == {"zalaczniki": {"old": [], "new": ["obraz-1.png"]}}
+    obraz = client.get(adres)
+    assert obraz.status_code == 200 and obraz.headers["content-type"] == "image/png"
+    assert f'src="{adres}"' in client.get(f"/wiedza/a/{artykul_id}").text
+
+
+def test_obraz_wklejony_przy_edycji_to_jedna_wersja(client, tenant_a, make_user):
+    csrf = zaloguj(client, tenant_a, make_user)
+    artykul_id = utworz(client, csrf)
+    dane = {**pola_edycji(client, artykul_id), "csrf_token": csrf,
+            "tresc": "Nowa treść\n\n![](kb-obraz:1)"}
+    # Plik 0 zostal usuniety z tresci przed zapisem - nie trafia do zalacznikow.
+    odpowiedz = client.post(f"/wiedza/a/{artykul_id}", data=dane, follow_redirects=False, files=[
+        ("obrazy", ("usuniety.png", PNG, "image/png")),
+        ("obrazy", ("zostaje.png", PNG, "image/png")),
+    ])
+    assert odpowiedz.status_code == 303, odpowiedz.text
+    with SessionLocal() as db:
+        zalaczniki = list(db.execute(select(WiedzaZalacznik)).scalars())
+        art = db.get(WiedzaArtykul, artykul_id)
+    assert [z.nazwa for z in zalaczniki] == ["zostaje.png"]
+    assert art.wersja == 2 and f"/wiedza/zalacznik/{zalaczniki[0].id}/podglad" in art.tresc
+    ostatnia = wersje(artykul_id)[-1]
+    assert set(ostatnia.zmiany) == {"tresc", "zalaczniki"}
+
+
+def test_plik_udajacy_obraz_jest_odrzucany_a_tresc_wraca_bez_znacznika(
+        client, tenant_a, make_user, katalog_wiedzy):
+    csrf = zaloguj(client, tenant_a, make_user)
+    odpowiedz = client.post(
+        "/wiedza/nowy", data=formularz(csrf, tresc="Tekst\n\n![](kb-obraz:0)"),
+        files=[("obrazy", ("skrypt.png", b"<script>alert(1)</script>", "image/png"))],
+        follow_redirects=False)
+    assert odpowiedz.status_code == 400
+    assert "nie jest obrazem" in odpowiedz.text and "wklej je ponownie" in odpowiedz.text
+    assert "kb-obraz:" not in odpowiedz.text
+    with SessionLocal() as db:
+        assert db.execute(select(WiedzaArtykul)).first() is None
+        assert db.execute(select(WiedzaZalacznik)).first() is None
+    assert not (katalog_wiedzy / "zalaczniki").exists() or not any((katalog_wiedzy / "zalaczniki").rglob("*.*"))
+
+
+def test_znacznik_obrazu_bez_pliku_znika_z_tresci(client, tenant_a, make_user):
+    csrf = zaloguj(client, tenant_a, make_user)
+    artykul_id = utworz(client, csrf, tresc="A ![](kb-obraz:3) B")
+    with SessionLocal() as db:
+        assert db.get(WiedzaArtykul, artykul_id).tresc == "A  B"
+        assert db.execute(select(WiedzaZalacznik)).first() is None
+
+
+def test_html_dla_edytora_zostawia_pola_maszyny_jako_tekst(client, tenant_a, make_user):
+    zrodlo = "Host {hostname}\n\n:::uwaga Tytuł\nTreść\n:::"
+    html = str(tresc.renderuj(zrodlo, edycja=True))
+    assert "Host {hostname}" in html and "kb-pole" not in html
+    assert 'class="kb-panel kb-panel-uwaga"' in html
+    csrf = zaloguj(client, tenant_a, make_user)
+    odpowiedz = client.post("/wiedza/podglad", data={"csrf_token": csrf, "tresc": zrodlo, "edycja": "1"})
+    assert odpowiedz.status_code == 200 and "Host {hostname}" in odpowiedz.text
+    # Formularz edycji niesie HTML dla edytora wizualnego i pole na obrazy.
+    artykul_id = utworz(client, csrf, tresc=zrodlo)
+    strona = client.get(f"/wiedza/a/{artykul_id}/edycja").text
+    assert "<template data-kb-tresc-html>" in strona and 'name="obrazy"' in strona
+    assert 'enctype="multipart/form-data"' in strona
