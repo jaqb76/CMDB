@@ -978,19 +978,24 @@ def wydania_we_flocie(db: Session) -> dict[str, set[str]]:
     from ..models import Asset, InventorySnapshot
 
     wynik: dict[str, set[str]] = {}
+    # Tylko sekcja "os" - obie funkcje rozpoznajace wydanie nie patrza na nic
+    # wiecej, a pelny raport z lista pakietow to setki kilobajtow na maszyne.
+    # 500 takich raportow przy kazdym wejsciu na przeglad administratora bylo
+    # glownym kosztem tej strony.
     podzapytanie = (
-        select(InventorySnapshot.payload)
+        select(InventorySnapshot.payload["os"])
         .join(Asset, Asset.id == InventorySnapshot.asset_id)
         .where(Asset.os_family.in_(("linux", "windows")))
         .order_by(InventorySnapshot.collected_at.desc())
         .limit(500)
     )
-    for (payload,) in db.execute(podzapytanie):
-        windows = cve_windows.wydanie_maszyny(payload or {})
+    for (system,) in db.execute(podzapytanie):
+        payload = {"os": system if isinstance(system, dict) else {}}
+        windows = cve_windows.wydanie_maszyny(payload)
         if windows:
             wynik.setdefault(cve_windows.ZRODLO, set()).add(windows)
             continue
-        wydanie = wydanie_maszyny(payload or {})
+        wydanie = wydanie_maszyny(payload)
         if wydanie:
             source, release = wydanie
             wynik.setdefault(source, set()).add(release)

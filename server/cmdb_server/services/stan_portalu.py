@@ -48,19 +48,26 @@ def statystyki_ruchu(db: Session, godzin: int = 24) -> dict:
     od = (teraz - timedelta(hours=godzin)).replace(second=0, microsecond=0)
     wiersze = db.execute(select(StatystykaRuchu).where(StatystykaRuchu.minuta >= od)).scalars().all()
 
+    wedlug_grupy: dict[str, list] = {}
+    for w in wiersze:
+        wedlug_grupy.setdefault(w.grupa, []).append(w)
     grupy = {}
     for nazwa in ruch.NAZWY_GRUP:
-        grupy[nazwa] = _zsumuj([w for w in wiersze if w.grupa == nazwa])
+        grupy[nazwa] = _zsumuj(wedlug_grupy.get(nazwa, []))
         grupy[nazwa]["nazwa"] = ruch.NAZWY_GRUP[nazwa]
     # Bez plikow statycznych - ich czas to czas dysku, nie aplikacji.
     aplikacja = [w for w in wiersze if w.grupa != "statyczne"]
 
+    # Jeden przebieg po wierszach zamiast przegladania wszystkich dla kazdej
+    # godziny - przy 30 dniach to byly setki milionow porownan.
+    wedlug_godziny: dict = {}
+    for w in aplikacja:
+        wedlug_godziny.setdefault(as_utc(w.minuta).replace(minute=0), []).append(w)
+
     godziny = []
     for krok in range(godzin - 1, -1, -1):
         poczatek = (teraz - timedelta(hours=krok)).replace(minute=0, second=0, microsecond=0)
-        koniec = poczatek + timedelta(hours=1)
-        w_godzinie = [w for w in aplikacja if poczatek <= as_utc(w.minuta) < koniec]
-        suma = _zsumuj(w_godzinie)
+        suma = _zsumuj(wedlug_godziny.get(as_utc(poczatek), []))
         godziny.append({"godzina": poczatek, "liczba": suma["liczba"],
                         "bledy": suma["bledy_5xx"], "p95_ms": suma["p95_ms"]})
     najwiecej = max((g["liczba"] for g in godziny), default=0)

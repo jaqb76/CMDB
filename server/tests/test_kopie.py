@@ -86,6 +86,33 @@ def test_archiwum_zawiera_baze_pliki_i_manifest(client, tenant_a, kopie):
     assert kopia.rodzaj == "reczna"
 
 
+def test_manifest_jest_na_poczatku_archiwum(client, tenant_a, kopie):
+    """Lista kopii czyta manifest bez rozpakowywania zrzutu bazy."""
+    kopia = kopie.utworz("reczna")
+    with tarfile.open(kopia.sciezka, "r:gz") as paczka:
+        assert paczka.next().name == "manifest.json"
+
+
+def test_lista_nie_rozpakowuje_archiwum_drugi_raz(client, tenant_a, kopie, monkeypatch):
+    """Przeglad administratora pyta o kopie przy kazdym wejsciu - stare
+    archiwa maja manifest za zrzutem bazy i czytanie go to pelne rozpakowanie."""
+    kopia = kopie.utworz("reczna", autor="test@mojadomena.pl")
+    kopie.lista()
+    czytaj = kopie._czytaj_manifest
+
+    def wybuchnij(_sciezka):
+        raise AssertionError("manifest czytany ponownie mimo niezmienionego pliku")
+
+    monkeypatch.setattr(kopie, "_czytaj_manifest", wybuchnij)
+    assert kopie.lista()[0].opis["autor"] == "test@mojadomena.pl"
+
+    # Podmieniony plik (inny rozmiar) nie moze dostac starego opisu.
+    monkeypatch.setattr(kopie, "_czytaj_manifest", czytaj)
+    with tarfile.open(kopia.sciezka, "w:gz"):
+        pass
+    assert kopie.lista()[0].opis == {}
+
+
 def test_przerwana_kopia_nie_zostaje_na_liscie(client, tenant_a, kopie, monkeypatch):
     """Niekompletny plik na liscie wygladalby jak kopia, ktorej nie ma."""
     def wybuchnij(*_args, **_kwargs):

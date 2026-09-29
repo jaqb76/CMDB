@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -143,16 +144,48 @@ def _rodzaj_z_nazwy(nazwa: str) -> str:
     return "reczna"
 
 
-def _opis_archiwum(sciezka: Path) -> dict:
-    """Manifest ze srodka archiwum. Pusty slownik, gdy go tam nie ma."""
+def _czytaj_manifest(sciezka: Path) -> dict:
+    """Manifest ze srodka archiwum. Pusty slownik, gdy go tam nie ma.
+
+    Idziemy po kolejnych plikach i konczymy na manifescie. ``extractfile``
+    z nazwa najpierw wczytuje spis CALEGO archiwum, a gzip nie pozwala
+    przeskoczyc - czyli rozpakowanie zrzutu bazy i wszystkich zalacznikow
+    tylko po to, zeby przeczytac kilkaset bajtow opisu.
+    """
     try:
         with tarfile.open(sciezka, "r:gz") as paczka:
-            plik = paczka.extractfile(MANIFEST)
-            if plik is None:
-                return {}
-            return json.loads(plik.read().decode("utf-8"))
+            for element in paczka:
+                if element.name != MANIFEST:
+                    continue
+                plik = paczka.extractfile(element)
+                return json.loads(plik.read().decode("utf-8")) if plik else {}
     except (OSError, tarfile.TarError, json.JSONDecodeError, KeyError):
-        return {}
+        pass
+    return {}
+
+
+# Manifesty juz przeczytanych archiwow. Archiwum na dysku sie nie zmienia,
+# a przeglad administratora pyta o liste kopii przy kazdym wejsciu - w starych
+# archiwach manifest lezy za zrzutem bazy, wiec kazde pytanie to rozpakowanie
+# setek megabajtow. Klucz obejmuje rozmiar i czas zmiany, zeby podmieniony
+# plik o tej samej nazwie nie dostal cudzego opisu.
+_manifesty: dict[tuple[str, int, int], dict] = {}
+_blokada_manifestow = threading.Lock()
+
+
+def _opis_archiwum(sciezka: Path, stan: os.stat_result | None = None) -> dict:
+    stan = stan or sciezka.stat()
+    klucz = (str(sciezka), stan.st_size, stan.st_mtime_ns)
+    with _blokada_manifestow:
+        if klucz in _manifesty:
+            return _manifesty[klucz]
+    opis = _czytaj_manifest(sciezka)
+    with _blokada_manifestow:
+        # Wpisy po usunietych albo nadpisanych plikach nie sa juz potrzebne.
+        for stary in [k for k in _manifesty if k[0] == klucz[0]]:
+            del _manifesty[stary]
+        _manifesty[klucz] = opis
+    return opis
 
 
 def lista() -> list[Kopia]:
@@ -168,7 +201,7 @@ def lista() -> list[Kopia]:
             rozmiar=stan.st_size,
             utworzono=datetime.fromtimestamp(stan.st_mtime, tz=timezone.utc),
             rodzaj=_rodzaj_z_nazwy(sciezka.name),
-            opis=_opis_archiwum(sciezka),
+            opis=_opis_archiwum(sciezka, stan),
         ))
     return sorted(zebrane, key=lambda k: k.utworzono, reverse=True)
 
@@ -268,7 +301,9 @@ def utworz(rodzaj: str = "reczna", autor: str = "system") -> Kopia:
 
         tymczasowy = cel.with_suffix(".tworzone")
         with tarfile.open(tymczasowy, "w:gz") as paczka:
-            for element in sorted(praca.iterdir()):
+            # Manifest na poczatku: lista kopii czyta go bez rozpakowywania
+            # reszty archiwum.
+            for element in sorted(praca.iterdir(), key=lambda e: (e.name != MANIFEST, e.name)):
                 paczka.add(element, arcname=element.name)
         tymczasowy.replace(cel)
 
