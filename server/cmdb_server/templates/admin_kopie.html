@@ -73,6 +73,11 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button type="submit" class="btn btn-small">Sprawdź</button>
             </form>
+            <form method="post" action="/admin/kopie/{{ k.nazwa }}/usun" class="inline-form"
+                  data-confirm="Usunąć kopię {{ k.nazwa }} z {{ k.utworzono | dt }}? Tego nie da się cofnąć.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-small btn-danger">Usuń</button>
+            </form>
           </div>
         </td>
       </tr>
@@ -92,7 +97,7 @@
   <p class="muted small">
     Wolne miejsce: <b>{{ wolne_bajty | bytes }}</b>, ostatnia kopia
     {{ ostatnia_bajty | bytes }}. Kopie dzienne i tygodniowe rotują się same;
-    ręczne zostają, dopóki ich nie skasujesz.
+    ręczne zostają, dopóki ich nie usuniesz przyciskiem „Usuń”.
   </p>
 </section>
 

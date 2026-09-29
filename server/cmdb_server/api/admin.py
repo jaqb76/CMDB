@@ -2147,6 +2147,33 @@ def sprawdz_kopie(
     return odpowiedz
 
 
+@router.post("/kopie/{nazwa}/usun")
+def usun_kopie(
+    nazwa: str,
+    request: Request,
+    csrf_token: str = Form(""),
+    user: PortalUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Kasuje archiwum z dysku. Reczne kopie nie rotuja sie same - bez tego
+    jedynym sposobem na zwolnienie miejsca byl wiersz polecen na serwerze."""
+    from ..services import kopie
+
+    sprawdz_csrf(user, csrf_token)
+    try:
+        kopia = kopie.usun(nazwa)
+    except kopie.BladKopii as bledne:
+        return _wroc_do_kopii(blad=f"Kopii nie usunięto: {bledne}")
+    if kopia is None:
+        raise HTTPException(status_code=404, detail="nie ma takiej kopii")
+
+    audit(db, None, action="kopia.usunieta", target=kopia.nazwa,
+          detail={"rozmiar": kopia.rozmiar, "rodzaj": kopia.rodzaj},
+          ip=client_ip(request), actor=user.email)
+    db.commit()
+    return _wroc_do_kopii(f"Kopia {kopia.nazwa} usunięta.")
+
+
 def _policz_w_bazie(nazwa_bazy: str) -> dict[str, int]:
     """Kilka liczb z odtworzonej bazy - dowod, ze w srodku sa dane."""
     from sqlalchemy import create_engine, text
