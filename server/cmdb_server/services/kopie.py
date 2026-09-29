@@ -223,6 +223,23 @@ def miejsce_na_dysku() -> tuple[int, int]:
     return wolne, (kopie[0].rozmiar if kopie else 0)
 
 
+def usun(nazwa: str) -> Kopia | None:
+    """Kasuje kopie o tej nazwie. None, gdy takiej nie ma.
+
+    Uzbrojone przywrocenie nie cierpi: ``uzbroj`` kopiuje archiwum do
+    osobnego pliku, wiec skasowanie oryginalu nie zabiera mu danych.
+    """
+    kopia = znajdz(nazwa)
+    if kopia is None:
+        return None
+    try:
+        kopia.sciezka.unlink()
+    except OSError as blad:
+        raise BladKopii(f"nie mogę usunąć pliku: {blad}") from blad
+    log.info("kopia %s usunieta", kopia.nazwa)
+    return kopia
+
+
 # --- tworzenie --------------------------------------------------------------
 
 def _nazwa_pliku(rodzaj: str, teraz: datetime) -> Path:

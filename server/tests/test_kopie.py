@@ -281,6 +281,40 @@ def test_panel_robi_kopie_i_pokazuje_ja_na_liscie(client, tenant_a, kopie, make_
     assert wszystkie[0].nazwa in client.get("/admin/kopie").text
 
 
+def test_panel_usuwa_kopie_i_zapisuje_to_w_audycie(client, tenant_a, kopie, make_user):
+    """Reczne kopie nie rotuja sie same - panel musi umiec je skasowac."""
+    from cmdb_server.models import AuditLog
+
+    make_user(None, "szef@mojadomena.pl", HASLO)
+    _login(client, "szef@mojadomena.pl", HASLO)
+    kopia = kopie.utworz("reczna")
+
+    csrf = _extract_csrf(client.get("/admin/kopie").text)
+    bez_csrf = client.post(f"/admin/kopie/{kopia.nazwa}/usun", data={}, follow_redirects=False)
+    assert bez_csrf.status_code == 403 and kopia.sciezka.exists()
+
+    odpowiedz = client.post(f"/admin/kopie/{kopia.nazwa}/usun",
+                            data={"csrf_token": csrf}, follow_redirects=False)
+    assert "komunikat=" in odpowiedz.headers["location"]
+    assert not kopia.sciezka.exists()
+    assert kopie.lista() == []
+    with SessionLocal() as db:
+        assert db.query(AuditLog).filter_by(action="kopia.usunieta", target=kopia.nazwa).count() == 1
+
+    # Nazwa z formularza nie wyprowadza poza katalog kopii.
+    obca = client.post("/admin/kopie/..%2F..%2Fetc%2Fpasswd/usun",
+                       data={"csrf_token": csrf}, follow_redirects=False)
+    assert obca.status_code == 404
+
+
+def test_usuniecie_zrodla_nie_psuje_uzbrojonego_przywrocenia(client, tenant_a, kopie):
+    kopia = kopie.utworz("reczna")
+    kopie.uzbroj(kopia.sciezka, autor="test")
+    kopie.usun(kopia.nazwa)
+    assert kopie.uzbrojone() is not None
+    assert (kopie.katalog() / "do-odtworzenia.tar.gz").is_file()
+
+
 def test_przywracanie_wymaga_poprawnego_hasla(client, tenant_a, kopie, make_user):
     """Przejeta sesja superadmina nie moze wystarczyc do zastapienia bazy."""
     make_user(None, "szef@mojadomena.pl", HASLO)
