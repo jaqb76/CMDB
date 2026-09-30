@@ -29,7 +29,7 @@ from ..models import (
     Zgloszenie,
     utcnow,
 )
-from . import helpdesk, sekrety
+from . import helpdesk, helpdesk_przeniesienia, sekrety
 
 log = logging.getLogger(__name__)
 
@@ -98,14 +98,21 @@ def adresaci(db: Session, zgloszenie: Zgloszenie, konfiguracja: HelpdeskUstawien
     Z kopii wypada adres helpdesku (wroci do nas wlasna wiadomosc) i sam
     zglaszajacy (dostalby ja dwa razy).
     """
+    if not zgloszenie.zglaszajacy_email:
+        raise BladWysylki("Wskaż kontakt w nowej firmie przed wysłaniem odpowiedzi.")
+    transfer = helpdesk_przeniesienia.ostatnie(db, zgloszenie.id)
+    if transfer and not helpdesk_przeniesienia.dozwolony_nadawca(db, zgloszenie, zgloszenie.zglaszajacy_email):
+        raise BladWysylki("Kontakt nie należy do firmy zgłoszenia. Popraw kontakt przed wysyłką.")
     do = [zgloszenie.zglaszajacy_email]
-    ostatnia = helpdesk.ostatnia_od_klienta(db, zgloszenie.id)
+    ostatnia = helpdesk_przeniesienia.ostatnia_do_odpowiedzi(db, zgloszenie)
     kopia = list(ostatnia.dw or []) if ostatnia is not None else []
 
     wykluczone = {zgloszenie.zglaszajacy_email.lower()}
     if konfiguracja.nadawca:
         wykluczone.add(konfiguracja.nadawca.lower())
     dw = [adres for adres in dict.fromkeys(kopia) if adres.lower() not in wykluczone]
+    if transfer:
+        dw = [adres for adres in dw if helpdesk_przeniesienia.dozwolony_nadawca(db, zgloszenie, adres)]
     return do, dw
 
 
@@ -180,12 +187,16 @@ def wyslij_wpis(db: Session, zgloszenie: Zgloszenie, wpis: WpisZgloszenia) -> No
     if wpis.rodzaj != WPIS_DO_KLIENTA:
         raise BladWysylki(f"wpis rodzaju '{wpis.rodzaj}' nie wychodzi do klienta")
 
+    transfer = helpdesk_przeniesienia.ostatnie(db, zgloszenie.id)
+    if transfer and wpis.utworzono <= transfer.utworzono:
+        raise BladWysylki("Wiadomość powstała przed zmianą firmy. Utwórz nową odpowiedź.")
+
     konfiguracja = ustawienia(db)
     if konfiguracja is None or not konfiguracja.smtp_host or not konfiguracja.nadawca:
         raise BladWysylki("skrzynka helpdesku nie jest skonfigurowana")
 
     do, dw = adresaci(db, zgloszenie, konfiguracja)
-    ostatnia = helpdesk.ostatnia_od_klienta(db, zgloszenie.id)
+    ostatnia = helpdesk_przeniesienia.ostatnia_do_odpowiedzi(db, zgloszenie)
 
     wiadomosc = EmailMessage()
     wiadomosc["Subject"] = temat_odpowiedzi(zgloszenie)

@@ -195,9 +195,11 @@ def create_app() -> FastAPI:
     app.include_router(nutanix_ui.router)
     from .api import monitoring_ui
     from .api import helpdesk_ui
+    from .api import helpdesk_przeniesienia_ui
     from .api import mobile_helpdesk
     app.include_router(monitoring_ui.router)
     app.include_router(helpdesk_ui.router)
+    app.include_router(helpdesk_przeniesienia_ui.router)
     app.include_router(mobile_helpdesk.router)
     from .api import wiedza_ui
     app.include_router(wiedza_ui.router)

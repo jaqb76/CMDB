@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Przenieś {{ zgloszenie.numer_pelny }} — CMDB{% endblock %}
+{% block content %}
+<div class="hd-transfer">
+  <p><a href="/helpdesk/zgloszenie/{{ zgloszenie.id }}" class="muted small">← Wróć do zgłoszenia</a></p>
+  <section class="panel">
+    <p class="small muted">HELPDESK · ZMIANA FIRMY · {{ '2 / 2' if podglad else '1 / 2' }}</p>
+    <h1>{{ 'Sprawdź zmianę dostępu' if podglad else 'Przenieś zgłoszenie' }}</h1>
+    <p><span class="nr">{{ zgloszenie.numer_pelny }}</span> {{ zgloszenie.temat }}</p>
+    {% if blad %}<div class="alert alert-error" role="alert">{{ blad }}</div>{% endif %}
+    {% if not firmy %}
+      <div class="alert alert-warn">Nie masz innej aktywnej firmy z uprawnieniami do obsługi zgłoszeń. Dostępy i włączenie helpdesku ustawia Superadmin.</div>
+    {% elif podglad %}
+      <div class="hd-transfer-route"><span>{{ firma.name }}</span><span aria-hidden="true">→</span><strong>{{ podglad.firma }}</strong></div>
+      <dl class="kv hd-transfer-review">
+        <dt>Kontakt do odpowiedzi</dt><dd>{{ podglad.kontakt }}</dd>
+        <dt>Przypisany technik</dt><dd>{{ podglad.technik }}</dd>
+        <dt>Dostęp</dt><dd>Osoby uprawnione wyłącznie w {{ firma.name }} stracą dostęp. Ty zachowasz dostęp dzięki uprawnieniom w firmie docelowej.</dd>
+        <dt>Korespondencja</dt><dd>{{ liczby.wpisy }} wpisów i {{ liczby.pliki }} plików pozostaje w zgłoszeniu. Notatki wewnętrzne zostają wewnętrzne.</dd>
+        <dt>Sprzęt</dt><dd>{% if sprzet %}Powiązania z urządzeniami zostaną odpięte. Sprzęt pozostaje w obecnej firmie.{% else %}Brak powiązań do odpięcia.{% endif %}</dd>
+        <dt>Czas pracy</dt><dd>{{ liczby.minuty | czas }} zostanie przypisane w raportach do firmy docelowej. Wartości, autorzy i daty wpisów pozostają bez zmian.</dd>
+        <dt>Numer i status</dt><dd>{{ zgloszenie.numer_pelny }} oraz status i data utworzenia pozostają bez zmian.</dd>
+        <dt>Powód</dt><dd>{{ podglad.powod }}</dd>
+      </dl>
+      <div class="alert alert-warn">Przekazujesz całą treść i załączniki nowej firmie. Poprzedni kontakt i DW nie będą odbiorcami nowych odpowiedzi. Przeniesienie nie wysyła e-maila do klienta.</div>
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/przenies" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="potwierdzenie" value="{{ podglad.token }}">
+        {% for klucz, wartosc in dane.items() %}<input type="hidden" name="{{ klucz }}" value="{{ wartosc }}">{% endfor %}
+        <label class="kolumna-wybor"><input type="checkbox" name="potwierdzam" value="1" required> Potwierdzam przekazanie treści i plików do {{ podglad.firma }} oraz zmianę dostępu.</label>
+        <div class="hd-transfer-actions">
+          <button class="btn" type="submit" name="wstecz" value="1" formaction="/helpdesk/zgloszenie/{{ zgloszenie.id }}/przenies/podglad" formnovalidate>Wstecz</button>
+          <button class="btn btn-primary" type="submit">Przenieś zgłoszenie</button>
+        </div>
+      </form>
+    {% else %}
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/przenies/podglad" class="stack" data-transfer-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="hd-transfer-grid">
+          <div><label>Obecna firma</label><div class="hd-transfer-source">{{ firma.name }}</div></div>
+          <div><label for="transfer-company">Firma docelowa *</label>
+            <select id="transfer-company" name="tenant_id" required data-transfer-company data-options-url="/helpdesk/zgloszenie/{{ zgloszenie.id }}/przenies/opcje">
+              <option value="">Wybierz firmę…</option>
+              {% for f in firmy %}<option value="{{ f.id }}" {% if dane.get('tenant_id') == f.id %}selected{% endif %}>{{ f.name }}</option>{% endfor %}
+            </select>
+            <p class="small muted">Tylko aktywne firmy, w których masz uprawnienia do obsługi zgłoszeń.</p>
+            <noscript><button type="submit" formaction="/helpdesk/zgloszenie/{{ zgloszenie.id }}/przenies/podglad" name="wstecz" value="1" formnovalidate class="btn btn-small">Wczytaj osoby z firmy</button></noscript>
+          </div>
+          <div><label for="transfer-contact">Kontakt w nowej firmie</label>
+            <select id="transfer-contact" name="kontakt_id" data-transfer-contact>
+              <option value="">Bez kontaktu</option>
+              {% for k in opcje.contacts %}<option value="{{ k.id }}" {% if dane.get('kontakt_id') == k.id %}selected{% endif %}>{{ k.name }} · {{ k.email }}</option>{% endfor %}
+            </select><p class="small muted">Osoby ze słownika firmy. Bez kontaktu wysyłka będzie wstrzymana; kontakt możesz wskazać później na karcie zgłoszenia.</p>
+          </div>
+          <div><label for="transfer-technician">Technik</label>
+            <select id="transfer-technician" name="technik_id" data-transfer-technician>
+              <option value="">Nieprzypisany</option>
+              {% for t in opcje.technicians %}<option value="{{ t.id }}" {% if dane.get('technik_id') == t.id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+            </select><p class="small muted">Tylko aktywne osoby obsługujące firmę docelową.</p>
+          </div>
+        </div>
+        <label for="transfer-reason">Powód przeniesienia *</label>
+        <textarea id="transfer-reason" name="powod" rows="3" required maxlength="1000" placeholder="Np. zgłoszenie przypisano do niewłaściwej firmy.">{{ dane.get('powod', '') }}</textarea>
+        <p class="small muted" data-transfer-result role="status" aria-live="polite"></p>
+        <div class="alert">Przeniesione zostanie całe zgłoszenie: historia, wiadomości, pliki i czas pracy. Powiązania ze sprzętem poprzedniej firmy zostaną odpięte.</div>
+        <div class="hd-transfer-actions"><a class="btn" href="/helpdesk/zgloszenie/{{ zgloszenie.id }}">Anuluj</a><button class="btn btn-primary" type="submit" data-transfer-next>Sprawdź przeniesienie →</button></div>
+      </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block skrypty %}<script src="{{ zasob('helpdesk_przenies.js') }}"></script>{% endblock %}

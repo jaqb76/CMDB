@@ -8,11 +8,12 @@
   <div>
     <h1><span class="nr">{{ zgloszenie.numer_pelny }}</span> {{ zgloszenie.temat }}</h1>
     <p class="muted small">
-      {{ firma.name }} · zgłosił <a href="mailto:{{ zgloszenie.zglaszajacy_email }}">{{ zgloszenie.zglaszajacy_email }}</a>
+      {{ firma.name }} · {% if zgloszenie.zglaszajacy_email %}{{ 'kontakt do odpowiedzi' if przenoszone else 'zgłosił' }} <a href="mailto:{{ zgloszenie.zglaszajacy_email }}">{{ zgloszenie.zglaszajacy_email }}</a>{% else %}brak kontaktu do odpowiedzi{% endif %}
       · utworzone {{ zgloszenie.utworzono | dt }}
     </p>
   </div>
   <div class="head-actions">
+    {% if moze_przeniesc %}<a class="btn btn-small" href="/helpdesk/zgloszenie/{{ zgloszenie.id }}/przenies">Przenieś do innej firmy</a>{% endif %}
     <span class="badge hd-status-{{ zgloszenie.status }}">{{ statusy[zgloszenie.status] }}</span>
   </div>
 </div>
@@ -106,10 +107,11 @@
         </div>
         <p class="muted small odstep-s">
           Komentarz wewnętrzny zostaje w zgłoszeniu i <b>nie wychodzi</b> na żaden adres.
-          Odpowiedź idzie na {{ zgloszenie.zglaszajacy_email }} z tematem
+          {% if zgloszenie.zglaszajacy_email %}Odpowiedź idzie na {{ zgloszenie.zglaszajacy_email }} z tematem
           <b>Re: [{{ zgloszenie.numer_pelny }}] {{ zgloszenie.temat }}</b>, a kopia wraca
-          do osób z DW ostatniej wiadomości klienta. Po wysłaniu zgłoszenie
+          {% if przenoszone %}wyłącznie do uprawnionych odbiorców z wiadomości otrzymanych po przeniesieniu.{% else %}do osób z DW ostatniej wiadomości klienta.{% endif %} Po wysłaniu zgłoszenie
           przechodzi na <b>Oczekuje</b> — wraca do realizacji, gdy klient odpisze.
+          {% else %}Wysyłka e-mail jest wstrzymana. Wskaż kontakt w sekcji „Zgłaszający”.{% endif %}
         </p>
       </form>
     </section>
@@ -173,6 +175,18 @@
 
     <section class="panel">
       <h2>Zgłaszający</h2>
+      {% if przenoszone %}
+      <p class="muted small">Pierwotny zgłaszający pozostaje w historii. Tutaj wybierasz kontakt do nowych odpowiedzi.</p>
+      <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/kontakt" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="kontakt-firmy">Kontakt w {{ firma.name }}</label>
+        <select id="kontakt-firmy" name="kontakt_id" required>
+          <option value="">Wybierz osobę…</option>
+          {% for k in kontakty_firmy %}{% if k.atrybuty and k.atrybuty.get('email') %}<option value="{{ k.id }}" {% if k.atrybuty.get('email', '').lower() == zgloszenie.zglaszajacy_email.lower() %}selected{% endif %}>{{ k.wartosc }} · {{ k.atrybuty.email }}</option>{% endif %}{% endfor %}
+        </select>
+        <button type="submit" class="btn btn-small">Ustaw kontakt do odpowiedzi</button>
+      </form>
+      {% endif %}
       {# Adres stoi juz w naglowku zgloszenia, wiec tu tylko nazwisko. #}
       <p class="strong">{{ zgloszenie.zglaszajacy_nazwa or (osoba.wartosc if osoba else zgloszenie.zglaszajacy_email) }}</p>
       {% if osoba %}

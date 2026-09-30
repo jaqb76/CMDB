@@ -336,3 +336,77 @@ serwer wydaje jako zaufane.
 - **Aplikacja mobilna** rozpoznaje firmę po `portal_users.tenant_id`, więc
   technik helpdesku (konto bez własnej firmy) dostanie tam 404.
 - **SLA, priorytety, terminy reakcji.**
+
+## Przenoszenie zgłoszenia do innej firmy
+
+Na karcie zgłoszenia wybierz **Przenieś do innej firmy**. Operacja jest dostępna
+Superadminowi oraz aktywnemu technikowi, który ma uprawnienia do obsługi zgłoszeń
+w **obu** firmach. Konto firmy, audytor globalny i konto tylko do odczytu nie
+mogą przenosić zgłoszeń. Lista zawiera wyłącznie inne aktywne firmy z włączonym
+helpdeskiem, do których wykonawca ma dostęp.
+
+O prawach technika decydują przydziały **Firmy helpdesku**. Tak jak w pozostałej
+części CMDB taki przydział nadaje obsługę firmy także kontu z ogólną rolą
+`viewer`; zwykłe konto tylko do odczytu bez przydziałów nie otrzymuje tej akcji.
+
+1. Wybierz firmę docelową, opcjonalny kontakt ze słownika osób tej firmy oraz
+   technika obsługującego tę firmę. Wpisz powód przeniesienia.
+2. Wybierz **Sprawdź przeniesienie**. Podsumowanie pokazuje nowy kontakt,
+   technika, zmianę dostępu, pliki, odpinany sprzęt i przenoszony czas pracy.
+3. Potwierdź przekazanie całej treści i załączników, a następnie wybierz
+   **Przenieś zgłoszenie**. Sam podgląd nie zmienia danych.
+
+Zgłoszenie zachowuje identyfikator, widoczny numer (również dawny prefiks firmy),
+status, datę utworzenia, wpisy z autorami oraz załączniki i wklejone obrazy.
+Wewnętrzna pozycja w numeracji rezerwuje następny numer firmy docelowej, dzięki
+czemu nie koliduje z jej istniejącymi zgłoszeniami. Oznacza to możliwe luki
+w numeracji; widoczny numer przeniesionej sprawy się nie zmienia.
+
+Powiązania ze sprzętem poprzedniej firmy są odpinane; urządzenia nie zmieniają
+firmy. Dotychczasowe wpisy czasu przechodzą do raportów firmy docelowej bez
+zmiany minut, autorów i dat. Szczegóły poprzedniego przypisania są zachowane
+w rejestrze przeniesień i audycie, a w historii zgłoszenia pojawia się wykonawca,
+kierunek i powód zmiany. Przeniesienie jest jedną transakcją.
+
+Osoby mające dostęp wyłącznie do poprzedniej firmy przestają widzieć zgłoszenie
+oraz jego pliki także pod starymi adresami WWW i API. Technik uprawniony w firmie
+docelowej zachowuje dostęp. Notatki wewnętrzne nie stają się wiadomościami do
+klienta. Powrót do poprzedniej firmy jest kolejnym przeniesieniem z nowym wpisem
+w historii.
+
+Przeniesienie **nie wysyła e-maila**. Nowe odpowiedzi korzystają z nowego kontaktu;
+nie przejmują DW ani nagłówków wątku sprzed ostatniego przeniesienia. Stare
+niewysłane wiadomości zostają w historii, ale ich wysyłka jest blokowana. Nowe
+DW jest ograniczone do odbiorców obecnej firmy. Odpowiedzi przychodzące od
+poprzedniej firmy po starym numerze lub Message-ID trafiają do nierozpoznanych
+wiadomości do weryfikacji. Nowa firma nadal może odpowiedzieć po zachowanym
+numerze zgłoszenia.
+
+Bez wybranego kontaktu zgłoszenie może być obsługiwane wewnętrznie, ale wysyłka
+do klienta jest wstrzymana. Kontakt można później ustawić w sekcji
+**Zgłaszający → Kontakt w firmie → Ustaw kontakt do odpowiedzi**. Osobę z adresem
+e-mail należy wcześniej dodać do słownika osób firmy docelowej.
+
+Potwierdzenie podglądu jest podpisane, przypisane do konta i zgłoszenia i ważne
+15 minut. Serwer ponownie sprawdza aktywność firm, konta, dostępy, kontakt,
+technika i wersję zgłoszenia. Zmiana zgłoszenia, cofnięcie uprawnień, zmiana
+adresu kontaktu lub ponowne użycie potwierdzenia wymaga nowego podglądu.
+
+### API dla aplikacji mobilnej
+
+Wspólna logika jest dostępna pod `/api/v1/mobile/helpdesk/tickets/{id}`:
+
+- `GET /transfer/options` — dozwolone firmy; parametr `tenant_id` dodaje kontakty
+  i techników jednej wybranej firmy.
+- `POST /transfer/preview` — JSON: `tenant_id`, `contact_id`, `technician_id`,
+  `reason`. Odpowiedź zawiera podsumowanie i `confirmation_token`.
+- `POST /transfer` — JSON: `confirmation_token`, `confirmed: true`.
+
+Obowiązuje istniejące uwierzytelnianie mobilne Bearer. Brak dostępu do samego
+zgłoszenia nie ujawnia jego istnienia (404); niedozwolona firma docelowa daje
+403, a nieaktualne lub wygasłe potwierdzenie 409. Karta API zwraca `can_transfer`.
+Te endpointy przygotowują obsługę przeniesień dla klienta mobilnego; formularz
+tej funkcji jest dostępny w portalu WWW.
+
+Po aktualizacji backendu standardowe `init_db()` automatycznie tworzy tabelę
+`helpdesk_przeniesienia`; istniejące zgłoszenia nie wymagają przepisywania.
