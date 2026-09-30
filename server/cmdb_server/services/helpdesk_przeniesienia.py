@@ -33,8 +33,11 @@ class Konflikt(helpdesk.BladHelpdesku):
 
 
 def uprawniona_rola(user: PortalUser) -> bool:
+    # HelpdeskDostep nadaje prawa operacyjne niezaleznie od ogolnej roli
+    # viewer/admin (tak samo jak tenant_context_for(..., helpdesk=True)).
+    # Konkretne firmy sprawdzamy osobno; sam viewer bez dostepow nic nie zyskuje.
     return bool(user.is_active and (user.is_superadmin or (
-        not user.is_global_viewer and not user.tenant_id and user.role == "admin"
+        not user.is_global_viewer and not user.tenant_id
     )))
 
 

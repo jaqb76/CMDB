@@ -345,6 +345,10 @@ w **obu** firmach. Konto firmy, audytor globalny i konto tylko do odczytu nie
 mogą przenosić zgłoszeń. Lista zawiera wyłącznie inne aktywne firmy z włączonym
 helpdeskiem, do których wykonawca ma dostęp.
 
+O prawach technika decydują przydziały **Firmy helpdesku**. Tak jak w pozostałej
+części CMDB taki przydział nadaje obsługę firmy także kontu z ogólną rolą
+`viewer`; zwykłe konto tylko do odczytu bez przydziałów nie otrzymuje tej akcji.
+
 1. Wybierz firmę docelową, opcjonalny kontakt ze słownika osób tej firmy oraz
    technika obsługującego tę firmę. Wpisz powód przeniesienia.
 2. Wybierz **Sprawdź przeniesienie**. Podsumowanie pokazuje nowy kontakt,

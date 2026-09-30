@@ -177,12 +177,24 @@ def test_sam_podglad_lub_konto_firmy_nie_uprawnia(sprawa, zmiana):
     with SessionLocal() as db:
         user = db.get(PortalUser, sprawa["technik"])
         if zmiana == "audytor": user.is_global_viewer = True
-        if zmiana == "viewer": user.role = "viewer"
+        if zmiana == "viewer":
+            user.role = "viewer"
+            helpdesk.odbierz_dostep(db, user.id, sprawa["a"])
+            helpdesk.odbierz_dostep(db, user.id, sprawa["b"])
         if zmiana == "konto_firmy": user.tenant_id = sprawa["a"]
         if zmiana == "nieaktywne": user.is_active = False
         db.commit()
     with pytest.raises(transfer.BrakDostepu):
         _przygotuj(sprawa)
+
+
+def test_dostepy_helpdesku_daja_prawo_technika_niezaleznie_od_ogolnej_roli(sprawa):
+    with SessionLocal() as db:
+        db.get(PortalUser, sprawa["technik"]).role = "viewer"
+        db.commit()
+    _przenies(sprawa)
+    with SessionLocal() as db:
+        assert db.get(Zgloszenie, sprawa["id"]).tenant_id == sprawa["b"]
 
 
 @pytest.mark.parametrize("pole", ["kontakt_id", "technik_id", "tenant_id", "powod"])
@@ -368,4 +380,3 @@ def test_rownoczesne_zatwierdzenia_wykonuja_tylko_jeden_transfer(sprawa):
         future.result(timeout=10)
     with SessionLocal() as db:
         assert len(db.scalars(select(PrzeniesienieZgloszenia)).all()) == 1
-
