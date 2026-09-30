@@ -54,16 +54,17 @@ def sprawa(tenant_a, tenant_b, tmp_path, monkeypatch):
         pierwszy.message_id = "<stary-watek@alfa.pl>"
         wpis = helpdesk.dopisz_wiadomosc(db, z, rodzaj=WPIS_WEWNETRZNY,
             tresc="Notatka tylko dla technikow", autor=db.get(PortalUser, stary))
-        db.add(ZalacznikWpisu(wpis_id=pierwszy.id, zgloszenie_id=z_id, nazwa="obraz.png",
-            typ_mime="image/png", sciezka="obraz.png", rozmiar=11))
+        poczta.zapisz_zalaczniki(db, pierwszy, (
+            poczta.Zalacznik("obraz.png", "image/png", bytes.fromhex("89504e470d0a1a0a") + b"png"),
+        ))
         db.flush()
         zalacznik = db.scalar(select(ZalacznikWpisu).where(ZalacznikWpisu.zgloszenie_id == z_id))
         db.commit()
         wynik = dict(a=a, b=b, id=z_id, technik=technik, stary=stary, nowy=nowy,
                      kontakt=kontakt.id, sprzet=sprzet.id, zalacznik=zalacznik.id,
+                     sciezka=zalacznik.sciezka,
                      notatka=wpis.id, pierwszy=pierwszy.id, utworzono=z.utworzono,
                      numer=z.numer_pelny)
-    (tmp_path / "obraz.png").write_bytes(bytes.fromhex("89504e470d0a1a0a") + b"png")
     return wynik
 
 
@@ -116,7 +117,7 @@ def test_transfer_przenosi_calosc_bez_kopii_i_kolizji_numeru(sprawa):
         assert db.get(WpisZgloszenia, s["notatka"]).rodzaj == WPIS_WEWNETRZNY
         assert db.get(WpisZgloszenia, s["pierwszy"]).autor_email == "jan@alfa.pl"
         assert db.get(WpisZgloszenia, s["pierwszy"]).dw == ["szef@alfa.pl"]
-        assert db.get(ZalacznikWpisu, s["zalacznik"]).sciezka == "obraz.png"
+        assert db.get(ZalacznikWpisu, s["zalacznik"]).sciezka == s["sciezka"]
         assert db.get(Asset, s["sprzet"]).tenant_id == s["a"]
         assert not db.scalars(select(ZgloszenieSprzet).where(ZgloszenieSprzet.zgloszenie_id == z.id)).all()
         czas = db.scalar(select(CzasPracy).where(CzasPracy.zgloszenie_id == z.id))
