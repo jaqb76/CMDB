@@ -54,6 +54,9 @@ nadadzą tego samego numeru. Licznik trzyma **ostatni nadany** numer, nie liczb�
 zgłoszeń: numer, który poszedł już w mailu do klienta, nie wróci w innej
 sprawie nawet po skasowaniu tamtej.
 
+Po przeniesieniu do innej firmy zgłoszenie dostaje jej kolejny numer, a dawny
+nadal wskazuje tę sprawę (tabela `helpdesk_numery_poprzednie`, zob. niżej).
+
 ## Kto co może
 
 | Konto | Zakres |
@@ -100,6 +103,14 @@ błędu i da się ją powtórzyć.
 
 **DW**: kopia z ostatniej wiadomości klienta wraca w odpowiedzi — bez adresu
 helpdesku (wróciłby do nas) i bez samego zgłaszającego (dostałby dwa razy).
+
+**Cytat**: pod odpowiedzią wychodzi tylko ta wiadomość klienta, na którą
+odpowiadamy (ostatnia od klienta; po przeniesieniu ostatnia otrzymana już po
+nim), z nagłówkiem „W dniu … napisał(a):”. Historię, którą program pocztowy
+klienta dokleił do jego wiadomości (`>`, „W dniu … napisał”, „Od:/Wysłano:”,
+„-----Original Message-----”), obcinamy, żeby każda odpowiedź nie niosła coraz
+dłuższego stosu kopii. Pełna historia jest w zgłoszeniu. W wątku zapisuje się
+sama odpowiedź technika; pod formularzem widać, co zostanie zacytowane.
 
 **Załączniki** klienta lądują na dysku (`CMDB_HELPDESK_DIR`) i w wątku. Nazwa
 pliku od klienta jest wyłącznie opisem — ścieżkę budujemy z identyfikatorów,
@@ -356,11 +367,14 @@ części CMDB taki przydział nadaje obsługę firmy także kontu z ogólną rol
 3. Potwierdź przekazanie całej treści i załączników, a następnie wybierz
    **Przenieś zgłoszenie**. Sam podgląd nie zmienia danych.
 
-Zgłoszenie zachowuje identyfikator, widoczny numer (również dawny prefiks firmy),
-status, datę utworzenia, wpisy z autorami oraz załączniki i wklejone obrazy.
-Wewnętrzna pozycja w numeracji rezerwuje następny numer firmy docelowej, dzięki
-czemu nie koliduje z jej istniejącymi zgłoszeniami. Oznacza to możliwe luki
-w numeracji; widoczny numer przeniesionej sprawy się nie zmienia.
+Zgłoszenie zachowuje identyfikator, status, datę utworzenia, wpisy z autorami
+oraz załączniki i wklejone obrazy. Dostaje natomiast **nowy numer według
+konwencji firmy docelowej** (jej skrót i kolejna pozycja jej licznika, np.
+`ALF-1` → `BET-2`). Dawny numer zostaje zapisany przy zgłoszeniu („Poprzednio:
+ALF-1” pod tytułem) i nadal prowadzi do tej samej sprawy: odpowiedź ze starym
+numerem w temacie trafia do przeniesionego zgłoszenia. Numery nie wracają do
+obiegu, bo licznik firmy tylko rośnie. Przy powrocie do poprzedniej firmy sprawa
+dostaje jej kolejny numer, a wszystkie wcześniejsze pozostają powiązane.
 
 Powiązania ze sprzętem poprzedniej firmy są odpinane; urządzenia nie zmieniają
 firmy. Dotychczasowe wpisy czasu przechodzą do raportów firmy docelowej bez
@@ -374,7 +388,17 @@ docelowej zachowuje dostęp. Notatki wewnętrzne nie stają się wiadomościami 
 klienta. Powrót do poprzedniej firmy jest kolejnym przeniesieniem z nowym wpisem
 w historii.
 
-Przeniesienie **nie wysyła e-maila**. Nowe odpowiedzi korzystają z nowego kontaktu;
+**Powiadomienie zgłaszającego** jest domyślnie włączone i można je wyłączyć
+przy każdym przeniesieniu (pole „Powiadom zgłaszającego…” w formularzu,
+`notify_requester` w API). Dotychczasowy zgłaszający dostaje krótką wiadomość,
+że sprawa została przekierowana do firmy docelowej, z poprzednim i nowym
+numerem, w wątku swojej ostatniej wiadomości. Wysyłka następuje dopiero po
+zapisaniu przeniesienia, więc błąd SMTP go nie wycofuje. Wynik (treść albo
+błąd) jest widoczny w historii zgłoszenia. Odpowiedź na to powiadomienie
+pochodzi spoza obecnej firmy, więc trafia do nierozpoznanych wiadomości do
+weryfikacji.
+
+Poza tym przeniesienie nie wysyła e-maili. Nowe odpowiedzi korzystają z nowego kontaktu;
 nie przejmują DW ani nagłówków wątku sprzed ostatniego przeniesienia. Stare
 niewysłane wiadomości zostają w historii, ale ich wysyłka jest blokowana. Nowe
 DW jest ograniczone do odbiorców obecnej firmy. Odpowiedzi przychodzące od
@@ -399,8 +423,10 @@ Wspólna logika jest dostępna pod `/api/v1/mobile/helpdesk/tickets/{id}`:
 - `GET /transfer/options` — dozwolone firmy; parametr `tenant_id` dodaje kontakty
   i techników jednej wybranej firmy.
 - `POST /transfer/preview` — JSON: `tenant_id`, `contact_id`, `technician_id`,
-  `reason`. Odpowiedź zawiera podsumowanie i `confirmation_token`.
-- `POST /transfer` — JSON: `confirmation_token`, `confirmed: true`.
+  `reason`, opcjonalnie `notify_requester` (domyślnie `true`). Odpowiedź zawiera
+  podsumowanie, `sends_email` i `confirmation_token`.
+- `POST /transfer` — JSON: `confirmation_token`, `confirmed: true`. Odpowiedź
+  zawiera nowy `number`, `previous_numbers` i `requester_notified`.
 
 Obowiązuje istniejące uwierzytelnianie mobilne Bearer. Brak dostępu do samego
 zgłoszenia nie ujawnia jego istnienia (404); niedozwolona firma docelowa daje
@@ -408,5 +434,6 @@ zgłoszenia nie ujawnia jego istnienia (404); niedozwolona firma docelowa daje
 Te endpointy przygotowują obsługę przeniesień dla klienta mobilnego; formularz
 tej funkcji jest dostępny w portalu WWW.
 
-Po aktualizacji backendu standardowe `init_db()` automatycznie tworzy tabelę
-`helpdesk_przeniesienia`; istniejące zgłoszenia nie wymagają przepisywania.
+Po aktualizacji backendu standardowe `init_db()` automatycznie tworzy tabele
+`helpdesk_przeniesienia` i `helpdesk_numery_poprzednie`; istniejące zgłoszenia
+nie wymagają przepisywania (sprawy przeniesione wcześniej zachowują swój numer).

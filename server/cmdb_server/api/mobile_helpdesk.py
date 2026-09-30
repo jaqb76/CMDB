@@ -482,6 +482,7 @@ class PodgladPrzeniesienia(BaseModel):
     contact_id: str = Field(default="", max_length=36)
     technician_id: str = Field(default="", max_length=36)
     reason: str = Field(min_length=1, max_length=1000)
+    notify_requester: bool = True
 
 
 class PotwierdzeniePrzeniesienia(BaseModel):
@@ -515,15 +516,18 @@ def podglad_przeniesienia(zgloszenie_id: str, dane: PodgladPrzeniesienia,
     try:
         wynik = transfer.przygotuj(db, user, zgloszenie, tenant_id=dane.tenant_id,
                                   kontakt_id=dane.contact_id, technik_id=dane.technician_id,
-                                  powod=dane.reason)
+                                  powod=dane.reason, powiadom=dane.notify_requester)
     except helpdesk.BladHelpdesku as exc:
         raise _blad_przeniesienia(exc) from exc
     return {"confirmation_token": wynik["token"], "company": wynik["firma"],
             "contact": wynik["kontakt"], "technician": wynik["technik"], "reason": wynik["powod"],
             "ticket_number": zgloszenie.numer_pelny,
+            "notify_requester": dane.notify_requester, "requester_email": zgloszenie.zglaszajacy_email or None,
+            "notification": wynik["powiadomienie"],
             "detached_assets": [{"id": a.id, "hostname": a.hostname} for a, _ in helpdesk.sprzet_zgloszenia(db, zgloszenie.id)],
             "work_minutes": helpdesk.czas_zgloszenia(db, zgloszenie.id)[0],
-            "transfers_all_content": True, "sends_email": False}
+            "transfers_all_content": True,
+            "sends_email": bool(dane.notify_requester and zgloszenie.zglaszajacy_email)}
 
 
 @router.post("/tickets/{zgloszenie_id}/transfer")
@@ -538,7 +542,11 @@ def przenies_zgloszenie(zgloszenie_id: str, dane: PotwierdzeniePrzeniesienia, re
     except helpdesk.BladHelpdesku as exc:
         db.rollback()
         raise _blad_przeniesienia(exc) from exc
-    return {"id": zgloszenie.id, "tenant_id": zgloszenie.tenant_id, "number": zgloszenie.numer_pelny}
+    powiadomiono = helpdesk_wysylka.wyslij_powiadomienie_o_przeniesieniu(db, zgloszenie)
+    db.commit()
+    return {"id": zgloszenie.id, "tenant_id": zgloszenie.tenant_id, "number": zgloszenie.numer_pelny,
+            "previous_numbers": helpdesk.numery_poprzednie(db, zgloszenie.id),
+            "requester_notified": powiadomiono}
 
 
 # --- sprzet do wyboru -------------------------------------------------------

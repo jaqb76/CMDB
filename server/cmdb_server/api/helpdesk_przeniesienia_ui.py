@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import CzasPracy, PortalUser, Tenant, WpisSlownika, WpisZgloszenia, ZalacznikWpisu
-from ..services import helpdesk, helpdesk_przeniesienia as transfer
+from ..services import helpdesk, helpdesk_przeniesienia as transfer, helpdesk_wysylka
 from ..services.auth import client_ip, require_user, verify_csrf
 from ..services.scoping import TenantContext
 from .helpdesk_ui import _wroc, _zgloszenie
@@ -65,12 +65,13 @@ def opcje(zgloszenie_id: str, tenant_id: str = Query(..., max_length=36),
 def podglad(zgloszenie_id: str, request: Request,
             tenant_id: str = Form("", max_length=36), kontakt_id: str = Form("", max_length=36),
             technik_id: str = Form("", max_length=36), powod: str = Form("", max_length=1000),
-            wstecz: bool = Form(False),
+            powiadom: bool = Form(False), wstecz: bool = Form(False),
             csrf_token: str = Form(""), user: PortalUser = Depends(require_user),
             ctx: TenantContext = Depends(resolve_tenant), db: Session = Depends(get_db)):
     verify_csrf(request, user, csrf_token)
     zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
-    dane = dict(tenant_id=tenant_id, kontakt_id=kontakt_id, technik_id=technik_id, powod=powod)
+    dane = dict(tenant_id=tenant_id, kontakt_id=kontakt_id, technik_id=technik_id, powod=powod,
+                powiadom=powiadom)
     if wstecz:
         return _formularz(request, user, ctx, db, zgloszenie, dane)
     try:
@@ -97,6 +98,8 @@ def zatwierdz(zgloszenie_id: str, request: Request,
     except helpdesk.BladHelpdesku as exc:
         db.rollback()
         raise _blad(exc) from exc
+    helpdesk_wysylka.wyslij_powiadomienie_o_przeniesieniu(db, zgloszenie)
+    db.commit()
     return _wroc(f"/helpdesk/zgloszenie/{zgloszenie.id}",
                  f"Zgłoszenie {zgloszenie.numer_pelny} przeniesiono do nowej firmy.")
 

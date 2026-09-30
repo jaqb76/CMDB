@@ -19,14 +19,16 @@
         <dt>Korespondencja</dt><dd>{{ liczby.wpisy }} wpisów i {{ liczby.pliki }} plików pozostaje w zgłoszeniu. Notatki wewnętrzne zostają wewnętrzne.</dd>
         <dt>Sprzęt</dt><dd>{% if sprzet %}Powiązania z urządzeniami zostaną odpięte. Sprzęt pozostaje w obecnej firmie.{% else %}Brak powiązań do odpięcia.{% endif %}</dd>
         <dt>Czas pracy</dt><dd>{{ liczby.minuty | czas }} zostanie przypisane w raportach do firmy docelowej. Wartości, autorzy i daty wpisów pozostają bez zmian.</dd>
-        <dt>Numer i status</dt><dd>{{ zgloszenie.numer_pelny }} oraz status i data utworzenia pozostają bez zmian.</dd>
+        <dt>Numer</dt><dd>Zgłoszenie dostanie kolejny numer firmy {{ podglad.firma }}. Dotychczasowy numer {{ zgloszenie.numer_pelny }} zostaje zapisany i nadal prowadzi do tej sprawy.</dd>
+        <dt>Status</dt><dd>Status i data utworzenia pozostają bez zmian.</dd>
+        <dt>Powiadomienie</dt><dd>{{ podglad.powiadomienie }}</dd>
         <dt>Powód</dt><dd>{{ podglad.powod }}</dd>
       </dl>
-      <div class="alert alert-warn">Przekazujesz całą treść i załączniki nowej firmie. Poprzedni kontakt i DW nie będą odbiorcami nowych odpowiedzi. Przeniesienie nie wysyła e-maila do klienta.</div>
+      <div class="alert alert-warn">Przekazujesz całą treść i załączniki nowej firmie. Poprzedni kontakt i DW nie będą odbiorcami nowych odpowiedzi.{% if not dane.get('powiadom') %} Przeniesienie nie wysyła e-maila do klienta.{% endif %}</div>
       <form method="post" action="/helpdesk/zgloszenie/{{ zgloszenie.id }}/przenies" class="stack">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="potwierdzenie" value="{{ podglad.token }}">
-        {% for klucz, wartosc in dane.items() %}<input type="hidden" name="{{ klucz }}" value="{{ wartosc }}">{% endfor %}
+        {% for klucz, wartosc in dane.items() %}{% if klucz == 'powiadom' %}{% if wartosc %}<input type="hidden" name="powiadom" value="1">{% endif %}{% else %}<input type="hidden" name="{{ klucz }}" value="{{ wartosc }}">{% endif %}{% endfor %}
         <label class="kolumna-wybor"><input type="checkbox" name="potwierdzam" value="1" required> Potwierdzam przekazanie treści i plików do {{ podglad.firma }} oraz zmianę dostępu.</label>
         <div class="hd-transfer-actions">
           <button class="btn" type="submit" name="wstecz" value="1" formaction="/helpdesk/zgloszenie/{{ zgloszenie.id }}/przenies/podglad" formnovalidate>Wstecz</button>
@@ -61,6 +63,8 @@
         </div>
         <label for="transfer-reason">Powód przeniesienia *</label>
         <textarea id="transfer-reason" name="powod" rows="3" required maxlength="1000" placeholder="Np. zgłoszenie przypisano do niewłaściwej firmy.">{{ dane.get('powod', '') }}</textarea>
+        <label class="kolumna-wybor"><input type="checkbox" name="powiadom" value="1" {% if dane.get('powiadom', True) %}checked{% endif %}>
+          Powiadom zgłaszającego{% if zgloszenie.zglaszajacy_email %} ({{ zgloszenie.zglaszajacy_email }}){% endif %}, że zgłoszenie zostało przekierowane, i podaj nowy numer</label>
         <p class="small muted" data-transfer-result role="status" aria-live="polite"></p>
         <div class="alert">Przeniesione zostanie całe zgłoszenie: historia, wiadomości, pliki i czas pracy. Powiązania ze sprzętem poprzedniej firmy zostaną odpięte.</div>
         <div class="hd-transfer-actions"><a class="btn" href="/helpdesk/zgloszenie/{{ zgloszenie.id }}">Anuluj</a><button class="btn btn-primary" type="submit" data-transfer-next>Sprawdź przeniesienie →</button></div>

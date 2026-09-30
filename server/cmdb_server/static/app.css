@@ -1846,3 +1846,4 @@ label.check input { width: auto; margin-top: 3px; }
 .hd-transfer-review dd { overflow-wrap: anywhere; }
 .hd-transfer-actions { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
 @media (max-width: 600px) { .hd-transfer-grid { grid-template-columns: 1fr; } .hd-transfer-review { grid-template-columns: 1fr; } }
+.hd-cytat { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12rem; overflow: auto; margin: 0; padding: .5rem .75rem; border-left: 3px solid var(--border, #ccc); }
