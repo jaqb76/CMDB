@@ -12,6 +12,7 @@ z adresu helpdesku. Wspolne jest tylko szyfrowanie hasla (services/sekrety).
 from __future__ import annotations
 
 import logging
+import re
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -22,8 +23,10 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     WPIS_DO_KLIENTA,
+    WPIS_OD_KLIENTA,
     HelpdeskUstawienia,
     PortalUser,
+    Tenant,
     WpisZgloszenia,
     ZalacznikWpisu,
     Zgloszenie,
@@ -48,6 +51,24 @@ DOMYSLNE_ZAMKNIECIE = (
     "Jeśli sprawa nie jest dla Pana/Pani załatwiona, wystarczy odpowiedzieć "
     "na tego maila - zgłoszenie wróci do realizacji pod tym samym numerem.\n"
 )
+
+
+DOMYSLNE_PRZENIESIENIE = (
+    "Dzień dobry,\n\n"
+    "zgłoszenie {numer_poprzedni} - „{temat}” zostało przekierowane do obsługi przez {firma}.\n"
+    "Sprawa ma teraz numer {numer}. Dalszą korespondencję w tej sprawie prowadzi {firma}.\n"
+)
+
+# Poczatek historii doklejonej przez program pocztowy klienta. Od tego miejsca
+# tresc jest kopia wczesniejszych wiadomosci, ktore i tak sa w watku.
+_POCZATEK_HISTORII = (
+    re.compile(r"^\s*>"),
+    re.compile(r"^\s*(W dniu|Dnia|On)\b.*(napisał|napisała|wrote)", re.IGNORECASE),
+    re.compile(r"^\s*-{2,}\s*(Original Message|Wiadomość oryginalna|Oryginalna wiadomość)", re.IGNORECASE),
+    re.compile(r"^\s*_{10,}\s*$"),
+)
+_NAGLOWEK_OD = re.compile(r"^\s*(From|Od):\s", re.IGNORECASE)
+_NAGLOWEK_DATY = re.compile(r"^\s*(Sent|Wysłano|Date|Data):\s", re.IGNORECASE)
 
 
 class BladWysylki(RuntimeError):
@@ -114,6 +135,41 @@ def adresaci(db: Session, zgloszenie: Zgloszenie, konfiguracja: HelpdeskUstawien
     if transfer:
         dw = [adres for adres in dw if helpdesk_przeniesienia.dozwolony_nadawca(db, zgloszenie, adres)]
     return do, dw
+
+
+def bez_historii(tresc: str) -> str:
+    """Sama nowa czesc wiadomosci, bez cytowanej przez klienta historii."""
+    linie = (tresc or "").splitlines()
+    for i, linia in enumerate(linie):
+        if any(wzor.match(linia) for wzor in _POCZATEK_HISTORII):
+            return "\n".join(linie[:i]).rstrip()
+        # Outlook zaczyna historie blokiem "Od: / Wysłano:" bez znacznikow.
+        if _NAGLOWEK_OD.match(linia) and any(_NAGLOWEK_DATY.match(l) for l in linie[i + 1:i + 4]):
+            return "\n".join(linie[:i]).rstrip()
+    return "\n".join(linie).rstrip()
+
+
+def cytat(wpis: WpisZgloszenia | None) -> str:
+    """Wiadomosc, na ktora odpowiadamy, w postaci cytatu pod odpowiedzia.
+
+    Tylko ta jedna: pelna historia jest w zgloszeniu, a w mailu robilaby
+    z kazdej odpowiedzi coraz dluzszy stos kopii.
+    """
+    if wpis is None:
+        return ""
+    tresc = bez_historii(wpis.tresc)
+    if not tresc:
+        return ""
+    kto = wpis.autor_nazwa or wpis.autor_email or "Klient"
+    if wpis.autor_nazwa and wpis.autor_email:
+        kto = f"{wpis.autor_nazwa} <{wpis.autor_email}>"
+    naglowek = f"W dniu {wpis.utworzono.strftime('%Y-%m-%d %H:%M')} UTC {kto} napisał(a):"
+    return naglowek + "\n" + "\n".join(f"> {linia}" if linia else ">" for linia in tresc.splitlines())
+
+
+def _z_cytatem(tresc: str, ostatnia: WpisZgloszenia | None) -> str:
+    fragment = cytat(ostatnia)
+    return f"{tresc.rstrip()}\n\n{fragment}\n" if fragment else tresc
 
 
 def _stopka(konfiguracja: HelpdeskUstawienia, tresc: str) -> str:
@@ -211,7 +267,7 @@ def wyslij_wpis(db: Session, zgloszenie: Zgloszenie, wpis: WpisZgloszenia) -> No
     if ostatnia is not None and ostatnia.message_id:
         wiadomosc["In-Reply-To"] = ostatnia.message_id
         wiadomosc["References"] = ostatnia.message_id
-    wiadomosc.set_content(_stopka(konfiguracja, wpis.tresc))
+    wiadomosc.set_content(_z_cytatem(_stopka(konfiguracja, wpis.tresc), ostatnia))
     try:
         _dolacz_pliki(db, wpis, wiadomosc)
     except BladWysylki as blad:
@@ -371,3 +427,71 @@ def niewyslane(db: Session, zgloszenie_id: str) -> list[WpisZgloszenia]:
             WpisZgloszenia.wyslano_o.is_(None),
         ).order_by(WpisZgloszenia.utworzono)
     ).scalars())
+
+
+def wyslij_powiadomienie_o_przeniesieniu(db: Session, zgloszenie: Zgloszenie) -> bool:
+    """Informuje dotychczasowego zglaszajacego, ze sprawa trafila do innej firmy.
+
+    Wolane po zatwierdzeniu przeniesienia: wycofany transfer nie moze wyslac
+    maila, a awaria SMTP nie moze wycofac transferu. Adres i zgoda technika
+    pochodza z rejestru przeniesienia, bo kontakt zgloszenia to juz nowa firma.
+    Wynik zostaje w historii zgloszenia jako zdarzenie, z Message-ID - odpowiedz
+    na to powiadomienie wroci wiec do tej sprawy (i do weryfikacji, jesli
+    pisze ja ktos spoza obecnej firmy). Takiego wpisu nie da sie ponowic
+    zwykla wysylka do obecnego kontaktu.
+    """
+    transfer = helpdesk_przeniesienia.ostatnie(db, zgloszenie.id)
+    if transfer is None:
+        return False
+    szczegoly = transfer.szczegoly or {}
+    ustawione = szczegoly.get("powiadomienie") or {}
+    adres = ustawione.get("adres")
+    if not ustawione.get("wlaczone") or not adres:
+        return False
+    stary = szczegoly.get("numer_pelny") or zgloszenie.numer_pelny
+    firma = db.get(Tenant, zgloszenie.tenant_id)
+    tresc = (DOMYSLNE_PRZENIESIENIE
+             .replace("{numer_poprzedni}", stary).replace("{numer}", zgloszenie.numer_pelny)
+             .replace("{temat}", zgloszenie.temat)
+             .replace("{firma}", firma.name if firma else szczegoly.get("firma_do_nazwa", "")))
+    autor = "Helpdesk (powiadomienie o przekierowaniu)"
+
+    konfiguracja = ustawienia(db)
+    if konfiguracja is None or not konfiguracja.smtp_host or not konfiguracja.nadawca:
+        helpdesk.zdarzenie(db, zgloszenie,
+            f"nie wysłano powiadomienia o przekierowaniu do {adres}: skrzynka helpdesku nie jest skonfigurowana",
+            autor=autor)
+        return False
+
+    wiadomosc = EmailMessage()
+    temat = zgloszenie.temat if helpdesk.rozpoznaj_numer(zgloszenie.temat) == stary else f"[{stary}] {zgloszenie.temat}"
+    wiadomosc["Subject"] = temat if temat.lower().startswith("re:") else f"Re: {temat}"
+    wiadomosc["From"] = formataddr((konfiguracja.nazwa_nadawcy or "Helpdesk", konfiguracja.nadawca))
+    wiadomosc["To"] = adres
+    wiadomosc["Message-ID"] = make_msgid(domain=helpdesk.domena_adresu(konfiguracja.nadawca) or None)
+    poprzednia = db.execute(
+        select(WpisZgloszenia).where(
+            WpisZgloszenia.zgloszenie_id == zgloszenie.id,
+            WpisZgloszenia.rodzaj == WPIS_OD_KLIENTA,
+            WpisZgloszenia.utworzono <= transfer.utworzono,
+            WpisZgloszenia.message_id.is_not(None),
+        ).order_by(WpisZgloszenia.utworzono.desc()).limit(1)
+    ).scalar_one_or_none()
+    if poprzednia is not None:
+        wiadomosc["In-Reply-To"] = poprzednia.message_id
+        wiadomosc["References"] = poprzednia.message_id
+    wiadomosc.set_content(_stopka(konfiguracja, tresc))
+    try:
+        _wyslij(konfiguracja, wiadomosc)
+    except BladWysylki as blad:
+        konfiguracja.ostatni_blad = str(blad)
+        log.warning("helpdesk: powiadomienie o przekierowaniu %s nie poszlo: %s", zgloszenie.numer_pelny, blad)
+        helpdesk.zdarzenie(db, zgloszenie,
+            f"nie wysłano powiadomienia o przekierowaniu do {adres}: {blad}", autor=autor)
+        return False
+    wpis = helpdesk.zdarzenie(db, zgloszenie,
+        f"wysłano powiadomienie o przekierowaniu do {adres}:\n\n{tresc}", autor=autor)
+    wpis.message_id = str(wiadomosc["Message-ID"])
+    wpis.wyslano_o = utcnow()
+    konfiguracja.ostatni_blad = None
+    return True

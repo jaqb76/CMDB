@@ -1,8 +1,11 @@
 """Przeniesienie calego zgloszenia pomiedzy firmami w jednej transakcji.
 
-Numery publiczne, wpisy i pliki zachowuja tozsamosc. Zmiana firmy musi tez
-zmienic zakres raportow czasu, relacje sprzetowe i odbiorcow przyszlych maili.
-Funkcje nie wykonuja commit ani wysylki; transakcja nalezy do wywolujacego.
+Wpisy i pliki zachowuja tozsamosc. Zgloszenie dostaje numer wedlug konwencji
+firmy docelowej, a dawny numer nadal prowadzi do tej samej sprawy. Zmiana firmy
+musi tez zmienic zakres raportow czasu, relacje sprzetowe i odbiorcow
+przyszlych maili. ``przenies`` nie wykonuje commit ani wysylki; transakcja
+nalezy do wywolujacego, a powiadomienie zglaszajacego wysyla
+``helpdesk_wysylka.wyslij_powiadomienie_o_przeniesieniu`` dopiero po commit.
 """
 from __future__ import annotations
 
@@ -15,7 +18,8 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from ..models import (
-    CzasPracy, HelpdeskDostep, HelpdeskFirma, PortalUser, PrzeniesienieZgloszenia,
+    CzasPracy, HelpdeskDostep, HelpdeskFirma, NumerPoprzedniZgloszenia, PortalUser,
+    PrzeniesienieZgloszenia,
     Tenant, WpisSlownika, WpisZgloszenia, Zgloszenie, ZgloszenieSprzet,
     WPIS_DO_KLIENTA, WPIS_OD_KLIENTA, utcnow,
 )
@@ -149,16 +153,26 @@ def _podpis() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(get_settings().secret_key, salt="helpdesk-transfer-v1")
 
 
-def przygotuj(db: Session, user: PortalUser, zgloszenie: Zgloszenie, **dane) -> dict:
+def przygotuj(db: Session, user: PortalUser, zgloszenie: Zgloszenie, *,
+              powiadom: bool = True, **dane) -> dict:
     cel, kontakt, technik = sprawdz_wybor(db, user, zgloszenie, **dane)
     email = ((kontakt.atrybuty or {}).get("email") or "").strip().lower() if kontakt else ""
     zapis = {**dane, "user_id": user.id, "session_version": user.session_version,
              "ticket_id": zgloszenie.id, "oczekiwana_wersja": wersja(db, zgloszenie),
-             "oczekiwany_kontakt": email}
+             "oczekiwany_kontakt": email, "powiadom": bool(powiadom)}
     return {"token": _podpis().dumps(zapis), "firma": cel.name,
             "kontakt": f"{kontakt.wartosc} · {email}" if kontakt else "Bez kontaktu — wysyłka e-mail wstrzymana",
             "technik": helpdesk.opis_osoby(technik) if technik else "Nieprzypisany",
-            "powod": dane["powod"].strip()}
+            "powod": dane["powod"].strip(),
+            "powiadomienie": opis_powiadomienia(zgloszenie, powiadom)}
+
+
+def opis_powiadomienia(zgloszenie: Zgloszenie, powiadom: bool) -> str:
+    if not powiadom:
+        return "Wyłączone — zgłaszający nie dostanie wiadomości"
+    if not zgloszenie.zglaszajacy_email:
+        return "Brak adresu zgłaszającego — wiadomość nie zostanie wysłana"
+    return f"Wiadomość o przekierowaniu i nowym numerze do {zgloszenie.zglaszajacy_email}"
 
 
 def zatwierdz(db: Session, user: PortalUser, zgloszenie_id: str, token: str, ip: str | None = None):
@@ -175,7 +189,7 @@ def zatwierdz(db: Session, user: PortalUser, zgloszenie_id: str, token: str, ip:
 def przenies(
     db: Session, user: PortalUser, zgloszenie_id: str, *, oczekiwana_wersja: str,
     tenant_id: str, kontakt_id: str = "", technik_id: str = "", powod: str,
-    ip: str | None = None, oczekiwany_kontakt: str | None = None,
+    ip: str | None = None, oczekiwany_kontakt: str | None = None, powiadom: bool = True,
 ) -> Zgloszenie:
     # Blokade tej samej sprawy biora tez zapisy WWW, mobilne i odbior poczty.
     zgloszenie = db.execute(select(Zgloszenie).where(Zgloszenie.id == zgloszenie_id)
@@ -204,8 +218,15 @@ def przenies(
         "sprzet_odpiety": [p.asset_id for p in powiazania],
         "numer_pelny": zgloszenie.numer_pelny, "numer_wewnetrzny_z": zgloszenie.numer,
     }
-    numer, _ = helpdesk.nadaj_numer(db, tenant_id)
+    numer, numer_pelny = helpdesk.nadaj_numer(db, tenant_id)
     szczegoly["numer_wewnetrzny_do"] = numer
+    szczegoly["numer_pelny_do"] = numer_pelny
+    # Adres zapamietany w rejestrze, bo po transferze pole kontaktu wskazuje
+    # juz nowa firme; wysylka idzie dopiero po commit.
+    szczegoly["powiadomienie"] = {
+        "wlaczone": bool(powiadom), "adres": zgloszenie.zglaszajacy_email or None}
+    db.add(NumerPoprzedniZgloszenia(
+        zgloszenie_id=zgloszenie.id, numer_pelny=zgloszenie.numer_pelny, tenant_id=firma_z))
     db.execute(delete(ZgloszenieSprzet).where(ZgloszenieSprzet.zgloszenie_id == zgloszenie.id))
     czasy = db.execute(update(CzasPracy).where(CzasPracy.zgloszenie_id == zgloszenie.id)
                       .values(tenant_id=tenant_id))
@@ -213,6 +234,7 @@ def przenies(
     teraz = utcnow()
     zgloszenie.tenant_id = tenant_id
     zgloszenie.numer = numer
+    zgloszenie.numer_pelny = numer_pelny
     zgloszenie.zglaszajacy_email = ((kontakt.atrybuty or {}).get("email") or "").strip().lower() if kontakt else ""
     zgloszenie.zglaszajacy_nazwa = kontakt.wartosc if kontakt else None
     zgloszenie.technik_id = technik.id if technik else None
@@ -226,6 +248,7 @@ def przenies(
         .values(blad_wysylki="Wysyłka wstrzymana po zmianie firmy. Utwórz nową odpowiedź do nowego kontaktu."))
     helpdesk.zdarzenie(db, zgloszenie,
         f"przeniesiono zgłoszenie: {szczegoly['firma_z_nazwa']} → {cel.name}; "
+        f"numer: {szczegoly['numer_pelny']} → {numer_pelny}; "
         f"powód: {powod.strip()}; wykonawca: {helpdesk.opis_osoby(user)}",
         autor=helpdesk.opis_osoby(user), autor_id=user.id)
     audit(db, None, action="helpdesk.zgloszenie.przeniesienie", target=zgloszenie.id,

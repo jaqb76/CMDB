@@ -430,6 +430,8 @@ def karta_zgloszenia(
         komunikat=komunikat,
         moze_przeniesc=bool(transfer.firmy_docelowe(db, user, zgloszenie)),
         przenoszone=transfer.ostatnie(db, zgloszenie.id) is not None,
+        numery_poprzednie=helpdesk.numery_poprzednie(db, zgloszenie.id),
+        cytowana=helpdesk_wysylka.cytat(transfer.ostatnia_do_odpowiedzi(db, zgloszenie)),
         kontakty_firmy=list(db.execute(select(WpisSlownika).where(
             WpisSlownika.tenant_id == zgloszenie.tenant_id, WpisSlownika.kategoria == "osoba")
             .order_by(WpisSlownika.wartosc)).scalars()),

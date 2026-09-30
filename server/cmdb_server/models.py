@@ -1710,8 +1710,8 @@ class Zgloszenie(Base):
     # Numer w obrebie firmy i ten sam numer w postaci, ktora idzie w temacie
     # maila. Trzymamy oba, bo po napisie z tematu ("BON-123") szukamy przy
     # kazdej przychodzacej odpowiedzi - rozkladanie go na czesci w zapytaniu
-    # kosztowaloby indeks. Po przeniesieniu numer_pelny pozostaje staly,
-    # a numer rezerwuje wolna pozycje w liczniku firmy docelowej.
+    # kosztowaloby indeks. Po przeniesieniu zgloszenie dostaje kolejny numer
+    # firmy docelowej, a dawny trafia do NumerPoprzedniZgloszenia.
     numer: Mapped[int] = mapped_column(Integer, nullable=False)
     numer_pelny: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
 
@@ -1753,6 +1753,27 @@ class PrzeniesienieZgloszenia(Base):
     autor: Mapped[str] = mapped_column(String(255), nullable=False)
     powod: Mapped[str] = mapped_column(String(1000), nullable=False)
     szczegoly: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class NumerPoprzedniZgloszenia(Base):
+    """Numer, pod ktorym zgloszenie bylo znane przed przeniesieniem.
+
+    Klient i technicy pamietaja stary numer, a odpowiedzi ze starym znacznikiem
+    w temacie maja trafic do tej samej sprawy. Numery nie wracaja do obiegu,
+    bo licznik firmy tylko rosnie - stary numer wskazuje wiec jedna sprawe.
+    """
+
+    __tablename__ = "helpdesk_numery_poprzednie"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    zgloszenie_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("helpdesk_zgloszenia.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    numer_pelny: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    # Firma, ktora nadala numer. Bez klucza obcego, jak w rejestrze przeniesien.
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
     utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 

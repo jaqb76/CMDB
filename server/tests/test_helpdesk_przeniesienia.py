@@ -11,7 +11,7 @@ from sqlalchemy import select
 from cmdb_server.config import get_settings
 from cmdb_server.db import SessionLocal
 from cmdb_server.models import (
-    Asset, AuditLog, CzasPracy, HelpdeskFirma, NierozpoznanaWiadomosc, PortalUser,
+    Asset, AuditLog, CzasPracy, HelpdeskFirma, NierozpoznanaWiadomosc, NumerPoprzedniZgloszenia, PortalUser,
     PrzeniesienieZgloszenia, Tenant, WpisSlownika, WpisZgloszenia, ZalacznikWpisu,
     Zgloszenie, ZgloszenieSprzet, STATUS_W_TRAKCIE, WPIS_DO_KLIENTA,
     WPIS_WEWNETRZNY, utcnow,
@@ -110,8 +110,10 @@ def test_transfer_przenosi_calosc_bez_kopii_i_kolizji_numeru(sprawa):
     with SessionLocal() as db:
         z = db.get(Zgloszenie, s["id"])
         assert z.tenant_id == s["b"]
-        assert z.numer_pelny == s["numer"] == "ALF-1"
-        assert z.numer == 2  # BET-1 juz istnialo; numer publiczny sie nie zmienia.
+        assert s["numer"] == "ALF-1"
+        assert (z.numer, z.numer_pelny) == (2, "BET-2")  # BET-1 juz istnialo.
+        assert helpdesk.numery_poprzednie(db, z.id) == ["ALF-1"]
+        assert helpdesk.znajdz_po_numerze(db, "alf-1").id == z.id
         assert z.utworzono == s["utworzono"] and z.status == STATUS_W_TRAKCIE
         assert z.technik_id == s["nowy"] and z.zglaszajacy_email == "anna@beta.pl"
         assert db.get(WpisZgloszenia, s["notatka"]).rodzaj == WPIS_WEWNETRZNY
@@ -126,6 +128,8 @@ def test_transfer_przenosi_calosc_bez_kopii_i_kolizji_numeru(sprawa):
         assert (zapis.firma_z, zapis.firma_do, zapis.autor) == (s["a"], s["b"], "technik@operator.pl")
         assert zapis.szczegoly["sprzet_odpiety"] == [s["sprzet"]]
         assert zapis.szczegoly["kontakt_z"]["email"] == "jan@alfa.pl"
+        assert (zapis.szczegoly["numer_pelny"], zapis.szczegoly["numer_pelny_do"]) == ("ALF-1", "BET-2")
+        assert zapis.szczegoly["powiadomienie"] == {"wlaczone": True, "adres": "jan@alfa.pl"}
         assert db.scalar(select(AuditLog).where(AuditLog.action == "helpdesk.zgloszenie.przeniesienie")).target == z.id
         nastepne = helpdesk.utworz_zgloszenie(db, tenant_id=s["b"], temat="Nowe", tresc="Nowe",
                                             zglaszajacy_email="anna@beta.pl")
@@ -146,7 +150,7 @@ def test_www_podglad_potwierdzenie_i_historia(client, sprawa, make_user, email):
     assert response.status_code == 303, response.text
     page = client.get(response.headers["location"])
     assert page.status_code == 200 and "przeniesiono zgłoszenie" in page.text
-    assert "ALF-1" in page.text and "anna@beta.pl" in page.text
+    assert "BET-2" in page.text and "Poprzednio: ALF-1" in page.text and "anna@beta.pl" in page.text
 
 
 def test_lista_firm_i_opcje_nie_ujawniaja_cudzych_danych(client, sprawa):
@@ -283,7 +287,8 @@ def test_api_mobilne_uzywa_tych_samych_uprawnien_i_potwierdzenia(client, sprawa)
     assert client.post(url, headers=headers, json={"confirmation_token": token}).status_code == 400
     response = client.post(url, headers=headers, json={"confirmation_token": token, "confirmed": True})
     assert response.status_code == 200 and response.json()["tenant_id"] == s["b"]
-    assert response.json()["number"] == s["numer"]
+    assert response.json()["number"] == "BET-2"
+    assert response.json()["previous_numbers"] == [s["numer"]]
 
 
 def test_nowi_odbiorcy_bez_starych_dw_i_naglowkow(sprawa, smtp):
@@ -381,3 +386,135 @@ def test_rownoczesne_zatwierdzenia_wykonuja_tylko_jeden_transfer(sprawa):
         future.result(timeout=10)
     with SessionLocal() as db:
         assert len(db.scalars(select(PrzeniesienieZgloszenia)).all()) == 1
+
+
+def _powiadom(s):
+    with SessionLocal() as db:
+        wynik = helpdesk_wysylka.wyslij_powiadomienie_o_przeniesieniu(db, db.get(Zgloszenie, s["id"]))
+        db.commit()
+    return wynik
+
+
+def test_nowy_numer_po_powrocie_i_stare_numery_prowadza_do_sprawy(sprawa):
+    s = sprawa; _przenies(s)
+    with SessionLocal() as db:
+        kontakt = WpisSlownika(tenant_id=s["a"], kategoria="osoba", wartosc="Jan",
+                              klucz="jan", atrybuty={"email": "jan@alfa.pl"})
+        db.add(kontakt); db.commit()
+        kontakt_a = kontakt.id
+    token = _przygotuj(s, tenant_id=s["a"], kontakt_id=kontakt_a, technik_id="")
+    with SessionLocal() as db:
+        transfer.zatwierdz(db, db.get(PortalUser, s["technik"]), s["id"], token)
+        db.commit()
+        z = db.get(Zgloszenie, s["id"])
+        assert z.numer_pelny == "ALF-2" and helpdesk.numery_poprzednie(db, z.id) == ["ALF-1", "BET-2"]
+        for numer in ("ALF-1", "BET-2", "ALF-2"):
+            assert helpdesk.znajdz_po_numerze(db, numer).id == z.id
+
+
+@pytest.mark.parametrize("temat", ["Re: [ALF-1] Drukarka", "Re: [BET-2] Drukarka"])
+def test_odpowiedz_nowej_firmy_po_starym_i_nowym_numerze_trafia_do_sprawy(sprawa, temat):
+    s = sprawa; _przenies(s)
+    with SessionLocal() as db:
+        wynik = poczta.przyjmij(db, poczta.przeczytaj(_mail(nadawca="anna@beta.pl", temat=temat,
+                                message_id="<numer@beta.pl>")))
+        assert wynik.decyzja == poczta.DECYZJA_DOPISZ and wynik.zgloszenie.id == s["id"]
+
+
+def test_powiadomienie_zglaszajacego_domyslnie_wlaczone(sprawa, smtp):
+    s = sprawa; _skrzynka(); _przenies(s)
+    assert smtp.wyslane == []  # nic nie wychodzi przed zatwierdzeniem transakcji
+    assert _powiadom(s) is True
+    mail = smtp.wyslane[-1]
+    assert mail["To"] == "jan@alfa.pl" and "[ALF-1]" in mail["Subject"]
+    assert mail["In-Reply-To"] == "<stary-watek@alfa.pl>"
+    tresc = mail.get_content()
+    assert "ALF-1" in tresc and "BET-2" in tresc and "przekierowane" in tresc
+    with SessionLocal() as db:
+        wpis = db.scalar(select(WpisZgloszenia).where(
+            WpisZgloszenia.zgloszenie_id == s["id"], WpisZgloszenia.message_id == mail["Message-ID"]))
+        assert wpis is not None and "jan@alfa.pl" in wpis.tresc
+        assert helpdesk_wysylka.niewyslane(db, s["id"]) == []
+        # Odpowiedz na powiadomienie wraca do sprawy, ale spoza obecnej firmy - do weryfikacji.
+        wynik = poczta.przyjmij(db, poczta.przeczytaj(_mail(nadawca="jan@alfa.pl",
+            temat=mail["Subject"], in_reply_to=mail["Message-ID"], message_id="<po-powiadomieniu@alfa.pl>")))
+        assert wynik.decyzja == poczta.DECYZJA_NIEROZPOZNANA
+
+
+def test_powiadomienie_mozna_wylaczyc(sprawa, smtp):
+    s = sprawa; _skrzynka(); _przenies(s, powiadom=False)
+    assert _powiadom(s) is False and smtp.wyslane == []
+
+
+def test_brak_skrzynki_zapisuje_niewyslane_powiadomienie(sprawa, smtp):
+    s = sprawa; _przenies(s)
+    assert _powiadom(s) is False and smtp.wyslane == []
+    with SessionLocal() as db:
+        assert db.scalar(select(WpisZgloszenia).where(WpisZgloszenia.zgloszenie_id == s["id"],
+            WpisZgloszenia.tresc.like("nie wysłano powiadomienia%"))) is not None
+
+
+def test_www_checkbox_powiadomienia(client, sprawa, smtp):
+    s = sprawa; _skrzynka()
+    _login(client, "technik@operator.pl", HASLO)
+    url = f'/helpdesk/zgloszenie/{s["id"]}/przenies'
+    formularz = client.get(url).text
+    assert re.search(r'name="powiadom" value="1" checked', formularz)
+    csrf = _extract_csrf(formularz)
+    podglad = client.post(url + "/podglad", data={"csrf_token": csrf, "powiadom": "1", **_wybor(s)})
+    assert "Wiadomość o przekierowaniu i nowym numerze do jan@alfa.pl" in podglad.text
+    token = re.search(r'name="potwierdzenie" value="([^"]+)"', podglad.text).group(1)
+    response = client.post(url, data={"csrf_token": csrf, "potwierdzenie": token, "potwierdzam": "1"},
+                           follow_redirects=False)
+    assert response.status_code == 303
+    assert [m["To"] for m in smtp.wyslane] == ["jan@alfa.pl"]
+
+
+def test_www_bez_zaznaczenia_nie_powiadamia(client, sprawa, smtp):
+    s = sprawa; _skrzynka()
+    _login(client, "technik@operator.pl", HASLO)
+    url, csrf, token = _ui_podglad(client, s)
+    assert client.post(url, data={"csrf_token": csrf, "potwierdzenie": token, "potwierdzam": "1"},
+                       follow_redirects=False).status_code == 303
+    assert smtp.wyslane == []
+
+
+def test_api_mobilne_powiadomienie_opcjonalne(client, sprawa, smtp):
+    s = sprawa; _skrzynka(); headers = _naglowki(client, "technik@operator.pl", HASLO)
+    url = f'/api/v1/mobile/helpdesk/tickets/{s["id"]}/transfer'
+    preview = client.post(url + "/preview", headers=headers, json={"tenant_id": s["b"],
+        "contact_id": s["kontakt"], "reason": "Zła firma", "notify_requester": False}).json()
+    assert preview["sends_email"] is False and preview["notify_requester"] is False
+    response = client.post(url, headers=headers, json={
+        "confirmation_token": preview["confirmation_token"], "confirmed": True}).json()
+    assert response["requester_notified"] is False and smtp.wyslane == []
+
+
+def test_odpowiedz_cytuje_tylko_wiadomosc_na_ktora_odpowiadamy(sprawa, smtp):
+    s = sprawa; _skrzynka(); _przenies(s)
+    with SessionLocal() as db:
+        poczta.przyjmij(db, poczta.przeczytaj(_mail(nadawca="anna@beta.pl", temat="Re: [BET-2] Drukarka",
+            message_id="<cytat@beta.pl>",
+            tresc="Nadal nie drukuje.\n\nW dniu 2026-09-29 Helpdesk napisał:\n> Starsza odpowiedź")))
+        db.commit()
+        helpdesk_wysylka.odpowiedz_klientowi(db, db.get(Zgloszenie, s["id"]), "Sprawdzimy sterownik.",
+                                          db.get(PortalUser, s["technik"]))
+        db.commit()
+    tresc = smtp.wyslane[-1].get_content()
+    assert tresc.startswith("Sprawdzimy sterownik.")
+    assert "anna@beta.pl napisał(a):\n> Nadal nie drukuje." in tresc
+    assert "Starsza odpowiedź" not in tresc and "Notatka tylko dla technikow" not in tresc
+    with SessionLocal() as db:
+        assert db.scalar(select(WpisZgloszenia).where(
+            WpisZgloszenia.tresc == "Sprawdzimy sterownik.")) is not None
+
+
+@pytest.mark.parametrize("tresc, oczekiwana", [
+    ("Dziękuję\n\n> cytat", "Dziękuję"),
+    ("Ok\nOn Mon, 1 Sep 2026 Jan wrote:\n> x", "Ok"),
+    ("Ok\n-----Original Message-----\nFrom: a", "Ok"),
+    ("Ok\n\nOd: Helpdesk <h@x.pl>\nWysłano: wtorek\nDo: jan", "Ok"),
+    ("Linia 1\nLinia 2", "Linia 1\nLinia 2"),
+])
+def test_bez_historii(tresc, oczekiwana):
+    assert helpdesk_wysylka.bez_historii(tresc) == oczekiwana

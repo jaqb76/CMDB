@@ -7,6 +7,7 @@
 <div class="page-head">
   <div>
     <h1><span class="nr">{{ zgloszenie.numer_pelny }}</span> {{ zgloszenie.temat }}</h1>
+    {% if numery_poprzednie %}<p class="muted small">Poprzednio: {{ numery_poprzednie | join(', ') }}</p>{% endif %}
     <p class="muted small">
       {{ firma.name }} · {% if zgloszenie.zglaszajacy_email %}{{ 'kontakt do odpowiedzi' if przenoszone else 'zgłosił' }} <a href="mailto:{{ zgloszenie.zglaszajacy_email }}">{{ zgloszenie.zglaszajacy_email }}</a>{% else %}brak kontaktu do odpowiedzi{% endif %}
       · utworzone {{ zgloszenie.utworzono | dt }}
@@ -111,8 +112,10 @@
           <b>Re: [{{ zgloszenie.numer_pelny }}] {{ zgloszenie.temat }}</b>, a kopia wraca
           {% if przenoszone %}wyłącznie do uprawnionych odbiorców z wiadomości otrzymanych po przeniesieniu.{% else %}do osób z DW ostatniej wiadomości klienta.{% endif %} Po wysłaniu zgłoszenie
           przechodzi na <b>Oczekuje</b> — wraca do realizacji, gdy klient odpisze.
+          {% if cytowana %}Pod odpowiedzią zacytujemy tylko wiadomość, na którą odpowiadasz:{% endif %}
           {% else %}Wysyłka e-mail jest wstrzymana. Wskaż kontakt w sekcji „Zgłaszający”.{% endif %}
         </p>
+        {% if cytowana and zgloszenie.zglaszajacy_email %}<pre class="muted small hd-cytat">{{ cytowana }}</pre>{% endif %}
       </form>
     </section>
   </div>

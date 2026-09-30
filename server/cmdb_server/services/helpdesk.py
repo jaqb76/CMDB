@@ -31,6 +31,7 @@ from ..models import (
     HelpdeskDomena,
     HelpdeskDostep,
     HelpdeskFirma,
+    NumerPoprzedniZgloszenia,
     PortalUser,
     Tenant,
     WpisSlownika,
@@ -212,11 +213,29 @@ def rozpoznaj_numer(temat: str | None) -> str | None:
 
 
 def znajdz_po_numerze(db: Session, numer: str | None) -> Zgloszenie | None:
+    """Zgloszenie po obecnym numerze, a gdy go nie ma - po numerze sprzed przeniesienia."""
     if not numer:
         return None
-    return db.execute(
-        select(Zgloszenie).where(Zgloszenie.numer_pelny == numer.strip().upper())
+    numer = numer.strip().upper()
+    zgloszenie = db.execute(
+        select(Zgloszenie).where(Zgloszenie.numer_pelny == numer)
     ).scalar_one_or_none()
+    if zgloszenie is not None:
+        return zgloszenie
+    return db.execute(
+        select(Zgloszenie)
+        .join(NumerPoprzedniZgloszenia, NumerPoprzedniZgloszenia.zgloszenie_id == Zgloszenie.id)
+        .where(NumerPoprzedniZgloszenia.numer_pelny == numer)
+    ).scalar_one_or_none()
+
+
+def numery_poprzednie(db: Session, zgloszenie_id: str) -> list[str]:
+    """Dawne numery zgloszenia, od najstarszego."""
+    return list(db.execute(
+        select(NumerPoprzedniZgloszenia.numer_pelny)
+        .where(NumerPoprzedniZgloszenia.zgloszenie_id == zgloszenie_id)
+        .order_by(NumerPoprzedniZgloszenia.utworzono)
+    ).scalars())
 
 
 # --- dostep technikow -------------------------------------------------------
