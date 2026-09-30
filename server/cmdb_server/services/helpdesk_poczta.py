@@ -280,6 +280,11 @@ def zakwalifikuj(db: Session, wiadomosc: Wiadomosc) -> Kwalifikacja:
 
     zgloszenie = dopasuj_watek(db, wiadomosc)
     if zgloszenie is not None:
+        from . import helpdesk_przeniesienia
+        if (helpdesk_przeniesienia.ostatnie(db, zgloszenie.id) is not None
+                and not helpdesk_przeniesienia.dozwolony_nadawca(db, zgloszenie, wiadomosc.nadawca)):
+            return Kwalifikacja(DECYZJA_NIEROZPOZNANA,
+                "wiadomość do przeniesionego zgłoszenia spoza obecnej firmy — wymaga weryfikacji")
         return Kwalifikacja(
             DECYZJA_DOPISZ,
             f"odpowiedz w watku {zgloszenie.numer_pelny}",
@@ -571,6 +576,13 @@ def przyjmij(db: Session, wiadomosc: Wiadomosc) -> Kwalifikacja:
     niezaleznie od tego, czy serwer SMTP akurat odpowiada.
     """
     wynik = zakwalifikuj(db, wiadomosc)
+
+    if wynik.zgloszenie is not None:
+        # Transfer i odbior tej samej sprawy nie moga przeplatac swoich zapisow.
+        db.flush()
+        db.execute(select(Zgloszenie).where(Zgloszenie.id == wynik.zgloszenie.id)
+                   .with_for_update().execution_options(populate_existing=True)).scalar_one()
+        wynik = zakwalifikuj(db, wiadomosc)
 
     if wynik.decyzja == DECYZJA_DOPISZ and wynik.zgloszenie is not None:
         wpis = helpdesk.dopisz_wiadomosc(

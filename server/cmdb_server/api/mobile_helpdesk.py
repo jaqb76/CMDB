@@ -50,6 +50,7 @@ from ..models import (
     ZgloszenieSprzet,
 )
 from ..services import helpdesk, helpdesk_wysylka, slowniki
+from ..services import helpdesk_przeniesienia as transfer
 from ..services import helpdesk_poczta as poczta
 from ..services.auth import client_ip, tenant_context_for
 from ..services.scoping import audit
@@ -77,14 +78,15 @@ def _firmy(db: Session, user: PortalUser) -> list[str]:
     return firmy
 
 
-def _zgloszenie(db: Session, user: PortalUser, zgloszenie_id: str) -> Zgloszenie:
+def _zgloszenie(db: Session, user: PortalUser, zgloszenie_id: str, *, blokuj: bool = False) -> Zgloszenie:
     """Zgloszenie z firm, ktore to konto obsluguje. Jedyna droga do zgloszenia."""
-    zgloszenie = db.execute(
-        select(Zgloszenie).where(
-            Zgloszenie.id == zgloszenie_id,
-            Zgloszenie.tenant_id.in_(_firmy(db, user)),
-        )
-    ).scalar_one_or_none()
+    zapytanie = select(Zgloszenie).where(
+        Zgloszenie.id == zgloszenie_id,
+        Zgloszenie.tenant_id.in_(_firmy(db, user)),
+    )
+    if blokuj:
+        zapytanie = zapytanie.with_for_update().execution_options(populate_existing=True)
+    zgloszenie = db.execute(zapytanie).scalar_one_or_none()
     if zgloszenie is None:
         # Cudze zgloszenie i nieistniejace odpowiadaja tak samo: inaczej sama
         # odpowiedz mowilaby, ze taki numer istnieje.
@@ -469,7 +471,74 @@ def karta(
         },
         "closing_email": helpdesk_wysylka.zamkniecie_nalezne(db),
         "mailbox": helpdesk_wysylka.ustawienia(db) is not None,
+        "can_transfer": bool(transfer.firmy_docelowe(db, user, zgloszenie)),
     }
+
+
+# --- przeniesienie miedzy firmami ------------------------------------------
+
+class PodgladPrzeniesienia(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=36)
+    contact_id: str = Field(default="", max_length=36)
+    technician_id: str = Field(default="", max_length=36)
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class PotwierdzeniePrzeniesienia(BaseModel):
+    confirmation_token: str = Field(min_length=1, max_length=12000)
+    confirmed: bool = False
+
+
+def _blad_przeniesienia(exc):
+    return HTTPException(403 if isinstance(exc, transfer.BrakDostepu) else
+                         409 if isinstance(exc, transfer.Konflikt) else 400, str(exc))
+
+
+@router.get("/tickets/{zgloszenie_id}/transfer/options")
+def opcje_przeniesienia(zgloszenie_id: str, tenant_id: str = Query("", max_length=36),
+                       user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db)):
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    if not transfer.uprawniona_rola(user):
+        raise HTTPException(403, "To konto nie może przenosić zgłoszeń.")
+    firmy = transfer.firmy_docelowe(db, user, zgloszenie)
+    try:
+        wynik = transfer.opcje(db, user, zgloszenie, tenant_id) if tenant_id else {"contacts": [], "technicians": []}
+    except helpdesk.BladHelpdesku as exc:
+        raise _blad_przeniesienia(exc) from exc
+    return {"companies": [{"id": f.id, "name": f.name} for f in firmy], **wynik}
+
+
+@router.post("/tickets/{zgloszenie_id}/transfer/preview")
+def podglad_przeniesienia(zgloszenie_id: str, dane: PodgladPrzeniesienia,
+                         user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db)):
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
+    try:
+        wynik = transfer.przygotuj(db, user, zgloszenie, tenant_id=dane.tenant_id,
+                                  kontakt_id=dane.contact_id, technik_id=dane.technician_id,
+                                  powod=dane.reason)
+    except helpdesk.BladHelpdesku as exc:
+        raise _blad_przeniesienia(exc) from exc
+    return {"confirmation_token": wynik["token"], "company": wynik["firma"],
+            "contact": wynik["kontakt"], "technician": wynik["technik"], "reason": wynik["powod"],
+            "ticket_number": zgloszenie.numer_pelny,
+            "detached_assets": [{"id": a.id, "hostname": a.hostname} for a, _ in helpdesk.sprzet_zgloszenia(db, zgloszenie.id)],
+            "work_minutes": helpdesk.czas_zgloszenia(db, zgloszenie.id)[0],
+            "transfers_all_content": True, "sends_email": False}
+
+
+@router.post("/tickets/{zgloszenie_id}/transfer")
+def przenies_zgloszenie(zgloszenie_id: str, dane: PotwierdzeniePrzeniesienia, request: Request,
+                       user: PortalUser = Depends(mobile_user), db: Session = Depends(get_db)):
+    _zgloszenie(db, user, zgloszenie_id, blokuj=True)
+    if not dane.confirmed:
+        raise HTTPException(400, "Potwierdź przekazanie treści i zmianę dostępu.")
+    try:
+        zgloszenie = transfer.zatwierdz(db, user, zgloszenie_id, dane.confirmation_token, client_ip(request))
+        db.commit()
+    except helpdesk.BladHelpdesku as exc:
+        db.rollback()
+        raise _blad_przeniesienia(exc) from exc
+    return {"id": zgloszenie.id, "tenant_id": zgloszenie.tenant_id, "number": zgloszenie.numer_pelny}
 
 
 # --- sprzet do wyboru -------------------------------------------------------
@@ -684,7 +753,7 @@ def dopisz(
     notatki zostaja w systemie, bo notatka z definicji nie opuszcza zgloszenia.
     """
     body = _z_formularza(NowaWiadomosc, dane)
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     zalaczniki = _zalaczniki_z_plikow(pliki)
     autor = helpdesk.opis_osoby(user)
     tresc = body.content.strip()
@@ -736,7 +805,7 @@ def status(
     Mail idzie tylko przy przejsciu do zamknietego: powtorne wybranie tego
     samego statusu niczego nie wysyla.
     """
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     zamykamy = body.status == STATUS_ZAMKNIETE and zgloszenie.status != STATUS_ZAMKNIETE
     try:
         helpdesk.zmien_status(db, zgloszenie, body.status, autor=helpdesk.opis_osoby(user))
@@ -766,7 +835,7 @@ def technik(
     db: Session = Depends(get_db),
 ) -> dict:
     """Przypisanie zgloszenia. Pusty identyfikator zdejmuje przypisanie."""
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     wybrany = db.get(PortalUser, body.technician_id) if body.technician_id else None
     if body.technician_id and wybrany is None:
         raise HTTPException(400, "nie znaleziono technika")
@@ -790,7 +859,7 @@ def czas(
     db: Session = Depends(get_db),
 ) -> dict:
     """Dopisuje czas pracy. Zawsze SWOJ - czasu kolegi nikt za niego nie wpisze."""
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     try:
         helpdesk.dodaj_czas(
             db, zgloszenie, user, body.minutes, body.description.strip() or None
@@ -815,7 +884,7 @@ def sprzet(
     db: Session = Depends(get_db),
 ) -> dict:
     """Podpiecie i odpiecie sprzetu, ktorego dotyczy zgloszenie."""
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     autor = helpdesk.opis_osoby(user)
     if body.action == "detach":
         if not helpdesk.odepnij_sprzet(db, zgloszenie, body.asset_id, autor=autor):
@@ -868,7 +937,7 @@ def zalacznik(
     opis = _zalacznik(db, user, zalacznik_id)
     return FileResponse(
         _plik_zalacznika(opis), filename=opis.nazwa, media_type="application/octet-stream",
-        headers={"X-Content-Type-Options": "nosniff"},
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
     )
 
 
@@ -892,5 +961,6 @@ def podglad(
         raise HTTPException(404, "ten plik nie ma podgladu")
     return FileResponse(
         sciezka, media_type=typ,
-        headers={"X-Content-Type-Options": "nosniff", "Content-Disposition": "inline"},
+        headers={"X-Content-Type-Options": "nosniff", "Content-Disposition": "inline",
+                 "Cache-Control": "private, no-store"},
     )

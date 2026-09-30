@@ -1710,7 +1710,8 @@ class Zgloszenie(Base):
     # Numer w obrebie firmy i ten sam numer w postaci, ktora idzie w temacie
     # maila. Trzymamy oba, bo po napisie z tematu ("BON-123") szukamy przy
     # kazdej przychodzacej odpowiedzi - rozkladanie go na czesci w zapytaniu
-    # kosztowaloby indeks.
+    # kosztowaloby indeks. Po przeniesieniu numer_pelny pozostaje staly,
+    # a numer rezerwuje wolna pozycje w liczniku firmy docelowej.
     numer: Mapped[int] = mapped_column(Integer, nullable=False)
     numer_pelny: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
 
@@ -1734,6 +1735,25 @@ class Zgloszenie(Base):
 
     tenant: Mapped[Tenant] = relationship()
     technik: Mapped[PortalUser | None] = relationship()
+
+
+class PrzeniesienieZgloszenia(Base):
+    """Niezmienny zapis zmiany firmy i granica odbiorcow korespondencji."""
+
+    __tablename__ = "helpdesk_przeniesienia"
+    __table_args__ = (Index("ix_przeniesienie_zgloszenie_czas", "zgloszenie_id", "utworzono"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    zgloszenie_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("helpdesk_zgloszenia.id", ondelete="CASCADE"), nullable=False
+    )
+    # Identyfikatory i nazwy pozostaja w historii takze po usunieciu firmy/konta.
+    firma_z: Mapped[str] = mapped_column(String(36), nullable=False)
+    firma_do: Mapped[str] = mapped_column(String(36), nullable=False)
+    autor: Mapped[str] = mapped_column(String(255), nullable=False)
+    powod: Mapped[str] = mapped_column(String(1000), nullable=False)
+    szczegoly: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 
 class ZgloszenieSprzet(Base):

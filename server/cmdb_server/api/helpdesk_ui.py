@@ -52,6 +52,7 @@ from ..models import (
     PortalUser,
     Tenant,
     WpisZgloszenia,
+    WpisSlownika,
     ZalacznikWpisu,
     Zgloszenie,
     utcnow,
@@ -60,6 +61,7 @@ from ..services import (
     helpdesk, helpdesk_imap, helpdesk_raporty, helpdesk_wysylka, sekrety, slowniki,
 )
 from ..services import helpdesk_poczta as poczta
+from ..services import helpdesk_przeniesienia as transfer
 from ..services.auth import client_ip, require_user, tenant_context_for, verify_csrf
 from ..services.scoping import TenantContext, audit
 from .ui import render, resolve_tenant
@@ -92,14 +94,15 @@ def _superadmin(user: PortalUser) -> None:
         )
 
 
-def _zgloszenie(db: Session, user: PortalUser, zgloszenie_id: str) -> Zgloszenie:
+def _zgloszenie(db: Session, user: PortalUser, zgloszenie_id: str, *, blokuj: bool = False) -> Zgloszenie:
     """Zgloszenie z firm, ktore to konto obsluguje. Jedyna droga do zgloszenia."""
-    zgloszenie = db.execute(
-        select(Zgloszenie).where(
-            Zgloszenie.id == zgloszenie_id,
-            Zgloszenie.tenant_id.in_(_firmy(db, user)),
-        )
-    ).scalar_one_or_none()
+    zapytanie = select(Zgloszenie).where(
+        Zgloszenie.id == zgloszenie_id,
+        Zgloszenie.tenant_id.in_(_firmy(db, user)),
+    )
+    if blokuj:
+        zapytanie = zapytanie.with_for_update().execution_options(populate_existing=True)
+    zgloszenie = db.execute(zapytanie).scalar_one_or_none()
     if zgloszenie is None:
         # Cudze zgloszenie i nieistniejace odpowiadaja tak samo: inaczej sama
         # odpowiedz mowilaby, ze taki numer istnieje.
@@ -425,6 +428,11 @@ def karta_zgloszenia(
         skrzynka=helpdesk_wysylka.ustawienia(db),
         zamkniecie_mailem=helpdesk_wysylka.zamkniecie_nalezne(db),
         komunikat=komunikat,
+        moze_przeniesc=bool(transfer.firmy_docelowe(db, user, zgloszenie)),
+        przenoszone=transfer.ostatnie(db, zgloszenie.id) is not None,
+        kontakty_firmy=list(db.execute(select(WpisSlownika).where(
+            WpisSlownika.tenant_id == zgloszenie.tenant_id, WpisSlownika.kategoria == "osoba")
+            .order_by(WpisSlownika.wartosc)).scalars()),
     )
 
 
@@ -445,7 +453,7 @@ def dopisz_wiadomosc(
     jest bledem. Domyslnie komentarz wewnetrzny: pomylka w te strone zostaje
     w zgloszeniu, pomylka w druga idzie do klienta i nie da sie jej cofnac.
     """
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     verify_csrf(request, user, csrf_token)
     if not tresc.strip():
         raise HTTPException(status_code=400, detail="pusta wiadomosc")
@@ -501,7 +509,7 @@ def zmien_status(
     samego statusu niczego nie wysyla, bo klient dostalby drugie zawiadomienie
     o zakonczeniu sprawy, ktora juz raz zakonczylismy.
     """
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     verify_csrf(request, user, csrf_token)
 
     zamykamy = stan == STATUS_ZAMKNIETE and zgloszenie.status != STATUS_ZAMKNIETE
@@ -533,7 +541,7 @@ def zmien_technika(
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     verify_csrf(request, user, csrf_token)
 
     technik = db.get(PortalUser, technik_id) if technik_id else None
@@ -563,7 +571,7 @@ def dodaj_czas(
     ludzie pisza "30", "30 min" i "0:30" - ale znaku nie da sie zgubic razem
     z reszta znakow, bo to on odroznia dopisanie od odjecia.
     """
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     verify_csrf(request, user, csrf_token)
 
     surowe = minuty.strip()
@@ -594,7 +602,7 @@ def zmien_sprzet(
     user: PortalUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    zgloszenie = _zgloszenie(db, user, zgloszenie_id)
+    zgloszenie = _zgloszenie(db, user, zgloszenie_id, blokuj=True)
     verify_csrf(request, user, csrf_token)
 
     if akcja == "odepnij":
@@ -630,7 +638,7 @@ def pobierz_zalacznik(
     # prawa wykonac sie w przegladarce technika.
     return FileResponse(
         sciezka, filename=zalacznik.nazwa, media_type="application/octet-stream",
-        headers={"X-Content-Type-Options": "nosniff"},
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
     )
 
 
@@ -666,6 +674,7 @@ def podglad_zalacznika(
         headers={
             "X-Content-Type-Options": "nosniff",
             "Content-Disposition": "inline",
+            "Cache-Control": "private, no-store",
         },
     )
 
