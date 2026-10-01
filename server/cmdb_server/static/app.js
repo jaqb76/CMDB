@@ -353,6 +353,29 @@
     });
   });
 
+  // Sekcje edytowane dopiero po kliknieciu "Edytuj": domyslnie widac sam
+  // odczyt, formularz wychodzi na jego miejsce, "Anuluj" przywraca odczyt
+  // i cofa niezapisane zmiany.
+  function przelaczEdycje(id, edycja) {
+    var formularz = document.getElementById(id);
+    var odczyt = document.querySelector('[data-edycja-odczyt="' + id + '"]');
+    if (!formularz || !odczyt) { return; }
+    formularz.hidden = !edycja;
+    odczyt.hidden = edycja;
+    if (edycja) {
+      var pierwsze = formularz.querySelector("select, input:not([type=hidden])");
+      if (pierwsze) { pierwsze.focus(); }
+    } else {
+      formularz.reset();
+    }
+  }
+  document.querySelectorAll("[data-edycja-wlacz]").forEach(function (przycisk) {
+    przycisk.addEventListener("click", function () { przelaczEdycje(przycisk.dataset.edycjaWlacz, true); });
+  });
+  document.querySelectorAll("[data-edycja-anuluj]").forEach(function (przycisk) {
+    przycisk.addEventListener("click", function () { przelaczEdycje(przycisk.dataset.edycjaAnuluj, false); });
+  });
+
   // Wspolne natywne okna: changelog wydania i podglad relacji zasobu.
   document.querySelectorAll("[data-dialog-open]").forEach(function (przycisk) {
     przycisk.addEventListener("click", function () {

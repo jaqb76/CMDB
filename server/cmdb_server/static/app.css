@@ -651,6 +651,12 @@ input[aria-invalid="true"], select[aria-invalid="true"] {
 }
 .btn-oko:hover { color: var(--accent); border-color: var(--accent); }
 .btn-oko:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Widok tylko do odczytu sekcji, ktora edytuje sie dopiero po "Edytuj".
+   Wysokosc jak pola formularza, zeby przelaczenie nie skakalo ukladem. */
+.pole-etykieta { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; font-weight: 600; }
+.pole-odczyt { min-height: 34px; display: flex; align-items: center; gap: 6px; }
+.pole-odczyt .pole-wartosc { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.przyciski-edycji { display: flex; gap: 8px; }
 
 
 /* --- pasek akcji pod formularzem --- */
