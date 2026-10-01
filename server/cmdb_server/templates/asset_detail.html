@@ -94,17 +94,7 @@
     pole jest wypełnione. Rząd osobnych przycisków pod formularzem zmuszał do
     czytania ich etykiet, żeby skojarzyć je z polem wyżej.
   #}
-  {% macro wybor_wpisu(nazwa, etykieta, lista, biezacy, podglad, opis) %}
-  <div>
-    <label for="{{ nazwa }}">{{ etykieta }}</label>
-    <div class="pole-z-podgladem">
-      <select id="{{ nazwa }}" name="{{ nazwa }}" {% if not ctx.can_write %}disabled{% endif %}>
-        <option value="">— nieprzypisany —</option>
-        {% for w in lista %}
-          <option value="{{ w.id }}" {% if biezacy == w.id %}selected{% endif %}>{{ w.wartosc }}</option>
-        {% endfor %}
-      </select>
-      {% if biezacy %}
+  {% macro oko(podglad, opis) %}
       <button type="button" class="btn btn-oko" data-dialog-open="{{ podglad }}"
               title="Podgląd: {{ opis }}" aria-label="Podgląd: {{ opis }}">
         <svg viewBox="0 0 20 14" width="17" height="13" aria-hidden="true" focusable="false">
@@ -113,28 +103,74 @@
           <circle cx="10" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
         </svg>
       </button>
-      {% endif %}
+  {% endmacro %}
+
+  {% macro wybor_wpisu(nazwa, etykieta, lista, biezacy, podglad, opis) %}
+  <div>
+    <label for="{{ nazwa }}">{{ etykieta }}</label>
+    <div class="pole-z-podgladem">
+      <select id="{{ nazwa }}" name="{{ nazwa }}">
+        <option value="">— nieprzypisany —</option>
+        {% for w in lista %}
+          <option value="{{ w.id }}" {% if biezacy == w.id %}selected{% endif %}>{{ w.wartosc }}</option>
+        {% endfor %}
+      </select>
+      {% if biezacy %}{{ oko(podglad, opis) }}{% endif %}
     </div>
   </div>
   {% endmacro %}
 
-  <form method="post" action="/assets/{{ asset.id }}/owner" class="row-form">
+  {% macro pokaz_wpis(etykieta, rekord, podglad, opis) %}
+  <div>
+    <span class="pole-etykieta">{{ etykieta }}</span>
+    <div class="pole-z-podgladem pole-odczyt">
+      {% if rekord %}<span class="pole-wartosc">{{ rekord.wartosc }}</span>{{ oko(podglad, opis) }}
+      {% else %}<span class="pole-wartosc muted">— nieprzypisany —</span>{% endif %}
+    </div>
+  </div>
+  {% endmacro %}
+
+  {#
+    Domyślnie sekcja tylko pokazuje wartości. Formularz wychodzi dopiero po
+    kliknięciu "Edytuj" — przypadkowa zmiana listy przy przeglądaniu karty
+    nie powinna być o jeden klik od zapisu.
+  #}
+  <div class="row-form" data-edycja-odczyt="dane-opiekuna">
+    {{ pokaz_wpis('Opiekun (odpowiada za sprzęt)', asset.owner, 'podglad-opiekuna', 'opiekun') }}
+    {{ pokaz_wpis('Użytkownik komputera', asset.uzytkownik, 'podglad-uzytkownika', 'uzytkownik') }}
+    {{ pokaz_wpis('Lokalizacja', asset.lokalizacja, 'podglad-lokalizacji', 'lokalizacja') }}
+    <div>
+      <span class="pole-etykieta">Rola</span>
+      <div class="pole-odczyt">
+        {% if asset.role_label %}<span class="pole-wartosc">{{ asset.role_label }}</span>
+        {% else %}<span class="pole-wartosc muted">—</span>{% endif %}
+      </div>
+    </div>
+    {% if ctx.can_write %}<div><button type="button" class="btn" data-edycja-wlacz="dane-opiekuna">Edytuj</button></div>{% endif %}
+  </div>
+
+  {% if ctx.can_write %}
+  <form method="post" action="/assets/{{ asset.id }}/owner" class="row-form" id="dane-opiekuna" hidden>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    {{ wybor_wpisu('owner_id', 'Opiekun (odpowiada za sprzet)', owners,
+    {{ wybor_wpisu('owner_id', 'Opiekun (odpowiada za sprzęt)', owners,
                    asset.owner_id, 'podglad-opiekuna', 'opiekun') }}
-    {{ wybor_wpisu('uzytkownik_id', 'Uzytkownik komputera', owners,
+    {{ wybor_wpisu('uzytkownik_id', 'Użytkownik komputera', owners,
                    asset.uzytkownik_id, 'podglad-uzytkownika', 'uzytkownik') }}
     {{ wybor_wpisu('lokalizacja_id', 'Lokalizacja', podpowiedzi.lokalizacja,
                    asset.lokalizacja_id, 'podglad-lokalizacji', 'lokalizacja') }}
     <div>
       <label for="role_label">Rola</label>
       <input id="role_label" name="role_label" maxlength="200" value="{{ asset.role_label or '' }}"
-             placeholder="np. serwer plików, drukarka działu kadr" {% if not ctx.can_write %}disabled{% endif %}>
+             placeholder="np. serwer plików, drukarka działu kadr">
     </div>
-    {% if ctx.can_write %}<div><button type="submit" class="btn btn-primary">Zapisz</button></div>{% endif %}
+    <div class="przyciski-edycji">
+      <button type="submit" class="btn btn-primary">Zapisz</button>
+      <button type="button" class="btn btn-ghost" data-edycja-anuluj="dane-opiekuna">Anuluj</button>
+    </div>
   </form>
+  {% endif %}
   <p class="small muted">
-    Wszystkie cztery listy pochodzą że <a href="/slowniki">słownika firmy</a> —
+    Wszystkie cztery listy pochodzą ze <a href="/slowniki">słownika firmy</a> —
     osoby, lokalizacje, działy i dostawcy mają tam własne karty z pełnymi danymi.
   </p>
 </section>
