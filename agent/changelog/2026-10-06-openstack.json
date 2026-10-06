@@ -1,4 +1,4 @@
 {
   "category": "added",
-  "text": "Agent odczytuje OpenStacka: regiony, hypervisory Novy i maszyny wirtualne wszystkich projektów (tylko odczyt). Logowanie przez application credential albo użytkownikiem i hasłem z domeną i projektem. Adresy Compute i Volumes można podać ręcznie, a połączenie po http jest możliwe tylko po jawnym zezwoleniu w panelu."
+  "text": "Agent odczytuje OpenStacka: regiony, hypervisory Novy i maszyny wirtualne wszystkich projektów (tylko odczyt). Logowanie przez application credential albo użytkownikiem z projektem; ręczne adresy Compute i Volumes, http tylko po zgodzie w panelu."
 }
