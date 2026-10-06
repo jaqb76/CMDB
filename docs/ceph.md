@@ -34,9 +34,11 @@ Wymagania:
 - maszyna z agentem, która widzi Dashboard. Domyślnie jest to `https://<mgr>:8443`;
   `ceph mgr services` pokazuje aktualny adres.
 
-Dashboard działa na **aktywnym** mgr. Mgr w trybie standby przekierowuje na
-aktywny, a agent nie podąża za przekierowaniami. Podaj więc adres aktywnego mgr
-albo adres za load balancerem. Przy przekierowaniu agent zgłasza to wprost.
+Dashboard działa na **aktywnym** mgr, a mgr w trybie standby przekierowuje na
+aktywny. Agent idzie za tym przekierowaniem tylko raz i tylko po `https`,
+gdy oba mgr przejdą weryfikację certyfikatu. Można więc podać adres dowolnego
+mgr, a przełączenie mgr w Cephie niczego nie psuje. Po `http` przekierowanie
+jest odrzucane, bo ktoś w sieci mógłby przekierować hasło w inne miejsce.
 
 ## Włączenie
 
@@ -51,8 +53,23 @@ Karta maszyny → **Agent** → **Dodatkowe funkcjonalności** → **Ceph**:
 Dashboard bez TLS (`ssl false`, zwykle port 8080) wymaga zaznaczenia
 **Zezwól na połączenie bez TLS**. Hasło i token idą wtedy otwartym tekstem,
 połączenie ma w panelu znacznik „bez TLS”, a zgoda trafia do audytu.
-Przy `https` certyfikat jest zawsze weryfikowany. Certyfikat self-signed
-Dashboardu można wkleić w polu CA.
+Przy `https` certyfikat jest zawsze weryfikowany.
+
+### Domyślny certyfikat Dashboardu
+
+`ceph dashboard create-self-signed-cert` tworzy certyfikat `CN=ceph-dashboard`
+bez nazw alternatywnych. Nie pasuje on do żadnego adresu, więc zwykła weryfikacja
+nazwy hosta zawsze go odrzuci. Wklej **sam ten certyfikat** w pole „Certyfikat CA”:
+
+```bash
+echo | openssl s_client -connect <mgr>:8443 2>/dev/null | openssl x509
+```
+
+Agent sprawdza, czy serwer pokazuje dokładnie wklejony certyfikat. Jeśli tak,
+pomija zgodność nazwy, ale łańcuch weryfikuje dalej względem tego certyfikatu.
+Przejdzie więc tylko serwer z tym certyfikatem i jego kluczem prywatnym
+(certyfikat przypięty). Wklejone zwykłe CA dalej wymaga zgodnej nazwy hosta.
+Po wymianie certyfikatu w Cephie trzeba wkleić nowy.
 
 ## Co agent pyta
 
@@ -114,7 +131,8 @@ journalctl -u cmdb-agent-monitor -n 50 | grep -i ceph
 |---|---|
 | `odrzucil dane logowania (HTTP 400/401)` | zły użytkownik albo hasło |
 | `HTTP 403 … rolę read-only` | konto bez roli read-only |
-| `przekierowuje na …` | adres wskazuje mgr w trybie standby; podaj aktywny mgr |
+| `przekierowuje na …` | mgr w trybie standby po `http` albo drugie przekierowanie z rzędu; podaj adres aktywnego mgr |
+| `certyfikat … nie jest zaufany` | wklej certyfikat Dashboardu (przypięty) albo CA, które go wystawiło |
 | `nie zna /api/… (HTTP 404)` | adres nie wskazuje Dashboardu |
 | `nie obsługuje API v1.0` | Ceph starszy niż Pacific |
 | `adres bez https` | adres `http` bez zgody na połączenie bez TLS |

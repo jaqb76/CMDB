@@ -46,8 +46,8 @@ PULE = [
 
 
 @contextmanager
-def falszywy_dashboard(tmp_path, haslo="tajne", tls=True, bez_fsid_w_minimal=False):
-    pem, klucz = _certyfikat()
+def falszywy_dashboard(tmp_path, haslo="tajne", tls=True, bez_fsid_w_minimal=False, standby_na=None, pem_klucz=None):
+    pem, klucz = pem_klucz or _certyfikat()
     (tmp_path / "c.pem").write_text(pem)
     (tmp_path / "c.key").write_text(klucz)
     zapytania, tokeny = [], set()
@@ -67,7 +67,17 @@ def falszywy_dashboard(tmp_path, haslo="tajne", tls=True, bez_fsid_w_minimal=Fal
             self.end_headers()
             self.wfile.write(tresc)
 
+        def _standby(self):
+            # Mgr w trybie standby: wszystko przekierowuje na aktywny mgr (jak Ceph: 303 na "/").
+            zapytania.append((self.command, self.path))
+            self.send_response(303)
+            self.send_header("Location", standby_na + "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def do_POST(self):
+            if standby_na:
+                return self._standby()
             zapytania.append(("POST", self.path))
             dane = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             if self.path == "/api/auth":
@@ -81,6 +91,8 @@ def falszywy_dashboard(tmp_path, haslo="tajne", tls=True, bez_fsid_w_minimal=Fal
             self._odpowiedz(404, {})
 
         def do_GET(self):
+            if standby_na:
+                return self._standby()
             sciezka = urlsplit(self.path).path
             zapytania.append(("GET", self.path))
             assert self.headers.get("Accept") == ceph.ACCEPT
@@ -183,3 +195,44 @@ def test_fsid_cepha_z_pul_cindera():
     assert openstack.magazyny_cindera(pule) == [
         {"fsid": FSID, "pula": "volumes", "backend": "ceph-ssd"},
         {"fsid": FSID, "pula": "volumes-hdd", "backend": "ceph-hdd"}]
+
+
+def test_przypiety_certyfikat_bez_zgodnej_nazwy(tmp_path):
+    """Domyslny certyfikat Dashboardu (CN "ceph-dashboard", bez SAN) - przypiety przechodzi."""
+    with falszywy_dashboard(tmp_path) as (adres, pem, _, _t):
+        po_ip = adres.replace("localhost", "127.0.0.1")  # certyfikat jest tylko na "localhost"
+        assert ceph.wykonaj(ceph.CephDashboard(po_ip, "cmdb-ro", "tajne", pem), "test")["ok"]
+        # Inny certyfikat w polu CA nie odblokowuje niczego.
+        inny, _ = _certyfikat()
+        with pytest.raises(ceph.BladCeph, match="nie jest zaufany"):
+            ceph.wykonaj(ceph.CephDashboard(po_ip, "cmdb-ro", "tajne", inny), "test")
+
+
+def test_kontekst_tls_wymaga_nazwy_przy_zwyklym_ca(tmp_path):
+    from cmdb_agent import nutanix
+    with falszywy_dashboard(tmp_path) as (adres, pem, _, _t):
+        assert nutanix.kontekst_tls(adres.replace("localhost", "127.0.0.1"), pem).check_hostname is False
+        # Wklejony certyfikat nie jest tym, ktory pokazuje serwer - nazwa hosta dalej sprawdzana.
+        inny, _ = _certyfikat()
+        assert nutanix.kontekst_tls(adres, inny).check_hostname is True
+        assert nutanix.kontekst_tls(adres, "").check_hostname is True
+
+
+def test_standby_mgr_przekierowuje_na_aktywny(tmp_path):
+    para = _certyfikat()
+    (tmp_path / "a").mkdir()
+    (tmp_path / "s").mkdir()
+    with falszywy_dashboard(tmp_path / "a", pem_klucz=para) as (aktywny, pem, zapytania, tokeny):
+        with falszywy_dashboard(tmp_path / "s", pem_klucz=para, standby_na=aktywny) as (standby, _, w_standby, _t):
+            klient = ceph.CephDashboard(standby, "cmdb-ro", "tajne", pem)
+            wynik = ceph.wykonaj(klient, "odczyt")
+    assert wynik["ok"] and wynik["klastry"][0]["ext_id"] == FSID
+    assert klient.przekierowano_na == aktywny
+    assert w_standby == [("POST", "/api/auth")]  # standby nie dostal juz nic wiecej
+    assert ("POST", "/api/auth/logout") in zapytania and not tokeny
+
+
+def test_przekierowanie_po_http_odrzucone(tmp_path):
+    with falszywy_dashboard(tmp_path, tls=False, standby_na="http://10.0.0.99:8080") as (standby, _, _z, _t):
+        with pytest.raises(ceph.BladCeph, match="przekierowuje na http://10.0.0.99:8080"):
+            ceph.wykonaj(ceph.CephDashboard(standby, "cmdb-ro", "tajne", bez_tls=True), "test")

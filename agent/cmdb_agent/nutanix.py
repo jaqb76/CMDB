@@ -125,6 +125,56 @@ def _polaczenie(polityka: dict, nazwa: str) -> dict:
     return wynik
 
 
+# --- TLS: certyfikat przypiety ---------------------------------------------
+
+def _certyfikaty_der(pem: str) -> list[bytes]:
+    wynik = []
+    for kawalek in pem.split("-----END CERTIFICATE-----"):
+        if "-----BEGIN CERTIFICATE-----" in kawalek:
+            try:
+                wynik.append(ssl.PEM_cert_to_DER_cert(kawalek[kawalek.index("-----BEGIN"):] + "-----END CERTIFICATE-----\n"))
+            except ValueError:
+                continue
+    return wynik
+
+
+def certyfikat_serwera(adres: str, limit_czasu: int = 10) -> bytes | None:
+    """Certyfikat, ktory serwer pokazuje (DER) - bez weryfikacji, tylko do porownania."""
+    import socket
+    czesci = urllib.parse.urlsplit(adres)
+    if czesci.scheme != "https" or not czesci.hostname:
+        return None
+    kontekst = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    kontekst.check_hostname = False
+    kontekst.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((czesci.hostname, czesci.port or 443), timeout=limit_czasu) as gniazdo:
+            with kontekst.wrap_socket(gniazdo, server_hostname=czesci.hostname) as tls:
+                return tls.getpeercert(binary_form=True)
+    except (OSError, ssl.SSLError):
+        return None
+
+
+def kontekst_tls(adres: str, ca_pem: str = "") -> ssl.SSLContext:
+    """Kontekst TLS: zaufane urzedy systemu albo wklejone CA, zawsze z weryfikacja.
+
+    Certyfikat przypiety: gdy wsrod wklejonych certyfikatow jest DOKLADNIE ten,
+    ktory serwer pokazuje (np. domyslny self-signed Ceph Dashboard "ceph-dashboard"
+    bez nazw alternatywnych), nazwy hosta sie nie sprawdza - lancuch dalej
+    weryfikujemy wzgledem tego certyfikatu, wiec przejdzie tylko serwer z tym
+    certyfikatem i jego kluczem. Wklejone zwykle CA wymaga zgodnej nazwy hosta.
+    """
+    kontekst = ssl.create_default_context(cadata=ca_pem or None)
+    kontekst.minimum_version = ssl.TLSVersion.TLSv1_2
+    kontekst.check_hostname = True
+    kontekst.verify_mode = ssl.CERT_REQUIRED
+    if ca_pem and adres.startswith("https://"):
+        pokazany = certyfikat_serwera(adres)
+        if pokazany is not None and pokazany in _certyfikaty_der(ca_pem):
+            kontekst.check_hostname = False
+    return kontekst
+
+
 # --- klient Prism Central ------------------------------------------------------
 
 class PrismCentral:

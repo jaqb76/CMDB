@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 
 from . import __version__
-from .nutanix import BladPrism, CzytnikNutanix, _liczba, _tekst, _z
+from .nutanix import BladPrism, CzytnikNutanix, _liczba, _tekst, _z, kontekst_tls
 
 log = logging.getLogger(__name__)
 
@@ -41,11 +41,17 @@ class BladCeph(BladPrism):
     """Odczyt sie nie udal - komunikat trafia do panelu, wiec bez hasel."""
 
 
+class _Przekierowanie(Exception):
+    def __init__(self, adres: str):
+        super().__init__(adres)
+        self.adres = adres
+
+
 class _BezPrzekierowan(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        # Dashboard na mgr w trybie standby przekierowuje na aktywny mgr.
-        raise BladCeph(f"Ceph Dashboard przekierowuje na {newurl} - podaj adres aktywnego mgr"
-                       " albo adres za load balancerem")
+        # Dashboard na mgr w trybie standby przekierowuje na aktywny mgr - o tym,
+        # czy pojsc za przekierowaniem, decyduje klient (tylko po zweryfikowanym https).
+        raise _Przekierowanie(newurl)
 
 
 def _opis_bledu(exc: urllib.error.HTTPError) -> str:
@@ -63,19 +69,20 @@ class CephDashboard:
 
     def __init__(self, adres: str, uzytkownik: str, haslo: str, ca_pem: str = "",
                  bez_tls: bool = False, limit_czasu: int = LIMIT_CZASU):
-        self.adres = adres.rstrip("/")
         self.uzytkownik = uzytkownik
         self._haslo = haslo
         self.bez_tls = bez_tls
-        kontekst = ssl.create_default_context(cadata=ca_pem or None)
-        kontekst.minimum_version = ssl.TLSVersion.TLSv1_2
-        kontekst.check_hostname = True
-        kontekst.verify_mode = ssl.CERT_REQUIRED
-        # Bez przekierowan: przekierowanie mogloby zaniesc token na inny host.
-        self._opener = urllib.request.build_opener(
-            urllib.request.HTTPSHandler(context=kontekst), _BezPrzekierowan())
+        self._ca_pem = ca_pem
         self.limit_czasu = limit_czasu
         self.token: str | None = None
+        self.przekierowano_na: str | None = None
+        self._ustaw_adres(adres)
+
+    def _ustaw_adres(self, adres: str) -> None:
+        self.adres = adres.rstrip("/")
+        # Przekierowan nie wykonuje urllib - patrz _zadanie (tylko standby -> aktywny mgr).
+        self._opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=kontekst_tls(self.adres, self._ca_pem)), _BezPrzekierowan())
 
     def __enter__(self):
         self.zaloguj()
@@ -118,6 +125,8 @@ class CephDashboard:
             with self._opener.open(zadanie, timeout=self.limit_czasu) as odpowiedz:
                 surowe = odpowiedz.read().decode("utf-8")
                 return json.loads(surowe) if surowe else {}
+        except _Przekierowanie as przekierowanie:
+            return self._po_przekierowaniu(przekierowanie.adres, sciezka, metoda, tresc, uwierzytelnij, opcjonalne)
         except urllib.error.HTTPError as exc:
             if opcjonalne and exc.code in (403, 404):
                 return None
@@ -141,12 +150,31 @@ class CephDashboard:
             powod = exc.reason
             if isinstance(powod, ssl.SSLCertVerificationError):
                 raise BladCeph(f"certyfikat Ceph Dashboard nie jest zaufany na tej maszynie: {powod.verify_message}"
-                               " - dodaj CA do systemu albo wklej je w konfiguracji") from None
+                               " - wklej w konfiguracji CA albo sam certyfikat Dashboardu (zostanie przypiety)") from None
             raise BladCeph(f"brak polaczenia z {self.adres}: {powod}") from None
         except (TimeoutError, OSError) as exc:
             raise BladCeph(f"brak polaczenia z {self.adres}: {exc}") from None
         except ValueError:
             raise BladCeph(f"Ceph Dashboard zwrocil odpowiedz, ktora nie jest JSON-em ({sciezka_bez})") from None
+
+    def _po_przekierowaniu(self, cel: str, sciezka: str, metoda: str, tresc, uwierzytelnij: bool, opcjonalne: bool):
+        """Mgr w trybie standby wskazuje aktywny mgr ("https://<ip>:8443/").
+
+        Idziemy tam raz i tylko po https: zrodlo przekierowania przeszlo
+        weryfikacje TLS, a nowy adres przechodzi ja osobno (ten sam certyfikat
+        Dashboardu albo zaufane CA). Po http przekierowanie moglby podstawic
+        ktokolwiek w sieci - wtedy blad, nie haslo pod obcy adres.
+        """
+        czesci = urllib.parse.urlsplit(cel)
+        nowy = f"{czesci.scheme}://{czesci.netloc}"
+        if (self.przekierowano_na is not None or not self.adres.startswith("https://")
+                or czesci.scheme != "https" or not czesci.netloc or nowy == self.adres):
+            raise BladCeph(f"Ceph Dashboard przekierowuje na {cel} - podaj adres aktywnego mgr"
+                           " albo adres za load balancerem")
+        log.info("Ceph Dashboard: %s to mgr w trybie standby, aktywny: %s", self.adres, nowy)
+        self.przekierowano_na = nowy
+        self._ustaw_adres(nowy)
+        return self._zadanie(sciezka, metoda, tresc, uwierzytelnij, opcjonalne)
 
     def get(self, sciezka: str, opcjonalne: bool = False):
         return self._zadanie(sciezka, opcjonalne=opcjonalne)
