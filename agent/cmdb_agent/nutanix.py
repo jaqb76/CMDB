@@ -103,7 +103,9 @@ def _polaczenie(polityka: dict, nazwa: str) -> dict:
              "revision": str(polityka.get("revision") or "")}
     if wynik["enabled"] or wynik["test"]:
         adres = str(polityka.get("adres") or "")
-        if not adres.startswith("https://"):
+        # http tylko w OpenStacku i tylko po jawnej zgodzie w panelu.
+        bez_tls = nazwa == "OpenStack" and polityka.get("bez_tls") is True
+        if not (adres.startswith("https://") or (bez_tls and adres.startswith("http://"))):
             raise ValueError(f"adres {nazwa} musi byc po https")
         wynik.update(
             adres=adres.rstrip("/"),
@@ -111,6 +113,12 @@ def _polaczenie(polityka: dict, nazwa: str) -> dict:
             haslo=str(polityka.get("haslo") or ""),
             ca_pem=str(polityka.get("ca_pem") or ""),
             interwal_sekund=max(900, min(86400, int(polityka.get("interwal_sekund") or 3600))),
+            # Tylko OpenStack (logowanie haslem): domena i projekt konta.
+            domena=str(polityka.get("domena") or ""),
+            projekt=str(polityka.get("projekt") or ""),
+            bez_tls=bez_tls,
+            adres_compute=str(polityka.get("adres_compute") or "").rstrip("/"),
+            adres_volumes=str(polityka.get("adres_volumes") or "").rstrip("/"),
         )
         if not wynik["nazwa"]:
             wynik["nazwa"] = urllib.parse.urlsplit(wynik["adres"]).hostname or wynik["adres"]
@@ -347,8 +355,8 @@ class CzytnikNutanix:
     Agent moze czytac kilka instalacji naraz - kazde polaczenie ma wlasny
     odstep, wlasne zlecenia z panelu i wlasny watek; wolny odczyt jednego
     nie wstrzymuje drugiego. Ten sam czytnik obsluguje vCenter
-    (vmware.CzytnikVmware) - dostawca wnosi tylko adresy w CMDB, klienta
-    platformy i funkcje odczytu.
+    (vmware.CzytnikVmware) i OpenStack (openstack.CzytnikOpenstack) - dostawca
+    wnosi tylko adresy w CMDB, klienta platformy i funkcje odczytu.
     """
 
     nazwa = "Nutanix"
@@ -413,8 +421,7 @@ class CzytnikNutanix:
             tresc["polaczenie_id"] = polityka["id"]
         etykieta = f"{self.nazwa} {polityka['nazwa']}".strip()
         try:
-            klient = self.fabryka(polityka["adres"], polityka["uzytkownik"], polityka["haslo"],
-                                  polityka.get("ca_pem", ""))
+            klient = self.klient(polityka)
             tresc.update(self.wykonaj(klient, rodzaj))
             st.ostatni_blad = ""
             log.info("%s %s: klastry %d, hosty %d, VM %d w %d ms", etykieta, rodzaj,
@@ -438,6 +445,10 @@ class CzytnikNutanix:
                 st.ostatni_odczyt_o = _teraz().isoformat(timespec="seconds")
         except Exception as exc:
             log.warning("nie udalo sie wyslac wyniku %s: %s", etykieta, exc)
+
+    def klient(self, polityka: dict):
+        return self.fabryka(polityka["adres"], polityka["uzytkownik"], polityka["haslo"],
+                            polityka.get("ca_pem", ""))
 
     @staticmethod
     def wykonaj(klient, rodzaj: str) -> dict:

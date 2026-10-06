@@ -15,8 +15,8 @@
       {% if asset.lokalizacja %} &middot; <a href="/slowniki/wpis/{{ asset.lokalizacja.id }}">{{ asset.lokalizacja.wartosc }}</a>{% endif %}
       {% if asset.zrodlo == 'reczne' %}
         &middot; wpis ręczny, dodany {{ asset.first_seen | dt }}
-      {% elif asset.zrodlo in ('nutanix', 'vmware') %}
-        &middot; odczytany z {{ 'VMware vCenter' if asset.zrodlo == 'vmware' else 'Nutanix Prism Central' }}, ostatnio {{ asset.last_seen | ago }}
+      {% elif asset.zrodlo in platformy %}
+        &middot; odczytany z {{ platformy[asset.zrodlo].nazwa }}, ostatnio {{ asset.last_seen | ago }}
       {% else %}
         &middot; {{ asset.fqdn or asset.hostname }}
         {% if asset.domain %} &middot; domena {{ asset.domain }}{% endif %}
@@ -39,9 +39,9 @@
 </div>
 
 {% if not snapshot %}
-  {% if asset.zrodlo in ('nutanix', 'vmware') %}
+  {% if asset.zrodlo in platformy %}
     <div class="alert">
-      Wpis z odczytu {{ 'VMware vCenter' if asset.zrodlo == 'vmware' else 'Nutanix Prism Central' }} — w tej maszynie nie ma agenta CMDB,
+      Wpis z odczytu {{ platformy[asset.zrodlo].nazwa }} — w tej maszynie nie ma agenta CMDB,
       więc system, oprogramowanie i podatności pozostają puste. Po instalacji
       agenta odczyt sam połączy się z jego kartą.
     </div>

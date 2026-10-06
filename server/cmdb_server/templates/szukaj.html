@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Szukaj{% if wynik.q %}: {{ wynik.q }}{% endif %} - CMDB{% endblock %}
+{% block content %}
+<h1>Szukaj</h1>
+<form class="wirt-szukaj" method="get" action="/szukaj" role="search">
+  <input type="search" name="q" value="{{ wynik.q }}" maxlength="200" autocomplete="off" autofocus
+         placeholder="IP, nazwa DNS, hostname, MAC, numer seryjny, opiekun, numer zgłoszenia…" aria-label="Szukaj w CMDB">
+  <button class="btn btn-primary" type="submit">Szukaj</button>
+</form>
+
+{% if not wynik.q %}
+<p class="muted">Wpisz co najmniej {{ min_dlugosc }} znaki. Szukam w zasobach (także po każdym adresie IP i MAC z raportu agenta
+  i z odczytu wirtualizacji), w urządzeniach wykrytych w sieci, w monitorowanych usługach i w zgłoszeniach helpdesku.</p>
+{% elif wynik.za_krotkie %}
+<p class="muted">Za krótkie zapytanie — wpisz co najmniej {{ min_dlugosc }} znaki.</p>
+{% else %}
+{% set ile = wynik.zasoby | length + wynik.wykryte | length + wynik.uslugi | length + (wynik.zgloszenia or []) | length %}
+{% if not ile %}
+<section class="panel"><p>Nic nie znaleziono dla „{{ wynik.q }}”.</p>
+  <p class="muted small">Szukam fragmentu tekstu, więc wystarczy część adresu albo nazwy, np. <code>10.20.</code> albo <code>sql</code>.
+    Treść artykułów przeszukuje <a href="/wiedza/artykuly?q={{ wynik.q | urlencode }}">baza wiedzy</a>.</p></section>
+{% endif %}
+
+{% if wynik.zasoby %}
+<section class="panel">
+  <h2>Zasoby <span class="muted small">{{ wynik.zasoby | length }}{% if wynik.zasoby | length >= 50 %}+ — zawęź zapytanie{% endif %}</span></h2>
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>Nazwa</th><th>Rodzaj</th><th>IP</th><th>System</th><th>Opiekun</th><th>Pasuje</th></tr></thead>
+    <tbody>
+    {% for z in wynik.zasoby %}{% set a = z.asset %}
+      <tr>
+        <td><a href="/assets/{{ a.id }}">{{ a.hostname }}</a>
+          {% if a.lifecycle == 'wycofany' %}<span class="badge badge-danger">wycofana</span>{% endif %}
+          {% if a.fqdn and a.fqdn != a.hostname %}<div class="muted small">{{ a.fqdn }}</div>{% endif %}</td>
+        <td class="small">{{ typy.get(a.typ, a.typ) }}
+          <div class="muted">{% if a.zrodlo == 'agent' %}agent{% elif a.zrodlo == 'reczne' %}wpis ręczny{% elif a.zrodlo in platformy %}z {{ platformy[a.zrodlo].producent }}{% endif %}</div></td>
+        <td class="small">{{ a.primary_ip or '—' }}</td>
+        <td class="small">{{ a.os_name or '—' }}</td>
+        <td class="small">{{ a.owner.wartosc if a.owner else '—' }}</td>
+        <td class="small muted">{{ z.dlaczego }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+{% if wynik.wykryte %}
+<section class="panel">
+  <h2>Wykryte w sieci <span class="muted small">{{ wynik.wykryte | length }}</span></h2>
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>IP</th><th>MAC</th><th>Nazwa</th><th>Rodzaj</th><th>W ewidencji</th><th>Ostatnio</th></tr></thead>
+    <tbody>
+    {% for d in wynik.wykryte %}
+      <tr>
+        <td><a href="/wykrywanie/{{ d.id }}">{{ d.ip }}</a></td>
+        <td class="small">{{ d.mac or '—' }}</td>
+        <td class="small">{{ d.hostname or '—' }}</td>
+        <td class="small">{{ d.device_type }}</td>
+        <td class="small">{% if d.asset_id %}<a href="/assets/{{ d.asset_id }}">tak</a>{% else %}<span class="badge badge-warn">nie</span>{% endif %}</td>
+        <td class="small">{{ d.last_seen | ago }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+{% if wynik.uslugi %}
+<section class="panel">
+  <h2>Monitorowane usługi <span class="muted small">{{ wynik.uslugi | length }}</span></h2>
+  <table class="table">
+    <thead><tr><th>Nazwa</th><th>Adres</th><th>Protokół</th></tr></thead>
+    <tbody>
+    {% for m in wynik.uslugi %}
+      <tr><td><a href="/monitoring/{{ m.id }}">{{ m.nazwa }}</a></td><td class="small">{{ m.host }}:{{ m.port }}</td><td class="small">{{ m.protokol }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if wynik.zgloszenia %}
+<section class="panel">
+  <h2>Zgłoszenia helpdesku <span class="muted small">{{ wynik.zgloszenia | length }}</span></h2>
+  <table class="table">
+    <thead><tr><th>Numer</th><th>Temat</th><th>Zgłaszający</th><th>Status</th><th>Aktywność</th></tr></thead>
+    <tbody>
+    {% for z in wynik.zgloszenia %}
+      <tr><td><a href="/helpdesk/zgloszenie/{{ z.id }}">{{ z.numer_pelny }}</a></td><td>{{ z.temat }}</td>
+        <td class="small">{{ z.zglaszajacy_nazwa or z.zglaszajacy_email }}</td><td class="small">{{ z.status | replace('_', ' ') }}</td>
+        <td class="small">{{ z.ostatnia_aktywnosc | ago }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% if ile %}<p class="muted small">Treść artykułów przeszukuje <a href="/wiedza/artykuly?q={{ wynik.q | urlencode }}">baza wiedzy</a>.</p>{% endif %}
+{% endif %}
+{% endblock %}

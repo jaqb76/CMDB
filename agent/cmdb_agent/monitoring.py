@@ -520,13 +520,15 @@ class Monitor:
         self.pilne: set[str] = set()
         self.przyjeto = self.pominieto = 0
         self.zatrzymaj = threading.Event()
-        # Odczyt Nutanix Prism Central i VMware vCenter jedzie na tej samej
-        # petli: ta usluga zyje caly czas, wiec zlecony z panelu test wraca
-        # w kilka minut, a nie przy nastepnej inwentaryzacji.
+        # Odczyt Nutanix Prism Central, VMware vCenter i OpenStack jedzie na
+        # tej samej petli: ta usluga zyje caly czas, wiec zlecony z panelu
+        # test wraca w kilka minut, a nie przy nastepnej inwentaryzacji.
         from .nutanix import CzytnikNutanix
+        from .openstack import CzytnikOpenstack
         from .vmware import CzytnikVmware
         self.nutanix = CzytnikNutanix(client, state)
         self.vmware = CzytnikVmware(client, state)
+        self.openstack = CzytnikOpenstack(client, state)
         self._wczytaj_stan()
 
     # --- trwalosc miedzy uruchomieniami ---
@@ -707,7 +709,7 @@ class Monitor:
         if teraz >= self.nastepna_polityka:
             self.odswiez_polityke()
             self.nastepna_polityka = teraz + ODSTEP_POLITYKI
-        for czytnik in (self.nutanix, self.vmware):
+        for czytnik in (self.nutanix, self.vmware, self.openstack):
             try:
                 czytnik.krok(teraz)
             except Exception as exc:
@@ -801,6 +803,7 @@ class Monitor:
             "ostatni_raport_powod": self.ostatni_raport_powod,
             "nutanix": self.nutanix.status(),
             "vmware": self.vmware.status(),
+            "openstack": self.openstack.status(),
             "przyjeto": self.przyjeto,
             "pominieto": self.pominieto,
             "ostatni_blad": self.ostatni_blad,

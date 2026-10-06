@@ -287,7 +287,7 @@ def monitoring_report(raport: RaportDostepnosci, request: Request,
     )
 
 
-# --- wirtualizacja: Nutanix Prism Central, VMware vCenter ----------------------
+# --- wirtualizacja: Nutanix Prism Central, VMware vCenter, OpenStack ----------
 
 def _polityka_wirtualizacji(dostawca: str, response: Response, nonce: str, db: Session,
                             auth: tuple[AgentCredential, TenantContext]) -> dict:
@@ -328,7 +328,7 @@ def _wynik_wirtualizacji(dostawca: str, wynik: WynikNutanix, db: Session,
         raise HTTPException(404, "maszyna nie istnieje")
     if not asset.is_active or asset.enrollment_blocked:
         raise HTTPException(403, "maszyna jest wycofana")
-    # Dwa agenty (albo Prism i vCenter) nie moga przeplatac zapisow tej samej
+    # Dwa agenty (albo dwie rozne platformy) nie moga przeplatac zapisow tej samej
     # firmy - kazdy odczyt przepina relacje, laczy VM z agentami i ocenia
     # znikniecia. Jedna blokada dla obu dostawcow.
     db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
@@ -366,6 +366,21 @@ def vmware_wynik(wynik: WynikNutanix, db: Session = Depends(get_db),
                  auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
     """Wynik testu albo odczytu vCenter."""
     return _wynik_wirtualizacji(funkcje_agenta.VMWARE, wynik, db, auth)
+
+
+@router.get("/agent/openstack-policy")
+def openstack_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9a-f]{32}$"),
+                     db: Session = Depends(get_db),
+                     auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Konfiguracja odczytu OpenStacka dla tej maszyny."""
+    return _polityka_wirtualizacji(funkcje_agenta.OPENSTACK, response, nonce, db, auth)
+
+
+@router.post("/agent/openstack")
+def openstack_wynik(wynik: WynikNutanix, db: Session = Depends(get_db),
+                    auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Wynik testu albo odczytu OpenStacka."""
+    return _wynik_wirtualizacji(funkcje_agenta.OPENSTACK, wynik, db, auth)
 
 
 # --- aktualizacja agenta ----------------------------------------------------

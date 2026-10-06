@@ -1,25 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Wirtualizacja - CMDB{% endblock %}
 {% block content %}
-{% set producent = {'nutanix': 'Nutanix', 'vmware': 'VMware'} %}
 <h1>Wirtualizacja</h1>
+<form class="wirt-szukaj" method="get" action="/wirtualizacja" role="search">
+  {% if wybrany %}<input type="hidden" name="zrodlo" value="{{ wybrany.ustawienia.id }}">{% endif %}
+  <input type="search" name="q" value="{{ q }}" maxlength="200" autocomplete="off" data-wirt-szukaj
+         placeholder="Szukaj: IP, nazwa DNS, hostname, MAC, UUID, projekt, numer seryjny…" aria-label="Szukaj w wirtualizacji">
+  <span class="muted small" data-wirt-wynik></span>
+</form>
 <p class="muted">
-  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central i VMware vCenter przez agentów
-  z włączoną funkcją „Nutanix Prism Central” albo „VMware vCenter” (karta maszyny → Agent → Dodatkowe funkcjonalności).
+  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central, VMware vCenter i OpenStacka przez agentów
+  z włączoną funkcją „Nutanix Prism Central”, „VMware vCenter” albo „OpenStack” (karta maszyny → Agent → Dodatkowe funkcjonalności).
+  W OpenStacku klastrem jest region, a hostem hypervisor Novy.
   Kolumna „Agent CMDB” pokazuje, które maszyny wirtualne nie są objęte inwentaryzacją oprogramowania.
 </p>
 
 {% if czytniki %}
-<section class="panel">
-  <h2>Źródła odczytu</h2>
-  <table class="table">
+{% set bledy = czytniki | selectattr('ustawienia.wlaczona') | selectattr('ustawienia.odczyt_o') | rejectattr('ustawienia.odczyt_ok') | list | length %}
+{% set milczace = czytniki | selectattr('milczy') | list | length %}
+<details class="panel wirt-klaster wirt-zrodla-panel">
+  <summary>
+    <span class="wirt-tytul">Źródła odczytu</span>
+    <span class="muted small">{{ czytniki | length }}{% if wybrany %} · pokazane: <b>{{ wybrany.nazwa }}</b>{% endif %}</span>
+    {% if bledy %}<span class="badge badge-danger">błąd: {{ bledy }}</span>{% endif %}
+    {% if milczace %}<span class="badge badge-warn">brak odczytu: {{ milczace }}</span>{% endif %}
+  </summary>
+  <div class="wirt-zrodla-tresc">
+  <p class="muted small">Kliknij źródło, żeby pokazać tylko jego klastry, hosty i maszyny.</p>
+  <table class="table wirt-zrodla">
     <thead><tr><th>Agent</th><th>Platforma</th><th>Adres</th><th>Stan</th><th>Ostatni odczyt</th></tr></thead>
     <tbody>
     {% for c in czytniki %}{% set u = c.ustawienia %}
-      <tr>
+      <tr class="wirt-zrodlo{% if wybrany and wybrany.ustawienia.id == u.id %} wirt-zrodlo-wybrane{% endif %}"
+          data-href="/wirtualizacja{% if not (wybrany and wybrany.ustawienia.id == u.id) %}?zrodlo={{ u.id }}{% endif %}">
         <td><a href="/assets/{{ c.asset.id }}?funkcja={{ c.dostawca }}#agent">{{ c.asset.hostname }}</a></td>
         <td class="small">{{ c.opis.nazwa }}</td>
-        <td class="small">{% if u.nazwa %}<b>{{ u.nazwa }}</b> {% endif %}{{ u.adres or '—' }}</td>
+        <td class="small"><a href="/wirtualizacja?zrodlo={{ u.id }}">{% if u.nazwa %}<b>{{ u.nazwa }}</b> {% endif %}{{ u.adres or '—' }}</a>{% if u.bez_tls %} <span class="badge badge-warn">bez TLS</span>{% endif %}</td>
         <td>
           {% if not u.wlaczona %}<span class="badge">wyłączony</span>
           {% elif u.odczyt_o and not u.odczyt_ok %}<span class="badge badge-danger">błąd</span>
@@ -31,23 +47,47 @@
     {% endfor %}
     </tbody>
   </table>
-</section>
+  </div>
+</details>
 {% endif %}
 
 {% if not drzewo %}
 <section class="panel">
-  <p>Nie ma jeszcze danych z Prism Central ani z vCenter.</p>
-  <p class="muted">Włącz odczyt na karcie maszyny, która widzi Prism Central albo vCenter:
-    <b>Agent → Dodatkowe funkcjonalności → Nutanix Prism Central / VMware vCenter</b>.
+  {% if wybrany %}
+  <p>To źródło nie ma jeszcze odczytanych obiektów. <a href="/wirtualizacja">Pokaż wszystkie źródła</a></p>
+  {% else %}
+  <p>Nie ma jeszcze danych z Prism Central, vCenter ani OpenStacka.</p>
+  <p class="muted">Włącz odczyt na karcie maszyny, która widzi Prism Central, vCenter albo OpenStack:
+    <b>Agent → Dodatkowe funkcjonalności → Nutanix Prism Central / VMware vCenter / OpenStack</b>.
     Pierwszy odczyt pojawi się po najbliższym sprawdzeniu konfiguracji przez agenta.</p>
+  {% endif %}
 </section>
+{% else %}
+<p class="muted wirt-brak-wynikow" data-wirt-brak hidden>Nic nie pasuje do wyszukiwania.</p>
+<div class="wirt-pasek">
+  <span class="muted small">
+    {% if wybrany %}Źródło: <b>{{ wybrany.nazwa }}</b> ({{ wybrany.opis.nazwa }}) · <a href="/wirtualizacja">pokaż wszystkie źródła</a>
+    {% else %}Wszystkie źródła{% endif %}
+  </span>
+  <span class="btn-row">
+    <button type="button" class="btn btn-small" data-wirt-rozwin="1">Rozwiń wszystko</button>
+    <button type="button" class="btn btn-small" data-wirt-rozwin="0">Zwiń wszystko</button>
+  </span>
+</div>
 {% endif %}
 
+{% macro szukaj_vm(v, d) -%}
+{{ v.obiekt.nazwa }} {{ v.obiekt.ext_id.split('/')[-1] }} {{ d.bios_uuid or '' }} {{ d.system or '' }} {{ d.projekt or '' }} {{ d.typ or '' }} {{ d.strefa or '' }} {{ d.opis or '' }}
+{%- for k in d.karty or [] %} {{ k.mac or '' }} {{ k.siec or '' }} {{ (k.ip or []) | join(' ') }}{% endfor %}
+{%- if v.asset %} {{ v.asset.hostname }} {{ v.asset.fqdn or '' }} {{ v.asset.primary_ip or '' }} {{ v.asset.os_name or '' }} {{ v.asset.serial_number or '' }}{% if v.asset.owner %} {{ v.asset.owner.wartosc }}{% endif %}{% endif %}
+{%- endmacro %}
+
 {% macro wiersz_vm(v) %}{% set d = v.obiekt.dane or {} %}
-  <tr class="wirt-vm">
-    <td>{% if v.asset %}<a href="/assets/{{ v.asset.id }}">{{ v.obiekt.nazwa or v.obiekt.ext_id }}</a>{% else %}{{ v.obiekt.nazwa }}{% endif %}</td>
+  <tr class="wirt-vm" data-szukaj="{{ szukaj_vm(v, d) | lower }}">
+    <td>{% if v.asset %}<a href="/assets/{{ v.asset.id }}">{{ v.obiekt.nazwa or v.obiekt.ext_id }}</a>{% else %}{{ v.obiekt.nazwa }}{% endif %}
+      {% if d.projekt %}<div class="muted small">projekt {{ d.projekt }}</div>{% endif %}</td>
     <td>{% if d.stan == 'ON' %}<span class="badge badge-ok">włączona</span>{% elif d.stan == 'OFF' %}<span class="badge">wyłączona</span>{% elif d.stan %}<span class="badge">{{ d.stan | lower }}</span>{% endif %}</td>
-    <td class="small">{% if v.z_agentem %}{{ v.asset.os_name or d.system or '' }}{% else %}{{ d.system or '' }}{% if d.system %} <span class="muted">(wg {{ producent.get(v.obiekt.dostawca, 'Nutanix') }})</span>{% endif %}{% endif %}</td>
+    <td class="small">{% if v.z_agentem %}{{ v.asset.os_name or d.system or '' }}{% else %}{{ d.system or '' }}{% if d.system %} <span class="muted">(wg {{ platformy.get(v.obiekt.dostawca, platformy.nutanix).producent }})</span>{% endif %}{% endif %}</td>
     <td class="num">{% if d.gniazda or d.rdzenie_na_gniazdo %}{{ (d.gniazda or 1) * (d.rdzenie_na_gniazdo or 1) }}{% endif %}</td>
     <td class="num">{{ d.ram_bajty | bytes if d.ram_bajty else '' }}</td>
     <td>{% if v.z_agentem %}<span class="badge badge-ok">jest</span>{% else %}<span class="badge badge-warn">brak</span>{% endif %}</td>
@@ -55,31 +95,48 @@
   </tr>
 {% endmacro %}
 
-{% for k in drzewo %}
-<section class="panel">
-  <h2>{% if k.obiekt %}{% if k.asset %}<a href="/assets/{{ k.asset.id }}">{{ k.obiekt.nazwa }}</a>{% else %}{{ k.obiekt.nazwa }}{% endif %}
-      <span class="badge">{{ producent.get(k.obiekt.dostawca, 'Nutanix') }}</span>
-      {% if k.obiekt.dane.wersja %}<span class="muted small">{{ 'vSphere' if k.obiekt.dostawca == 'vmware' else 'AOS' }} {{ k.obiekt.dane.wersja }}</span>{% endif %}
-    {% else %}Bez przypisanego klastra{% endif %}</h2>
+{% macro tabela_vm(maszyny) %}
+  <div class="tabela-przewijana wirt-tabela">
   <table class="table wirt-drzewo">
+    <colgroup><col class="wirt-k-nazwa"><col class="wirt-k-stan"><col class="wirt-k-system"><col class="wirt-k-num"><col class="wirt-k-ram"><col class="wirt-k-agent"><col class="wirt-k-opiekun"></colgroup>
     <thead><tr><th>Nazwa</th><th>Stan</th><th>System</th><th class="num">vCPU</th><th class="num">RAM</th><th>Agent CMDB</th><th>Opiekun</th></tr></thead>
-    <tbody>
-    {% for h in k.hosty.values() %}{% set hd = h.obiekt.dane or {} %}
-      <tr class="wirt-host">
-        <td colspan="7">
-          {% if h.asset %}<a href="/assets/{{ h.asset.id }}">{{ h.obiekt.nazwa }}</a>{% else %}{{ h.obiekt.nazwa }}{% endif %}
-          {% if hd.tryb_serwisowy %}<span class="badge badge-warn">tryb serwisowy</span>{% endif %}
-          <span class="muted small">{% if hd.model %}· {{ hd.model }} {% endif %}{% if hd.numer_seryjny %}· s/n {{ hd.numer_seryjny }} {% endif %}{% if hd.ram_bajty %}· {{ hd.ram_bajty | bytes }} {% endif %}· {{ h.vm | length }} VM</span>
-        </td>
-      </tr>
-      {% for v in h.vm %}{{ wiersz_vm(v) }}{% endfor %}
-    {% endfor %}
-    {% if k.bez_hosta %}
-      <tr class="wirt-host"><td colspan="7">Bez hosta <span class="muted small">(zwykle wyłączone maszyny)</span></td></tr>
-      {% for v in k.bez_hosta %}{{ wiersz_vm(v) }}{% endfor %}
-    {% endif %}
-    </tbody>
+    <tbody>{% for v in maszyny %}{{ wiersz_vm(v) }}{% endfor %}</tbody>
   </table>
-</section>
+  </div>
+{% endmacro %}
+
+{% macro liczby_vm(maszyny) %}{% set bez = maszyny | rejectattr('z_agentem') | list | length %}
+  {{ maszyny | length }} VM{% if maszyny %} · <span class="{{ 'wirt-bez-agenta' if bez else '' }}">bez agenta {{ bez }}</span>{% endif %}
+{% endmacro %}
+
+{% for k in drzewo %}
+{% set wszystkie = [] %}{% for h in k.hosty.values() %}{% set _ = wszystkie.extend(h.vm) %}{% endfor %}{% set _ = wszystkie.extend(k.bez_hosta) %}
+<details class="panel wirt-klaster">
+  <summary>
+    <span class="wirt-tytul">{% if k.obiekt %}{% if k.asset %}<a href="/assets/{{ k.asset.id }}">{{ k.obiekt.nazwa }}</a>{% else %}{{ k.obiekt.nazwa }}{% endif %}
+      {% set pk = platformy.get(k.obiekt.dostawca, platformy.nutanix) %}
+      <span class="badge">{{ pk.producent }}</span>
+      {% if k.obiekt.dane.wersja %}<span class="muted small">{% if not k.obiekt.dane.wersja.startswith('Nova') %}{{ pk.system_klastra }} {% endif %}{{ k.obiekt.dane.wersja }}</span>{% endif %}
+    {% else %}Bez przypisanego klastra{% endif %}</span>
+    <span class="muted small">hosty {{ k.hosty | length }} · {{ liczby_vm(wszystkie) }}</span>
+  </summary>
+  {% for h in k.hosty.values() %}{% set hd = h.obiekt.dane or {} %}
+  <details class="wirt-host" data-szukaj="{{ (h.obiekt.nazwa ~ ' ' ~ (hd.ip or '') ~ ' ' ~ (hd.ipmi_ip or '') ~ ' ' ~ (hd.numer_seryjny or '') ~ ' ' ~ (hd.model or '') ~ ' ' ~ (hd.strefa or '') ~ ' ' ~ (hd.hipernadzorca or '') ~ ' ' ~ ((h.asset.fqdn or '') if h.asset else '')) | lower }}">
+    <summary>
+      {% if h.asset %}<a href="/assets/{{ h.asset.id }}">{{ h.obiekt.nazwa }}</a>{% else %}{{ h.obiekt.nazwa }}{% endif %}
+      {% if hd.tryb_serwisowy %}<span class="badge badge-warn">tryb serwisowy</span>{% endif %}
+      {% if h.asset and h.asset.zrodlo == 'agent' %}<span class="badge badge-ok">agent CMDB</span>{% endif %}
+      <span class="muted small">{% if hd.strefa %}· strefa {{ hd.strefa }} {% endif %}{% if hd.model %}· {{ hd.model }} {% endif %}{% if hd.numer_seryjny %}· s/n {{ hd.numer_seryjny }} {% endif %}{% if hd.ram_bajty %}· {{ hd.ram_bajty | bytes }} {% endif %}· {{ liczby_vm(h.vm) }}</span>
+    </summary>
+    {% if h.vm %}{{ tabela_vm(h.vm) }}{% else %}<p class="muted small wirt-pusto">Brak maszyn wirtualnych na tym hoście.</p>{% endif %}
+  </details>
+  {% endfor %}
+  {% if k.bez_hosta %}
+  <details class="wirt-host">
+    <summary>Bez hosta <span class="muted small">(zwykle wyłączone maszyny) · {{ liczby_vm(k.bez_hosta) }}</span></summary>
+    {{ tabela_vm(k.bez_hosta) }}
+  </details>
+  {% endif %}
+</details>
 {% endfor %}
 {% endblock %}

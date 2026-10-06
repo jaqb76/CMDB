@@ -1,6 +1,6 @@
-"""Wynik odczytu platformy wirtualizacji (Prism Central, vCenter) od agenta.
+"""Wynik odczytu platformy wirtualizacji (Prism Central, vCenter, OpenStack) od agenta.
 
-Agent sprowadza odpowiedzi API (Prism v4, vCenter REST) do tej plaskiej postaci, zanim cokolwiek
+Agent sprowadza odpowiedzi API (Prism v4, vCenter REST, Nova) do tej plaskiej postaci, zanim cokolwiek
 wysle: serwer nie musi znac ksztaltu API Nutanixa, a zmiana po stronie
 Prism konczy sie poprawka jednego pliku w agencie. Limity chronia baze
 przed raportem, ktory urosl z bledu, a nie z wielkosci instalacji.
@@ -43,6 +43,8 @@ class Host(_Model):
     watki: int | None = Field(default=None, ge=0, le=100_000)
     tryb_serwisowy: bool | None = None
     uruchomiony_o: str | None = Field(default=None, max_length=64)
+    # OpenStack: strefa dostepnosci (availability zone) hosta.
+    strefa: str | None = Field(default=None, max_length=_TEKST)
 
 
 class Dysk(_Model):
@@ -72,6 +74,10 @@ class Vm(_Model):
     system: str | None = Field(default=None, max_length=_TEKST)
     bios_uuid: str | None = Field(default=None, max_length=64)
     opis: str | None = Field(default=None, max_length=1000)
+    # OpenStack: projekt (nazwa albo ID), strefa dostepnosci i flavor.
+    projekt: str | None = Field(default=None, max_length=_TEKST)
+    strefa: str | None = Field(default=None, max_length=_TEKST)
+    typ: str | None = Field(default=None, max_length=_TEKST)
 
 
 class WynikNutanix(_Model):

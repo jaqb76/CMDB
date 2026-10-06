@@ -193,6 +193,8 @@ def create_app() -> FastAPI:
     app.include_router(discovery_ui.router)
     from .api import nutanix_ui
     app.include_router(nutanix_ui.router)
+    from .api import szukaj_ui
+    app.include_router(szukaj_ui.router)
     from .api import monitoring_ui
     from .api import helpdesk_ui
     from .api import helpdesk_przeniesienia_ui

@@ -1,14 +1,14 @@
-"""Panel: konfiguracja odczytu Prism Central / vCenter i widok Wirtualizacja.
+"""Panel: konfiguracja odczytu Prism Central / vCenter / OpenStack i widok Wirtualizacja.
 
-Obaj dostawcy maja te same trasy pod wlasnym przedrostkiem
-(/assets/{id}/nutanix, /assets/{id}/vmware) - jawnie, bez parametru w
+Wszyscy dostawcy maja te same trasy pod wlasnym przedrostkiem
+(/assets/{id}/nutanix, /assets/{id}/vmware, /assets/{id}/openstack) - jawnie, bez parametru w
 sciezce, ktory zlapalby tez /assets/{id}/owner i podobne.
 """
 from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -26,18 +26,21 @@ router = APIRouter(tags=["nutanix"])
 # Komunikat jedzie w adresie jako KOD, a nie tekst: dowolny napis z URL-a
 # wyswietlony w panelu pozwalalby spreparowac link z "komunikatem systemu".
 KOMUNIKATY = {
-    "adres": "Niepoprawny adres {pl} — podaj https://nazwa[:port], bez ścieżki.",
+    "adres": "Niepoprawny adres {pl} — podaj https://nazwa[:port]{sciezka}.",
     "ca": "Certyfikat CA musi być w formacie PEM (-----BEGIN CERTIFICATE-----).",
     "uzytkownik": "Podaj użytkownika {pl}.",
     "haslo": "Podaj hasło do {pl}.",
     "niepelna": "Najpierw zapisz adres, użytkownika i hasło.",
+    "tls": "Adres zaczyna się od http:// — zaznacz „Zezwól na połączenie bez TLS” albo podaj https://.",
+    "adres_uslugi": "Niepoprawny adres Compute albo Volumes — podaj pełny adres, np. http://10.0.0.1:8774/v2.1.",
     "wylaczona": "Odczyt jest wyłączony — zaznacz „Odczytuj {pl} z tej maszyny” i zapisz.",
 }
 
 
 def komunikat(kod: str, dostawca: str) -> str:
     opis = nutanix.DOSTAWCY.get(dostawca, nutanix.DOSTAWCY[nutanix.NUTANIX])
-    return KOMUNIKATY[kod].format(pl=opis["platforma"]) if kod in KOMUNIKATY else ""
+    sciezka = "[/ścieżka]" if opis["sciezka"] else ", bez ścieżki"
+    return KOMUNIKATY[kod].format(pl=opis["platforma"], sciezka=sciezka) if kod in KOMUNIKATY else ""
 
 
 def _karta(dostawca: str, asset_id: str, kod: str = "") -> str:
@@ -71,7 +74,8 @@ def _wybrane(db: Session, asset: Asset, dostawca: str, polaczenie_id: str):
 def _zapisz(dostawca: str, asset_id: str, request: Request, polaczenie_id: str, nazwa: str,
             wlaczona: bool, adres: str, uzytkownik: str, haslo: str, ca_pem: str,
             interwal_minut: int, revision: str, csrf_token: str, user: PortalUser,
-            ctx: TenantContext, db: Session) -> Response:
+            ctx: TenantContext, db: Session, domena: str = "", projekt: str = "",
+            bez_tls: bool = False, adres_compute: str = "", adres_volumes: str = "") -> Response:
     verify_csrf(request, user, csrf_token)
     opis = nutanix.DOSTAWCY[dostawca]
     _require_write(ctx)
@@ -87,10 +91,21 @@ def _zapisz(dostawca: str, asset_id: str, request: Request, polaczenie_id: str, 
         raise HTTPException(409, "konfiguracja zmienila sie w miedzyczasie; odswiez strone")
     if interwal_minut not in nutanix.INTERWALY_MINUT:
         raise HTTPException(422, "niedozwolony odstep odczytu")
+    # Zgode na http zna tylko OpenStack; Prism i vCenter dostaja zwykle "zly adres".
+    bez_tls = bez_tls and opis["projekt"]
+    if opis["projekt"] and not bez_tls and any(
+            a.strip().lower().startswith("http://") for a in (adres, adres_compute, adres_volumes)):
+        return RedirectResponse(_karta(dostawca, asset.id, "tls"), status_code=303)
     try:
-        adres_ok = nutanix.normalizuj_adres(adres, opis["port"]) if (adres.strip() or wlaczona) else ""
+        adres_ok = (nutanix.normalizuj_adres(adres, opis["port"], opis["sciezka"], bez_tls)
+                    if (adres.strip() or wlaczona) else "")
     except ValueError:
         return RedirectResponse(_karta(dostawca, asset.id, "adres"), status_code=303)
+    try:
+        uslugi = {k: nutanix.normalizuj_adres(v, port, True, bez_tls) if v.strip() and opis["projekt"] else None
+                  for k, v, port in (("compute", adres_compute, 8774), ("volumes", adres_volumes, 8776))}
+    except ValueError:
+        return RedirectResponse(_karta(dostawca, asset.id, "adres_uslugi"), status_code=303)
     try:
         ca_ok = nutanix.sprawdz_ca(ca_pem)
     except ValueError:
@@ -110,14 +125,21 @@ def _zapisz(dostawca: str, asset_id: str, request: Request, polaczenie_id: str, 
         return RedirectResponse(_karta(dostawca, asset.id, "haslo"), status_code=303)
 
     def stan() -> dict:
-        return {"nazwa": row.nazwa, "wlaczona": row.wlaczona, "adres": row.adres,
-                "uzytkownik": row.uzytkownik, "interwal_minut": row.interwal_minut,
-                "wlasne_ca": bool(row.ca_pem)}
+        wynik = {"nazwa": row.nazwa, "wlaczona": row.wlaczona, "adres": row.adres,
+                 "uzytkownik": row.uzytkownik, "interwal_minut": row.interwal_minut,
+                 "wlasne_ca": bool(row.ca_pem)}
+        if opis["projekt"]:
+            wynik.update(domena=row.domena, projekt=row.projekt, bez_tls=bool(row.bez_tls),
+                         adres_compute=row.adres_compute, adres_volumes=row.adres_volumes)
+        return wynik
 
     przed = {} if nowe else stan()
     row.nazwa = nazwa.strip()[:100]
     row.wlaczona, row.adres, row.uzytkownik = wlaczona, adres_ok, uzytkownik
     row.ca_pem, row.interwal_minut = ca_ok, interwal_minut
+    if opis["projekt"]:
+        row.domena, row.projekt = domena.strip() or None, projekt.strip() or None
+        row.bez_tls, row.adres_compute, row.adres_volumes = bez_tls, uslugi["compute"], uslugi["volumes"]
     row.revision, row.updated_by, row.updated_at = str(uuid4()), user.email, utcnow()
     db.flush()
     # Hasla nie ma w audycie w zadnej postaci - tylko fakt, ze sie zmienilo.
@@ -185,7 +207,9 @@ def _usun(dostawca: str, asset_id: str, request: Request, polaczenie_id: str, cs
 
 
 @router.get("/wirtualizacja", response_class=HTMLResponse)
-def wirtualizacja(request: Request, user: PortalUser = Depends(require_user),
+def wirtualizacja(request: Request, zrodlo: str = Query("", max_length=36),
+                  q: str = Query("", max_length=200),
+                  user: PortalUser = Depends(require_user),
                   ctx: TenantContext = Depends(resolve_tenant),
                   db: Session = Depends(get_db)) -> Response:
     teraz = utcnow()
@@ -199,9 +223,12 @@ def wirtualizacja(request: Request, user: PortalUser = Depends(require_user),
                          "opis": nutanix.DOSTAWCY.get(row.dostawca, {}),
                          "nazwa": nutanix.nazwa_polaczenia(row),
                          "milczy": nutanix.czytnik_milczy(row, teraz)})
+    # Filtr po zrodle: tylko polaczenie tej firmy (lista czytnikow jest juz
+    # zawezona do niej); nieznany identyfikator = bez filtra.
+    wybrany = next((c for c in czytniki if c["ustawienia"].id == zrodlo), None) if zrodlo else None
     return render(request, "wirtualizacja.html", user, ctx, db,
-                  drzewo=nutanix.drzewo(db, ctx.tenant_id), dostawcy=nutanix.DOSTAWCY,
-                  czytniki=czytniki)
+                  drzewo=nutanix.drzewo(db, ctx.tenant_id, wybrany["ustawienia"] if wybrany else None),
+                  dostawcy=nutanix.DOSTAWCY, czytniki=czytniki, wybrany=wybrany, q=q.strip())
 
 
 def _trasy(dostawca: str) -> None:
@@ -217,12 +244,19 @@ def _trasy(dostawca: str) -> None:
                haslo: str = Form("", max_length=512),
                ca_pem: str = Form("", max_length=20_000),
                interwal_minut: int = Form(60),
+               domena: str = Form("", max_length=255),
+               projekt: str = Form("", max_length=255),
+               bez_tls: bool = Form(False),
+               adres_compute: str = Form("", max_length=255),
+               adres_volumes: str = Form("", max_length=255),
                revision: str = Form(..., max_length=36),
                csrf_token: str = Form(""),
                user: PortalUser = Depends(require_user), ctx: TenantContext = Depends(resolve_tenant),
                db: Session = Depends(get_db)) -> Response:
         return _zapisz(dostawca, asset_id, request, polaczenie_id, nazwa, wlaczona, adres, uzytkownik,
-                       haslo, ca_pem, interwal_minut, revision, csrf_token, user, ctx, db)
+                       haslo, ca_pem, interwal_minut, revision, csrf_token, user, ctx, db,
+                       domena=domena, projekt=projekt, bez_tls=bez_tls,
+                       adres_compute=adres_compute, adres_volumes=adres_volumes)
 
     def akcja(funkcja):
         def obsluga(asset_id: str, request: Request,
