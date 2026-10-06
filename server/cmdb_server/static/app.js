@@ -346,6 +346,184 @@
     });
   });
 
+  // Wirtualizacja: klikniecie wiersza zrodla odczytu filtruje drzewo (link
+  // w kolumnie adresu robi to samo bez JS). Linki w wierszu dzialaja po swojemu.
+  document.querySelectorAll(".wirt-zrodlo[data-href]").forEach(function (wiersz) {
+    wiersz.addEventListener("click", function (event) {
+      if (event.target.closest("a, button")) { return; }
+      var adres = wiersz.dataset.href;
+      var szukane = document.querySelector("[data-wirt-szukaj]");
+      if (szukane && szukane.value.trim()) {
+        adres += (adres.indexOf("?") === -1 ? "?" : "&") + "q=" + encodeURIComponent(szukane.value.trim());
+      }
+      window.location.href = adres;
+    });
+  });
+
+  // Wirtualizacja: wyszukiwarka po calym drzewie, takze zwinietym. Kazde
+  // slowo zapytania musi wystapic (VM: nazwa, IP, MAC, DNS/hostname z agenta,
+  // UUID, projekt...; host: nazwa, IP, IPMI, numer seryjny). Trafienia sie
+  // rozwijaja, reszta znika; puste pole wraca do zwinietego drzewa.
+  (function () {
+    var pole = document.querySelector("[data-wirt-szukaj]");
+    if (!pole) { return; }
+    var wynik = document.querySelector("[data-wirt-wynik]");
+    var brak = document.querySelector("[data-wirt-brak]");
+    var klastry = document.querySelectorAll("details.wirt-klaster:not(.wirt-zrodla-panel)");
+
+    function pasuje(tekst, slowa) {
+      for (var i = 0; i < slowa.length; i++) {
+        if (tekst.indexOf(slowa[i]) === -1) { return false; }
+      }
+      return true;
+    }
+
+    function filtruj() {
+      var zapytanie = pole.value.trim().toLowerCase();
+      var slowa = zapytanie ? zapytanie.split(/\s+/) : [];
+      var vmTrafione = 0, hostyTrafione = 0;
+      klastry.forEach(function (klaster) {
+        var cosWKlastrze = false;
+        klaster.querySelectorAll("details.wirt-host").forEach(function (host) {
+          var hostPasuje = slowa.length > 0 && pasuje(host.dataset.szukaj || "", slowa);
+          var vmWHoscie = 0;
+          host.querySelectorAll("tr.wirt-vm").forEach(function (wiersz) {
+            // Trafiony host pokazuje wszystkie swoje maszyny.
+            var widoczny = !slowa.length || hostPasuje || pasuje(wiersz.dataset.szukaj || "", slowa);
+            wiersz.hidden = !widoczny;
+            if (widoczny && slowa.length && !hostPasuje) { vmWHoscie++; }
+          });
+          var pokaz = !slowa.length || hostPasuje || vmWHoscie > 0;
+          host.hidden = !pokaz;
+          host.open = slowa.length > 0 && vmWHoscie > 0;
+          if (hostPasuje) { hostyTrafione++; }
+          vmTrafione += vmWHoscie;
+          if (pokaz) { cosWKlastrze = true; }
+        });
+        klaster.hidden = !cosWKlastrze;
+        klaster.open = slowa.length > 0 && cosWKlastrze;
+      });
+      if (wynik) {
+        wynik.textContent = slowa.length
+          ? "znaleziono: maszyny " + vmTrafione + ", hosty " + hostyTrafione : "";
+      }
+      if (brak) { brak.hidden = !slowa.length || vmTrafione + hostyTrafione > 0; }
+      // Zapytanie w adresie - wynik da sie odswiezyc i komus wyslac.
+      if (window.history && window.history.replaceState) {
+        var url = new URL(window.location.href);
+        if (zapytanie) { url.searchParams.set("q", pole.value.trim()); } else { url.searchParams.delete("q"); }
+        window.history.replaceState(null, "", url.toString());
+      }
+    }
+
+    var opoznienie = null;
+    pole.addEventListener("input", function () {
+      clearTimeout(opoznienie);
+      opoznienie = setTimeout(filtruj, 120);
+    });
+    pole.form.addEventListener("submit", function (event) { event.preventDefault(); filtruj(); });
+    pole.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") { pole.value = ""; filtruj(); }
+    });
+    if (pole.value.trim()) { filtruj(); }
+  })();
+  // Rozwin / zwin wszystkie klastry i hosty naraz.
+  document.querySelectorAll("[data-wirt-rozwin]").forEach(function (przycisk) {
+    przycisk.addEventListener("click", function () {
+      var otworz = przycisk.dataset.wirtRozwin === "1";
+      document.querySelectorAll("details.wirt-klaster:not(.wirt-zrodla-panel), details.wirt-host").forEach(function (d) {
+        d.open = otworz;
+      });
+    });
+  });
+
+  // Globalna wyszukiwarka w gornym pasku. Bez JS formularz idzie na /szukaj;
+  // z JS podpowiada wyniki w trakcie pisania. Strzalki wybieraja, Enter
+  // otwiera wybrany wynik (albo pelna strone wynikow), Esc zamyka, "/"
+  // przenosi kursor do pola z dowolnego miejsca strony.
+  (function () {
+    var form = document.querySelector("[data-szukaj-globalne]");
+    if (!form) { return; }
+    var pole = form.querySelector("input[name=q]");
+    var lista = form.querySelector(".szukaj-podpowiedzi");
+    var opoznienie = null, ostatnie = "", aktywny = -1, licznik = 0;
+
+    function linki() { return lista.querySelectorAll("a"); }
+    function zamknij() { lista.hidden = true; aktywny = -1; }
+    function zaznacz(i) {
+      var l = linki();
+      if (!l.length) { return; }
+      aktywny = (i + l.length) % l.length;
+      l.forEach(function (a, n) { a.classList.toggle("aktywny", n === aktywny); });
+      l[aktywny].scrollIntoView({ block: "nearest" });
+    }
+    function element(tag, klasa, tekst) {
+      var e = document.createElement(tag);
+      if (klasa) { e.className = klasa; }
+      if (tekst) { e.textContent = tekst; }
+      return e;
+    }
+    function pokaz(q, wyniki) {
+      lista.innerHTML = "";
+      aktywny = -1;
+      if (!wyniki.length) {
+        lista.appendChild(element("div", "pusto", "Nic nie znaleziono dla „" + q + "”."));
+      }
+      wyniki.forEach(function (w) {
+        var a = element("a");
+        a.href = w.url;
+        a.setAttribute("role", "option");
+        a.appendChild(element("span", "rodzaj", w.rodzaj));
+        a.appendChild(element("span", "nazwa", w.nazwa));
+        if (w.opis) { a.appendChild(element("span", "opis", w.opis)); }
+        lista.appendChild(a);
+      });
+      var wszystkie = element("a", "wszystkie", "Wszystkie wyniki dla „" + q + "” →");
+      wszystkie.href = "/szukaj?q=" + encodeURIComponent(q);
+      lista.appendChild(wszystkie);
+      lista.hidden = false;
+    }
+    function szukaj() {
+      var q = pole.value.trim();
+      if (q.length < 2) { ostatnie = q; zamknij(); return; }
+      if (q === ostatnie && !lista.hidden) { return; }
+      ostatnie = q;
+      var numer = ++licznik;
+      fetch("/szukaj.json?q=" + encodeURIComponent(q), { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (dane) {
+          // Odpowiedz na starsze zapytanie nie nadpisuje nowszej.
+          if (dane && numer === licznik && document.activeElement === pole) { pokaz(q, dane.wyniki || []); }
+        })
+        .catch(function () { /* bez podpowiedzi zostaje zwykly formularz */ });
+    }
+
+    pole.addEventListener("input", function () {
+      clearTimeout(opoznienie);
+      opoznienie = setTimeout(szukaj, 180);
+    });
+    pole.addEventListener("focus", function () { if (pole.value.trim().length >= 2) { ostatnie = ""; szukaj(); } });
+    pole.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowDown") { event.preventDefault(); if (lista.hidden) { szukaj(); } else { zaznacz(aktywny + 1); } }
+      else if (event.key === "ArrowUp") { event.preventDefault(); zaznacz(aktywny - 1); }
+      else if (event.key === "Escape") { zamknij(); pole.blur(); }
+      else if (event.key === "Enter" && aktywny >= 0 && !lista.hidden) {
+        event.preventDefault();
+        window.location.href = linki()[aktywny].href;
+      }
+    });
+    document.addEventListener("click", function (event) { if (!form.contains(event.target)) { zamknij(); } });
+    document.addEventListener("keydown", function (event) {
+      var cel = event.target;
+      var pisze = cel && (cel.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(cel.tagName));
+      if (event.key === "/" && !pisze && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        pole.focus();
+        pole.select();
+      }
+    });
+  })();
+
   // Listy, ktore po wyborze przenosza na wskazany adres.
   document.querySelectorAll("[data-autonawigacja]").forEach(function (lista) {
     lista.addEventListener("change", function () {

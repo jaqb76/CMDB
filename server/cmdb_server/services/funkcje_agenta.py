@@ -29,6 +29,9 @@ SKANER = "skaner"
 MONITOROWANIE = "monitorowanie"
 NUTANIX = "nutanix"
 VMWARE = "vmware"
+OPENSTACK = "openstack"
+# Funkcje odczytu platform wirtualizacji - wspolna konfiguracja (services/nutanix.py).
+WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK)
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,8 @@ KATALOG: tuple[Funkcja, ...] = (
             "Odczytuje z Prism Central klastry, hosty i maszyny wirtualne (tylko odczyt, API v4)."),
     Funkcja(VMWARE, "VMware vCenter", "Wirtualizacja",
             "Odczytuje z vCenter klastry, hosty ESXi i maszyny wirtualne (tylko odczyt, REST API)."),
+    Funkcja(OPENSTACK, "OpenStack", "Wirtualizacja",
+            "Odczytuje z OpenStacka regiony, hypervisory Novy i maszyny wirtualne wszystkich projektów (tylko odczyt)."),
 )
 KLUCZE = {f.klucz for f in KATALOG}
 
@@ -185,7 +190,7 @@ def stan(db: Session, asset: Asset) -> list[StanFunkcji]:
     ))
 
     from . import nutanix
-    for klucz in (NUTANIX, VMWARE):
+    for klucz in WIRTUALIZACJA:
         lista = nutanix.polaczenia(db, asset, klucz)
         wlaczone = [r for r in lista if r.wlaczona]
         if len(lista) == 1 and wlaczone:
@@ -229,7 +234,7 @@ def warunek_filtra(klucz: str):
             MonitorUslugi.wykonawca_id == Asset.id,
             MonitorUslugi.aktywny.is_(True),
         )
-    if klucz in (NUTANIX, VMWARE):
+    if klucz in WIRTUALIZACJA:
         return exists().where(
             WirtualizacjaPolaczenie.asset_id == Asset.id,
             WirtualizacjaPolaczenie.dostawca == klucz,

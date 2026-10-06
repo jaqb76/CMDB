@@ -1,0 +1,15 @@
+{#
+  Globalna wyszukiwarka w gornym pasku. Bez JS to zwykly formularz na
+  /szukaj; z JS podpowiada wyniki w trakcie pisania (/szukaj.json).
+  Skrot "/" przenosi kursor do pola z dowolnego miejsca strony.
+#}
+{% if ctx %}
+<form class="szukaj-globalne" method="get" action="/szukaj" role="search" data-szukaj-globalne>
+  <span class="szukaj-ikona" aria-hidden="true">⌕</span>
+  <input type="search" name="q" maxlength="200" autocomplete="off" spellcheck="false"
+         value="{{ wynik.q if wynik is defined and wynik.q else '' }}"
+         placeholder="Szukaj: IP, DNS, hostname, MAC, s/n, zgłoszenie…  ( / )"
+         aria-label="Szukaj w CMDB" aria-autocomplete="list" aria-controls="szukaj-podpowiedzi">
+  <div class="szukaj-podpowiedzi" id="szukaj-podpowiedzi" role="listbox" hidden></div>
+</form>
+{% endif %}

@@ -213,6 +213,9 @@ def _odcisk(nazwa: str) -> str:
 
 
 templates.env.globals["zasob"] = _odcisk
+# Platformy wirtualizacji (nazwa, producent, narzedzia goscia...) - szablony
+# biora opis stad, zamiast wyliczac dostawcow w kazdym miejscu.
+templates.env.globals["platformy"] = nutanix.DOSTAWCY
 
 # Oznaczenie instancji jako GLOBAL, a nie wartosc doklejana przy kazdym
 # renderowaniu: musi byc na kazdej stronie, takze na logowaniu i w pomocy,

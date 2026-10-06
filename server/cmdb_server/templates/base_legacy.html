@@ -39,6 +39,7 @@
     {% if user.is_superadmin and ctx %}<a href="/admin/audyt?firma={{ ctx.tenant_slug | urlencode }}">Audyt</a>{% endif %}
     <a href="/pomoc">Pomoc</a>
   </nav>
+  {% include "_szukaj_globalne.html" %}
   <div class="userbox">
     {% if helpdesk_widoczny %}
     {# Znacznik czekajacych - ten sam mechanizm co w ukladzie nowoczesnym. #}

@@ -49,9 +49,10 @@ ZRODLO_RECZNE = "reczne"
 # "bez kontaktu" - ale tez nie jest do recznej edycji, bo nadpisalby ja
 # kolejny odczyt.
 ZRODLO_NUTANIX = "nutanix"
-# To samo dla VMware vCenter.
+# To samo dla VMware vCenter i OpenStacka.
 ZRODLO_VMWARE = "vmware"
-ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE)
+ZRODLO_OPENSTACK = "openstack"
+ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK)
 
 # Rodzaj sprzetu. Maszyny z agentem sa komputerami; reszte wybiera czlowiek.
 TYP_KOMPUTER = "komputer"
@@ -1083,7 +1084,7 @@ class _UstawieniaWirtualizacji:
 
 
 class WirtualizacjaPolaczenie(_UstawieniaWirtualizacji, Base):
-    """Jedno polaczenie agenta z Prism Central albo vCenter.
+    """Jedno polaczenie agenta z Prism Central, vCenter albo OpenStackiem.
 
     Agent moze czytac dowolnie wiele platform obu rodzajow - kazda ma
     wlasny adres, konto, test i odczyt. Znikniecie obiektow ocenia sie
@@ -1100,11 +1101,22 @@ class WirtualizacjaPolaczenie(_UstawieniaWirtualizacji, Base):
     asset_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )
-    # nutanix | vmware
+    # nutanix | vmware | openstack
     dostawca: Mapped[str] = mapped_column(String(16), nullable=False)
     # Wlasna nazwa w panelu, np. "POD01"; pusta = adres.
     nazwa: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     utworzono: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    # Tylko OpenStack, logowanie haslem: domena konta (pusta = "Default")
+    # i projekt, w ktorym ma role. Pusty projekt = application credential.
+    domena: Mapped[str | None] = mapped_column(String(255))
+    projekt: Mapped[str | None] = mapped_column(String(255))
+    # Tylko OpenStack: reczne adresy Novy i Cindera zamiast tych z katalogu
+    # uslug (katalog bywa z nazwami, ktorych agent nie rozwiazuje).
+    adres_compute: Mapped[str | None] = mapped_column(String(255))
+    adres_volumes: Mapped[str | None] = mapped_column(String(255))
+    # Tylko OpenStack: jawna zgoda na http - haslo i token ida wtedy otwartym
+    # tekstem. Domyslnie wylaczona; https zawsze z weryfikacja certyfikatu.
+    bez_tls: Mapped[bool | None] = mapped_column(Boolean)
 
 
 class NutanixUstawienia(_UstawieniaWirtualizacji, Base):
@@ -1156,8 +1168,9 @@ class NutanixObiekt(Base):
     tenant_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # nutanix | vmware - identyfikatory VMware maja przedrostek adresu vCenter,
-    # bo "vm-123" powtarza sie w kazdym vCenter.
+    # nutanix | vmware | openstack - identyfikatory VMware i OpenStacka maja
+    # przedrostek adresu platformy, bo "vm-123" powtarza sie w kazdym vCenter,
+    # a "RegionOne" - w kazdym OpenStacku.
     dostawca: Mapped[str] = mapped_column(String(16), nullable=False, default="nutanix")
     # klaster | host | vm
     rodzaj: Mapped[str] = mapped_column(String(16), nullable=False)

@@ -110,6 +110,7 @@
         <button type="button" class="topbar-menu" data-sidebar-toggle aria-expanded="false" title="Rozwiń menu" aria-label="Rozwiń menu">☰</button>
         <div><span class="topbar-scope">Portal firmowy</span>{% if ctx %}<strong>{{ ctx.tenant_slug }}</strong>{% endif %}</div>
       </div>
+      {% include "_szukaj_globalne.html" %}
       <div class="userbox">
         {% if helpdesk_widoczny %}
         {#

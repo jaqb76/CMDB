@@ -1,8 +1,8 @@
-"""Wirtualizacja (Nutanix Prism Central, VMware vCenter): konfiguracja dla agenta
-i wlaczanie odczytu do ewidencji.
+"""Wirtualizacja (Nutanix Prism Central, VMware vCenter, OpenStack): konfiguracja
+dla agenta i wlaczanie odczytu do ewidencji.
 
-Obaj dostawcy przechodza te sama droge - roznia sie tylko tym, co agent pyta
-(agent/cmdb_agent/nutanix.py, agent/cmdb_agent/vmware.py). Agent sprowadza
+Wszyscy dostawcy przechodza te sama droge - roznia sie tylko tym, co agent pyta
+(agent/cmdb_agent/nutanix.py, vmware.py, openstack.py). Agent sprowadza
 odpowiedz do tej samej plaskiej postaci, wiec reszta jest wspolna.
 
 Z platformy laczy sie agent. Serwer tylko
@@ -12,8 +12,9 @@ wydaje mu konfiguracje, przyjmuje wynik i przeklada go na zasoby i relacje:
 
 Maszyna wirtualna, w ktorej dziala agent CMDB, nie dostaje drugiego wpisu:
 jej UUID z BIOS-u (raport agenta) rowna sie identyfikatorowi VM w Prism
-albo bios_uuid z vCenter, wiec odczyt dopisuje sie do karty maszyny agenta.
-Pozostale VM, hosty i klastry dostaja wpisy o zrodle "nutanix" / "vmware".
+albo bios_uuid z vCenter (na KVM w OpenStacku: UUID instancji), wiec odczyt
+dopisuje sie do karty maszyny agenta. Pozostale VM, hosty i klastry dostaja
+wpisy o zrodle dostawcy ("nutanix", "vmware", "openstack").
 """
 from __future__ import annotations
 
@@ -31,6 +32,7 @@ from ..models import (
     LIFECYCLE_WYCOFANY,
     ZRODLO_AGENT,
     ZRODLO_NUTANIX,
+    ZRODLO_OPENSTACK,
     ZRODLO_VMWARE,
     Asset,
     AssetChange,
@@ -46,20 +48,35 @@ from . import sekrety
 log = logging.getLogger(__name__)
 
 KLASTER, HOST, VM = "klaster", "host", "vm"
-NUTANIX, VMWARE = ZRODLO_NUTANIX, ZRODLO_VMWARE
+NUTANIX, VMWARE, OPENSTACK = ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK
 INTERWALY_MINUT = (15, 30, 60, 120, 240, 720, 1440)
 
 # Wszystko, czym dostawcy sie roznia. retired_by/created_by = klucz dostawcy:
 # odroznia wycofanie i relacje z odczytu od decyzji czlowieka.
+#   sciezka   - adres moze miec sciezke (Keystone bywa pod /identity),
+#   projekt   - formularz ma pola domeny i projektu (logowanie do OpenStacka),
+#               reczne adresy uslug i zgode na http (OpenStack bez TLS),
+#   narzedzia - nazwa narzedzi goscia, ktore podaja system VM (brak = nie podaje).
 DOSTAWCY = {
     NUTANIX: {"nazwa": "Nutanix Prism Central", "platforma": "Prism Central",
               "port": 9440, "producent": "Nutanix", "model_vm": "AHV", "system_klastra": "AOS",
               "przyklad": "https://prism.firma.pl:9440", "przyklad_konta": "cmdb-ro",
-              "konto": "z rolą <b>Viewer</b>"},
+              "konto": "z rolą <b>Viewer</b>", "identyfikator": "Prism",
+              "narzedzia": "Nutanix Guest Tools", "sciezka": False, "projekt": False},
     VMWARE: {"nazwa": "VMware vCenter", "platforma": "vCenter",
              "port": 443, "producent": "VMware", "model_vm": "vSphere", "system_klastra": "vSphere",
              "przyklad": "https://vcenter.firma.pl", "przyklad_konta": "cmdb-ro@vsphere.local",
-             "konto": "z rolą <b>Read-only</b> nadaną na poziomie vCenter (z propagacją)"},
+             "konto": "z rolą <b>Read-only</b> nadaną na poziomie vCenter (z propagacją)",
+             "identyfikator": "vCenter", "narzedzia": "VMware Tools", "sciezka": False, "projekt": False},
+    OPENSTACK: {"nazwa": "OpenStack", "platforma": "OpenStack",
+                "port": 5000, "producent": "OpenStack", "model_vm": "Nova", "system_klastra": "OpenStack",
+                "przyklad": "https://keystone.firma.pl:5000", "przyklad_konta": "ID application credential",
+                "konto": "z rolą <b>admin</b> (lista hypervisorów i maszyn wszystkich projektów); "
+                         "zalecane <b>application credential</b> zamiast hasła użytkownika",
+                "identyfikator": "OpenStack", "narzedzia": None, "sciezka": True, "projekt": True,
+                # Compute to zwykly Linux - czesto z agentem CMDB, wiec host
+                # dopisuje sie do jego karty (po nazwie), zamiast zakladac druga.
+                "host_z_agentem": True},
 }
 
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -136,6 +153,9 @@ def polityka_polaczenia(row: WirtualizacjaPolaczenie, aktywna: bool) -> dict:
         "haslo": haslo,
         "ca_pem": row.ca_pem or "",
         "interwal_sekund": row.interwal_minut * 60,
+        **({"domena": row.domena or "", "projekt": row.projekt or "", "bez_tls": bool(row.bez_tls),
+            "adres_compute": row.adres_compute or "", "adres_volumes": row.adres_volumes or ""}
+           if DOSTAWCY[row.dostawca]["projekt"] else {}),
     }
 
 
@@ -160,19 +180,28 @@ def polityka_dla_agenta(db: Session, asset: Asset, dostawca: str = NUTANIX) -> d
             "wersja": wersja_zbiorcza(lista)}
 
 
-def normalizuj_adres(adres: str, port: int = 9440) -> str:
-    """https://host[:port] bez sciezki. Rzuca ValueError z opisem."""
+def normalizuj_adres(adres: str, port: int = 9440, sciezka: bool = False, http: bool = False) -> str:
+    """https://host[:port] bez sciezki. Rzuca ValueError z opisem.
+
+    sciezka=True (Keystone) dopuszcza sciezke, np. https://chmura.firma.pl/identity;
+    wtedy domyslny port dopisujemy tylko adresowi bez sciezki. http=True
+    (jawna zgoda w konfiguracji OpenStacka) przepuszcza tez http://.
+    """
     adres = (adres or "").strip().rstrip("/")
     if not adres:
         raise ValueError("podaj adres")
     if "://" not in adres:
         adres = "https://" + adres
-    if not adres.lower().startswith("https://"):
+    schemat = adres.split("://", 1)[0].lower()
+    if schemat != "https" and not (http and schemat == "http"):
         raise ValueError("adres musi zaczynac sie od https://")
-    reszta = adres[len("https://"):]
-    if not reszta or "/" in reszta or "@" in reszta or any(z.isspace() for z in reszta):
+    adres = schemat + adres[len(schemat):]
+    reszta = adres[len(schemat) + 3:]
+    host, _, sciezka_adresu = reszta.partition("/")
+    if (not host or "@" in reszta or any(z.isspace() for z in reszta) or "?" in reszta or "#" in reszta
+            or (sciezka_adresu and not sciezka)):
         raise ValueError("podaj sam adres, np. https://nazwa.firma.pl, bez sciezki")
-    if ":" not in reszta.rsplit("]", 1)[-1]:
+    if ":" not in host.rsplit("]", 1)[-1] and not sciezka_adresu:
         adres += f":{port}"
     return adres
 
@@ -240,10 +269,11 @@ def usun_polaczenie(db: Session, czytnik: Asset, row: WirtualizacjaPolaczenie) -
 
 def _przestrzen(row, dostawca: str) -> str:
     """Przedrostek identyfikatorow: w VMware "vm-123" powtarza sie w kazdym vCenter,
-    wiec skrot adresu vCenter odroznia obiekty dwoch instalacji."""
-    if dostawca != VMWARE:
+    a w OpenStacku region "RegionOne" - w kazdej chmurze, wiec skrot adresu
+    platformy odroznia obiekty dwoch instalacji."""
+    if dostawca not in (VMWARE, OPENSTACK):
         return ""
-    host = (urlsplit(row.adres or "").hostname or "vcenter").lower()
+    host = (urlsplit(row.adres or "").hostname or ("vcenter" if dostawca == VMWARE else dostawca)).lower()
     return hashlib.sha1(host.encode()).hexdigest()[:8] + "/"
 
 
@@ -274,6 +304,36 @@ def warianty_uuid(wartosc: str | None) -> set[str]:
         return "".join(reversed([x[i:i + 2] for i in range(0, len(x), 2)]))
 
     return {w, f"{odwroc(a)}-{odwroc(b)}-{odwroc(c)}-{d}-{e}"}
+
+
+def _nazwy_hosta(nazwa: str | None) -> list[str]:
+    """Pelna nazwa i jej pierwszy czlon: cmp01.cloud.firma.pl i cmp01."""
+    nazwa = (nazwa or "").strip().lower().rstrip(".")
+    if not nazwa:
+        return []
+    krotka = nazwa.split(".", 1)[0]
+    return [nazwa] if krotka == nazwa else [nazwa, krotka]
+
+
+def _hosty_agentow(db: Session, tenant_id: str, nazwy: list[str]) -> dict[str, Asset]:
+    """Nazwa (pelna albo krotka) -> aktywna maszyna z agentem o tej nazwie.
+
+    Nazwa wskazujaca kilka maszyn nie wskazuje zadnej - lepiej zalozyc wpis
+    z odczytu niz dopisac hypervisor do przypadkowej karty.
+    """
+    szukane = {n for nazwa in nazwy for n in _nazwy_hosta(nazwa)}
+    if not szukane:
+        return {}
+    trafienia: dict[str, set[str]] = {}
+    zasoby: dict[str, Asset] = {}
+    for a in db.execute(select(Asset).where(
+            Asset.tenant_id == tenant_id, Asset.zrodlo == ZRODLO_AGENT,
+            Asset.lifecycle == LIFECYCLE_AKTYWNY,
+            (func.lower(Asset.hostname).in_(szukane)) | (func.lower(Asset.fqdn).in_(szukane)))).scalars():
+        zasoby[a.id] = a
+        for n in {(a.hostname or "").lower(), (a.fqdn or "").lower().rstrip(".")} & szukane:
+            trafienia.setdefault(n, set()).add(a.id)
+    return {n: zasoby[next(iter(ids))] for n, ids in trafienia.items() if len(ids) == 1}
 
 
 def _maszyny_agentow(db: Session, tenant_id: str, uuidy: set[str]) -> dict[str, Asset]:
@@ -370,12 +430,19 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
         liczby["klastry"] += 1
 
     hosty: dict[str, Asset] = {}
+    agenci_hostow = _hosty_agentow(db, tenant_id, [h.nazwa for h in wynik.hosty]) \
+        if opis.get("host_z_agentem") else {}
     for h in wynik.hosty:
         dane = h.model_dump(exclude={"ext_id", "nazwa"})
         dane["klaster_id"] = ident(h.klaster_id) or None
         o = obiekt(HOST, h.ext_id, h.nazwa, dane)
-        asset = wpis(o, "host", manufacturer=_pierwsze(h.producent, opis["producent"]), model=h.model,
-                     serial_number=h.numer_seryjny, primary_ip=h.ip, os_name=h.hipernadzorca)
+        agent = next((agenci_hostow[n] for n in _nazwy_hosta(h.nazwa) if n in agenci_hostow), None)
+        if agent is not None:
+            _polacz_z_agentem(db, o, agent, dostawca)
+            asset = agent
+        else:
+            asset = wpis(o, "host", manufacturer=_pierwsze(h.producent, opis["producent"]), model=h.model,
+                         serial_number=h.numer_seryjny, primary_ip=h.ip, os_name=h.hipernadzorca)
         hosty[o.ext_id] = asset
         _ustaw_relacje(db, tenant_id, asset, klastry.get(ident(h.klaster_id)), "host_cluster", dostawca)
         liczby["hosty"] += 1
@@ -445,7 +512,7 @@ def _przywroc(asset: Asset, dostawca: str = NUTANIX) -> None:
 
 
 def _polacz_z_agentem(db: Session, o: NutanixObiekt, agent: Asset, dostawca: str = NUTANIX) -> None:
-    """VM dostala agenta: odczyt dopisuje sie do jego karty.
+    """VM (albo host OpenStacka) ma agenta: odczyt dopisuje sie do jego karty.
 
     Wpis zalozony wczesniej z samego odczytu (zanim zainstalowano agenta)
     zostaje wycofany z adnotacja - nie kasujemy go, bo mogl juz dostac
@@ -503,11 +570,19 @@ def obiekt_zasobu(db: Session, asset: Asset) -> NutanixObiekt | None:
     ).order_by(NutanixObiekt.widziany_o.desc()).limit(1)).scalar_one_or_none()
 
 
-def drzewo(db: Session, tenant_id: str) -> list[dict]:
-    """Klastry -> hosty -> VM dla widoku Wirtualizacja."""
-    obiekty = db.execute(select(NutanixObiekt).where(
-        NutanixObiekt.tenant_id == tenant_id, NutanixObiekt.zniknal_o.is_(None),
-    ).order_by(NutanixObiekt.nazwa)).scalars().all()
+def drzewo(db: Session, tenant_id: str, zrodlo: WirtualizacjaPolaczenie | None = None) -> list[dict]:
+    """Klastry -> hosty -> VM dla widoku Wirtualizacja.
+
+    zrodlo zaweza drzewo do obiektow jednego polaczenia. Obiekty sprzed
+    wielu polaczen nie maja polaczenia - naleza do niego, gdy czytal je ten
+    sam agent z ta sama platforma.
+    """
+    warunki = [NutanixObiekt.tenant_id == tenant_id, NutanixObiekt.zniknal_o.is_(None)]
+    if zrodlo is not None:
+        warunki.append((NutanixObiekt.polaczenie_id == zrodlo.id) | (
+            NutanixObiekt.polaczenie_id.is_(None) & (NutanixObiekt.czytnik_id == zrodlo.asset_id)
+            & (NutanixObiekt.dostawca == zrodlo.dostawca)))
+    obiekty = db.execute(select(NutanixObiekt).where(*warunki).order_by(NutanixObiekt.nazwa)).scalars().all()
     zasoby = {a.id: a for a in db.execute(select(Asset).where(
         Asset.id.in_([o.asset_id for o in obiekty if o.asset_id]))).scalars()} if obiekty else {}
     klastry = {o.ext_id: {"obiekt": o, "asset": zasoby.get(o.asset_id), "hosty": {}, "bez_hosta": []}
