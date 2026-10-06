@@ -237,7 +237,9 @@ def wirtualizacja(request: Request, zrodlo: str = Query("", max_length=36),
     return render(request, "wirtualizacja.html", user, ctx, db,
                   drzewo=nutanix.drzewo(db, ctx.tenant_id, zawezenie),
                   magazyny=ceph.klastry(db, ctx.tenant_id, zawezenie),
-                  dostawcy=nutanix.DOSTAWCY, czytniki=czytniki, wybrany=wybrany, q=q.strip())
+                  dostawcy=nutanix.DOSTAWCY, czytniki=czytniki, wybrany=wybrany, q=q.strip(),
+                  # Nazwa zrodla przy kazdym klastrze - kilka platform ma klastry o tych samych nazwach.
+                  zrodla={c["ustawienia"].id: c["nazwa"] for c in czytniki})
 
 
 def _trasy(dostawca: str) -> None:

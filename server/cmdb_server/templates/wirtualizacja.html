@@ -118,7 +118,7 @@
       <span class="badge">{{ pk.producent }}</span>
       {% if k.obiekt.dane.wersja %}<span class="muted small">{% if not k.obiekt.dane.wersja.startswith('Nova') %}{{ pk.system_klastra }} {% endif %}{{ k.obiekt.dane.wersja }}</span>{% endif %}
     {% else %}Bez przypisanego klastra{% endif %}</span>
-    <span class="muted small">hosty {{ k.hosty | length }} · {{ liczby_vm(wszystkie) }}</span>
+    <span class="muted small">hosty {{ k.hosty | length }} · {{ liczby_vm(wszystkie) }}{% if k.obiekt and zrodla.get(k.obiekt.polaczenie_id) %} · źródło: {{ zrodla[k.obiekt.polaczenie_id] }}{% endif %}</span>
   </summary>
   {% for h in k.hosty.values() %}{% set hd = h.obiekt.dane or {} %}
   <details class="wirt-host" data-szukaj="{{ (h.obiekt.nazwa ~ ' ' ~ (hd.ip or '') ~ ' ' ~ (hd.ipmi_ip or '') ~ ' ' ~ (hd.numer_seryjny or '') ~ ' ' ~ (hd.model or '') ~ ' ' ~ (hd.strefa or '') ~ ' ' ~ (hd.hipernadzorca or '') ~ ' ' ~ ((h.asset.fqdn or '') if h.asset else '')) | lower }}">

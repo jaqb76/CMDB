@@ -446,7 +446,8 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
 
     klastry: dict[str, Asset] = {}
     for k in wynik.klastry:
-        o = obiekt(KLASTER, k.ext_id, k.nazwa, k.model_dump(exclude={"ext_id", "nazwa"}))
+        o = obiekt(KLASTER, k.ext_id, _nazwa_klastra(k, dostawca, pol, len(wynik.klastry)),
+                   k.model_dump(exclude={"ext_id", "nazwa"}))
         klastry[o.ext_id] = wpis(o, "klaster", manufacturer=opis["producent"],
                                  os_name=_pierwsze(k.hipernadzorca, opis["system_klastra"]),
                                  os_version=k.wersja)
@@ -524,6 +525,20 @@ def _zniknij(db: Session, tenant_id: str, o: NutanixObiekt, dostawca: str, teraz
         asset.lifecycle, asset.retired_at = LIFECYCLE_WYCOFANY, teraz
         asset.retired_by, asset.retired_reason = dostawca, powod
         liczby["wycofane"] += 1
+
+
+def _nazwa_klastra(k, dostawca: str, pol: WirtualizacjaPolaczenie | None, ile_klastrow: int = 1) -> str:
+    """Nazwa klastra w ewidencji.
+
+    Region OpenStacka prawie zawsze nazywa sie "regionOne" - kilka chmur
+    wygladaloby identycznie. Klastrem jest wiec nazwa polaczenia ("Openstack
+    G1 DC1"), a przy kilku regionach w jednej chmurze - z regionem w nawiasie.
+    Prism i vCenter maja wlasne, rozne nazwy klastrow.
+    """
+    if dostawca == OPENSTACK and pol is not None:
+        nazwa = nazwa_polaczenia(pol)
+        return nazwa if ile_klastrow <= 1 else f"{nazwa} ({k.nazwa or k.ext_id})"
+    return k.nazwa
 
 
 def _pierwsze(*wartosci):

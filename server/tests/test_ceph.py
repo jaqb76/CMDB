@@ -126,8 +126,8 @@ def test_relacja_region_openstacka_do_klastra_ceph(client, tenant_a, make_user):
     assert wyslij(client, enrolled, odczyt(rev_ceph)) == "przyjeto"  # Ceph dochodzi - relacja powstaje
     with SessionLocal() as db:
         [r] = db.scalars(select(AssetRelation).where(AssetRelation.kind == "cluster_storage")).all()
-        assert (r.source.hostname, r.target.hostname, r.created_by) == ("RegionOne", "Ceph DC1", "openstack")
-    assert "korzysta: RegionOne" in client.get("/wirtualizacja").text
+        assert (r.source.hostname, r.target.hostname, r.created_by) == ("Openstack G1 DC1", "Ceph DC1", "openstack")
+    assert "korzysta: Openstack G1 DC1" in client.get("/wirtualizacja").text
 
     # Cinder przestal korzystac z tego Cepha - wykryta relacja znika.
     dane_os["klastry"][0]["magazyny"] = []
