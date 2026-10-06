@@ -383,7 +383,8 @@
       var slowa = zapytanie ? zapytanie.split(/\s+/) : [];
       var vmTrafione = 0, hostyTrafione = 0;
       klastry.forEach(function (klaster) {
-        var cosWKlastrze = false;
+        var cosWKlastrze = slowa.length > 0 && !!klaster.dataset.szukaj && pasuje(klaster.dataset.szukaj, slowa);
+        if (cosWKlastrze) { hostyTrafione++; }
         klaster.querySelectorAll("details.wirt-host").forEach(function (host) {
           var hostPasuje = slowa.length > 0 && pasuje(host.dataset.szukaj || "", slowa);
           var vmWHoscie = 0;
@@ -400,7 +401,7 @@
           vmTrafione += vmWHoscie;
           if (pokaz) { cosWKlastrze = true; }
         });
-        klaster.hidden = !cosWKlastrze;
+        klaster.hidden = slowa.length > 0 && !cosWKlastrze;
         klaster.open = slowa.length > 0 && cosWKlastrze;
       });
       if (wynik) {

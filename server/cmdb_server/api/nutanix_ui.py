@@ -91,9 +91,9 @@ def _zapisz(dostawca: str, asset_id: str, request: Request, polaczenie_id: str, 
         raise HTTPException(409, "konfiguracja zmienila sie w miedzyczasie; odswiez strone")
     if interwal_minut not in nutanix.INTERWALY_MINUT:
         raise HTTPException(422, "niedozwolony odstep odczytu")
-    # Zgode na http zna tylko OpenStack; Prism i vCenter dostaja zwykle "zly adres".
-    bez_tls = bez_tls and opis["projekt"]
-    if opis["projekt"] and not bez_tls and any(
+    # Zgode na http znaja OpenStack i Ceph; Prism i vCenter dostaja zwykle "zly adres".
+    bez_tls = bez_tls and opis["http"]
+    if opis["http"] and not bez_tls and any(
             a.strip().lower().startswith("http://") for a in (adres, adres_compute, adres_volumes)):
         return RedirectResponse(_karta(dostawca, asset.id, "tls"), status_code=303)
     try:
@@ -102,8 +102,10 @@ def _zapisz(dostawca: str, asset_id: str, request: Request, polaczenie_id: str, 
     except ValueError:
         return RedirectResponse(_karta(dostawca, asset.id, "adres"), status_code=303)
     try:
-        uslugi = {k: nutanix.normalizuj_adres(v, port, True, bez_tls) if v.strip() and opis["projekt"] else None
-                  for k, v, port in (("compute", adres_compute, 8774), ("volumes", adres_volumes, 8776))}
+        # Bez dopisywania portu: klasycznie Nova to 8774, a Cinder 8776, ale za
+        # routerem OpenShift (RHOSO) albo load balancerem - 443. Port wpisuje sie jawnie.
+        uslugi = {k: nutanix.normalizuj_adres(v, None, True, bez_tls) if v.strip() and opis["projekt"] else None
+                  for k, v in (("compute", adres_compute), ("volumes", adres_volumes))}
     except ValueError:
         return RedirectResponse(_karta(dostawca, asset.id, "adres_uslugi"), status_code=303)
     try:
@@ -129,8 +131,10 @@ def _zapisz(dostawca: str, asset_id: str, request: Request, polaczenie_id: str, 
                  "uzytkownik": row.uzytkownik, "interwal_minut": row.interwal_minut,
                  "wlasne_ca": bool(row.ca_pem)}
         if opis["projekt"]:
-            wynik.update(domena=row.domena, projekt=row.projekt, bez_tls=bool(row.bez_tls),
+            wynik.update(domena=row.domena, projekt=row.projekt,
                          adres_compute=row.adres_compute, adres_volumes=row.adres_volumes)
+        if opis["http"]:
+            wynik.update(bez_tls=bool(row.bez_tls))
         return wynik
 
     przed = {} if nowe else stan()
@@ -139,7 +143,9 @@ def _zapisz(dostawca: str, asset_id: str, request: Request, polaczenie_id: str, 
     row.ca_pem, row.interwal_minut = ca_ok, interwal_minut
     if opis["projekt"]:
         row.domena, row.projekt = domena.strip() or None, projekt.strip() or None
-        row.bez_tls, row.adres_compute, row.adres_volumes = bez_tls, uslugi["compute"], uslugi["volumes"]
+        row.adres_compute, row.adres_volumes = uslugi["compute"], uslugi["volumes"]
+    if opis["http"]:
+        row.bez_tls = bez_tls
     row.revision, row.updated_by, row.updated_at = str(uuid4()), user.email, utcnow()
     db.flush()
     # Hasla nie ma w audycie w zadnej postaci - tylko fakt, ze sie zmienilo.
@@ -226,8 +232,11 @@ def wirtualizacja(request: Request, zrodlo: str = Query("", max_length=36),
     # Filtr po zrodle: tylko polaczenie tej firmy (lista czytnikow jest juz
     # zawezona do niej); nieznany identyfikator = bez filtra.
     wybrany = next((c for c in czytniki if c["ustawienia"].id == zrodlo), None) if zrodlo else None
+    from ..services import ceph
+    zawezenie = wybrany["ustawienia"] if wybrany else None
     return render(request, "wirtualizacja.html", user, ctx, db,
-                  drzewo=nutanix.drzewo(db, ctx.tenant_id, wybrany["ustawienia"] if wybrany else None),
+                  drzewo=nutanix.drzewo(db, ctx.tenant_id, zawezenie),
+                  magazyny=ceph.klastry(db, ctx.tenant_id, zawezenie),
                   dostawcy=nutanix.DOSTAWCY, czytniki=czytniki, wybrany=wybrany, q=q.strip())
 
 

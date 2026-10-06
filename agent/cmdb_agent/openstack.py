@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import ssl
 import time
 import urllib.error
@@ -287,15 +288,49 @@ class Openstack:
 
 # --- splaszczenie ------------------------------------------------------------
 
-def klaster(region: str, wersja: str | None = None, hosty: list[dict] | None = None) -> dict:
+def klaster(region: str, wersja: str | None = None, hosty: list[dict] | None = None,
+            magazyny: list[dict] | None = None) -> dict:
     typy = sorted({h["hipernadzorca"].split()[0] for h in hosty or [] if h.get("hipernadzorca")})
-    return {
+    wynik = {
         "ext_id": _tekst(region, 64),
         "nazwa": _tekst(region) or "",
         "wersja": _tekst(wersja, 128),
         "hipernadzorca": _tekst(typy, 128),
         "liczba_hostow": len(hosty) if hosty is not None else None,
     }
+    if magazyny:
+        wynik["magazyny"] = magazyny
+    return wynik
+
+
+_FSID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def magazyny_cindera(pule: list[dict] | None) -> list[dict]:
+    """Klastry Ceph pod backendami Cindera (RBD).
+
+    Sterownik RBD podaje w location_info "ceph:<conf>:<fsid>:<uzytkownik>:<pula>"
+    - fsid wskazuje klaster Cepha, ktory serwer polaczy z regionem.
+    """
+    wynik, widziane = [], set()
+    for p in pule or []:
+        if not isinstance(p, dict):
+            continue
+        cechy = p.get("capabilities") or {}
+        miejsce = str(cechy.get("location_info") or "")
+        if "ceph" not in miejsce.lower() and str(cechy.get("storage_protocol") or "").lower() != "ceph":
+            continue
+        fsid = _FSID.search(miejsce.lower())
+        if not fsid:
+            continue
+        czesci = miejsce.split(":")
+        wpis = {"fsid": fsid.group(0), "pula": _tekst(czesci[-1] if len(czesci) >= 5 else None, 128),
+                "backend": _tekst(cechy.get("volume_backend_name") or p.get("name"), 128)}
+        klucz = (wpis["fsid"], wpis["pula"])
+        if klucz not in widziane:
+            widziane.add(klucz)
+            wynik.append(wpis)
+    return wynik[:50]
 
 
 def host(d: dict, region: str, strefy: dict[str, str] | None = None) -> dict:
@@ -433,9 +468,8 @@ def wykonaj(chmura: Openstack, rodzaj: str) -> dict:
                     for nazwa in (surowy.get("hypervisor_hostname"), _z(surowy, "service.host")):
                         if nazwa:
                             po_nazwie.setdefault(str(nazwa).lower(), wpis["ext_id"])
-                klastry.append(klaster(region, wersje[region], w_regionie))
                 hosty.extend(w_regionie)
-                wolumeny = {}
+                wolumeny, magazyny = {}, []
                 if region in wolumeny_url:
                     # Wolumeny tylko uzupelniaja dyski VM - ich blad nie przerywa odczytu.
                     try:
@@ -445,6 +479,14 @@ def wykonaj(chmura: Openstack, rodzaj: str) -> dict:
                         log.warning("OpenStack: lista wolumenow niedostepna, dyski bez wolumenow: %s", exc)
                         lista_wolumenow = None
                     wolumeny = {str(w["id"]): w for w in lista_wolumenow or [] if w.get("id")}
+                    # Pule Cindera z fsid Cepha - do relacji region -> klaster Ceph.
+                    try:
+                        pule = chmura.get(wolumeny_url[region] + "/scheduler-stats/get_pools",
+                                          {"detail": "true"}, opcjonalne=True, nova=False)
+                        magazyny = magazyny_cindera((pule or {}).get("pools"))
+                    except BladOpenstack as exc:
+                        log.warning("OpenStack: pule Cindera niedostepne: %s", exc)
+                klastry.append(klaster(region, wersje[region], w_regionie, magazyny))
                 for s in chmura.lista(adres + "/servers/detail", "servers", {"all_tenants": 1}):
                     nazwa_hosta = s.get("OS-EXT-SRV-ATTR:hypervisor_hostname") or s.get("OS-EXT-SRV-ATTR:host")
                     host_id = po_nazwie.get(str(nazwa_hosta).lower()) if nazwa_hosta else None

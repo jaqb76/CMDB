@@ -3,6 +3,7 @@
   to druga, niezalezna perspektywa: agent mowi, co jest w srodku, hypervisor
   - na czym to stoi i ile dostalo.
 #}
+{% if wirtualizacja.rodzaj == 'ceph' %}{% include "_ceph_karta.html" %}{% else %}
 {% set d = wirtualizacja.dane or {} %}
 {% set pl = platformy.get(wirtualizacja.dostawca, platformy.nutanix) %}
 {% set producent = pl.producent %}
@@ -42,3 +43,4 @@
   </dl>
   <p class="small"><a href="/relacje?asset_id={{ asset.id }}">Host i klaster w relacjach</a> · <a href="/wirtualizacja">Cała wirtualizacja</a></p>
 </div>
+{% endif %}

@@ -39,7 +39,12 @@
 </div>
 
 {% if not snapshot %}
-  {% if asset.zrodlo in platformy %}
+  {% if asset.zrodlo in platformy and asset.typ == 'magazyn' %}
+    <div class="alert">
+      Wpis z odczytu {{ platformy[asset.zrodlo].nazwa }} — klaster pamięci masowej. Dane na karcie odświeża
+      każdy odczyt, a opiekuna, lokalizację i uwagi można nadać jak przy każdym wpisie.
+    </div>
+  {% elif asset.zrodlo in platformy %}
     <div class="alert">
       Wpis z odczytu {{ platformy[asset.zrodlo].nazwa }} — w tej maszynie nie ma agenta CMDB,
       więc system, oprogramowanie i podatności pozostają puste. Po instalacji

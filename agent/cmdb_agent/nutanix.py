@@ -103,8 +103,8 @@ def _polaczenie(polityka: dict, nazwa: str) -> dict:
              "revision": str(polityka.get("revision") or "")}
     if wynik["enabled"] or wynik["test"]:
         adres = str(polityka.get("adres") or "")
-        # http tylko w OpenStacku i tylko po jawnej zgodzie w panelu.
-        bez_tls = nazwa == "OpenStack" and polityka.get("bez_tls") is True
+        # http tylko w OpenStacku i Cephie i tylko po jawnej zgodzie w panelu.
+        bez_tls = nazwa in ("OpenStack", "Ceph") and polityka.get("bez_tls") is True
         if not (adres.startswith("https://") or (bez_tls and adres.startswith("http://"))):
             raise ValueError(f"adres {nazwa} musi byc po https")
         wynik.update(

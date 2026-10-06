@@ -30,6 +30,7 @@ def add_relation(db: Session, ctx: TenantContext, source_id: str, target_id: str
         "vm_host": ({"vm", "komputer"}, {"host", "komputer"}),
         "host_cluster": ({"host", "komputer"}, {"klaster"}),
         "application_server": ({"aplikacja"}, {"host", "komputer", "vm"}),
+        "cluster_storage": ({"klaster", "host", "komputer", "vm"}, {"magazyn"}),
     }
     source_types, target_types = allowed[kind]
     if source.typ not in source_types or target.typ not in target_types:

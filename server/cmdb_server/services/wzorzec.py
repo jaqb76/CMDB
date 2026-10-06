@@ -123,6 +123,7 @@ RODZAJE_STARTOWE: list[tuple[str, str]] = [
     ("vm", "Maszyna wirtualna"),
     ("host", "Host wirtualizacji"),
     ("klaster", "Klaster"),
+    ("magazyn", "Pamięć masowa"),
     ("aplikacja", "Aplikacja"),
     ("inne", "Inne"),
 ]
@@ -130,7 +131,7 @@ RODZAJE_STARTOWE: list[tuple[str, str]] = [
 # Klucze, na ktorych stoi kod: relacje sprawdzaja po nich, czy zwiazek ma sens,
 # a wykrywanie sieci klasyfikuje znaleziska. Zmiana albo usuniecie takiego
 # rodzaju wylaczyloby funkcje bez zadnego komunikatu.
-KLUCZE_CHRONIONE = frozenset({"komputer", "vm", "host", "klaster", "aplikacja"})
+KLUCZE_CHRONIONE = frozenset({"komputer", "vm", "host", "klaster", "magazyn", "aplikacja"})
 
 # Zestawy pol wlasciwych dla rodzaju. Sa punktem wyjscia, nie ograniczeniem -
 # administrator dokłada i usuwa je tak samo jak w kazdym innym schemacie.

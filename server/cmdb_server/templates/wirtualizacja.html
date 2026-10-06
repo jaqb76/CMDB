@@ -9,8 +9,8 @@
   <span class="muted small" data-wirt-wynik></span>
 </form>
 <p class="muted">
-  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central, VMware vCenter i OpenStacka przez agentów
-  z włączoną funkcją „Nutanix Prism Central”, „VMware vCenter” albo „OpenStack” (karta maszyny → Agent → Dodatkowe funkcjonalności).
+  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central, VMware vCenter i OpenStacka, a pod nimi
+  pamięć masowa z Ceph — przez agentów z włączoną funkcją odczytu (karta maszyny → Agent → Dodatkowe funkcjonalności).
   W OpenStacku klastrem jest region, a hostem hypervisor Novy.
   Kolumna „Agent CMDB” pokazuje, które maszyny wirtualne nie są objęte inwentaryzacją oprogramowania.
 </p>
@@ -51,12 +51,12 @@
 </details>
 {% endif %}
 
-{% if not drzewo %}
+{% if not drzewo and not magazyny %}
 <section class="panel">
   {% if wybrany %}
   <p>To źródło nie ma jeszcze odczytanych obiektów. <a href="/wirtualizacja">Pokaż wszystkie źródła</a></p>
   {% else %}
-  <p>Nie ma jeszcze danych z Prism Central, vCenter ani OpenStacka.</p>
+  <p>Nie ma jeszcze danych z Prism Central, vCenter, OpenStacka ani Cepha.</p>
   <p class="muted">Włącz odczyt na karcie maszyny, która widzi Prism Central, vCenter albo OpenStack:
     <b>Agent → Dodatkowe funkcjonalności → Nutanix Prism Central / VMware vCenter / OpenStack</b>.
     Pierwszy odczyt pojawi się po najbliższym sprawdzeniu konfiguracji przez agenta.</p>
@@ -139,4 +139,40 @@
   {% endif %}
 </details>
 {% endfor %}
+
+{% if magazyny %}
+<h2 class="wirt-sekcja">Pamięć masowa</h2>
+{% for m in magazyny %}{% set d = m.obiekt.dane or {} %}{% set zdrowie = (d.zdrowie or '') | replace('HEALTH_', '') %}
+{% set pct = ((d.zajete_bajty or 0) * 100 / d.pojemnosc_bajty) | round(1) if d.pojemnosc_bajty else none %}
+<details class="panel wirt-klaster wirt-ceph"
+         data-szukaj="{{ (m.obiekt.nazwa ~ ' ' ~ m.obiekt.ext_id ~ ' ceph ' ~ ((d.hosty or []) | map(attribute='nazwa') | join(' ')) ~ ' ' ~ ((d.hosty or []) | map(attribute='adres') | select | join(' ')) ~ ' ' ~ ((d.pule or []) | map(attribute='nazwa') | join(' '))) | lower }}">
+  <summary>
+    <span class="wirt-tytul">{% if m.asset %}<a href="/assets/{{ m.asset.id }}">{{ m.obiekt.nazwa }}</a>{% else %}{{ m.obiekt.nazwa }}{% endif %}
+      <span class="badge">Ceph</span>{% if d.wersja %} <span class="muted small">{{ d.wersja }}</span>{% endif %}</span>
+    {% if zdrowie == 'OK' %}<span class="badge badge-ok">HEALTH_OK</span>{% elif zdrowie == 'WARN' %}<span class="badge badge-warn">HEALTH_WARN</span>{% elif zdrowie %}<span class="badge badge-danger">{{ d.zdrowie }}</span>{% endif %}
+    <span class="muted small">{% if pct is not none %}zajęte {{ pct }}% z {{ d.pojemnosc_bajty | bytes }} · {% endif %}OSD {{ d.liczba_osd or 0 }}{% if d.osd_up is not none and d.liczba_osd and d.osd_up < d.liczba_osd %} (down {{ d.liczba_osd - d.osd_up }}){% endif %} · węzły {{ d.liczba_hostow or 0 }} · pule {{ (d.pule or []) | length }}{% if m.uzywa %} · korzysta: {{ m.uzywa | map(attribute='hostname') | join(', ') }}{% endif %}</span>
+  </summary>
+  <div class="wirt-ceph-tresc">
+    {% if d.ostrzezenia %}<ul class="ceph-ostrzezenia small">{% for o in d.ostrzezenia %}<li>{{ o }}</li>{% endfor %}</ul>{% endif %}
+    {% if d.pule %}
+    <div class="tabela-przewijana">
+    <table class="table">
+      <thead><tr><th>Pula</th><th>Typ</th><th>Replikacja</th><th>Aplikacje</th><th class="num">Zajęte</th><th class="num">Dostępne</th></tr></thead>
+      <tbody>
+      {% for p in d.pule %}
+        <tr><td>{{ p.nazwa }}</td><td class="small">{{ p.typ or '—' }}</td>
+          <td class="small">{{ p.rozmiar or '—' }}{% if p.typ == 'replicated' and p.rozmiar == 1 %} <span class="badge badge-warn">bez kopii</span>{% endif %}</td>
+          <td class="small">{{ (p.aplikacje or []) | join(', ') or '—' }}</td>
+          <td class="num">{{ p.zajete_bajty | bytes if p.zajete_bajty is not none else '' }}</td>
+          <td class="num">{{ p.dostepne_bajty | bytes if p.dostepne_bajty is not none else '' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if m.asset %}<p class="small"><a href="/assets/{{ m.asset.id }}">Węzły, pojemność i szczegóły na karcie klastra →</a></p>{% endif %}
+  </div>
+</details>
+{% endfor %}
+{% endif %}
 {% endblock %}

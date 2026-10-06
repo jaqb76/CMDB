@@ -189,16 +189,24 @@
                 <input id="nx-projekt-{{ nr }}" name="projekt" maxlength="255" autocomplete="off" value="{{ nx.projekt or '' if nx else '' }}" placeholder="admin"></div>
             </div>
             <div class="muted small">Pusty projekt = application credential: w polu użytkownika jego ID, w haśle sekret.
-              Adres to Keystone v3, np. <code>https://keystone.firma.pl:5000</code> albo <code>https://chmura.firma.pl/identity</code>.</div>
+              Adres to Keystone v3 <b>z portem</b>, jeśli nie jest standardowy: klasycznie <code>https://keystone.firma.pl:5000</code>,
+              za routerem OpenShift (RHOSO) albo load balancerem zwykle bez portu (443), np. <code>https://keystone-public-openstack.apps.klaster.firma.pl</code>.</div>
             <div class="row-form">
               <div><label for="nx-compute-{{ nr }}">Adres Compute (opcjonalnie)</label>
                 <input id="nx-compute-{{ nr }}" name="adres_compute" maxlength="255" value="{{ nx.adres_compute or '' if nx else '' }}" placeholder="z katalogu usług, np. https://nova.firma.pl:8774/v2.1"></div>
               <div><label for="nx-volumes-{{ nr }}">Adres Volumes (opcjonalnie)</label>
                 <input id="nx-volumes-{{ nr }}" name="adres_volumes" maxlength="255" value="{{ nx.adres_volumes or '' if nx else '' }}" placeholder="z katalogu usług, np. https://cinder.firma.pl:8776/v3"></div>
             </div>
-            <div class="muted small">Puste = adres z katalogu Keystone. Wpisz, gdy katalog podaje nazwy, których ta maszyna nie widzi (np. <code>controller</code>); ręczny adres dotyczy jednego regionu.</div>
+            <div class="muted small">Puste = adres z katalogu Keystone. Wpisz, gdy katalog podaje nazwy, których ta maszyna nie widzi (np. <code>controller</code>); ręczny adres dotyczy jednego regionu.
+              Port tylko jawnie: klasycznie <code>:8774</code> i <code>:8776</code>, w RHOSO bez portu (443), np. <code>https://nova-public-openstack.apps.klaster.firma.pl</code>.</div>
+            {% endif %}
+            {% if wirt.opis.magazyn %}
+            <div class="muted small">Adres to Ceph Dashboard (aktywny mgr albo adres za load balancerem), np. <code>https://ceph-mgr.firma.pl:8443</code>.
+              Konto: <code>ceph dashboard ac-user-create cmdb-ro -i plik-z-haslem read-only</code>.</div>
+            {% endif %}
+            {% if wirt.opis.http %}
             <p><label><input type="checkbox" name="bez_tls" value="true" {% if nx and nx.bez_tls %}checked{% endif %}> Zezwól na połączenie bez TLS (http://)</label>
-              <span class="muted small">— hasło i token pójdą otwartym tekstem. Tylko w zaufanej sieci; lepiej z application credential niż z hasłem admina.</span></p>
+              <span class="muted small">— hasło i token pójdą otwartym tekstem. Tylko w zaufanej sieci{% if wirt.opis.projekt %}; lepiej z application credential niż z hasłem admina{% endif %}.</span></p>
             {% endif %}
             <div><label for="nx-ca-{{ nr }}">Certyfikat CA {{ wirt.opis.platforma }} (opcjonalnie, PEM)</label>
               <textarea id="nx-ca-{{ nr }}" name="ca_pem" rows="3" placeholder="Puste = zaufane urzędy systemu tej maszyny (np. firmowe CA dodane do systemu)">{{ nx.ca_pem if nx and nx.ca_pem else '' }}</textarea>
@@ -216,6 +224,7 @@
             {% if nx.bez_tls %}<span class="badge badge-warn">bez TLS</span>{% endif %}
             {% if not nx.wlaczona %}<span class="badge">wyłączone</span>
             {% elif nx.odczyt_o and not nx.odczyt_ok %}<span class="badge badge-danger">błąd odczytu</span>
+            {% elif nx.odczyt_ok and wirt.opis.magazyn %}<span class="badge badge-ok">OSD {{ (nx.odczyt_liczby or {}).osd or 0 }}</span>
             {% elif nx.odczyt_ok %}<span class="badge badge-ok">VM {{ (nx.odczyt_liczby or {}).vm or 0 }}</span>
             {% else %}<span class="badge badge-warn">czeka na odczyt</span>{% endif %}
           </summary>

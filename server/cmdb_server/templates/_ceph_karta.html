@@ -1,0 +1,71 @@
+{#
+  Klaster Ceph na karcie zasobu: stan, pojemnosc, OSD, monitory, wezly i pule
+  z ostatniego odczytu Ceph Dashboard. Wezly i pule sa szczegolami klastra,
+  nie osobnymi zasobami.
+#}
+{% set d = wirtualizacja.dane or {} %}
+{% set zdrowie = (d.zdrowie or '') | replace('HEALTH_', '') %}
+{% set pct = ((d.zajete_bajty or 0) * 100 / d.pojemnosc_bajty) | round(1) if d.pojemnosc_bajty else none %}
+<div class="panel">
+  <h2>Pamięć masowa <span class="badge">Ceph</span>
+    {% if zdrowie == 'OK' %}<span class="badge badge-ok">HEALTH_OK</span>
+    {% elif zdrowie == 'WARN' %}<span class="badge badge-warn">HEALTH_WARN</span>
+    {% elif zdrowie %}<span class="badge badge-danger">{{ d.zdrowie }}</span>{% endif %}</h2>
+  {% if d.ostrzezenia %}
+  <ul class="ceph-ostrzezenia small">{% for o in d.ostrzezenia %}<li>{{ o }}</li>{% endfor %}</ul>
+  {% endif %}
+  <dl class="kv">
+    {% if d.wersja %}<dt>Wersja Ceph</dt><dd>{{ d.wersja }}</dd>{% endif %}
+    {% if d.pojemnosc_bajty %}<dt>Pojemność (raw)</dt><dd>
+      <div class="usage-cell">
+        <div class="meter {% if pct >= 85 %}meter-danger{% elif pct >= 75 %}meter-warn{% endif %}"><span class="meter-fill" data-percent="{{ pct }}"></span></div>
+        <span class="small">{{ pct }}% · zajęte {{ d.zajete_bajty | bytes }} z {{ d.pojemnosc_bajty | bytes }}, wolne {{ (d.wolne_bajty or 0) | bytes }}</span>
+      </div></dd>{% endif %}
+    {% if d.liczba_osd is not none %}<dt>OSD</dt><dd>{{ d.liczba_osd }}
+      <span class="muted">(up {{ d.osd_up }}, in {{ d.osd_in }})</span>
+      {% if d.osd_up is not none and d.osd_up < d.liczba_osd %}<span class="badge badge-warn">down: {{ d.liczba_osd - d.osd_up }}</span>{% endif %}</dd>{% endif %}
+    {% if d.liczba_mon %}<dt>Monitory</dt><dd>{{ d.liczba_mon }} <span class="muted">(w kworum {{ d.mon_kworum or 0 }})</span></dd>{% endif %}
+    {% if d.liczba_hostow is not none %}<dt>Węzły</dt><dd>{{ d.liczba_hostow }}</dd>{% endif %}
+    <dt>fsid</dt><dd><code>{{ wirtualizacja.ext_id }}</code></dd>
+    <dt>Odczytano</dt><dd>{{ wirtualizacja.widziany_o | ago }}</dd>
+  </dl>
+
+  {% if d.hosty %}
+  <h3>Węzły</h3>
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>Nazwa</th><th>Adres</th><th>Role</th><th class="num">OSD</th><th>Wersja</th></tr></thead>
+    <tbody>
+    {% for h in d.hosty %}
+      <tr><td>{{ h.nazwa }}{% if h.stan %} <span class="badge badge-warn">{{ h.stan }}</span>{% endif %}</td>
+        <td class="small">{{ h.adres or '—' }}</td>
+        <td class="small">{{ (h.role or []) | join(', ') or '—' }}</td>
+        <td class="num">{{ h.osd or 0 }}</td>
+        <td class="small">{{ h.wersja or '—' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
+  {% if d.pule %}
+  <h3>Pule</h3>
+  <div class="tabela-przewijana">
+  <table class="table">
+    <thead><tr><th>Nazwa</th><th>Typ</th><th>Replikacja</th><th class="num">PG</th><th>Aplikacje</th><th class="num">Zajęte</th><th class="num">Dostępne</th></tr></thead>
+    <tbody>
+    {% for p in d.pule %}
+      <tr><td>{{ p.nazwa }}</td>
+        <td class="small">{{ p.typ or '—' }}</td>
+        <td class="small">{% if p.rozmiar %}{{ p.rozmiar }}{% if p.min_rozmiar %} / min {{ p.min_rozmiar }}{% endif %}{% if p.typ == 'replicated' and p.rozmiar == 1 %} <span class="badge badge-warn">bez kopii</span>{% endif %}{% else %}—{% endif %}</td>
+        <td class="num">{{ p.pg or '' }}</td>
+        <td class="small">{{ (p.aplikacje or []) | join(', ') or '—' }}</td>
+        <td class="num">{{ p.zajete_bajty | bytes if p.zajete_bajty is not none else '' }}</td>
+        <td class="num">{{ p.dostepne_bajty | bytes if p.dostepne_bajty is not none else '' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <p class="small"><a href="/relacje?asset_id={{ asset.id }}">Kto korzysta z tego klastra (relacje)</a> · <a href="/wirtualizacja">Wirtualizacja i pamięć masowa</a></p>
+</div>

@@ -28,7 +28,7 @@ def relations_page(request: Request, asset_id: str = Query("", max_length=36),
 
 
 # Kolumna mapy wedlug rodzaju zasobu: od korzenia (klaster) do lisci (aplikacje).
-KOLUMNY_MAPY = {"klaster": 0, "host": 1, "aplikacja": 3}
+KOLUMNY_MAPY = {"klaster": 0, "magazyn": 0, "host": 1, "aplikacja": 3}
 TYPY_MASZYN = ("vm", "komputer")
 
 

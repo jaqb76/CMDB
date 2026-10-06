@@ -1923,3 +1923,8 @@ label.check input { width: auto; margin-top: 3px; }
   .szukaj-podpowiedzi a { grid-template-columns: 1fr; }
   .szukaj-podpowiedzi .opis { grid-column: 1; }
 }
+
+/* Klaster Ceph na karcie zasobu i na stronie Wirtualizacja. */
+.ceph-ostrzezenia { margin: 0 0 10px; padding-left: 18px; color: var(--warn-fg); }
+.wirt-ceph-tresc { padding: 0 16px 12px 34px; }
+.wirt-sekcja { margin: 22px 0 10px; font-size: 18px; }

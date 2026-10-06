@@ -120,8 +120,27 @@ def test_konfiguracja_openstack_z_domena_i_projektem(client, tenant_a, make_user
 def test_application_credential_bez_projektu(client, tenant_a, make_user):
     enrolled, _, _ = _wlaczony(client, tenant_a, make_user)
     p = polityka(client, enrolled)["policy"]
-    assert p["adres"] == "https://keystone.cloud.firma.pl:5000"
+    # Bez dopisanego portu: 5000 albo 443 (RHOSO, load balancer) zalezy od wdrozenia.
+    assert p["adres"] == "https://keystone.cloud.firma.pl"
     assert (p["domena"], p["projekt"]) == ("", "")
+
+
+def test_adres_keystone_bez_portu_i_z_portem(client, tenant_a, make_user):
+    enrolled = zarejestruj(client, tenant_a)
+    _, csrf = zaloguj(client, tenant_a, make_user)
+    wlacz(client, csrf, enrolled["asset_id"], adres="keystone-public-openstack.apps.rhoso-pod1.firma.pl")
+    wlacz(client, csrf, enrolled["asset_id"], adres="keystone.dc1.firma.pl:5000")
+    adresy = sorted(p["adres"] for p in polityka(client, enrolled)["polaczenia"])
+    assert adresy == ["https://keystone-public-openstack.apps.rhoso-pod1.firma.pl", "https://keystone.dc1.firma.pl:5000"]
+    # Adres Compute bez portu (RHOSO) tez zostaje bez portu.
+    rhoso = next(p for p in polityka(client, enrolled)["polaczenia"] if "rhoso" in p["adres"])
+    wlacz(client, csrf, enrolled["asset_id"], polaczenie_id=rhoso["id"], revision=rhoso["revision"],
+          adres="keystone-public-openstack.apps.rhoso-pod1.firma.pl",
+          adres_compute="https://nova-public-openstack.apps.rhoso-pod1.firma.pl",
+          adres_volumes="cinder.dc1.firma.pl:8776/v3")
+    rhoso = next(p for p in polityka(client, enrolled, nonce="f" * 32)["polaczenia"] if "rhoso" in p["adres"])
+    assert rhoso["adres_compute"] == "https://nova-public-openstack.apps.rhoso-pod1.firma.pl"
+    assert rhoso["adres_volumes"] == "https://cinder.dc1.firma.pl:8776/v3"
 
 
 def test_odczyt_openstack_zaklada_drzewo_i_laczy_vm_z_agentem(client, tenant_a, make_user):

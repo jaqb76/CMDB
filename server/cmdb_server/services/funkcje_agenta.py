@@ -30,8 +30,10 @@ MONITOROWANIE = "monitorowanie"
 NUTANIX = "nutanix"
 VMWARE = "vmware"
 OPENSTACK = "openstack"
-# Funkcje odczytu platform wirtualizacji - wspolna konfiguracja (services/nutanix.py).
-WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK)
+CEPH = "ceph"
+# Funkcje odczytu platform (wirtualizacja i pamiec masowa) - wspolna
+# konfiguracja polaczen (services/nutanix.py).
+WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK, CEPH)
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,8 @@ KATALOG: tuple[Funkcja, ...] = (
             "Odczytuje z vCenter klastry, hosty ESXi i maszyny wirtualne (tylko odczyt, REST API)."),
     Funkcja(OPENSTACK, "OpenStack", "Wirtualizacja",
             "Odczytuje z OpenStacka regiony, hypervisory Novy i maszyny wirtualne wszystkich projektów (tylko odczyt)."),
+    Funkcja(CEPH, "Ceph", "Pamięć masowa",
+            "Odczytuje z Ceph Dashboard stan klastra, pojemność, OSD, węzły i pule (tylko odczyt)."),
 )
 KLUCZE = {f.klucz for f in KATALOG}
 
@@ -197,7 +201,10 @@ def stan(db: Session, asset: Asset) -> list[StanFunkcji]:
             r = lista[0]
             liczby = r.odczyt_liczby or {}
             podsumowanie = r.adres
-            if r.odczyt_ok and liczby:
+            if r.odczyt_ok and liczby and klucz == CEPH:
+                podsumowanie += (f" · hosty {liczby.get('hosty', 0)}, OSD {liczby.get('osd', 0)}, "
+                                 f"pule {liczby.get('pule', 0)}")
+            elif r.odczyt_ok and liczby:
                 podsumowanie += (f" · klastry {liczby.get('klastry', 0)}, "
                                  f"hosty {liczby.get('hosty', 0)}, VM {liczby.get('vm', 0)}")
         elif len(lista) > 1:

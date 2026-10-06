@@ -27,7 +27,8 @@ Wymagania:
   admina. Zamiast admina można nadać rolę `reader` i dopisać w polityce Novy
   reguły `os_compute_api:os-hypervisors:list-detail` oraz
   `os_compute_api:servers:detail:get_all_tenants`,
-- maszyna z agentem, która widzi Keystone (zwykle port 5000), Novę (8774)
+- maszyna z agentem, która widzi Keystone (klasycznie port 5000; za routerem
+  OpenShift w RHOSO albo za load balancerem zwykle 443), Novę (8774)
   i, opcjonalnie, Cindera (8776).
 
 ## Logowanie
@@ -54,8 +55,12 @@ unieważnić bez zmiany hasła konta.
 
 Karta maszyny → **Agent** → **Dodatkowe funkcjonalności** → **OpenStack**:
 
-1. adres Keystone, np. `keystone.firma.pl` (port 5000 dopisze się sam) albo
-   `https://chmura.firma.pl/identity`. Końcówka `/v3` jest opcjonalna,
+1. adres Keystone **z portem, jeśli nie jest standardowy**. Klasycznie to
+   `keystone.firma.pl:5000`, a w RHOSO (OpenStack na OpenShift) albo za load
+   balancerem zwykle bez portu, np. `keystone-public-openstack.apps.klaster.firma.pl`.
+   Adres może mieć ścieżkę (`https://chmura.firma.pl/identity`), a końcówka
+   `/v3` jest opcjonalna. Panel nie dopisuje portu sam: adres bez portu
+   oznacza 443 dla `https` i 80 dla `http`,
 2. dane logowania według tabeli powyżej,
 3. **Zapisz**, potem **Testuj połączenie**. Test loguje się, czyta katalog
    usług i wersję Novy,
@@ -73,6 +78,11 @@ trzeba wpisać adresy w polach **Adres Compute** i **Adres Volumes**, np.:
 | Adres | `http://172.17.30.199:5000/v3` |
 | Adres Compute | `http://172.17.30.199:8774/v2.1` |
 | Adres Volumes | `http://172.17.30.199:8776/v3` |
+
+Port wpisuje się jawnie: klasycznie `:8774` (Nova) i `:8776` (Cinder), a w RHOSO
+trasy OpenShift są na 443, więc bez portu, np.
+`https://nova-public-openstack.apps.klaster.firma.pl`. Adres bez ścieżki agent
+uzupełnia o `/v2.1` (Compute) i `/v3` (Volumes).
 
 Adres Volumes może być bez ID projektu: agent dopisze ID projektu z tokenu.
 Ręczny adres dotyczy jednego regionu, czyli pierwszego z katalogu. Chmurę
@@ -150,3 +160,5 @@ journalctl -u cmdb-agent-monitor -n 50 | grep -i openstack
 | `adres bez https` | adres `http` bez zgody na połączenie bez TLS |
 | `wymagany OpenStack Pike lub nowszy` | Nova nie obsługuje mikrowersji 2.53 |
 | `brak połączenia z http://controller…` | katalog podaje nazwę niewidoczną z agenta; wpisz adres Compute/Volumes |
+| `brak połączenia z https://…:5000…: timed out` | Keystone nie słucha na 5000 (np. RHOSO) — usuń port z adresu |
+| `certyfikat OpenStack nie jest zaufany` | wklej firmowe CA w polu „Certyfikat CA” (RHOSO: CA routera OpenShift albo firmowe) |

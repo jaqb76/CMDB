@@ -387,6 +387,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | [`docs/funkcje-agenta.md`](docs/funkcje-agenta.md) | zakładka „Agent”: funkcje podstawowe, dodatkowe funkcjonalności per agent, „czeka na odebranie” |
 | [`docs/nutanix.md`](docs/nutanix.md) | odczyt Nutanix Prism Central przez agenta: klastry, hosty, VM, łączenie z agentami po UUID |
 | [`docs/vmware.md`](docs/vmware.md) | odczyt VMware vCenter przez agenta: klastry, hosty ESXi, VM — ta sama ścieżka co Nutanix |
+| [`docs/ceph.md`](docs/ceph.md) | odczyt klastra Ceph przez agenta (Ceph Dashboard): stan, pojemność, OSD, węzły, pule; relacja z regionem OpenStacka po fsid |
 | [`docs/openstack.md`](docs/openstack.md) | odczyt OpenStacka przez agenta: regiony, hypervisory Novy, VM wszystkich projektów; application credential, http po zgodzie |
 | [`docs/monitorowanie-uslug.md`](docs/monitorowanie-uslug.md) | monitorowanie dostępności usług i ważności certyfikatów SSL, progi, powiadomienia |
 | [`docs/helpdesk.md`](docs/helpdesk.md) | zgłoszenia z maili, rozpoznawanie wątków, czas pracy, raporty, dostępy techników |

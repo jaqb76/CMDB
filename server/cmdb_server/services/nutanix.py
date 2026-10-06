@@ -31,6 +31,7 @@ from ..models import (
     LIFECYCLE_AKTYWNY,
     LIFECYCLE_WYCOFANY,
     ZRODLO_AGENT,
+    ZRODLO_CEPH,
     ZRODLO_NUTANIX,
     ZRODLO_OPENSTACK,
     ZRODLO_VMWARE,
@@ -48,35 +49,48 @@ from . import sekrety
 log = logging.getLogger(__name__)
 
 KLASTER, HOST, VM = "klaster", "host", "vm"
-NUTANIX, VMWARE, OPENSTACK = ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK
+NUTANIX, VMWARE, OPENSTACK, CEPH = ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH
 INTERWALY_MINUT = (15, 30, 60, 120, 240, 720, 1440)
 
 # Wszystko, czym dostawcy sie roznia. retired_by/created_by = klucz dostawcy:
 # odroznia wycofanie i relacje z odczytu od decyzji czlowieka.
 #   sciezka   - adres moze miec sciezke (Keystone bywa pod /identity),
-#   projekt   - formularz ma pola domeny i projektu (logowanie do OpenStacka),
-#               reczne adresy uslug i zgode na http (OpenStack bez TLS),
+#   projekt   - formularz ma pola domeny i projektu (logowanie do OpenStacka)
+#               i reczne adresy uslug,
+#   http      - mozna zezwolic na polaczenie bez TLS (OpenStack, Ceph Dashboard),
+#   magazyn   - pamiec masowa (Ceph): wlasny zapis do ewidencji, poza drzewem
+#               klaster -> host -> VM,
 #   narzedzia - nazwa narzedzi goscia, ktore podaja system VM (brak = nie podaje).
 DOSTAWCY = {
     NUTANIX: {"nazwa": "Nutanix Prism Central", "platforma": "Prism Central",
               "port": 9440, "producent": "Nutanix", "model_vm": "AHV", "system_klastra": "AOS",
               "przyklad": "https://prism.firma.pl:9440", "przyklad_konta": "cmdb-ro",
               "konto": "z rolą <b>Viewer</b>", "identyfikator": "Prism",
-              "narzedzia": "Nutanix Guest Tools", "sciezka": False, "projekt": False},
+              "narzedzia": "Nutanix Guest Tools", "sciezka": False, "projekt": False, "http": False},
     VMWARE: {"nazwa": "VMware vCenter", "platforma": "vCenter",
              "port": 443, "producent": "VMware", "model_vm": "vSphere", "system_klastra": "vSphere",
              "przyklad": "https://vcenter.firma.pl", "przyklad_konta": "cmdb-ro@vsphere.local",
              "konto": "z rolą <b>Read-only</b> nadaną na poziomie vCenter (z propagacją)",
-             "identyfikator": "vCenter", "narzedzia": "VMware Tools", "sciezka": False, "projekt": False},
+             "identyfikator": "vCenter", "narzedzia": "VMware Tools", "sciezka": False, "projekt": False,
+             "http": False},
+    # Port OpenStacka nie jest dopisywany: klasyczny Keystone slucha na 5000,
+    # ale za routerem OpenShift (RHOSO) albo load balancerem - na zwyklym 443.
+    # Adres bez portu = domyslny port schematu; inny trzeba wpisac jawnie.
     OPENSTACK: {"nazwa": "OpenStack", "platforma": "OpenStack",
-                "port": 5000, "producent": "OpenStack", "model_vm": "Nova", "system_klastra": "OpenStack",
+                "port": None, "producent": "OpenStack", "model_vm": "Nova", "system_klastra": "OpenStack",
                 "przyklad": "https://keystone.firma.pl:5000", "przyklad_konta": "ID application credential",
                 "konto": "z rolą <b>admin</b> (lista hypervisorów i maszyn wszystkich projektów); "
                          "zalecane <b>application credential</b> zamiast hasła użytkownika",
-                "identyfikator": "OpenStack", "narzedzia": None, "sciezka": True, "projekt": True,
+                "identyfikator": "OpenStack", "narzedzia": None, "sciezka": True, "projekt": True, "http": True,
                 # Compute to zwykly Linux - czesto z agentem CMDB, wiec host
                 # dopisuje sie do jego karty (po nazwie), zamiast zakladac druga.
                 "host_z_agentem": True},
+    CEPH: {"nazwa": "Ceph", "platforma": "Ceph Dashboard",
+           "port": 8443, "producent": "Ceph", "model_vm": "", "system_klastra": "Ceph",
+           "przyklad": "https://ceph-mgr.firma.pl:8443", "przyklad_konta": "cmdb-ro",
+           "konto": "z rolą <b>read-only</b> w Ceph Dashboard",
+           "identyfikator": "Cephie (fsid)", "narzedzia": None, "sciezka": False, "projekt": False,
+           "http": True, "magazyn": True},
 }
 
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -153,9 +167,10 @@ def polityka_polaczenia(row: WirtualizacjaPolaczenie, aktywna: bool) -> dict:
         "haslo": haslo,
         "ca_pem": row.ca_pem or "",
         "interwal_sekund": row.interwal_minut * 60,
-        **({"domena": row.domena or "", "projekt": row.projekt or "", "bez_tls": bool(row.bez_tls),
+        **({"domena": row.domena or "", "projekt": row.projekt or "",
             "adres_compute": row.adres_compute or "", "adres_volumes": row.adres_volumes or ""}
            if DOSTAWCY[row.dostawca]["projekt"] else {}),
+        **({"bez_tls": bool(row.bez_tls)} if DOSTAWCY[row.dostawca]["http"] else {}),
     }
 
 
@@ -180,12 +195,13 @@ def polityka_dla_agenta(db: Session, asset: Asset, dostawca: str = NUTANIX) -> d
             "wersja": wersja_zbiorcza(lista)}
 
 
-def normalizuj_adres(adres: str, port: int = 9440, sciezka: bool = False, http: bool = False) -> str:
+def normalizuj_adres(adres: str, port: int | None = 9440, sciezka: bool = False, http: bool = False) -> str:
     """https://host[:port] bez sciezki. Rzuca ValueError z opisem.
 
     sciezka=True (Keystone) dopuszcza sciezke, np. https://chmura.firma.pl/identity;
     wtedy domyslny port dopisujemy tylko adresowi bez sciezki. http=True
     (jawna zgoda w konfiguracji OpenStacka) przepuszcza tez http://.
+    port=None - nie dopisujemy portu (OpenStack: 5000 albo 443, zaleznie od wdrozenia).
     """
     adres = (adres or "").strip().rstrip("/")
     if not adres:
@@ -201,7 +217,7 @@ def normalizuj_adres(adres: str, port: int = 9440, sciezka: bool = False, http: 
     if (not host or "@" in reszta or any(z.isspace() for z in reszta) or "?" in reszta or "#" in reszta
             or (sciezka_adresu and not sciezka)):
         raise ValueError("podaj sam adres, np. https://nazwa.firma.pl, bez sciezki")
-    if ":" not in host.rsplit("]", 1)[-1] and not sciezka_adresu:
+    if port and ":" not in host.rsplit("]", 1)[-1] and not sciezka_adresu:
         adres += f":{port}"
     return adres
 
@@ -217,8 +233,12 @@ def sprawdz_ca(pem: str) -> str | None:
 
 # --- przyjecie wyniku -------------------------------------------------------
 
-def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix, dostawca: str = NUTANIX) -> str:
+def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix, dostawca: str = NUTANIX,
+             synchronizacja=None) -> str:
     """Zapisuje wynik testu albo odczytu. Zwraca "przyjeto" / "pominieto".
+
+    synchronizacja - wlasny zapis udanego odczytu do ewidencji (Ceph); domyslnie
+    drzewo klaster -> host -> VM.
 
     Polaczenie wskazuje polaczenie_id; agent sprzed wielu polaczen go nie
     wysyla, wiec wtedy szukamy po rewizji, ktora i tak jest unikalna.
@@ -244,7 +264,7 @@ def przyjmij(db: Session, czytnik: Asset, wynik: WynikNutanix, dostawca: str = N
         row.odczyt_blad = (wynik.blad or "nieznany blad")[:2000]
         return "przyjeto"
     row.odczyt_blad = None
-    row.odczyt_liczby = synchronizuj(db, czytnik, wynik, dostawca, _przestrzen(row, dostawca), row)
+    row.odczyt_liczby = (synchronizacja or synchronizuj)(db, czytnik, wynik, dostawca, _przestrzen(row, dostawca), row)
     return "przyjeto"
 
 
@@ -264,6 +284,9 @@ def usun_polaczenie(db: Session, czytnik: Asset, row: WirtualizacjaPolaczenie) -
         _zniknij(db, czytnik.tenant_id, o, row.dostawca, teraz, powod, liczby)
     db.delete(row)
     db.flush()
+    if row.dostawca in (OPENSTACK, CEPH):
+        from . import ceph
+        ceph.polacz_magazyny(db, czytnik.tenant_id)
     return liczby["wycofane"]
 
 
@@ -484,6 +507,9 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
             continue
         _zniknij(db, tenant_id, o, dostawca, teraz, powod, liczby)
     db.flush()
+    if dostawca == OPENSTACK:
+        from . import ceph
+        ceph.polacz_magazyny(db, tenant_id)
     return liczby
 
 
