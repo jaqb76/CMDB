@@ -54,7 +54,8 @@ KOLEKCJE = {"/api/cluster/nodes": WEZLY, "/api/storage/aggregates": AGREGATY, "/
 
 
 @contextmanager
-def falszywy_ontap(tmp_path, haslo="tajne", bez_pola_services=False, bez_snapmirror=False):
+def falszywy_ontap(tmp_path, haslo="tajne", bez_pola_services=False, bez_snapmirror=False,
+                   klaster_bez_numeru=False):
     pem, klucz = _certyfikat()
     (tmp_path / "c.pem").write_text(pem)
     (tmp_path / "c.key").write_text(klucz)
@@ -79,7 +80,11 @@ def falszywy_ontap(tmp_path, haslo="tajne", bez_pola_services=False, bez_snapmir
             if self.headers.get("Authorization") != "Basic " + base64.b64encode(f"cmdb-ro:{haslo}".encode()).decode():
                 return self._odpowiedz(401, {"error": {"message": "User is not authorized.", "code": "6691623"}})
             if sciezka == "/api/cluster":
-                return self._odpowiedz(200, KLASTER)
+                pola = q.get("fields", [""])[0]
+                if klaster_bez_numeru and "serial_number" in pola.split(","):
+                    # Starszy ONTAP nie zna numeru seryjnego klastra.
+                    return self._odpowiedz(400, {"error": {"message": 'The value "serial_number" is invalid for field "fields" (<field,...>)'}})
+                return self._odpowiedz(200, {k: v for k, v in KLASTER.items() if not (klaster_bez_numeru and k == "serial_number")})
             if sciezka not in KOLEKCJE or (bez_snapmirror and "snapmirror" in sciezka):
                 return self._odpowiedz(404, {"error": {"message": "not found"}})
             pola = q.get("fields", [""])[0]
@@ -123,7 +128,7 @@ def test_pelny_odczyt_klastra(tmp_path):
     assert k["wolumeny"][0]["sciezka"] == "/vol_vmware01" and k["wolumeny"][0]["agregat"] == "aggr1"
     assert k["luny"][0]["zmapowany"] is True and k["luny"][0]["os"] == "vmware"
     assert len(k["dyski"]) == 1500  # dwie strony po 1000
-    assert k["dyski"][0]["numer_seryjny"] == "S4ABC0000" and k["dyski"][0]["polka"] == "SHFMS123"
+    assert k["dyski"][0]["numer_seryjny"] == "S4ABC0000" and k["dyski"][0]["polka"] == "1.0"  # nazwa, nie uid
     assert k["dyski"][3]["stan"] == "broken" and k["dyski"][0]["stan"] is None
     assert k["polki"][0]["model"] == "NS224" and k["interfejsy"][0]["uslugi"] == "data_core, data_nfs"
     assert k["snapmirror"][0] == {"zrodlo": "svm_nfs:vol_vmware01", "cel": "svm_dr:vol_vmware01_dst",
@@ -170,3 +175,11 @@ def test_czytnik_netapp_wysyla_wynik_na_wlasny_adres(tmp_path):
     sciezka, tresc = klient.wyslane[0]
     assert sciezka == "/api/v1/agent/netapp" and tresc["ok"] and len(tresc["klastry"][0]["dyski"]) == 1500
     assert "tajne" not in json.dumps(tresc)
+
+
+def test_starszy_ontap_bez_numeru_seryjnego_klastra(tmp_path):
+    with falszywy_ontap(tmp_path, klaster_bez_numeru=True) as (adres, pem, zapytania):
+        wynik = netapp.wykonaj(netapp.Ontap(adres, "cmdb-ro", "tajne", pem), "test")
+    k = wynik["klastry"][0]
+    assert wynik["ok"] and k["ext_id"] == UUID and k["numer_seryjny"] is None
+    assert [s for _, s in zapytania if s.startswith("/api/cluster?")][-1].endswith("fields=%2A")

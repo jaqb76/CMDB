@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "NetApp: odczyt klastra działa także na wersjach ONTAP bez numeru seryjnego klastra w API; półka przy dysku pokazuje nazwę (np. 1.0) zamiast wewnętrznego identyfikatora."
+}
