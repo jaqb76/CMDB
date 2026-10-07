@@ -21,7 +21,16 @@
     {% if d.bios_wersja %}<dt>BIOS</dt><dd>{{ d.bios_wersja }}</dd>{% endif %}
     {% if d.cpu_model %}<dt>Procesor</dt><dd>{{ d.cpu_model }}{% if d.gniazda %} × {{ d.gniazda }}{% endif %}{% if d.rdzenie %} ({{ d.rdzenie }} rdzeni{% if d.watki %}, {{ d.watki }} wątków{% endif %}){% endif %}</dd>{% endif %}
     {% if d.ram_bajty %}<dt>RAM</dt><dd>{{ d.ram_bajty | bytes }}</dd>{% endif %}
-    {% if d.dyski %}<dt>Dyski</dt><dd>{% for dysk in d.dyski %}{{ dysk.rozmiar_bajty | bytes if dysk.rozmiar_bajty else '?' }}{% if dysk.typ %} <span class="muted">{{ dysk.typ }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    {% if d.dyski %}
+    {# Dyski zgrupowane: "24 x 1.7 TB SSD SATA" zamiast dwudziestu czterech pozycji. #}
+    {% set grupy = {} %}{% set kolejnosc = [] %}
+    {% for dysk in d.dyski %}{% set klucz = ((dysk.rozmiar_bajty | bytes) if dysk.rozmiar_bajty else 'rozmiar nieznany') ~ '|' ~ (dysk.typ or '') %}
+      {% if klucz not in grupy %}{% set _ = kolejnosc.append(klucz) %}{% endif %}{% set _ = grupy.update({klucz: grupy.get(klucz, 0) + 1}) %}{% endfor %}
+    {% set zle = d.dyski | selectattr('stan') | list %}
+    <dt>Dyski</dt><dd>{{ d.dyski | length }}:
+      {% for klucz in kolejnosc %}{% set czesci = klucz.split('|') %}{{ grupy[klucz] }} × {{ czesci[0] }}{% if czesci[1] %} <span class="muted">{{ czesci[1] }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+      {% if zle %}<ul class="ceph-ostrzezenia small">{% for dysk in zle %}<li><b>{{ dysk.stan }}</b>: {{ dysk.miejsce or dysk.model or 'dysk' }}{% if dysk.numer_seryjny %} <span class="muted">s/n {{ dysk.numer_seryjny }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+    </dd>{% endif %}
     {% if d.mac %}<dt>Adresy MAC</dt><dd class="small">{{ d.mac | join(', ') }}</dd>{% endif %}
     {% if d.system %}<dt>System wg OME</dt><dd>{{ d.system }}{% if d.hostname_os %} <span class="muted">({{ d.hostname_os }})</span>{% endif %}</dd>{% endif %}
     {% if d.obudowa %}<dt>Obudowa</dt><dd><code>{{ d.obudowa }}</code></dd>{% endif %}

@@ -32,9 +32,14 @@ INWENTARZ = {"value": [
         {"ModelName": "Intel(R) Xeon(R) Gold 6430", "NumberOfCores": 32, "NumberOfEnabledThreads": 64},
         {"ModelName": "Intel(R) Xeon(R) Gold 6430", "NumberOfCores": 32, "NumberOfEnabledThreads": 64}]},
     {"InventoryType": "serverMemoryDevices", "InventoryInfo": [{"Size": 65536}] * 16},
+    # Ksztalt jak w OME 4.x: rozmiar bez jednostki (GB), BusType, pelna nazwa nosnika.
     {"InventoryType": "serverArrayDisks", "InventoryInfo": [
-        {"Size": "1.75 TB", "MediaType": "SSD", "BusProtocol": "SAS", "ModelNumber": "KPM6XRUG1T92"},
-        {"Size": "446.63 GB", "MediaType": "SSD", "BusProtocol": "SATA", "ModelNumber": "MZ7L3480"}]},
+        {"Size": "698.64", "MediaType": "Solid State Drive", "BusType": "PCIe", "Status": 1000, "StatusString": "OK",
+         "ModelNumber": "Dell Express Flash NVMe P4800X 750GB SF", "SerialNumber": "PHKE1126018D750BGN",
+         "DiskNumber": "PCIe SSD in Slot 8 in Bay 1"},
+        {"Size": "1,788.50", "MediaType": "Hard Disk Drive", "BusType": "SAS", "Status": 4000,
+         "StatusString": "Critical", "ModelNumber": "ST2000NM", "SerialNumber": "ZC1ABC",
+         "DiskNumber": "Disk 3 in Backplane 1"}]},
     {"InventoryType": "serverNetworkInterfaces", "InventoryInfo": [
         {"Ports": [{"Partitions": [{"CurrentMacAddress": "B0:26:28:AA:BB:01"}]},
                    {"Partitions": [{"CurrentMacAddress": "B0:26:28:AA:BB:02"}]}]}]},
@@ -125,8 +130,11 @@ def test_pelny_odczyt_serwerow(tmp_path):
         "zasilanie": "ON", "polaczony": True, "idrac_ip": "10.70.0.1", "idrac_wersja": "7.10.30.00",
         "bios_wersja": "2.3.5", "cpu_model": "Intel(R) Xeon(R) Gold 6430", "gniazda": 2, "rdzenie": 64,
         "watki": 128, "ram_bajty": 1024 * 2**30,
-        "dyski": [{"rozmiar_bajty": int(1.75 * 2**40), "typ": "SSD SAS", "model": "KPM6XRUG1T92"},
-                  {"rozmiar_bajty": int(446.63 * 2**30), "typ": "SSD SATA", "model": "MZ7L3480"}],
+        "dyski": [{"rozmiar_bajty": int(698.64 * 2**30), "typ": "SSD PCIe",
+                   "model": "Dell Express Flash NVMe P4800X 750GB SF", "numer_seryjny": "PHKE1126018D750BGN",
+                   "stan": None, "miejsce": "PCIe SSD in Slot 8 in Bay 1"},
+                  {"rozmiar_bajty": int(1788.5 * 2**30), "typ": "HDD SAS", "model": "ST2000NM",
+                   "numer_seryjny": "ZC1ABC", "stan": "Critical", "miejsce": "Disk 3 in Backplane 1"}],
         "mac": ["b0:26:28:aa:bb:01", "b0:26:28:aa:bb:02"], "system": "VMware ESXi 8.0.3",
         "hostname_os": "esx01.firma.pl", "obudowa": None, "inwentaryzacja_o": "2026-10-06 22:00:01.123"}
     assert wynik["urzadzenia"][1]["zdrowie"] == "CRITICAL" and wynik["urzadzenia"][1]["zasilanie"] == "OFF"
@@ -155,8 +163,12 @@ def test_bledy(tmp_path):
 
 
 def test_rozmiar_dysku_z_napisu():
+    assert ome._rozmiar_bajty("698.64") == int(698.64 * 2**30)  # OME 4.x: bez jednostki, GB
     assert ome._rozmiar_bajty("558.38 GB") == int(558.38 * 2**30)
     assert ome._rozmiar_bajty("1,75 TB") == int(1.75 * 2**40)
+    assert ome._rozmiar_bajty("1,788.50") == int(1788.5 * 2**30)
+    assert ome._rozmiar_bajty("3,840") == 3840 * 2**30
+    assert ome._rozmiar_bajty("0") is None
     assert ome._rozmiar_bajty("") is None and ome._rozmiar_bajty("n/a") is None
 
 

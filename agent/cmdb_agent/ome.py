@@ -171,16 +171,32 @@ class Ome:
 
 # --- splaszczenie ------------------------------------------------------------
 
+_JEDNOSTKI = {"": 2**30, "B": 1, "BYTES": 1, "KB": 2**10, "MB": 2**20, "GB": 2**30, "TB": 2**40, "PB": 2**50,
+              "KIB": 2**10, "MIB": 2**20, "GIB": 2**30, "TIB": 2**40}
+_NOSNIKI = {"solid state drive": "SSD", "hard disk drive": "HDD"}
+
+
 def _rozmiar_bajty(tekst) -> int | None:
-    """'558.38 GB' / '1.75 TB' -> bajty (OME podaje rozmiar dysku napisem)."""
-    m = re.match(r"\s*([\d.,]+)\s*([KMGTP]?B)", str(tekst or ""), re.I)
+    """Rozmiar dysku z OME -> bajty.
+
+    OME podaje go napisem, zwykle bez jednostki ("698.64" = GB, dysk 750 GB),
+    w starszych wersjach z jednostka ("558.38 GB", "1.75 TB"). Separatory
+    tysiecy ("1,788.50") i przecinek dziesietny ("1,75") tez sie zdarzaja.
+    """
+    m = re.match(r"^\s*([\d][\d\s.,]*?)\s*([KMGTP]?I?B|BYTES)?\s*$", str(tekst or ""), re.I)
     if not m:
         return None
-    mnoznik = {"B": 1, "KB": 2**10, "MB": 2**20, "GB": 2**30, "TB": 2**40, "PB": 2**50}[m.group(2).upper()]
+    liczba = m.group(1).replace(" ", "")
+    if "," in liczba and "." in liczba:
+        liczba = liczba.replace(",", "")                      # 1,788.50
+    elif "," in liczba:
+        liczba = liczba.replace(",", "" if re.fullmatch(r"\d{1,3}(,\d{3})+", liczba) else ".")
     try:
-        return int(float(m.group(1).replace(",", ".")) * mnoznik)
+        wartosc = float(liczba)
     except ValueError:
         return None
+    wynik = int(wartosc * _JEDNOSTKI[(m.group(2) or "").upper()])
+    return wynik or None
 
 
 def _inwentarz(szczegoly) -> dict[str, list[dict]]:
@@ -205,9 +221,16 @@ def serwer(d: dict, szczegoly: dict | None = None) -> dict:
     pamiec = inw.get("serverMemoryDevices", [])
     dyski = []
     for dysk in inw.get("serverArrayDisks", [])[:64]:
+        nosnik = str(dysk.get("MediaType") or "").strip()
+        nosnik = _NOSNIKI.get(nosnik.lower(), nosnik)
+        magistrala = dysk.get("BusType") or dysk.get("BusProtocol")
+        stan = None if _liczba(dysk.get("Status")) in (1000, None) else _tekst(dysk.get("StatusString") or dysk.get("Status"), 32)
         dyski.append({"rozmiar_bajty": _rozmiar_bajty(dysk.get("Size")),
-                      "typ": _tekst(" ".join(str(x) for x in (dysk.get("MediaType"), dysk.get("BusProtocol")) if x), 64),
-                      "model": _tekst(dysk.get("ModelNumber"), 128)})
+                      "typ": _tekst(" ".join(str(x) for x in (nosnik, magistrala) if x), 64),
+                      "model": _tekst(dysk.get("ModelNumber"), 128),
+                      "numer_seryjny": _tekst(dysk.get("SerialNumber"), 64),
+                      "stan": stan,
+                      "miejsce": _tekst(dysk.get("DiskNumber"), 128)})
     mac = []
     for karta in inw.get("serverNetworkInterfaces", []):
         for port in karta.get("Ports") or []:

@@ -21,6 +21,10 @@ class DyskOme(_Model):
     rozmiar_bajty: int | None = Field(default=None, ge=0)
     typ: str | None = Field(default=None, max_length=64)
     model: str | None = Field(default=None, max_length=128)
+    numer_seryjny: str | None = Field(default=None, max_length=64)
+    # Stan z OME, gdy inny niz OK (np. "Critical") - do wyroznienia na karcie.
+    stan: str | None = Field(default=None, max_length=32)
+    miejsce: str | None = Field(default=None, max_length=128)
 
 
 class SerwerOme(_Model):

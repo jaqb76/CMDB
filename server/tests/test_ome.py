@@ -28,7 +28,11 @@ def serwer(tag, **zmiany):
          "zasilanie": "ON", "polaczony": True, "idrac_ip": "10.70.0.11", "idrac_wersja": "7.10.30.00",
          "bios_wersja": "2.3.5", "cpu_model": "Intel(R) Xeon(R) Gold 6430", "gniazda": 2, "rdzenie": 64,
          "watki": 128, "ram_bajty": 1024 * 2**30, "mac": ["b0:26:28:aa:bb:01"],
-         "dyski": [{"rozmiar_bajty": 2 * 2**40, "typ": "SSD SAS", "model": "KPM6"}],
+         "dyski": [{"rozmiar_bajty": 2 * 2**40, "typ": "SSD SAS", "model": "KPM6", "numer_seryjny": "D1"},
+                   {"rozmiar_bajty": 2 * 2**40, "typ": "SSD SAS", "model": "KPM6", "numer_seryjny": "D2"},
+                   {"rozmiar_bajty": 2 * 2**40, "typ": "SSD SAS", "model": "KPM6", "numer_seryjny": "D3",
+                    "stan": "Critical", "miejsce": "Disk 3 in Backplane 1"},
+                   {"rozmiar_bajty": 750 * 2**30, "typ": "SSD PCIe", "model": "P4800X"}],
          "system": "VMware ESXi 8.0.3", "hostname_os": None}
     s.update(zmiany)
     return s
@@ -88,6 +92,9 @@ def test_serwer_z_ome_dopisuje_sie_do_hosta_esxi(client, tenant_a, make_user):
     # Obie perspektywy na jednej karcie: wirtualizacja (vCenter) i sprzet (OME).
     assert "Identyfikator w vCenter" in karta and "Dell OME" in karta and "7.10.30.00" in karta
     assert "połączono z tą kartą po Service Tagu" in karta and "https://10.70.0.11" in karta
+    # Dyski zgrupowane, a uszkodzony osobno z miejscem i numerem seryjnym.
+    assert "4:" in karta and "3 × 2.0 TB" in karta and "1 × 750.0 GB" in karta
+    assert "<b>Critical</b>: Disk 3 in Backplane 1" in karta and "s/n D3" in karta
     assert [w["nazwa"] for w in client.get("/szukaj.json", params={"q": "10.70.0.99"}).json()["wyniki"]] == ["srv-backup"]
     assert "OME DC1" not in client.get("/wirtualizacja").text  # OME to sprzet, nie zrodlo wirtualizacji
 
