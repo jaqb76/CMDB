@@ -33,7 +33,18 @@ def odczyt(revision, fsid=FSID, **zmiany):
                          {"nazwa": "ceph-osd02", "adres": "10.60.0.22", "role": ["osd"], "osd": 1}],
                "pule": [{"nazwa": "volumes", "typ": "replicated", "rozmiar": 3, "min_rozmiar": 2, "pg": 128,
                          "aplikacje": ["rbd"], "zajete_bajty": 3 * 2**40, "dostepne_bajty": 5 * 2**40},
-                        {"nazwa": "scratch", "typ": "replicated", "rozmiar": 1, "aplikacje": ["rbd"]}]}
+                        {"nazwa": "scratch", "typ": "replicated", "rozmiar": 1, "aplikacje": ["rbd"]}],
+               "osd": [{"id": 0, "host": "ceph-osd01", "klasa": "ssd", "rozmiar_bajty": 8 * 2**40, "zajete_bajty": 2**40,
+                        "pg": 131, "up": True, "in": True},
+                       {"id": 1, "host": "ceph-osd01", "klasa": "ssd", "rozmiar_bajty": 8 * 2**40, "zajete_bajty": 0,
+                        "pg": 0, "up": False, "in": False, "stan": "autoout"}],
+               "buckety": [{"nazwa": "loki-ruler", "wlasciciel": "od-prod-logs", "rozmiar_bajty": 9 * 2**30, "obiekty": 3,
+                            "wersjonowanie": "off", "kwota_bajty": 10 * 2**30, "utworzono": "2025-07-08T11:24:59Z"}],
+               "uzytkownicy_rgw": [{"uid": "ru-prod-tempo", "nazwa": "Tempo", "klucze_s3": 2, "klucze_swift": 0,
+                                    "max_bucketow": 1, "zawieszony": True}],
+               "bramy_rgw": [{"id": "coi.pod2-ceph011.wwsvtj", "host": "pod2-ceph011", "strefa": "data1", "port": 8080}],
+               "cephfs": [{"nazwa": "CEPH_FS_PROD", "max_mds": 3, "aktywne_mds": 3, "pule_danych": [21],
+                           "pula_metadanych": 22}]}
     klaster.update(zmiany)
     return {"protocol": 1, "revision": revision, "rodzaj": "odczyt", "ok": True, "czas_ms": 400,
             "wersja_pc": "18.2.4 reef", "klastry": [klaster]}
@@ -88,6 +99,14 @@ def test_odczyt_zaklada_klaster_ceph(client, tenant_a, make_user):
     assert "Pamięć masowa" in karta and "HEALTH_WARN" in karta and "1 nearfull osd(s)" in karta
     assert "ceph-osd01" in karta and "mgr, mon, osd" in karta and "bez kopii" in karta and FSID in karta
     assert "down: 1" in karta and "odczytany z Ceph" in karta
+    # Zakladka Ceph: OSD (zle na gorze, zestawienie host x klasa), buckety, uzytkownicy, bramy, CephFS.
+    assert 'data-tab="ceph">Ceph <span class="badge badge-warn"' in karta
+    for tekst in ("OSD w złym stanie: 1", "osd.1 na ceph-osd01 — autoout", "16.0 TB", "Wszystkie OSD (2)",
+                  "loki-ruler", "≥90%", "ru-prod-tempo", "zawieszony", "2 / 0", "coi.pod2-ceph011.wwsvtj",
+                  "CEPH_FS_PROD", "3 / 3"):
+        assert tekst in karta, tekst
+    with SessionLocal() as db:
+        assert db.scalars(select(NutanixObiekt).where(NutanixObiekt.dostawca == "ceph")).one().dane["osd"][1]["in"] is False
     assert "Pamięć masowa ·" in karta or "Pamięć masowa\n" in karta  # nazwa rodzaju, nie surowy klucz
     assert "klaster pamięci masowej" in karta and "Po instalacji" not in karta
     strona = client.get("/wirtualizacja").text

@@ -45,7 +45,7 @@ def synchronizuj(db: Session, czytnik: Asset, wynik, dostawca: str = CEPH, przes
             o = NutanixObiekt(tenant_id=tenant_id, rodzaj=RODZAJ, ext_id=fsid, dostawca=CEPH)
             db.add(o)
             istniejace[fsid] = o
-        o.nazwa, o.dane, o.czytnik_id = nazwa[:255], k.model_dump(exclude={"ext_id"}), czytnik.id
+        o.nazwa, o.dane, o.czytnik_id = nazwa[:255], k.model_dump(exclude={"ext_id"}, by_alias=True), czytnik.id
         if pol is not None:
             o.polaczenie_id = pol.id
         o.widziany_o, o.zniknal_o = teraz, None

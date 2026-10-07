@@ -34,8 +34,28 @@ HOSTY = [
     {"hostname": "ceph-osd01", "addr": "10.60.0.21", "ceph_version": "ceph version 18.2.4 (e7ad53) reef (stable)",
      "status": "", "services": [{"type": "mon", "id": "ceph-osd01"}, {"type": "osd", "id": "0"},
                                 {"type": "osd", "id": "1"}, {"type": "mgr", "id": "ceph-osd01.abc"}]},
-    {"hostname": "ceph-osd02", "addr": "10.60.0.22", "services": [{"type": "osd", "id": "2"}]},
+    # Reef z orchestratorem: services puste, liczby w service_instances.
+    {"hostname": "ceph-osd02", "addr": "10.60.0.22", "services": [],
+     "service_instances": [{"type": "osd", "count": 25}, {"type": "crash", "count": 1}]},
 ]
+OSD = [
+    {"osd": 0, "up": 1, "in": 1, "state": ["exists", "up"], "operational_status": "working",
+     "host": {"name": "ceph-osd01"}, "tree": {"device_class": "ssd"},
+     "stats": {"stat_bytes": 7681498677248, "stat_bytes_used": 676914929664, "numpg": 131}},
+    {"osd": 1, "up": 0, "in": 0, "state": ["autoout", "exists"], "operational_status": "working",
+     "host": {"name": "ceph-osd01"}, "tree": {"device_class": "ssd"}, "stats": {"stat_bytes": 0, "numpg": 0}},
+]
+BUCKETY = [{"bucket": "loki-ruler", "owner": "od-prod-logs", "versioning": "off", "creation_time": "2025-07-08T11:24:59Z",
+            "usage": {"rgw.main": {"size_actual": 4096, "num_objects": 3}},
+            "bucket_quota": {"enabled": True, "max_size": 10737418240}}]
+UZYTKOWNIK = {"user_id": "ru-prod-tempo", "display_name": "Tempo", "email": "", "suspended": 0, "max_buckets": 1,
+              "admin": False, "system": False, "user_quota": {"enabled": True, "max_size": 85899345920},
+              "keys": [{"user": "ru-prod-tempo", "access_key": "AKIASEKRETNYKLUCZ", "secret_key": "SEKRETNYSECRET123"}],
+              "swift_keys": []}
+DEMONY = [{"id": "coi.pod2-ceph011.wwsvtj", "server_hostname": "pod2-ceph011", "realm_name": "coi",
+           "zonegroup_name": "pod2", "zone_name": "data1", "port": 8080}]
+CEPHFS = [{"id": 1, "mdsmap": {"fs_name": "CEPH_FS_PROD", "max_mds": 3, "up": {"mds_0": 1, "mds_1": 2},
+                               "failed": [], "damaged": [], "data_pools": [21], "metadata_pool": 22}}]
 PULE = [
     {"pool_name": "volumes", "type": "replicated", "size": 3, "min_size": 2, "pg_num": 128,
      "application_metadata": ["rbd"],
@@ -99,7 +119,10 @@ def falszywy_dashboard(tmp_path, haslo="tajne", tls=True, bez_fsid_w_minimal=Fal
             if self.headers.get("Authorization", "").removeprefix("Bearer ") not in tokeny:
                 return self._odpowiedz(401, {"detail": "Token expired"})
             dane = {"/api/summary": PODSUMOWANIE, "/api/health/minimal": minimal, "/api/host": HOSTY,
-                    "/api/pool": PULE, "/api/health/get_cluster_fsid": FSID}.get(sciezka)
+                    "/api/pool": PULE, "/api/health/get_cluster_fsid": FSID, "/api/osd": OSD,
+                    "/api/rgw/bucket": BUCKETY, "/api/rgw/user": ["ru-prod-tempo"],
+                    "/api/rgw/user/ru-prod-tempo": UZYTKOWNIK, "/api/rgw/daemon": DEMONY,
+                    "/api/cephfs": CEPHFS}.get(sciezka)
             self._odpowiedz(200, dane) if dane is not None else self._odpowiedz(404, {"detail": "nie ma"})
 
     serwer = ThreadingHTTPServer(("127.0.0.1", 0), Obsluga)
@@ -126,6 +149,23 @@ def test_pelny_odczyt_klastra(tmp_path):
     assert (k["pojemnosc_bajty"], k["zajete_bajty"], k["wolne_bajty"]) == (30 * 2**40, 12 * 2**40, 18 * 2**40)
     assert (k["liczba_osd"], k["osd_up"], k["osd_in"]) == (3, 2, 3)
     assert (k["liczba_mon"], k["mon_kworum"], k["liczba_hostow"]) == (3, 3, 2)
+    assert k["hosty"][1]["role"] == ["crash", "osd"] and k["hosty"][1]["osd"] == 25  # service_instances (Reef)
+    assert k["osd"] == [
+        {"id": 0, "host": "ceph-osd01", "klasa": "ssd", "rozmiar_bajty": 7681498677248, "zajete_bajty": 676914929664,
+         "pg": 131, "up": True, "in": True, "stan": None},
+        {"id": 1, "host": "ceph-osd01", "klasa": "ssd", "rozmiar_bajty": 0, "zajete_bajty": None,
+         "pg": 0, "up": False, "in": False, "stan": "autoout"}]
+    assert k["buckety"] == [{"nazwa": "loki-ruler", "wlasciciel": "od-prod-logs", "rozmiar_bajty": 4096, "obiekty": 3,
+                             "wersjonowanie": "off", "kwota_bajty": 10737418240, "utworzono": "2025-07-08T11:24:59Z"}]
+    assert k["uzytkownicy_rgw"] == [{"uid": "ru-prod-tempo", "nazwa": "Tempo", "email": None, "zawieszony": False,
+                                     "max_bucketow": 1, "kwota_bajty": 85899345920, "klucze_s3": 1, "klucze_swift": 0,
+                                     "admin": False}]
+    # Klucze S3 nigdy nie opuszczaja agenta - tylko ich liczba.
+    assert "SEKRETNY" not in json.dumps(wynik) and "AKIA" not in json.dumps(wynik)
+    assert k["bramy_rgw"] == [{"id": "coi.pod2-ceph011.wwsvtj", "host": "pod2-ceph011", "strefa": "data1",
+                               "grupa_stref": "pod2", "realm": "coi", "port": 8080}]
+    assert k["cephfs"] == [{"nazwa": "CEPH_FS_PROD", "max_mds": 3, "aktywne_mds": 2, "uszkodzone_mds": 0,
+                            "pule_danych": [21], "pula_metadanych": 22}]
     assert k["hosty"][0] == {"nazwa": "ceph-osd01", "adres": "10.60.0.21", "role": ["mgr", "mon", "osd"],
                              "osd": 2, "wersja": "18.2.4 reef", "stan": None}
     assert k["pule"][0] == {"nazwa": "volumes", "typ": "replicated", "rozmiar": 3, "min_rozmiar": 2, "pg": 128,

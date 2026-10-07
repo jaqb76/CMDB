@@ -32,6 +32,9 @@ log = logging.getLogger(__name__)
 LIMIT_CZASU = 30
 MAKS_HOSTOW = 2000
 MAKS_PUL = 2000
+MAKS_OSD = 10000
+MAKS_BUCKETOW = 10000
+MAKS_UZYTKOWNIKOW = 500  # szczegoly to jedno zapytanie na uzytkownika
 # Wersja API Dashboardu - wspolna dla wszystkich uzywanych tu zasobow od Pacific.
 ACCEPT = "application/vnd.ceph.api.v1.0+json"
 _FSID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -218,13 +221,18 @@ def _fsid(dash: CephDashboard, minimal: dict) -> str | None:
 
 
 def host(d: dict) -> dict:
+    """Wezel. Reef (orchestrator) podaje uslugi jako service_instances
+    [{"type": "osd", "count": 25}], starsze wersje - liste services."""
     uslugi = [u for u in d.get("services") or [] if isinstance(u, dict)]
-    role = sorted({str(u.get("type")) for u in uslugi if u.get("type")})
+    instancje = [u for u in d.get("service_instances") or [] if isinstance(u, dict)]
+    role = sorted({str(u.get("type")) for u in uslugi + instancje if u.get("type")})
+    osd = sum(1 for u in uslugi if u.get("type") == "osd")
+    osd += sum(_liczba(u.get("count")) or 0 for u in instancje if u.get("type") == "osd")
     return {
         "nazwa": _tekst(d.get("hostname")) or "",
         "adres": _tekst(d.get("addr"), 64),
         "role": role[:20],
-        "osd": sum(1 for u in uslugi if u.get("type") == "osd"),
+        "osd": osd,
         "wersja": _wersja(d.get("ceph_version")),
         "stan": _tekst(d.get("status"), 32),
     }
@@ -246,6 +254,81 @@ def pula(d: dict) -> dict:
     }
 
 
+def osd(d: dict) -> dict:
+    stany = [str(x) for x in d.get("state") or []]
+    stan = None
+    if d.get("operational_status") not in (None, "working"):
+        stan = str(d.get("operational_status"))
+    elif "autoout" in stany or not d.get("up"):
+        stan = ", ".join(x for x in stany if x != "exists") or "down"
+    return {
+        "id": _liczba(d.get("osd", d.get("id"))),
+        "host": _tekst(_z(d, "host.name"), 128),
+        "klasa": _tekst(_z(d, "tree.device_class"), 32),
+        "rozmiar_bajty": _liczba(_z(d, "stats.stat_bytes", "osd_stats.statfs.total")),
+        "zajete_bajty": _liczba(_z(d, "stats.stat_bytes_used")),
+        "pg": _liczba(_z(d, "stats.numpg")),
+        "up": bool(d.get("up")),
+        "in": bool(d.get("in")),
+        "stan": _tekst(stan, 64),
+    }
+
+
+def bucket(d: dict) -> dict:
+    uzycie = (d.get("usage") or {}).get("rgw.main") or {}  # klucz z kropka - nie przez _z
+    kwota = d.get("bucket_quota") or {}
+    return {
+        "nazwa": _tekst(d.get("bucket")) or "",
+        "wlasciciel": _tekst(d.get("owner"), 128),
+        "rozmiar_bajty": _liczba(uzycie.get("size_actual", uzycie.get("size"))),
+        "obiekty": _liczba(uzycie.get("num_objects")),
+        "wersjonowanie": _tekst(d.get("versioning"), 16),
+        "kwota_bajty": _liczba(kwota.get("max_size")) if kwota.get("enabled") and (_liczba(kwota.get("max_size")) or 0) > 0 else None,
+        "utworzono": _tekst(d.get("creation_time"), 32),
+    }
+
+
+def uzytkownik_rgw(d: dict) -> dict:
+    """Uzytkownik RGW BEZ kluczy - access/secret S3 i Swift nigdy nie opuszczaja agenta.
+    Do CMDB trafia tylko ich liczba."""
+    kwota = d.get("user_quota") or {}
+    return {
+        "uid": _tekst(d.get("user_id") or d.get("uid"), 128) or "",
+        "nazwa": _tekst(d.get("display_name")),
+        "email": _tekst(d.get("email")),
+        "zawieszony": bool(d.get("suspended")),
+        "max_bucketow": _liczba(d.get("max_buckets")),
+        "kwota_bajty": _liczba(kwota.get("max_size")) if kwota.get("enabled") and (_liczba(kwota.get("max_size")) or 0) > 0 else None,
+        "klucze_s3": len(d.get("keys") or []),
+        "klucze_swift": len(d.get("swift_keys") or []),
+        "admin": bool(d.get("admin") or d.get("system")),
+    }
+
+
+def brama_rgw(d: dict) -> dict:
+    return {"id": _tekst(d.get("id"), 128), "host": _tekst(d.get("server_hostname"), 128),
+            "strefa": _tekst(d.get("zone_name"), 64), "grupa_stref": _tekst(d.get("zonegroup_name"), 64),
+            "realm": _tekst(d.get("realm_name"), 64), "port": _liczba(d.get("port"))}
+
+
+def cephfs(d: dict) -> dict:
+    mds = d.get("mdsmap") or {}
+    return {"nazwa": _tekst(mds.get("fs_name"), 128) or "", "max_mds": _liczba(mds.get("max_mds")),
+            "aktywne_mds": len(mds.get("up") or {}), "uszkodzone_mds": len(mds.get("failed") or []) + len(mds.get("damaged") or []),
+            "pule_danych": [_liczba(x) for x in mds.get("data_pools") or []][:20],
+            "pula_metadanych": _liczba(mds.get("metadata_pool"))}
+
+
+def _lista(dash: CephDashboard, sciezka: str, maks: int) -> list[dict]:
+    """Opcjonalna lista (RGW albo CephFS moze nie byc wdrozony) - pusta, gdy brak."""
+    try:
+        dane = dash.get(sciezka, opcjonalne=True)
+    except BladCeph as exc:
+        log.warning("Ceph: %s niedostepne: %s", sciezka, exc)
+        return []
+    return [x for x in dane[:maks] if isinstance(x, (dict, str))] if isinstance(dane, list) else []
+
+
 def wykonaj(dash: CephDashboard, rodzaj: str) -> dict:
     """Test (logowanie + podsumowanie) albo pelny odczyt. Zwraca tresc wyniku."""
     start = time.monotonic()
@@ -258,7 +341,7 @@ def wykonaj(dash: CephDashboard, rodzaj: str) -> dict:
         fsid = _fsid(dash, minimal)
         if not fsid:
             raise BladCeph("Ceph Dashboard nie podal fsid klastra - nie da sie go jednoznacznie wpisac do ewidencji")
-        osd = [o for o in _z(minimal, "osd_map.osds") or [] if isinstance(o, dict)]
+        mapa_osd = [o for o in _z(minimal, "osd_map.osds") or [] if isinstance(o, dict)]
         mony = _z(minimal, "mon_status.monmap.mons") or []
         kworum = _z(minimal, "mon_status.quorum") or []
         klaster = {
@@ -269,9 +352,9 @@ def wykonaj(dash: CephDashboard, rodzaj: str) -> dict:
             "pojemnosc_bajty": _liczba(_z(minimal, "df.stats.total_bytes")),
             "zajete_bajty": _liczba(_z(minimal, "df.stats.total_used_raw_bytes", "df.stats.total_used_bytes")),
             "wolne_bajty": _liczba(_z(minimal, "df.stats.total_avail_bytes")),
-            "liczba_osd": len(osd) if osd else None,
-            "osd_up": sum(1 for o in osd if o.get("up")) if osd else None,
-            "osd_in": sum(1 for o in osd if o.get("in")) if osd else None,
+            "liczba_osd": len(mapa_osd) if mapa_osd else None,
+            "osd_up": sum(1 for o in mapa_osd if o.get("up")) if mapa_osd else None,
+            "osd_in": sum(1 for o in mapa_osd if o.get("in")) if mapa_osd else None,
             "liczba_mon": len(mony) if isinstance(mony, list) and mony else None,
             "mon_kworum": len(kworum) if isinstance(kworum, list) and kworum else None,
             "liczba_hostow": _liczba(minimal.get("hosts")),
@@ -290,6 +373,18 @@ def wykonaj(dash: CephDashboard, rodzaj: str) -> dict:
             if not isinstance(pule, list):
                 raise BladCeph("nieoczekiwany format odpowiedzi /api/pool")
             klaster["pule"] = [p for p in (pula(x) for x in pule[:MAKS_PUL] if isinstance(x, dict)) if p["nazwa"]]
+            klaster["osd"] = [osd(x) for x in _lista(dash, "/api/osd", MAKS_OSD) if isinstance(x, dict)]
+            klaster["buckety"] = [b for b in (bucket(x) for x in _lista(dash, "/api/rgw/bucket?stats=true", MAKS_BUCKETOW)
+                                              if isinstance(x, dict)) if b["nazwa"]]
+            uzytkownicy = []
+            for uid in _lista(dash, "/api/rgw/user", MAKS_UZYTKOWNIKOW):
+                if isinstance(uid, str):
+                    szczegoly = dash.get("/api/rgw/user/" + urllib.parse.quote(uid, safe=""), opcjonalne=True)
+                    uzytkownicy.append(uzytkownik_rgw(szczegoly if isinstance(szczegoly, dict) else {"user_id": uid}))
+            klaster["uzytkownicy_rgw"] = [u for u in uzytkownicy if u["uid"]]
+            klaster["bramy_rgw"] = [brama_rgw(x) for x in _lista(dash, "/api/rgw/daemon", 100) if isinstance(x, dict)]
+            klaster["cephfs"] = [f for f in (cephfs(x) for x in _lista(dash, "/api/cephfs", 50) if isinstance(x, dict))
+                                 if f["nazwa"]]
         wynik["klastry"] = [klaster]
     wynik["czas_ms"] = int((time.monotonic() - start) * 1000)
     return wynik

@@ -38,6 +38,61 @@ class PulaCeph(_Model):
     dostepne_bajty: int | None = Field(default=None, ge=0)
 
 
+class OsdCeph(_Model):
+    id: int | None = Field(default=None, ge=0)
+    host: str | None = Field(default=None, max_length=128)
+    klasa: str | None = Field(default=None, max_length=32)
+    rozmiar_bajty: int | None = Field(default=None, ge=0)
+    zajete_bajty: int | None = Field(default=None, ge=0)
+    pg: int | None = Field(default=None, ge=0)
+    up: bool | None = None
+    # "in" to slowo kluczowe Pythona - pole pod inna nazwa, w JSON-ie "in".
+    w_klastrze: bool | None = Field(default=None, alias="in")
+    stan: str | None = Field(default=None, max_length=64)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+
+class BucketCeph(_Model):
+    nazwa: str = Field(min_length=1, max_length=_TEKST)
+    wlasciciel: str | None = Field(default=None, max_length=128)
+    rozmiar_bajty: int | None = Field(default=None, ge=0)
+    obiekty: int | None = Field(default=None, ge=0)
+    wersjonowanie: str | None = Field(default=None, max_length=16)
+    kwota_bajty: int | None = Field(default=None, ge=0)
+    utworzono: str | None = Field(default=None, max_length=32)
+
+
+class UzytkownikRgw(_Model):
+    """Bez kluczy S3/Swift - agent wysyla tylko ich liczbe."""
+    uid: str = Field(min_length=1, max_length=128)
+    nazwa: str | None = Field(default=None, max_length=_TEKST)
+    email: str | None = Field(default=None, max_length=_TEKST)
+    zawieszony: bool | None = None
+    max_bucketow: int | None = None
+    kwota_bajty: int | None = Field(default=None, ge=0)
+    klucze_s3: int | None = Field(default=None, ge=0)
+    klucze_swift: int | None = Field(default=None, ge=0)
+    admin: bool | None = None
+
+
+class BramaRgw(_Model):
+    id: str | None = Field(default=None, max_length=128)
+    host: str | None = Field(default=None, max_length=128)
+    strefa: str | None = Field(default=None, max_length=64)
+    grupa_stref: str | None = Field(default=None, max_length=64)
+    realm: str | None = Field(default=None, max_length=64)
+    port: int | None = Field(default=None, ge=0)
+
+
+class CephFs(_Model):
+    nazwa: str = Field(min_length=1, max_length=128)
+    max_mds: int | None = Field(default=None, ge=0)
+    aktywne_mds: int | None = Field(default=None, ge=0)
+    uszkodzone_mds: int | None = Field(default=None, ge=0)
+    pule_danych: list[int | None] = Field(default_factory=list, max_length=20)
+    pula_metadanych: int | None = None
+
+
 class KlasterCeph(_Model):
     ext_id: str = Field(pattern=_FSID)  # fsid
     wersja: str | None = Field(default=None, max_length=128)
@@ -54,6 +109,11 @@ class KlasterCeph(_Model):
     liczba_hostow: int | None = Field(default=None, ge=0, le=10_000)
     hosty: list[HostCeph] = Field(default_factory=list, max_length=2000)
     pule: list[PulaCeph] = Field(default_factory=list, max_length=2000)
+    osd: list[OsdCeph] = Field(default_factory=list, max_length=10_000)
+    buckety: list[BucketCeph] = Field(default_factory=list, max_length=10_000)
+    uzytkownicy_rgw: list[UzytkownikRgw] = Field(default_factory=list, max_length=500)
+    bramy_rgw: list[BramaRgw] = Field(default_factory=list, max_length=100)
+    cephfs: list[CephFs] = Field(default_factory=list, max_length=50)
 
 
 class WynikCeph(_Model):
