@@ -39,7 +39,11 @@ INWENTARZ = {"value": [
          "DiskNumber": "PCIe SSD in Slot 8 in Bay 1"},
         {"Size": "1,788.50", "MediaType": "Hard Disk Drive", "BusType": "SAS", "Status": 4000,
          "StatusString": "Critical", "ModelNumber": "ST2000NM", "SerialNumber": "ZC1ABC",
-         "DiskNumber": "Disk 3 in Backplane 1"}]},
+         "DiskNumber": "Disk 3 in Backplane 1", "RaidStatus": "Online"},
+        # Uszkodzony dysk jak w prawdziwym OME: rozmiar 0, Error, RAID Failed.
+        {"Size": "0", "MediaType": "Hard Disk Drive", "BusType": "SAS", "Status": 4000, "StatusString": "Error",
+         "RaidStatus": "Failed", "ModelNumber": "AL15SEB24EQY", "SerialNumber": "",
+         "DiskNumber": "Disk 11 in Backplane 1 of RAID Controller in Slot 3"}]},
     {"InventoryType": "serverNetworkInterfaces", "InventoryInfo": [
         {"Ports": [{"Partitions": [{"CurrentMacAddress": "B0:26:28:AA:BB:01"}]},
                    {"Partitions": [{"CurrentMacAddress": "B0:26:28:AA:BB:02"}]}]}]},
@@ -134,7 +138,9 @@ def test_pelny_odczyt_serwerow(tmp_path):
                    "model": "Dell Express Flash NVMe P4800X 750GB SF", "numer_seryjny": "PHKE1126018D750BGN",
                    "stan": None, "miejsce": "PCIe SSD in Slot 8 in Bay 1"},
                   {"rozmiar_bajty": int(1788.5 * 2**30), "typ": "HDD SAS", "model": "ST2000NM",
-                   "numer_seryjny": "ZC1ABC", "stan": "Critical", "miejsce": "Disk 3 in Backplane 1"}],
+                   "numer_seryjny": "ZC1ABC", "stan": "Critical", "miejsce": "Disk 3 in Backplane 1"},
+                  {"rozmiar_bajty": None, "typ": "HDD SAS", "model": "AL15SEB24EQY", "numer_seryjny": None,
+                   "stan": "Error, RAID: Failed", "miejsce": "Disk 11 in Backplane 1 of RAID Controller in Slot 3"}],
         "mac": ["b0:26:28:aa:bb:01", "b0:26:28:aa:bb:02"], "system": "VMware ESXi 8.0.3",
         "hostname_os": "esx01.firma.pl", "obudowa": None, "inwentaryzacja_o": "2026-10-06 22:00:01.123"}
     assert wynik["urzadzenia"][1]["zdrowie"] == "CRITICAL" and wynik["urzadzenia"][1]["zasilanie"] == "OFF"

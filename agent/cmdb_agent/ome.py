@@ -224,7 +224,11 @@ def serwer(d: dict, szczegoly: dict | None = None) -> dict:
         nosnik = str(dysk.get("MediaType") or "").strip()
         nosnik = _NOSNIKI.get(nosnik.lower(), nosnik)
         magistrala = dysk.get("BusType") or dysk.get("BusProtocol")
-        stan = None if _liczba(dysk.get("Status")) in (1000, None) else _tekst(dysk.get("StatusString") or dysk.get("Status"), 32)
+        stan = None if _liczba(dysk.get("Status")) in (1000, None) else str(dysk.get("StatusString") or dysk.get("Status"))
+        raid = str(dysk.get("RaidStatus") or "")
+        if raid and raid.lower() not in ("online", "ready", "non-raid", "unknown"):
+            stan = f"{stan or 'OK'}, RAID: {raid}"  # np. "Error, RAID: Failed"
+        stan = _tekst(stan, 32)
         dyski.append({"rozmiar_bajty": _rozmiar_bajty(dysk.get("Size")),
                       "typ": _tekst(" ".join(str(x) for x in (nosnik, magistrala) if x), 64),
                       "model": _tekst(dysk.get("ModelNumber"), 128),
