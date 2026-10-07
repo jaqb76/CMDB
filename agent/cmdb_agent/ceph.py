@@ -274,6 +274,57 @@ def osd(d: dict) -> dict:
     }
 
 
+def urzadzenie(devid) -> dict:
+    """'SAMSUNG_MZILT7T6HALA0D3_S5YTNE0R903389' -> model i numer seryjny.
+
+    Ceph sklada identyfikator urzadzenia z producenta, modelu i numeru
+    seryjnego rozdzielonych "_"; numer seryjny to ostatni czlon.
+    """
+    tekst = str(devid or "").strip()
+    if "_" not in tekst:
+        return {"model": None, "numer_seryjny": _tekst(tekst, 64)}
+    model, seryjny = tekst.rsplit("_", 1)
+    return {"model": _tekst(model.replace("_", " "), 128), "numer_seryjny": _tekst(seryjny, 64)}
+
+
+def urzadzenia_osd(dash: "CephDashboard", osd_lista: list[dict], hosty: list[dict]) -> dict[int, dict]:
+    """osd.N -> {model, numer_seryjny, urzadzenie} z /api/host/<fqdn>/devices.
+
+    Jedno zapytanie na host zamiast na OSD. Lista OSD podaje krotka nazwe
+    hosta, a urzadzenia odpowiadaja tylko na pelna - domene bierzemy z listy
+    wezlow. OSD, ktorych tak nie znajdziemy, pytamy pojedynczo.
+    """
+    domeny = {h["nazwa"].split(".", 1)[1] for h in hosty if "." in (h.get("nazwa") or "")}
+    wynik: dict[int, dict] = {}
+    for host_osd in sorted({o["host"] for o in osd_lista if o.get("host")}):
+        kandydaci = [host_osd] if "." in host_osd else [f"{host_osd}.{d}" for d in sorted(domeny)] + [host_osd]
+        for nazwa in kandydaci:
+            dane = dash.get("/api/host/" + urllib.parse.quote(nazwa, safe="") + "/devices", opcjonalne=True)
+            if dane:
+                for u in dane if isinstance(dane, list) else []:
+                    _dopisz(wynik, u)
+                break
+    for o in osd_lista:
+        if o.get("id") is not None and o["id"] not in wynik:
+            for u in dash.get(f"/api/osd/{int(o['id'])}/devices", opcjonalne=True) or []:
+                _dopisz(wynik, u)
+    return wynik
+
+
+def _dopisz(wynik: dict[int, dict], u) -> None:
+    if not isinstance(u, dict):
+        return
+    miejsce = next(iter(u.get("location") or []), {}) or {}
+    for demon in u.get("daemons") or []:
+        if str(demon).startswith("osd."):
+            try:
+                numer = int(str(demon)[4:])
+            except ValueError:
+                continue
+            # OSD na kilku urzadzeniach (np. DB/WAL na NVMe) - pierwsze to dane.
+            wynik.setdefault(numer, dict(urzadzenie(u.get("devid")), urzadzenie=_tekst(miejsce.get("dev"), 32)))
+
+
 def bucket(d: dict) -> dict:
     uzycie = (d.get("usage") or {}).get("rgw.main") or {}  # klucz z kropka - nie przez _z
     kwota = d.get("bucket_quota") or {}
@@ -374,6 +425,13 @@ def wykonaj(dash: CephDashboard, rodzaj: str) -> dict:
                 raise BladCeph("nieoczekiwany format odpowiedzi /api/pool")
             klaster["pule"] = [p for p in (pula(x) for x in pule[:MAKS_PUL] if isinstance(x, dict)) if p["nazwa"]]
             klaster["osd"] = [osd(x) for x in _lista(dash, "/api/osd", MAKS_OSD) if isinstance(x, dict)]
+            try:
+                dyski_osd = urzadzenia_osd(dash, klaster["osd"], klaster["hosty"])
+            except BladCeph as exc:  # numery seryjne to dodatek - bez nich odczyt i tak sie liczy
+                log.warning("Ceph: urzadzenia OSD niedostepne: %s", exc)
+                dyski_osd = {}
+            for o in klaster["osd"]:
+                o.update(dyski_osd.get(o["id"], {"model": None, "numer_seryjny": None, "urzadzenie": None}))
             klaster["buckety"] = [b for b in (bucket(x) for x in _lista(dash, "/api/rgw/bucket?stats=true", MAKS_BUCKETOW)
                                               if isinstance(x, dict)) if b["nazwa"]]
             uzytkownicy = []

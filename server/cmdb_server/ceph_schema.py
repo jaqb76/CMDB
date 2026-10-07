@@ -49,6 +49,10 @@ class OsdCeph(_Model):
     # "in" to slowo kluczowe Pythona - pole pod inna nazwa, w JSON-ie "in".
     w_klastrze: bool | None = Field(default=None, alias="in")
     stan: str | None = Field(default=None, max_length=64)
+    # Dysk pod OSD (z identyfikatora urzadzenia Cepha).
+    model: str | None = Field(default=None, max_length=128)
+    numer_seryjny: str | None = Field(default=None, max_length=64)
+    urzadzenie: str | None = Field(default=None, max_length=32)
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
 
