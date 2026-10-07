@@ -1,0 +1,4 @@
+{
+  "category": "security",
+  "text": "Wydania agenta są publikowane i przyjmowane wyłącznie z gałęzi main: CI podpisuje tylko push do main, a serwer CMDB importuje tylko wydania podpisane z main."
+}
