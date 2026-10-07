@@ -1,0 +1,44 @@
+{#
+  Dane serwera z Dell OpenManage Enterprise na karcie zasobu. Przy maszynie
+  z agentem albo hoscie z vCenter to druga perspektywa: OME mowi o zelazie
+  (iDRAC, firmware, dyski, zdrowie), agent i hypervisor - o tym, co dziala.
+#}
+{% set d = sprzet_ome.dane or {} %}
+<div class="panel">
+  <h2>Sprzęt <span class="badge">Dell OME</span>
+    {% if d.zdrowie == 'OK' %}<span class="badge badge-ok">zdrowie OK</span>
+    {% elif d.zdrowie == 'WARNING' %}<span class="badge badge-warn">ostrzeżenie</span>
+    {% elif d.zdrowie == 'CRITICAL' %}<span class="badge badge-danger">krytyczny</span>
+    {% elif d.zdrowie %}<span class="badge">{{ d.zdrowie | lower }}</span>{% endif %}
+    {% if d.zasilanie == 'ON' %}<span class="badge badge-ok">włączony</span>{% elif d.zasilanie == 'OFF' %}<span class="badge">wyłączony</span>{% endif %}
+    {% if d.polaczony is sameas false %}<span class="badge badge-warn">OME traci połączenie z iDRAC</span>{% endif %}
+  </h2>
+  <dl class="kv">
+    <dt>Service Tag</dt><dd><code>{{ sprzet_ome.ext_id }}</code></dd>
+    {% if d.model %}<dt>Model</dt><dd>{{ d.model }}</dd>{% endif %}
+    {% if d.nazwa %}<dt>Nazwa w OME</dt><dd>{{ d.nazwa }}</dd>{% endif %}
+    {% if d.idrac_ip %}<dt>iDRAC</dt><dd><a href="https://{{ d.idrac_ip }}" rel="noopener" target="_blank">{{ d.idrac_ip }}</a>{% if d.idrac_wersja %} <span class="muted">firmware {{ d.idrac_wersja }}</span>{% endif %}</dd>{% endif %}
+    {% if d.bios_wersja %}<dt>BIOS</dt><dd>{{ d.bios_wersja }}</dd>{% endif %}
+    {% if d.cpu_model %}<dt>Procesor</dt><dd>{{ d.cpu_model }}{% if d.gniazda %} × {{ d.gniazda }}{% endif %}{% if d.rdzenie %} ({{ d.rdzenie }} rdzeni{% if d.watki %}, {{ d.watki }} wątków{% endif %}){% endif %}</dd>{% endif %}
+    {% if d.ram_bajty %}<dt>RAM</dt><dd>{{ d.ram_bajty | bytes }}</dd>{% endif %}
+    {% if d.dyski %}
+    {# Dyski zgrupowane: "24 x 1.7 TB SSD SATA" zamiast dwudziestu czterech pozycji. #}
+    {% set grupy = {} %}{% set kolejnosc = [] %}
+    {% for dysk in d.dyski %}{% set klucz = ((dysk.rozmiar_bajty | bytes) if dysk.rozmiar_bajty else 'rozmiar nieznany') ~ '|' ~ (dysk.typ or '') %}
+      {% if klucz not in grupy %}{% set _ = kolejnosc.append(klucz) %}{% endif %}{% set _ = grupy.update({klucz: grupy.get(klucz, 0) + 1}) %}{% endfor %}
+    {% set zle = d.dyski | selectattr('stan') | list %}
+    {% set ile = d.dyski | length %}
+    {% set razem = d.dyski | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') %}
+    {% set slowo = 'dysk' if ile == 1 else ('dyski' if ile % 10 in [2, 3, 4] and ile % 100 not in [12, 13, 14] else 'dysków') %}
+    <dt>Dyski</dt><dd>
+      {% for klucz in kolejnosc %}{% set czesci = klucz.split('|') %}{{ grupy[klucz] }} × {{ czesci[0] }}{% if czesci[1] %} <span class="muted">{{ czesci[1] }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+      <div class="muted small">razem {{ ile }} {{ slowo }}{% if razem %}, {{ razem | bytes }}{% endif %}</div>
+      {% if zle %}<ul class="ceph-ostrzezenia small">{% for dysk in zle %}<li><b>{{ dysk.stan }}</b>: {{ dysk.miejsce or dysk.model or 'dysk' }}{% if dysk.numer_seryjny %} <span class="muted">s/n {{ dysk.numer_seryjny }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+    </dd>{% endif %}
+    {% if d.mac %}<dt>Adresy MAC</dt><dd class="small">{{ d.mac | join(', ') }}</dd>{% endif %}
+    {% if d.system %}<dt>System wg OME</dt><dd>{{ d.system }}{% if d.hostname_os %} <span class="muted">({{ d.hostname_os }})</span>{% endif %}</dd>{% endif %}
+    {% if d.obudowa %}<dt>Obudowa</dt><dd><code>{{ d.obudowa }}</code></dd>{% endif %}
+    {% if d.inwentaryzacja_o %}<dt>Inwentaryzacja w OME</dt><dd>{{ d.inwentaryzacja_o[:16] }}</dd>{% endif %}
+    <dt>Odczytano</dt><dd>{{ sprzet_ome.widziany_o | ago }}{% if asset.zrodlo != 'ome' %} · <span class="badge badge-ok">połączono z tą kartą po Service Tagu</span>{% endif %}</dd>
+  </dl>
+</div>

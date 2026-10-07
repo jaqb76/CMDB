@@ -151,6 +151,10 @@ def falszywy_openstack(tmp_path, haslo="tajne", nova="2.96", admin=True, http_w_
                 if cinder_padniety:
                     return self._odpowiedz(500, {"computeFault": {"message": "boom"}})
                 return self._odpowiedz(200, {"volumes": WOLUMENY})
+            if sciezka == "/volume/v3/p-admin/scheduler-stats/get_pools":
+                return self._odpowiedz(200, {"pools": [{"name": "cinder@rbd#rbd", "capabilities": {
+                    "volume_backend_name": "rbd", "storage_protocol": "ceph",
+                    "location_info": "ceph:/etc/ceph/ceph.conf:6f1c2a3e-5b7d-11ef-9c1a-0242ac120002:cinder:volumes"}}]})
             if sciezka == "/v3/projects":
                 return self._odpowiedz(403, {"error": {"message": "nie wolno"}})
             self._odpowiedz(404, {})
@@ -177,7 +181,9 @@ def test_pelny_odczyt_z_application_credential(tmp_path):
     assert "scope" not in logowania[0]["auth"]  # zakres jest w samym poswiadczeniu
     assert wynik["ok"] and wynik["wersja_pc"] == "Nova API 2.96"
     assert wynik["klastry"] == [{"ext_id": "RegionOne", "nazwa": "RegionOne", "wersja": "Nova API 2.96",
-                                 "hipernadzorca": "QEMU", "liczba_hostow": 2}]
+                                 "hipernadzorca": "QEMU", "liczba_hostow": 2,
+                                 "magazyny": [{"fsid": "6f1c2a3e-5b7d-11ef-9c1a-0242ac120002",
+                                               "pula": "volumes", "backend": "rbd"}]}]
     hosty = {h["ext_id"]: h for h in wynik["hosty"]}
     a = hosty[HIP_A]
     assert a["nazwa"] == "cmp01.cloud.firma.pl" and a["klaster_id"] == "RegionOne"

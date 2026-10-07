@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Agent odczytuje serwery Dell z OpenManage Enterprise: Service Tag, iDRAC, firmware, CPU, RAM, dyski i stan (tylko odczyt). Ceph i OME przyjmują przypięty certyfikat self-signed, a Ceph przechodzi ze standby na aktywny mgr."
+}

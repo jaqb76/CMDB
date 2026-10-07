@@ -23,6 +23,8 @@ Dziś dodatkowe funkcjonalności to:
 | Wirtualizacja | Nutanix Prism Central | nowa — [`nutanix.md`](nutanix.md) |
 | Wirtualizacja | VMware vCenter | nowa — [`vmware.md`](vmware.md) |
 | Wirtualizacja | OpenStack | nowa — [`openstack.md`](openstack.md) |
+| Pamięć masowa | Ceph | nowa — [`ceph.md`](ceph.md) |
+| Sprzęt | Dell OpenManage Enterprise | nowa — [`ome.md`](ome.md) |
 
 Kolejne funkcje dochodzą jako kolejne podzakładki. Menu panelu i rząd zakładek karty się nie zmieniają — funkcji
 będzie przybywać, a zakładek karty i tak jest już sporo.
@@ -63,7 +65,7 @@ choć konfiguracja się nie zmieniła.
 Lista sprzętu ma filtr **„każda funkcja agenta”**. Wybranie funkcji zostawia
 na liście maszyny, na których jest włączona — np. wszystkie skanery sieci
 w firmie. Adres: `/assets?funkcja=skaner`, `/assets?funkcja=monitorowanie`
-`/assets?funkcja=nutanix`, `/assets?funkcja=vmware` albo `/assets?funkcja=openstack`.
+`/assets?funkcja=nutanix`, `/assets?funkcja=vmware`, `/assets?funkcja=openstack`, `/assets?funkcja=ceph` albo `/assets?funkcja=ome`.
 
 ## Uprawnienia
 

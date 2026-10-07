@@ -52,7 +52,13 @@ ZRODLO_NUTANIX = "nutanix"
 # To samo dla VMware vCenter i OpenStacka.
 ZRODLO_VMWARE = "vmware"
 ZRODLO_OPENSTACK = "openstack"
-ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK)
+# Klaster Ceph odczytany z Ceph Dashboard - pamiec masowa, nie wirtualizacja,
+# ale ta sama droga odczytu (konfiguracja polaczenia, test, odczyt agenta).
+ZRODLO_CEPH = "ceph"
+# Serwer z Dell OpenManage Enterprise, ktorego nie ma jeszcze w ewidencji. Serwer,
+# ktory juz jest (ten sam Service Tag), dostaje dane OME na swojej karcie.
+ZRODLO_OME = "ome"
+ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH, ZRODLO_OME)
 
 # Rodzaj sprzetu. Maszyny z agentem sa komputerami; reszte wybiera czlowiek.
 TYP_KOMPUTER = "komputer"
@@ -66,6 +72,7 @@ TYPY_SPRZETU: dict[str, str] = {
     "vm": "Maszyna wirtualna",
     "host": "Host wirtualizacji",
     "klaster": "Klaster",
+    "magazyn": "Pamięć masowa",
     "aplikacja": "Aplikacja",
 }
 
@@ -510,7 +517,11 @@ RELATION_KINDS = {
     "vm_host": "VM → host",
     "host_cluster": "Host → klaster",
     "application_server": "Aplikacja → serwer",
+    # Klaster (np. region OpenStacka) trzyma dane w pamieci masowej (np. Ceph).
+    "cluster_storage": "Klaster → pamięć masowa",
 }
+# Warunek bazy na rodzaj relacji - z tej samej listy, zeby nie rozjechaly sie.
+WARUNEK_RODZAJU_RELACJI = "kind IN (" + ", ".join(f"'{k}'" for k in RELATION_KINDS) + ")"
 
 
 class AssetRelation(Base):
@@ -518,7 +529,7 @@ class AssetRelation(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "source_id", "target_id", "kind", name="uq_asset_relation"),
         CheckConstraint("source_id <> target_id", name="ck_relation_not_self"),
-        CheckConstraint("kind IN ('vm_host', 'host_cluster', 'application_server')", name="ck_relation_kind"),
+        CheckConstraint(WARUNEK_RODZAJU_RELACJI, name="ck_relation_kind"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -1101,7 +1112,7 @@ class WirtualizacjaPolaczenie(_UstawieniaWirtualizacji, Base):
     asset_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )
-    # nutanix | vmware | openstack
+    # nutanix | vmware | openstack | ceph
     dostawca: Mapped[str] = mapped_column(String(16), nullable=False)
     # Wlasna nazwa w panelu, np. "POD01"; pusta = adres.
     nazwa: Mapped[str] = mapped_column(String(100), nullable=False, default="")
@@ -1114,8 +1125,8 @@ class WirtualizacjaPolaczenie(_UstawieniaWirtualizacji, Base):
     # uslug (katalog bywa z nazwami, ktorych agent nie rozwiazuje).
     adres_compute: Mapped[str | None] = mapped_column(String(255))
     adres_volumes: Mapped[str | None] = mapped_column(String(255))
-    # Tylko OpenStack: jawna zgoda na http - haslo i token ida wtedy otwartym
-    # tekstem. Domyslnie wylaczona; https zawsze z weryfikacja certyfikatu.
+    # Tylko OpenStack i Ceph: jawna zgoda na http - haslo i token ida wtedy
+    # otwartym tekstem. Domyslnie wylaczona; https zawsze z weryfikacja certyfikatu.
     bez_tls: Mapped[bool | None] = mapped_column(Boolean)
 
 

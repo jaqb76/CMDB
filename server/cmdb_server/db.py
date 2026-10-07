@@ -151,6 +151,7 @@ def _dodaj_brakujace_kolumny() -> None:
     _usun_pomiary_monitorow()
     _przenies_polaczenia_wirtualizacji()
     _poszerz_wektory_cvss()
+    _popraw_rodzaje_relacji()
 
 
 def _popraw_ograniczenie_czasu() -> None:
@@ -495,6 +496,32 @@ def _przenies_polaczenia_wirtualizacji() -> None:
                 ).values(polaczenie_id=nowe.id))
                 db.delete(stary)
                 log.info("wirtualizacja: przeniesiono konfiguracje %s agenta %s", dostawca, stary.asset_id)
+
+
+def _popraw_rodzaje_relacji() -> None:
+    """Warunek na rodzaj relacji zgodny z models.RELATION_KINDS.
+
+    create_all nie zmienia ograniczen istniejacej tabeli, wiec baza sprzed
+    nowego rodzaju (np. cluster_storage: region OpenStacka -> klaster Ceph)
+    odrzucalaby go bledem naruszenia warunku. Wymieniamy warunek, gdy nie
+    obejmuje ktoregos rodzaju.
+    """
+    from sqlalchemy import inspect, text
+
+    from . import models
+
+    inspector = inspect(engine)
+    if "asset_relations" not in set(inspector.get_table_names()):
+        return
+    obecny = next((w.get("sqltext") or "" for w in inspector.get_check_constraints("asset_relations")
+                   if w["name"] == "ck_relation_kind"), "")
+    if all(f"'{k}'" in obecny for k in models.RELATION_KINDS):
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE asset_relations DROP CONSTRAINT IF EXISTS ck_relation_kind"))
+        conn.execute(text(f"ALTER TABLE asset_relations ADD CONSTRAINT ck_relation_kind "
+                          f"CHECK ({models.WARUNEK_RODZAJU_RELACJI})"))
+    log.info("relacje: warunek rodzaju obejmuje teraz %s", ", ".join(models.RELATION_KINDS))
 
 
 def _poszerz_wektory_cvss() -> None:

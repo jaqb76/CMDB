@@ -18,12 +18,21 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class Magazyn(_Model):
+    """Klaster Ceph pod backendem Cindera (fsid z location_info sterownika RBD)."""
+    fsid: str = Field(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+    pula: str | None = Field(default=None, max_length=128)
+    backend: str | None = Field(default=None, max_length=128)
+
+
 class Klaster(_Model):
     ext_id: str = Field(min_length=1, max_length=64)
     nazwa: str = Field(default="", max_length=_TEKST)
     wersja: str | None = Field(default=None, max_length=128)
     hipernadzorca: str | None = Field(default=None, max_length=128)
     liczba_hostow: int | None = Field(default=None, ge=0, le=10_000)
+    # OpenStack: klastry Ceph, w ktorych Cinder trzyma wolumeny regionu.
+    magazyny: list[Magazyn] = Field(default_factory=list, max_length=50)
 
 
 class Host(_Model):

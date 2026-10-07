@@ -30,8 +30,11 @@ MONITOROWANIE = "monitorowanie"
 NUTANIX = "nutanix"
 VMWARE = "vmware"
 OPENSTACK = "openstack"
-# Funkcje odczytu platform wirtualizacji - wspolna konfiguracja (services/nutanix.py).
-WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK)
+CEPH = "ceph"
+OME = "ome"
+# Funkcje odczytu platform (wirtualizacja, pamiec masowa, sprzet) - wspolna
+# konfiguracja polaczen (services/nutanix.py).
+WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK, CEPH, OME)
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,11 @@ KATALOG: tuple[Funkcja, ...] = (
             "Odczytuje z vCenter klastry, hosty ESXi i maszyny wirtualne (tylko odczyt, REST API)."),
     Funkcja(OPENSTACK, "OpenStack", "Wirtualizacja",
             "Odczytuje z OpenStacka regiony, hypervisory Novy i maszyny wirtualne wszystkich projektów (tylko odczyt)."),
+    Funkcja(CEPH, "Ceph", "Pamięć masowa",
+            "Odczytuje z Ceph Dashboard stan klastra, pojemność, OSD, węzły i pule (tylko odczyt)."),
+    Funkcja(OME, "Dell OpenManage Enterprise", "Sprzęt",
+            "Odczytuje z OME serwery Dell: Service Tag, iDRAC, firmware, CPU, RAM, dyski i stan; "
+            "dopisuje je do istniejących kart po numerze seryjnym (tylko odczyt)."),
 )
 KLUCZE = {f.klucz for f in KATALOG}
 
@@ -197,7 +205,13 @@ def stan(db: Session, asset: Asset) -> list[StanFunkcji]:
             r = lista[0]
             liczby = r.odczyt_liczby or {}
             podsumowanie = r.adres
-            if r.odczyt_ok and liczby:
+            if r.odczyt_ok and liczby and klucz == OME:
+                podsumowanie += (f" · serwery {liczby.get('serwery', 0)}, "
+                                 f"na istniejących kartach {liczby.get('dopasowane', 0)}")
+            elif r.odczyt_ok and liczby and klucz == CEPH:
+                podsumowanie += (f" · hosty {liczby.get('hosty', 0)}, OSD {liczby.get('osd', 0)}, "
+                                 f"pule {liczby.get('pule', 0)}")
+            elif r.odczyt_ok and liczby:
                 podsumowanie += (f" · klastry {liczby.get('klastry', 0)}, "
                                  f"hosty {liczby.get('hosty', 0)}, VM {liczby.get('vm', 0)}")
         elif len(lista) > 1:

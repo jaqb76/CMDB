@@ -103,8 +103,8 @@ def _polaczenie(polityka: dict, nazwa: str) -> dict:
              "revision": str(polityka.get("revision") or "")}
     if wynik["enabled"] or wynik["test"]:
         adres = str(polityka.get("adres") or "")
-        # http tylko w OpenStacku i tylko po jawnej zgodzie w panelu.
-        bez_tls = nazwa == "OpenStack" and polityka.get("bez_tls") is True
+        # http tylko w OpenStacku i Cephie i tylko po jawnej zgodzie w panelu.
+        bez_tls = nazwa in ("OpenStack", "Ceph") and polityka.get("bez_tls") is True
         if not (adres.startswith("https://") or (bez_tls and adres.startswith("http://"))):
             raise ValueError(f"adres {nazwa} musi byc po https")
         wynik.update(
@@ -123,6 +123,56 @@ def _polaczenie(polityka: dict, nazwa: str) -> dict:
         if not wynik["nazwa"]:
             wynik["nazwa"] = urllib.parse.urlsplit(wynik["adres"]).hostname or wynik["adres"]
     return wynik
+
+
+# --- TLS: certyfikat przypiety ---------------------------------------------
+
+def _certyfikaty_der(pem: str) -> list[bytes]:
+    wynik = []
+    for kawalek in pem.split("-----END CERTIFICATE-----"):
+        if "-----BEGIN CERTIFICATE-----" in kawalek:
+            try:
+                wynik.append(ssl.PEM_cert_to_DER_cert(kawalek[kawalek.index("-----BEGIN"):] + "-----END CERTIFICATE-----\n"))
+            except ValueError:
+                continue
+    return wynik
+
+
+def certyfikat_serwera(adres: str, limit_czasu: int = 10) -> bytes | None:
+    """Certyfikat, ktory serwer pokazuje (DER) - bez weryfikacji, tylko do porownania."""
+    import socket
+    czesci = urllib.parse.urlsplit(adres)
+    if czesci.scheme != "https" or not czesci.hostname:
+        return None
+    kontekst = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    kontekst.check_hostname = False
+    kontekst.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((czesci.hostname, czesci.port or 443), timeout=limit_czasu) as gniazdo:
+            with kontekst.wrap_socket(gniazdo, server_hostname=czesci.hostname) as tls:
+                return tls.getpeercert(binary_form=True)
+    except (OSError, ssl.SSLError):
+        return None
+
+
+def kontekst_tls(adres: str, ca_pem: str = "") -> ssl.SSLContext:
+    """Kontekst TLS: zaufane urzedy systemu albo wklejone CA, zawsze z weryfikacja.
+
+    Certyfikat przypiety: gdy wsrod wklejonych certyfikatow jest DOKLADNIE ten,
+    ktory serwer pokazuje (np. domyslny self-signed Ceph Dashboard "ceph-dashboard"
+    bez nazw alternatywnych), nazwy hosta sie nie sprawdza - lancuch dalej
+    weryfikujemy wzgledem tego certyfikatu, wiec przejdzie tylko serwer z tym
+    certyfikatem i jego kluczem. Wklejone zwykle CA wymaga zgodnej nazwy hosta.
+    """
+    kontekst = ssl.create_default_context(cadata=ca_pem or None)
+    kontekst.minimum_version = ssl.TLSVersion.TLSv1_2
+    kontekst.check_hostname = True
+    kontekst.verify_mode = ssl.CERT_REQUIRED
+    if ca_pem and adres.startswith("https://"):
+        pokazany = certyfikat_serwera(adres)
+        if pokazany is not None and pokazany in _certyfikaty_der(ca_pem):
+            kontekst.check_hostname = False
+    return kontekst
 
 
 # --- klient Prism Central ------------------------------------------------------
@@ -424,9 +474,9 @@ class CzytnikNutanix:
             klient = self.klient(polityka)
             tresc.update(self.wykonaj(klient, rodzaj))
             st.ostatni_blad = ""
-            log.info("%s %s: klastry %d, hosty %d, VM %d w %d ms", etykieta, rodzaj,
-                     len(tresc["klastry"]), len(tresc.get("hosty", [])), len(tresc.get("vm", [])),
-                     tresc["czas_ms"])
+            log.info("%s %s: klastry %d, hosty %d, VM %d, urzadzenia %d w %d ms", etykieta, rodzaj,
+                     len(tresc.get("klastry", [])), len(tresc.get("hosty", [])), len(tresc.get("vm", [])),
+                     len(tresc.get("urzadzenia", [])), tresc.get("czas_ms", 0))
         except BladPrism as exc:
             tresc.update(rodzaj=rodzaj, ok=False, blad=str(exc)[:2000])
             st.ostatni_blad = str(exc)

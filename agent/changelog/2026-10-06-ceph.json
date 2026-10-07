@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Agent odczytuje klaster Ceph przez Ceph Dashboard: stan zdrowia, pojemność, OSD, monitory, węzły i pule (tylko odczyt). Przy OpenStacku zbiera fsid Cepha z pul Cindera, żeby CMDB połączyło region z klastrem."
+}

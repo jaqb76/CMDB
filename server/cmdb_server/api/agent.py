@@ -20,7 +20,9 @@ from ..models import (AgentCredential, Asset, DiscoveryPolicy, EnrollmentToken,
                       MonitorUslugi, Tenant, utcnow)
 from ..discovery_policy import ScanPolicy
 from ..monitoring_schema import OdpowiedzMonitorowania, RaportDostepnosci
+from ..ceph_schema import WynikCeph
 from ..nutanix_schema import WynikNutanix
+from ..ome_schema import WynikOme
 from ..schemas import (
     EnrollRequest,
     EnrollResponse,
@@ -313,8 +315,8 @@ def _polityka_wirtualizacji(dostawca: str, response: Response, nonce: str, db: S
             "policy": polityka["policy"], "polaczenia": polityka["polaczenia"]}
 
 
-def _wynik_wirtualizacji(dostawca: str, wynik: WynikNutanix, db: Session,
-                         auth: tuple[AgentCredential, TenantContext]) -> dict:
+def _wynik_wirtualizacji(dostawca: str, wynik: WynikNutanix | WynikCeph | WynikOme, db: Session,
+                         auth: tuple[AgentCredential, TenantContext], synchronizacja=None) -> dict:
     """Wynik testu polaczenia albo pelnego odczytu platformy.
 
     Zakres wyznacza poswiadczenie maszyny: wynik trafia do firmy agenta
@@ -333,7 +335,7 @@ def _wynik_wirtualizacji(dostawca: str, wynik: WynikNutanix, db: Session,
     # znikniecia. Jedna blokada dla obu dostawcow.
     db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
                {"key": "nutanix:" + ctx.tenant_id})
-    wynik_przyjecia = nutanix.przyjmij(db, asset, wynik, dostawca)
+    wynik_przyjecia = nutanix.przyjmij(db, asset, wynik, dostawca, synchronizacja)
     db.commit()
     return {"wynik": wynik_przyjecia, "server_time": utcnow().isoformat()}
 
@@ -381,6 +383,38 @@ def openstack_wynik(wynik: WynikNutanix, db: Session = Depends(get_db),
                     auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
     """Wynik testu albo odczytu OpenStacka."""
     return _wynik_wirtualizacji(funkcje_agenta.OPENSTACK, wynik, db, auth)
+
+
+@router.get("/agent/ceph-policy")
+def ceph_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9a-f]{32}$"),
+                db: Session = Depends(get_db),
+                auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Konfiguracja odczytu Ceph Dashboard dla tej maszyny."""
+    return _polityka_wirtualizacji(funkcje_agenta.CEPH, response, nonce, db, auth)
+
+
+@router.post("/agent/ceph")
+def ceph_wynik(wynik: WynikCeph, db: Session = Depends(get_db),
+               auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Wynik testu albo odczytu klastra Ceph."""
+    from ..services import ceph
+    return _wynik_wirtualizacji(funkcje_agenta.CEPH, wynik, db, auth, ceph.synchronizuj)
+
+
+@router.get("/agent/ome-policy")
+def ome_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9a-f]{32}$"),
+               db: Session = Depends(get_db),
+               auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Konfiguracja odczytu Dell OpenManage Enterprise dla tej maszyny."""
+    return _polityka_wirtualizacji(funkcje_agenta.OME, response, nonce, db, auth)
+
+
+@router.post("/agent/ome")
+def ome_wynik(wynik: WynikOme, db: Session = Depends(get_db),
+              auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Wynik testu albo odczytu OME (serwery)."""
+    from ..services import ome
+    return _wynik_wirtualizacji(funkcje_agenta.OME, wynik, db, auth, ome.synchronizuj)
 
 
 # --- aktualizacja agenta ----------------------------------------------------

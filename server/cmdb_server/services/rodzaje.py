@@ -66,6 +66,27 @@ def zapewnij_startowe(db: Session, ctx: TenantContext) -> None:
             continue
 
 
+def zapewnij_rodzaj(db: Session, tenant_id: str, klucz: str) -> None:
+    """Dokłada wzorcowy rodzaj firmie, ktora ma juz slownik, ale bez tego klucza.
+
+    Startowe rodzaje powstaja raz, przy pierwszym uzyciu - rodzaj dodany do
+    wzorca pozniej (np. "magazyn" dla Cepha) nie trafilby do istniejacych firm
+    i sprzet pokazywalby surowy klucz zamiast nazwy. Firma bez slownika dostanie
+    go w calosci przy zapewnij_startowe.
+    """
+    nazwa = dict(wzorzec.RODZAJE_STARTOWE).get(klucz)
+    wpisy = db.execute(select(WpisSlownika).where(
+        WpisSlownika.tenant_id == tenant_id, WpisSlownika.kategoria == KATEGORIA)).scalars().all()
+    if nazwa is None or not wpisy or any(_klucz_wpisu(w) == klucz for w in wpisy):
+        return
+    try:
+        with db.begin_nested():
+            db.add(WpisSlownika(tenant_id=tenant_id, kategoria=KATEGORIA, wartosc=nazwa, klucz=nazwa.casefold(),
+                                atrybuty={"nazwa": nazwa, "klucz_rodzaju": klucz}, utworzyl="wzorzec"))
+    except IntegrityError:
+        log.warning("rodzaj %s: firma ma juz wpis o nazwie %r z innym kluczem", klucz, nazwa)
+
+
 def wszystkie(db: Session, ctx: TenantContext) -> list[WpisSlownika]:
     zapewnij_startowe(db, ctx)
     return slowniki.wpisy(db, ctx, KATEGORIA)

@@ -16,7 +16,7 @@ HIP_B = "a1b2c3d4-0000-4000-8000-00000000000b"
 
 
 def wlacz(client, csrf, asset_id, **extra):
-    dane = formularz(csrf, **{"adres": "keystone.cloud.firma.pl",
+    dane = formularz(csrf, **{"adres": "keystone.cloud.firma.pl", "nazwa": "Openstack G1 DC1",
                               "uzytkownik": "0f3c8e6b2a5d4c1e9b7a6f5e4d3c2b1a", **extra})
     odp = client.post(f"/assets/{asset_id}/openstack", data=dane, follow_redirects=False)
     assert odp.status_code == 303, odp.text
@@ -120,8 +120,27 @@ def test_konfiguracja_openstack_z_domena_i_projektem(client, tenant_a, make_user
 def test_application_credential_bez_projektu(client, tenant_a, make_user):
     enrolled, _, _ = _wlaczony(client, tenant_a, make_user)
     p = polityka(client, enrolled)["policy"]
-    assert p["adres"] == "https://keystone.cloud.firma.pl:5000"
+    # Bez dopisanego portu: 5000 albo 443 (RHOSO, load balancer) zalezy od wdrozenia.
+    assert p["adres"] == "https://keystone.cloud.firma.pl"
     assert (p["domena"], p["projekt"]) == ("", "")
+
+
+def test_adres_keystone_bez_portu_i_z_portem(client, tenant_a, make_user):
+    enrolled = zarejestruj(client, tenant_a)
+    _, csrf = zaloguj(client, tenant_a, make_user)
+    wlacz(client, csrf, enrolled["asset_id"], adres="keystone-public-openstack.apps.rhoso-pod1.firma.pl")
+    wlacz(client, csrf, enrolled["asset_id"], adres="keystone.dc1.firma.pl:5000")
+    adresy = sorted(p["adres"] for p in polityka(client, enrolled)["polaczenia"])
+    assert adresy == ["https://keystone-public-openstack.apps.rhoso-pod1.firma.pl", "https://keystone.dc1.firma.pl:5000"]
+    # Adres Compute bez portu (RHOSO) tez zostaje bez portu.
+    rhoso = next(p for p in polityka(client, enrolled)["polaczenia"] if "rhoso" in p["adres"])
+    wlacz(client, csrf, enrolled["asset_id"], polaczenie_id=rhoso["id"], revision=rhoso["revision"],
+          adres="keystone-public-openstack.apps.rhoso-pod1.firma.pl",
+          adres_compute="https://nova-public-openstack.apps.rhoso-pod1.firma.pl",
+          adres_volumes="cinder.dc1.firma.pl:8776/v3")
+    rhoso = next(p for p in polityka(client, enrolled, nonce="f" * 32)["polaczenia"] if "rhoso" in p["adres"])
+    assert rhoso["adres_compute"] == "https://nova-public-openstack.apps.rhoso-pod1.firma.pl"
+    assert rhoso["adres_volumes"] == "https://cinder.dc1.firma.pl:8776/v3"
 
 
 def test_odczyt_openstack_zaklada_drzewo_i_laczy_vm_z_agentem(client, tenant_a, make_user):
@@ -135,16 +154,18 @@ def test_odczyt_openstack_zaklada_drzewo_i_laczy_vm_z_agentem(client, tenant_a, 
         web = db.scalars(select(Asset).where(Asset.hostname == "web-01")).one()
         assert web.zrodlo == "openstack" and web.manufacturer == "OpenStack" and web.model == "Nova"
         region = db.scalars(select(Asset).where(Asset.typ == "klaster")).one()
-        assert region.zrodlo == "openstack" and region.hostname == "RegionOne"
+        # Jeden region w chmurze - klaster nazywa sie jak polaczenie, nie "RegionOne".
+        assert region.zrodlo == "openstack" and region.hostname == "Openstack G1 DC1"
         relacje = {(r.source.hostname, r.kind, r.target.hostname, r.created_by)
                    for r in db.scalars(select(AssetRelation))}
         assert (agent.hostname, "vm_host", "cmp01.cloud.firma.pl", "openstack") in relacje
         assert ("web-01", "vm_host", "cmp02.cloud.firma.pl", "openstack") in relacje
-        assert ("cmp01.cloud.firma.pl", "host_cluster", "RegionOne", "openstack") in relacje
+        assert ("cmp01.cloud.firma.pl", "host_cluster", "Openstack G1 DC1", "openstack") in relacje
         assert ustawienia_agenta(db, enrolled["asset_id"], "openstack").odczyt_liczby["vm_z_agentem"] == 1
 
     strona = client.get("/wirtualizacja").text
-    assert "OpenStack" in strona and "RegionOne" in strona and "projekt sklep" in strona
+    assert "OpenStack" in strona and "Openstack G1 DC1" in strona and "projekt sklep" in strona
+    assert "źródło: Openstack G1 DC1" in strona
     assert "strefa az2" in strona
     karta = client.get(f"/assets/{web.id}").text
     assert "odczytany z OpenStack" in karta and "Identyfikator w OpenStack" in karta
@@ -168,7 +189,7 @@ def test_hypervisor_z_agentem_nie_dostaje_drugiej_karty(client, tenant_a, make_u
         assert karta.zrodlo == "agent"
         assert not db.scalars(select(Asset).where(Asset.machine_id == f"openstack:host:{karta.id}")).all()
         relacje = {(r.source_id, r.kind, r.target.hostname) for r in db.scalars(select(AssetRelation))}
-        assert (karta.id, "host_cluster", "RegionOne") in relacje
+        assert (karta.id, "host_cluster", "Openstack G1 DC1") in relacje
         # VM na tym hypervisorze wskazuje karte agenta compute.
         assert (enrolled["asset_id"], "vm_host", karta.hostname) in relacje
         # Drugi hypervisor (bez agenta) dostal zwykly wpis z odczytu.
@@ -199,14 +220,24 @@ def test_dwie_maszyny_o_tej_samej_nazwie_nie_lacza_hosta(client, tenant_a, make_
 def test_region_one_w_dwoch_chmurach_to_dwa_klastry(client, tenant_a, make_user):
     enrolled, csrf, rev = _wlaczony(client, tenant_a, make_user)
     wyslij(client, enrolled, odczyt(rev))
-    wlacz(client, csrf, enrolled["asset_id"], adres="keystone.druga.firma.pl")
+    wlacz(client, csrf, enrolled["asset_id"], adres="keystone.druga.firma.pl", nazwa="Openstack G2 DC1")
     druga = next(p for p in polityka(client, enrolled)["polaczenia"] if "druga" in p["adres"])
     dane = odczyt(druga["revision"], hosty=[], vm=[])
     dane["polaczenie_id"] = druga["id"]
     assert wyslij(client, enrolled, dane) == "przyjeto"
     with SessionLocal() as db:
         regiony = db.scalars(select(Asset).where(Asset.typ == "klaster", Asset.lifecycle == "aktywny")).all()
-        assert [r.hostname for r in regiony] == ["RegionOne", "RegionOne"]
+        assert sorted(r.hostname for r in regiony) == ["Openstack G1 DC1", "Openstack G2 DC1"]
+
+
+def test_kilka_regionow_w_jednej_chmurze_ma_region_w_nazwie(client, tenant_a, make_user):
+    enrolled, _, rev = _wlaczony(client, tenant_a, make_user)
+    dane = odczyt(rev, hosty=[], vm=[])
+    dane["klastry"].append({"ext_id": "RegionTwo", "nazwa": "RegionTwo"})
+    assert wyslij(client, enrolled, dane) == "przyjeto"
+    with SessionLocal() as db:
+        regiony = db.scalars(select(Asset).where(Asset.typ == "klaster")).all()
+        assert sorted(r.hostname for r in regiony) == ["Openstack G1 DC1 (RegionOne)", "Openstack G1 DC1 (RegionTwo)"]
 
 
 def test_openstack_i_vmware_nie_wycofuja_sobie_obiektow(client, tenant_a, make_user):
@@ -285,7 +316,7 @@ def test_wirtualizacja_zwinieta_i_filtrowana_po_zrodle(client, tenant_a, make_us
     assert f'data-href="/wirtualizacja?zrodlo={os_id}"' in strona
 
     tylko_os = client.get(f"/wirtualizacja?zrodlo={os_id}").text
-    assert "web-01" in tylko_os and "RegionOne" in tylko_os
+    assert "web-01" in tylko_os and "Openstack G1 DC1" in tylko_os
     assert "db-01" not in tylko_os and "RCHO-VSAN-01" not in tylko_os
     assert "wirt-zrodlo-wybrane" in tylko_os and "pokaż wszystkie źródła" in tylko_os
     tylko_vc = client.get(f"/wirtualizacja?zrodlo={vc_id}").text

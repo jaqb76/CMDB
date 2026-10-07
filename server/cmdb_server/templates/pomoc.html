@@ -389,11 +389,12 @@ Cena: 5200 PLN</pre>
 <span class="badge">Architektura</span>
 </div>
 <p>Sama inwentaryzacja mówi <b>co istnieje</b>. Moduł <b>Relacje</b> odpowiada na ważniejsze pytanie: <b>co od czego zależy</b>. Relacje są kierunkowe i dotyczą zasobów należących do tej samej firmy.</p>
-<p>Aktualny model CMDB obsługuje trzy podstawowe typy zależności:</p>
+<p>Aktualny model CMDB obsługuje cztery typy zależności:</p>
 <div class="grid3">
 <div class="card"><strong>Maszyna wirtualna → host</strong><code>vm_host</code><br/>Pokazuje, na którym hoście działa dana VM.</div>
 <div class="card"><strong>Host → klaster</strong><code>host_cluster</code><br/>Pokazuje, do którego klastra należy host wirtualizacji.</div>
 <div class="card"><strong>Aplikacja → serwer</strong><code>application_server</code><br/>Pokazuje, na jakim serwerze lub VM uruchomiona jest aplikacja.</div>
+<div class="card"><strong>Klaster → pamięć masowa</strong><code>cluster_storage</code><br/>Pokazuje, w jakiej pamięci masowej (np. klastrze Ceph) klaster trzyma dane. Region OpenStacka łączy się z Cephem sam, po fsid z Cindera.</div>
 </div>
 <h3>Przykład pełnego łańcucha</h3>
 <div aria-label="Przykład zależności aplikacji od maszyny wirtualnej, hosta i klastra" class="relation-flow">
