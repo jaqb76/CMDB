@@ -14,7 +14,11 @@
 {% set grupy = {} %}{% set kolejnosc = [] %}{% set hosty_osd = [] %}
 {% for x in osd %}{% set k = (x.host or '?') ~ '|' ~ (x.klasa or '?') %}
   {% if (x.host or '?') not in hosty_osd %}{% set _ = hosty_osd.append(x.host or '?') %}{% endif %}
-  {% if k not in grupy %}{% set _ = kolejnosc.append(k) %}{% set _ = grupy.update({k: {'n': 0, 'b': 0, 'u': 0, 'z': 0}}) %}{% endif %}
+  {% if k not in grupy %}{% set _ = kolejnosc.append(k) %}{% set _ = grupy.update({k: {'n': 0, 'b': 0, 'u': 0, 'z': 0, 'r': {}, 'rk': []}}) %}{% endif %}
+  {# Rozmiary dyskow w grupie: "23 x 7.0 TB" - dyski o tym samym rozmiarze razem. #}
+  {% set rozmiar = (x.rozmiar_bajty | bytes) if x.rozmiar_bajty else 'nieznany' %}
+  {% if rozmiar not in grupy[k].r %}{% set _ = grupy[k].rk.append(rozmiar) %}{% endif %}
+  {% set _ = grupy[k].r.update({rozmiar: grupy[k].r.get(rozmiar, 0) + 1}) %}
   {% set _ = grupy[k].update({'n': grupy[k].n + 1, 'b': grupy[k].b + (x.rozmiar_bajty or 0), 'u': grupy[k].u + (x.zajete_bajty or 0), 'z': grupy[k].z + (1 if x.stan else 0)}) %}{% endfor %}
 {% endif %}
 
@@ -26,10 +30,11 @@
   {% if osd %}
   <div class="tabela-przewijana">
   <table class="table sortowalna">
-    <thead><tr><th>Host</th><th>Klasa</th><th class="num">OSD</th><th class="num">W złym stanie</th><th class="num">Pojemność</th><th class="num">Zajęte</th></tr></thead>
+    <thead><tr><th>Host</th><th>Klasa</th><th class="num">OSD</th><th>Rozmiar dysku</th><th class="num">W złym stanie</th><th class="num">Pojemność</th><th class="num">Zajęte</th></tr></thead>
     <tbody>
     {% for k in kolejnosc | sort %}{% set c = k.split('|') %}{% set g = grupy[k] %}
       <tr><td>{{ c[0] }}</td><td class="small">{{ c[1] }}</td><td class="num">{{ g.n }}</td>
+        <td class="small" data-sort="{{ (g.b / g.n) if g.n else 0 }}">{% for r in g.rk %}{{ g.r[r] }} × {{ r }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
         <td class="num" data-sort="{{ g.z }}">{% if g.z %}<span class="badge badge-danger">{{ g.z }}</span>{% else %}0{% endif %}</td>
         <td class="num" data-sort="{{ g.b }}">{{ g.b | bytes if g.b else '—' }}</td>
         <td class="num" data-sort="{{ ((g.u * 100) / g.b) if g.b else -1 }}">{% if g.b %}{{ ((g.u * 100) / g.b) | round(1) }}%{% else %}—{% endif %}</td></tr>

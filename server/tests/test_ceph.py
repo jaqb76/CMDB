@@ -107,6 +107,7 @@ def test_odczyt_zaklada_klaster_ceph(client, tenant_a, make_user):
     # OSD wedlug hosta i wszystkie OSD to dwie osobne sekcje, nie zagniezdzone.
     assert zakladka.count('<details class="panel wirt-klaster sekcja-karty">') == 6 and "<details open" not in zakladka
     assert "OSD według hosta" in zakladka and "Wszystkie OSD (2)" in zakladka
+    assert "2 × 8.0 TB" in zakladka  # rozmiar dyskow w zestawieniu per host, nie tylko suma
     przed_wszystkimi = zakladka.split("Wszystkie OSD (2)", 1)[0]
     assert przed_wszystkimi.count("<details") == przed_wszystkimi.count("</details>") + 1  # osobna, nie w srodku
     assert 'class="table sortowalna" id="ceph-osd"' in zakladka and f'data-sort="{8 * 2**40}"' in zakladka
