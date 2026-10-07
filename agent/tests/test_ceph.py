@@ -122,7 +122,15 @@ def falszywy_dashboard(tmp_path, haslo="tajne", tls=True, bez_fsid_w_minimal=Fal
                     "/api/pool": PULE, "/api/health/get_cluster_fsid": FSID, "/api/osd": OSD,
                     "/api/rgw/bucket": BUCKETY, "/api/rgw/user": ["ru-prod-tempo"],
                     "/api/rgw/user/ru-prod-tempo": UZYTKOWNIK, "/api/rgw/daemon": DEMONY,
-                    "/api/cephfs": CEPHFS}.get(sciezka)
+                    "/api/cephfs": CEPHFS,
+                    # Urzadzenia hosta: osd.0 tutaj; osd.1 tylko przez /api/osd/1/devices.
+                    "/api/host/ceph-osd01/devices": [
+                        {"devid": "SAMSUNG_MZILT7T6HALA0D3_S5YTNE0R903389",
+                         "location": [{"host": "ceph-osd01", "dev": "sdc"}], "daemons": ["osd.0"]},
+                        {"devid": "DELL_PERC_H750_Adp_00ac05c3", "location": [{"dev": "sdx"}], "daemons": ["mon.a"]}],
+                    "/api/osd/1/devices": [
+                        {"devid": "INTEL_SSDSC2KG019T8_PHYG1234", "location": [{"dev": "sdd"}], "daemons": ["osd.1"]}],
+                    }.get(sciezka)
             self._odpowiedz(200, dane) if dane is not None else self._odpowiedz(404, {"detail": "nie ma"})
 
     serwer = ThreadingHTTPServer(("127.0.0.1", 0), Obsluga)
@@ -152,9 +160,11 @@ def test_pelny_odczyt_klastra(tmp_path):
     assert k["hosty"][1]["role"] == ["crash", "osd"] and k["hosty"][1]["osd"] == 25  # service_instances (Reef)
     assert k["osd"] == [
         {"id": 0, "host": "ceph-osd01", "klasa": "ssd", "rozmiar_bajty": 7681498677248, "zajete_bajty": 676914929664,
-         "pg": 131, "up": True, "in": True, "stan": None},
+         "pg": 131, "up": True, "in": True, "stan": None,
+         "model": "SAMSUNG MZILT7T6HALA0D3", "numer_seryjny": "S5YTNE0R903389", "urzadzenie": "sdc"},
         {"id": 1, "host": "ceph-osd01", "klasa": "ssd", "rozmiar_bajty": 0, "zajete_bajty": None,
-         "pg": 0, "up": False, "in": False, "stan": "autoout"}]
+         "pg": 0, "up": False, "in": False, "stan": "autoout",
+         "model": "INTEL SSDSC2KG019T8", "numer_seryjny": "PHYG1234", "urzadzenie": "sdd"}]
     assert k["buckety"] == [{"nazwa": "loki-ruler", "wlasciciel": "od-prod-logs", "rozmiar_bajty": 4096, "obiekty": 3,
                              "wersjonowanie": "off", "kwota_bajty": 10737418240, "utworzono": "2025-07-08T11:24:59Z"}]
     assert k["uzytkownicy_rgw"] == [{"uid": "ru-prod-tempo", "nazwa": "Tempo", "email": None, "zawieszony": False,
@@ -276,3 +286,10 @@ def test_przekierowanie_po_http_odrzucone(tmp_path):
     with falszywy_dashboard(tmp_path, tls=False, standby_na="http://10.0.0.99:8080") as (standby, _, _z, _t):
         with pytest.raises(ceph.BladCeph, match="przekierowuje na http://10.0.0.99:8080"):
             ceph.wykonaj(ceph.CephDashboard(standby, "cmdb-ro", "tajne", bez_tls=True), "test")
+
+
+def test_numer_seryjny_z_identyfikatora_urzadzenia():
+    assert ceph.urzadzenie("SAMSUNG_MZILT7T6HALA0D3_S5YTNE0R903389") == {
+        "model": "SAMSUNG MZILT7T6HALA0D3", "numer_seryjny": "S5YTNE0R903389"}
+    assert ceph.urzadzenie("SERIAL123") == {"model": None, "numer_seryjny": "SERIAL123"}
+    assert ceph.urzadzenie(None) == {"model": None, "numer_seryjny": None}

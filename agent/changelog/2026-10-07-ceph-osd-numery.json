@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Ceph: przy każdym OSD numer seryjny i model dysku oraz dysk na hoście (np. /dev/sdc), pobierane jednym zapytaniem na host."
+}

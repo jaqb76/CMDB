@@ -37,7 +37,8 @@ def odczyt(revision, fsid=FSID, **zmiany):
                "osd": [{"id": 0, "host": "ceph-osd01", "klasa": "ssd", "rozmiar_bajty": 8 * 2**40, "zajete_bajty": 2**40,
                         "pg": 131, "up": True, "in": True},
                        {"id": 1, "host": "ceph-osd01", "klasa": "ssd", "rozmiar_bajty": 8 * 2**40, "zajete_bajty": 0,
-                        "pg": 0, "up": False, "in": False, "stan": "autoout"}],
+                        "pg": 0, "up": False, "in": False, "stan": "autoout", "model": "SAMSUNG MZILT7T6HALA0D3",
+                        "numer_seryjny": "S5YTNE0R903389", "urzadzenie": "sdc"}],
                "buckety": [{"nazwa": "loki-ruler", "wlasciciel": "od-prod-logs", "rozmiar_bajty": 9 * 2**30, "obiekty": 3,
                             "wersjonowanie": "off", "kwota_bajty": 10 * 2**30, "utworzono": "2025-07-08T11:24:59Z"}],
                "uzytkownicy_rgw": [{"uid": "ru-prod-tempo", "nazwa": "Tempo", "klucze_s3": 2, "klucze_swift": 0,
@@ -109,7 +110,8 @@ def test_odczyt_zaklada_klaster_ceph(client, tenant_a, make_user):
     przed_wszystkimi = zakladka.split("Wszystkie OSD (2)", 1)[0]
     assert przed_wszystkimi.count("<details") == przed_wszystkimi.count("</details>") + 1  # osobna, nie w srodku
     assert 'class="table sortowalna" id="ceph-osd"' in zakladka and f'data-sort="{8 * 2**40}"' in zakladka
-    for tekst in ("OSD w złym stanie: 1", "osd.1 na ceph-osd01 — autoout", "16.0 TB", "Wszystkie OSD",
+    for tekst in ("OSD w złym stanie: 1", "osd.1 na ceph-osd01 (/dev/sdc) — autoout", "<code>/dev/sdc</code>", "s/n S5YTNE0R903389, SAMSUNG MZILT7T6HALA0D3",
+                  "<code>S5YTNE0R903389</code>", "16.0 TB", "Wszystkie OSD",
                   "loki-ruler", "≥90%", "ru-prod-tempo", "zawieszony", "2 / 0", "coi.pod2-ceph011.wwsvtj",
                   "CEPH_FS_PROD", "3 / 3"):
         assert tekst in karta, tekst
@@ -120,7 +122,8 @@ def test_odczyt_zaklada_klaster_ceph(client, tenant_a, make_user):
     strona = client.get("/wirtualizacja").text
     assert "Pamięć masowa" in strona and "Ceph DC1" in strona and "zajęte 40.0%" in strona
     assert "scratch" in strona
-    # Globalna wyszukiwarka znajduje klaster po nazwie wezla i po fsid.
+    # Globalna wyszukiwarka znajduje klaster po nazwie wezla, fsid i numerze seryjnym dysku OSD.
+    assert [w["nazwa"] for w in client.get("/szukaj.json", params={"q": "S5YTNE0R903389"}).json()["wyniki"]] == ["Ceph DC1"]
     assert [w["nazwa"] for w in client.get("/szukaj.json", params={"q": "ceph-osd02"}).json()["wyniki"]] == ["Ceph DC1"]
     assert [w["nazwa"] for w in client.get("/szukaj.json", params={"q": FSID[:13]}).json()["wyniki"]] == ["Ceph DC1"]
     assert "Ceph" in client.get(f"/assets/{enrolled['asset_id']}?funkcja=ceph").text

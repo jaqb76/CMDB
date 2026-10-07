@@ -49,15 +49,17 @@
   <div class="wirt-ceph-tresc">
   {% if zle %}
   <div class="alert alert-warn"><b>OSD w złym stanie: {{ zle | length }}</b>
-    <ul class="small">{% for x in zle %}<li>osd.{{ x.id }} na {{ x.host or '?' }} — {{ x.stan }}</li>{% endfor %}</ul></div>
+    <ul class="small">{% for x in zle %}<li>osd.{{ x.id }} na {{ x.host or '?' }}{% if x.urzadzenie %} ({{ x.urzadzenie if x.urzadzenie.startswith('/') else '/dev/' ~ x.urzadzenie }}){% endif %} — {{ x.stan }}{% if x.numer_seryjny %} <span class="muted">s/n {{ x.numer_seryjny }}{% if x.model %}, {{ x.model }}{% endif %}</span>{% endif %}</li>{% endfor %}</ul></div>
   {% endif %}
-  <input type="search" class="table-filter" data-filter-for="ceph-osd" placeholder="Filtruj: host, numer, klasa, stan…">
+  <input type="search" class="table-filter" data-filter-for="ceph-osd" placeholder="Filtruj: host, numer OSD, numer seryjny, model, stan…">
   <div class="tabela-przewijana">
   <table class="table sortowalna" id="ceph-osd">
-    <thead><tr><th>OSD</th><th>Host</th><th>Klasa</th><th class="num">Rozmiar</th><th class="num">Zajęte</th><th class="num">PG</th><th>Stan</th></tr></thead>
+    <thead><tr><th>OSD</th><th>Host</th><th>Dysk na hoście</th><th>Model dysku</th><th>Numer seryjny</th><th>Klasa</th><th class="num">Rozmiar</th><th class="num">Zajęte</th><th class="num">PG</th><th>Stan</th></tr></thead>
     <tbody>
     {% for x in osd | sort(attribute='id') %}
-      <tr><td data-sort="{{ x.id }}">osd.{{ x.id }}</td><td class="small">{{ x.host or '—' }}</td><td class="small">{{ x.klasa or '—' }}</td>
+      <tr><td data-sort="{{ x.id }}">osd.{{ x.id }}</td><td class="small">{{ x.host or '—' }}</td>
+        <td class="small">{% if x.urzadzenie %}<code>{{ x.urzadzenie if x.urzadzenie.startswith('/') else '/dev/' ~ x.urzadzenie }}</code>{% else %}—{% endif %}</td><td class="small">{{ x.model or '—' }}</td>
+        <td class="small"><code>{{ x.numer_seryjny or '—' }}</code></td><td class="small">{{ x.klasa or '—' }}</td>
         <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
         <td class="num" data-sort="{{ ((x.zajete_bajty * 100) / x.rozmiar_bajty) if x.rozmiar_bajty and x.zajete_bajty is not none else -1 }}">{% if x.rozmiar_bajty and x.zajete_bajty is not none %}{{ ((x.zajete_bajty * 100) / x.rozmiar_bajty) | round(1) }}%{% else %}—{% endif %}</td>
         <td class="num" data-sort="{{ x.pg if x.pg is not none else -1 }}">{{ x.pg if x.pg is not none else '—' }}</td>
