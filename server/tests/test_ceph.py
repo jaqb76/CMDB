@@ -103,7 +103,11 @@ def test_odczyt_zaklada_klaster_ceph(client, tenant_a, make_user):
     assert 'data-tab="ceph">Ceph <span class="badge badge-warn"' in karta
     # Sekcje zwiniete, tabele sortowalne, rozmiary sortowane po bajtach.
     zakladka = karta.split('data-panel="ceph"', 1)[1].split("</section>", 1)[0]
-    assert zakladka.count('<details class="panel wirt-klaster sekcja-karty">') == 5 and "<details open" not in zakladka
+    # OSD wedlug hosta i wszystkie OSD to dwie osobne sekcje, nie zagniezdzone.
+    assert zakladka.count('<details class="panel wirt-klaster sekcja-karty">') == 6 and "<details open" not in zakladka
+    assert "OSD według hosta" in zakladka and "Wszystkie OSD (2)" in zakladka
+    przed_wszystkimi = zakladka.split("Wszystkie OSD (2)", 1)[0]
+    assert przed_wszystkimi.count("<details") == przed_wszystkimi.count("</details>") + 1  # osobna, nie w srodku
     assert 'class="table sortowalna" id="ceph-osd"' in zakladka and f'data-sort="{8 * 2**40}"' in zakladka
     for tekst in ("OSD w złym stanie: 1", "osd.1 na ceph-osd01 — autoout", "16.0 TB", "Wszystkie OSD",
                   "loki-ruler", "≥90%", "ru-prod-tempo", "zawieszony", "2 / 0", "coi.pod2-ceph011.wwsvtj",

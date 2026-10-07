@@ -9,35 +9,48 @@
 {% set osd = d.osd or [] %}
 {% set zle = osd | selectattr('stan') | list %}
 
+{% if osd %}
+{# Zestawienie: host x klasa -> liczba OSD i pojemnosc. #}
+{% set grupy = {} %}{% set kolejnosc = [] %}{% set hosty_osd = [] %}
+{% for x in osd %}{% set k = (x.host or '?') ~ '|' ~ (x.klasa or '?') %}
+  {% if (x.host or '?') not in hosty_osd %}{% set _ = hosty_osd.append(x.host or '?') %}{% endif %}
+  {% if k not in grupy %}{% set _ = kolejnosc.append(k) %}{% set _ = grupy.update({k: {'n': 0, 'b': 0, 'u': 0, 'z': 0}}) %}{% endif %}
+  {% set _ = grupy[k].update({'n': grupy[k].n + 1, 'b': grupy[k].b + (x.rozmiar_bajty or 0), 'u': grupy[k].u + (x.zajete_bajty or 0), 'z': grupy[k].z + (1 if x.stan else 0)}) %}{% endfor %}
+{% endif %}
+
 <details class="panel wirt-klaster sekcja-karty">
-  <summary><span class="wirt-tytul">OSD</span>
-    <span class="muted small">{{ osd | length }}{% if osd %} · up {{ osd | selectattr('up') | list | length }}, in {{ osd | selectattr('in') | list | length }}{% endif %}</span>
+  <summary><span class="wirt-tytul">OSD według hosta</span>
+    <span class="muted small">{% if osd %}{{ hosty_osd | length }} hostów · {{ osd | length }} OSD · razem {{ osd | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') | bytes }}{% else %}brak danych{% endif %}</span>
     {% if zle %}<span class="badge badge-danger">w złym stanie: {{ zle | length }}</span>{% endif %}</summary>
   <div class="wirt-ceph-tresc">
-  {% if zle %}
-  <div class="alert alert-warn"><b>OSD w złym stanie: {{ zle | length }}</b>
-    <ul class="small">{% for x in zle %}<li>osd.{{ x.id }} na {{ x.host or '?' }} — {{ x.stan }}</li>{% endfor %}</ul></div>
-  {% endif %}
   {% if osd %}
-  {# Zestawienie: host x klasa -> liczba OSD i pojemnosc. #}
-  {% set grupy = {} %}{% set kolejnosc = [] %}
-  {% for x in osd %}{% set k = (x.host or '?') ~ '|' ~ (x.klasa or '?') %}
-    {% if k not in grupy %}{% set _ = kolejnosc.append(k) %}{% set _ = grupy.update({k: {'n': 0, 'b': 0, 'u': 0}}) %}{% endif %}
-    {% set _ = grupy[k].update({'n': grupy[k].n + 1, 'b': grupy[k].b + (x.rozmiar_bajty or 0), 'u': grupy[k].u + (x.zajete_bajty or 0)}) %}{% endfor %}
-  <h3>Według hosta i klasy</h3>
   <div class="tabela-przewijana">
   <table class="table sortowalna">
-    <thead><tr><th>Host</th><th>Klasa</th><th class="num">OSD</th><th class="num">Pojemność</th><th class="num">Zajęte</th></tr></thead>
+    <thead><tr><th>Host</th><th>Klasa</th><th class="num">OSD</th><th class="num">W złym stanie</th><th class="num">Pojemność</th><th class="num">Zajęte</th></tr></thead>
     <tbody>
     {% for k in kolejnosc | sort %}{% set c = k.split('|') %}{% set g = grupy[k] %}
       <tr><td>{{ c[0] }}</td><td class="small">{{ c[1] }}</td><td class="num">{{ g.n }}</td>
+        <td class="num" data-sort="{{ g.z }}">{% if g.z %}<span class="badge badge-danger">{{ g.z }}</span>{% else %}0{% endif %}</td>
         <td class="num" data-sort="{{ g.b }}">{{ g.b | bytes if g.b else '—' }}</td>
         <td class="num" data-sort="{{ ((g.u * 100) / g.b) if g.b else -1 }}">{% if g.b %}{{ ((g.u * 100) / g.b) | round(1) }}%{% else %}—{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-  <h3>Wszystkie OSD</h3>
+  {% else %}<p class="muted small">Ceph Dashboard nie podał listy OSD.</p>{% endif %}
+  </div>
+</details>
+
+{% if osd %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Wszystkie OSD ({{ osd | length }})</span>
+    <span class="muted small">up {{ osd | selectattr('up') | list | length }}, in {{ osd | selectattr('in') | list | length }}</span>
+    {% if zle %}<span class="badge badge-danger">w złym stanie: {{ zle | length }}</span>{% endif %}</summary>
+  <div class="wirt-ceph-tresc">
+  {% if zle %}
+  <div class="alert alert-warn"><b>OSD w złym stanie: {{ zle | length }}</b>
+    <ul class="small">{% for x in zle %}<li>osd.{{ x.id }} na {{ x.host or '?' }} — {{ x.stan }}</li>{% endfor %}</ul></div>
+  {% endif %}
   <input type="search" class="table-filter" data-filter-for="ceph-osd" placeholder="Filtruj: host, numer, klasa, stan…">
   <div class="tabela-przewijana">
   <table class="table sortowalna" id="ceph-osd">
@@ -48,14 +61,14 @@
         <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
         <td class="num" data-sort="{{ ((x.zajete_bajty * 100) / x.rozmiar_bajty) if x.rozmiar_bajty and x.zajete_bajty is not none else -1 }}">{% if x.rozmiar_bajty and x.zajete_bajty is not none %}{{ ((x.zajete_bajty * 100) / x.rozmiar_bajty) | round(1) }}%{% else %}—{% endif %}</td>
         <td class="num" data-sort="{{ x.pg if x.pg is not none else -1 }}">{{ x.pg if x.pg is not none else '—' }}</td>
-        <td>{% if x.stan %}<span class="badge badge-danger">{{ x.stan }}</span>{% elif x.up %}<span class="badge badge-ok">up{% if x['in'] %}, in{% endif %}</span>{% else %}<span class="badge">down</span>{% endif %}</td></tr>
+        <td data-sort="{{ x.stan or ('up' if x.up else 'down') }}">{% if x.stan %}<span class="badge badge-danger">{{ x.stan }}</span>{% elif x.up %}<span class="badge badge-ok">up{% if x['in'] %}, in{% endif %}</span>{% else %}<span class="badge">down</span>{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-  {% endif %}
   </div>
 </details>
+{% endif %}
 
 {% if d.buckety %}
 {% set pelne = [] %}{% for x in d.buckety %}{% if x.kwota_bajty and x.rozmiar_bajty and x.rozmiar_bajty >= x.kwota_bajty * 0.9 %}{% set _ = pelne.append(x) %}{% endif %}{% endfor %}
