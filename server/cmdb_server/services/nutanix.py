@@ -33,6 +33,7 @@ from ..models import (
     ZRODLO_AGENT,
     ZRODLO_CEPH,
     ZRODLO_NUTANIX,
+    ZRODLO_OME,
     ZRODLO_OPENSTACK,
     ZRODLO_VMWARE,
     Asset,
@@ -49,7 +50,7 @@ from . import sekrety
 log = logging.getLogger(__name__)
 
 KLASTER, HOST, VM = "klaster", "host", "vm"
-NUTANIX, VMWARE, OPENSTACK, CEPH = ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH
+NUTANIX, VMWARE, OPENSTACK, CEPH, OME = ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH, ZRODLO_OME
 INTERWALY_MINUT = (15, 30, 60, 120, 240, 720, 1440)
 
 # Wszystko, czym dostawcy sie roznia. retired_by/created_by = klucz dostawcy:
@@ -91,6 +92,11 @@ DOSTAWCY = {
            "konto": "z rolą <b>read-only</b> w Ceph Dashboard",
            "identyfikator": "Cephie (fsid)", "narzedzia": None, "sciezka": False, "projekt": False,
            "http": True, "magazyn": True},
+    OME: {"nazwa": "Dell OpenManage Enterprise", "platforma": "OME",
+          "port": 443, "producent": "Dell", "model_vm": "", "system_klastra": "",
+          "przyklad": "https://ome.firma.pl", "przyklad_konta": "cmdb-ro",
+          "konto": "z rolą <b>VIEWER</b>", "identyfikator": "OME (Service Tag)", "narzedzia": None,
+          "sciezka": False, "projekt": False, "http": False, "sprzet": True},
 }
 
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -304,7 +310,10 @@ def _opis_testu(wynik: WynikNutanix, dostawca: str = NUTANIX) -> str:
     czesci = ["polaczenie OK"]
     if wynik.wersja_pc:
         czesci.append(f"{DOSTAWCY[dostawca]['platforma']} {wynik.wersja_pc}")
-    czesci.append(f"klastry: {len(wynik.klastry)}")
+    if DOSTAWCY[dostawca].get("sprzet"):
+        czesci.append("lista serwerów dostępna" if wynik.klastry else "OME nie zwrócił żadnego serwera")
+    else:
+        czesci.append(f"klastry: {len(wynik.klastry)}")
     if wynik.czas_ms is not None:
         czesci.append(f"{wynik.czas_ms} ms")
     return " · ".join(czesci)
@@ -605,9 +614,10 @@ def _usun_relacje_odczytu(db: Session, tenant_id: str, asset: Asset, dostawca: s
 # --- odczyt dla panelu ------------------------------------------------------
 
 def obiekt_zasobu(db: Session, asset: Asset) -> NutanixObiekt | None:
+    """Obiekt wirtualizacji/pamieci masowej karty - bez OME (ma wlasna sekcje, patrz ome.obiekt_zasobu)."""
     return db.execute(select(NutanixObiekt).where(
         NutanixObiekt.tenant_id == asset.tenant_id, NutanixObiekt.asset_id == asset.id,
-        NutanixObiekt.zniknal_o.is_(None),
+        NutanixObiekt.zniknal_o.is_(None), NutanixObiekt.dostawca != OME,
     ).order_by(NutanixObiekt.widziany_o.desc()).limit(1)).scalar_one_or_none()
 
 

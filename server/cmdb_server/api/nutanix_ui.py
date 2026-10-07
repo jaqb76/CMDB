@@ -222,7 +222,8 @@ def wirtualizacja(request: Request, zrodlo: str = Query("", max_length=36),
     czytniki = []
     for row, a in db.execute(
         select(WirtualizacjaPolaczenie, Asset).join(Asset, Asset.id == WirtualizacjaPolaczenie.asset_id)
-        .where(WirtualizacjaPolaczenie.tenant_id == ctx.tenant_id, Asset.tenant_id == ctx.tenant_id)
+        .where(WirtualizacjaPolaczenie.tenant_id == ctx.tenant_id, Asset.tenant_id == ctx.tenant_id,
+               WirtualizacjaPolaczenie.dostawca != nutanix.OME)
         .order_by(WirtualizacjaPolaczenie.dostawca, Asset.hostname, WirtualizacjaPolaczenie.utworzono)
     ).all():
         czytniki.append({"ustawienia": row, "asset": a, "dostawca": row.dostawca,

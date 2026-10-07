@@ -153,7 +153,8 @@
           Z {{ pl }} łączy się agent na tej maszynie — adres ma być widoczny
           <b>z niej</b>, nie z serwera CMDB. Wystarczy konto {{ wirt.opis.konto | safe }}:
           odczyt nie zmienia niczego w środowisku. Jeden agent może czytać dowolnie wiele
-          instalacji {{ pl }}. Wyniki: <a href="/wirtualizacja">Wirtualizacja</a>.
+          instalacji {{ pl }}. Wyniki: {% if wirt.opis.sprzet %}sekcja „Sprzęt (OME)” na kartach serwerów
+          (<a href="/assets?zrodlo=bez_agenta">serwery spoza ewidencji</a> dostają własne karty){% else %}<a href="/wirtualizacja">Wirtualizacja</a>{% endif %}.
         </p>
         {% if nutanix_komunikat %}<div class="alert alert-error">{{ nutanix_komunikat }}</div>{% endif %}
 
@@ -200,6 +201,10 @@
             <div class="muted small">Puste = adres z katalogu Keystone. Wpisz, gdy katalog podaje nazwy, których ta maszyna nie widzi (np. <code>controller</code>); ręczny adres dotyczy jednego regionu.
               Port tylko jawnie: klasycznie <code>:8774</code> i <code>:8776</code>, w RHOSO bez portu (443), np. <code>https://nova-public-openstack.apps.klaster.firma.pl</code>.</div>
             {% endif %}
+            {% if wirt.opis.sprzet %}
+            <div class="muted small">Adres appliance OME, np. <code>https://ome.firma.pl</code>. Konto lokalne OME albo z katalogu
+              z rolą VIEWER. Certyfikat self-signed appliance wklej poniżej — zostanie przypięty.</div>
+            {% endif %}
             {% if wirt.opis.magazyn %}
             <div class="muted small">Adres to Ceph Dashboard (aktywny mgr albo adres za load balancerem), np. <code>https://ceph-mgr.firma.pl:8443</code>.
               Konto: <code>ceph dashboard ac-user-create cmdb-ro -i plik-z-haslem read-only</code>.</div>
@@ -224,6 +229,7 @@
             {% if nx.bez_tls %}<span class="badge badge-warn">bez TLS</span>{% endif %}
             {% if not nx.wlaczona %}<span class="badge">wyłączone</span>
             {% elif nx.odczyt_o and not nx.odczyt_ok %}<span class="badge badge-danger">błąd odczytu</span>
+            {% elif nx.odczyt_ok and wirt.opis.sprzet %}<span class="badge badge-ok">serwery {{ (nx.odczyt_liczby or {}).serwery or 0 }}</span>
             {% elif nx.odczyt_ok and wirt.opis.magazyn %}<span class="badge badge-ok">OSD {{ (nx.odczyt_liczby or {}).osd or 0 }}</span>
             {% elif nx.odczyt_ok %}<span class="badge badge-ok">VM {{ (nx.odczyt_liczby or {}).vm or 0 }}</span>
             {% else %}<span class="badge badge-warn">czeka na odczyt</span>{% endif %}

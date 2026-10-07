@@ -525,12 +525,14 @@ class Monitor:
         # test wraca w kilka minut, a nie przy nastepnej inwentaryzacji.
         from .ceph import CzytnikCeph
         from .nutanix import CzytnikNutanix
+        from .ome import CzytnikOme
         from .openstack import CzytnikOpenstack
         from .vmware import CzytnikVmware
         self.nutanix = CzytnikNutanix(client, state)
         self.vmware = CzytnikVmware(client, state)
         self.openstack = CzytnikOpenstack(client, state)
         self.ceph = CzytnikCeph(client, state)
+        self.ome = CzytnikOme(client, state)
         self._wczytaj_stan()
 
     # --- trwalosc miedzy uruchomieniami ---
@@ -711,7 +713,7 @@ class Monitor:
         if teraz >= self.nastepna_polityka:
             self.odswiez_polityke()
             self.nastepna_polityka = teraz + ODSTEP_POLITYKI
-        for czytnik in (self.nutanix, self.vmware, self.openstack, self.ceph):
+        for czytnik in (self.nutanix, self.vmware, self.openstack, self.ceph, self.ome):
             try:
                 czytnik.krok(teraz)
             except Exception as exc:
@@ -807,6 +809,7 @@ class Monitor:
             "vmware": self.vmware.status(),
             "openstack": self.openstack.status(),
             "ceph": self.ceph.status(),
+            "ome": self.ome.status(),
             "przyjeto": self.przyjeto,
             "pominieto": self.pominieto,
             "ostatni_blad": self.ostatni_blad,

@@ -55,7 +55,10 @@ ZRODLO_OPENSTACK = "openstack"
 # Klaster Ceph odczytany z Ceph Dashboard - pamiec masowa, nie wirtualizacja,
 # ale ta sama droga odczytu (konfiguracja polaczenia, test, odczyt agenta).
 ZRODLO_CEPH = "ceph"
-ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH)
+# Serwer z Dell OpenManage Enterprise, ktorego nie ma jeszcze w ewidencji. Serwer,
+# ktory juz jest (ten sam Service Tag), dostaje dane OME na swojej karcie.
+ZRODLO_OME = "ome"
+ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH, ZRODLO_OME)
 
 # Rodzaj sprzetu. Maszyny z agentem sa komputerami; reszte wybiera czlowiek.
 TYP_KOMPUTER = "komputer"

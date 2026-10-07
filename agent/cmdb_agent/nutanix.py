@@ -474,9 +474,9 @@ class CzytnikNutanix:
             klient = self.klient(polityka)
             tresc.update(self.wykonaj(klient, rodzaj))
             st.ostatni_blad = ""
-            log.info("%s %s: klastry %d, hosty %d, VM %d w %d ms", etykieta, rodzaj,
-                     len(tresc["klastry"]), len(tresc.get("hosty", [])), len(tresc.get("vm", [])),
-                     tresc["czas_ms"])
+            log.info("%s %s: klastry %d, hosty %d, VM %d, urzadzenia %d w %d ms", etykieta, rodzaj,
+                     len(tresc.get("klastry", [])), len(tresc.get("hosty", [])), len(tresc.get("vm", [])),
+                     len(tresc.get("urzadzenia", [])), tresc.get("czas_ms", 0))
         except BladPrism as exc:
             tresc.update(rodzaj=rodzaj, ok=False, blad=str(exc)[:2000])
             st.ostatni_blad = str(exc)

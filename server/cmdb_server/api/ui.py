@@ -72,6 +72,7 @@ from ..services import (
 )
 from ..services import schemat as definicje_pol
 from ..services import wiedza_dopasowanie
+from ..services import ome as ome_sprzet
 from ..services.auth import (
     LoginRequired,
     authenticate_user,
@@ -1144,6 +1145,7 @@ def asset_detail(
         **_zakladka_agenta(db, ctx, asset, payload, funkcja),
         nutanix_komunikat=_komunikat_nutanix(nutanix_komunikat, funkcja),
         wirtualizacja=nutanix.obiekt_zasobu(db, asset),
+        sprzet_ome=ome_sprzet.obiekt_zasobu(db, asset),
         # Artykuly bazy wiedzy dotyczace tej maszyny, z powodem dopasowania.
         wiedza=_wiedza_maszyny(db, ctx, asset),
     )
