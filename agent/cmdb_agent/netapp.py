@@ -108,6 +108,15 @@ class Ontap:
         except ValueError:
             raise BladNetapp(f"ONTAP zwrocil odpowiedz, ktora nie jest JSON-em ({sciezka_bez})") from None
 
+    def obiekt(self, sciezka: str, pola: str) -> dict:
+        """Pojedynczy obiekt (np. /api/cluster). Nieznane pole - ponownie z fields=*."""
+        for wybor in (pola, "*"):
+            try:
+                return self.get(sciezka + "?" + urllib.parse.urlencode({"fields": wybor})) or {}
+            except _NieznanePole as exc:
+                log.info("ONTAP: %s nie zna czesci pol%s - ponawiam z fields=*", sciezka, exc)
+        return {}
+
     def lista(self, sciezka: str, pola: str, opcjonalne: bool = True) -> list[dict]:
         """Wszystkie rekordy kolekcji. Nieznane pole (starszy ONTAP) - ponownie z fields=*."""
         for wybor in (pola, "*"):
@@ -241,7 +250,7 @@ def snapmirror(d: dict) -> dict:
 def wykonaj(ontap: Ontap, rodzaj: str) -> dict:
     """Test (klaster + wezly) albo pelny odczyt. Zwraca tresc wyniku."""
     start = time.monotonic()
-    k = ontap.get("/api/cluster?fields=name,uuid,version,serial_number,location,contact,management_interfaces") or {}
+    k = ontap.obiekt("/api/cluster", "name,uuid,version,serial_number,location,contact,management_interfaces")
     if not k.get("uuid"):
         raise BladNetapp("ONTAP nie podal identyfikatora klastra (uuid)")
     ip = next((_z(i, "ip.address") for i in k.get("management_interfaces") or [] if isinstance(i, dict)), None)
@@ -266,8 +275,13 @@ def wykonaj(ontap: Ontap, rodzaj: str) -> dict:
         klaster["dyski"] = [dysk(x) for x in ontap.lista(
             "/api/storage/disks", "name,serial_number,model,vendor,type,class,container_type,state,usable_size,"
             "node.name,home_node.name,shelf.uid,bay,firmware_version,aggregates.name")]
-        klaster["polki"] = [polka(x) for x in ontap.lista(
-            "/api/storage/shelves", "name,id,uid,serial_number,model,module_type,state,disk_count,connection_type")]
+        surowe_polki = ontap.lista(
+            "/api/storage/shelves", "name,id,uid,serial_number,model,module_type,state,disk_count,connection_type")
+        klaster["polki"] = [polka(x) for x in surowe_polki]
+        # Dysk wskazuje polke wewnetrznym uid ("16017705184660070400") - pokazujemy jej nazwe ("1.0").
+        nazwy_polek = {str(x.get("uid")): str(x.get("name") or x.get("id")) for x in surowe_polki if x.get("uid")}
+        for d in klaster["dyski"]:
+            d["polka"] = nazwy_polek.get(str(d["polka"]), d["polka"])
         klaster["interfejsy"] = [interfejs(x) for x in ontap.lista(
             "/api/network/ip/interfaces", "name,ip,svm.name,location,state,services")]
         klaster["snapmirror"] = [snapmirror(x) for x in ontap.lista(
