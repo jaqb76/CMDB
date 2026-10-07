@@ -1,7 +1,7 @@
 name: CMDB regression tests
 on:
   push:
-    branches: ["claude/os-data-collection-agent-gfz2o8"]
+    branches: ["main"]
   pull_request:
   # Reczne uruchomienie z galezi glownej - np. po zwolnieniu limitu miejsca
   # na artefakty, gdy nieudany przebieg zostal juz usuniety i nie ma czego
@@ -224,7 +224,7 @@ jobs:
       needs.verify-release.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.repository == 'jaqb76/CMDB' &&
-      github.ref == 'refs/heads/claude/os-data-collection-agent-gfz2o8'
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: agent-release

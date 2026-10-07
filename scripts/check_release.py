@@ -16,7 +16,7 @@ parser.add_argument("--version", required=True)
 args = parser.parse_args()
 key = base64.b64encode(Ed25519PrivateKey.generate().private_bytes_raw()).decode()
 payload, files = prepare(args.directory, args.version, "jaqb76/CMDB",
-    "refs/heads/claude/os-data-collection-agent-gfz2o8", "a" * 40, 1, key)
+    "refs/heads/main", "a" * 40, 1, key)
 # Wydanie moze dotyczyc jednego systemu - sprawdzamy to, co faktycznie
 # zbudowano, ale kazdy obecny plik sprawdzamy tak samo scisle jak dotad.
 systemy = {artifact["os"] for artifact in payload["artifacts"]}

@@ -7,7 +7,7 @@ name: CMDB Android screenshots
 on:
   workflow_dispatch:
   push:
-    branches: ["claude/os-data-collection-agent-gfz2o8"]
+    branches: ["main"]
     paths:
       - "android/**"
       - ".github/workflows/android-zrzuty.yml"
