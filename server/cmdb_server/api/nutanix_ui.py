@@ -233,11 +233,12 @@ def wirtualizacja(request: Request, zrodlo: str = Query("", max_length=36),
     # Filtr po zrodle: tylko polaczenie tej firmy (lista czytnikow jest juz
     # zawezona do niej); nieznany identyfikator = bez filtra.
     wybrany = next((c for c in czytniki if c["ustawienia"].id == zrodlo), None) if zrodlo else None
-    from ..services import ceph
+    from ..services import ceph, netapp
     zawezenie = wybrany["ustawienia"] if wybrany else None
     return render(request, "wirtualizacja.html", user, ctx, db,
                   drzewo=nutanix.drzewo(db, ctx.tenant_id, zawezenie),
                   magazyny=ceph.klastry(db, ctx.tenant_id, zawezenie),
+                  macierze=netapp.klastry(db, ctx.tenant_id, zawezenie),
                   dostawcy=nutanix.DOSTAWCY, czytniki=czytniki, wybrany=wybrany, q=q.strip(),
                   # Nazwa zrodla przy kazdym klastrze - kilka platform ma klastry o tych samych nazwach.
                   zrodla={c["ustawienia"].id: c["nazwa"] for c in czytniki})

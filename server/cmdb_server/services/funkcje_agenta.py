@@ -32,9 +32,10 @@ VMWARE = "vmware"
 OPENSTACK = "openstack"
 CEPH = "ceph"
 OME = "ome"
+NETAPP = "netapp"
 # Funkcje odczytu platform (wirtualizacja, pamiec masowa, sprzet) - wspolna
 # konfiguracja polaczen (services/nutanix.py).
-WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK, CEPH, OME)
+WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK, CEPH, NETAPP, OME)
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,9 @@ KATALOG: tuple[Funkcja, ...] = (
             "Odczytuje z OpenStacka regiony, hypervisory Novy i maszyny wirtualne wszystkich projektów (tylko odczyt)."),
     Funkcja(CEPH, "Ceph", "Pamięć masowa",
             "Odczytuje z Ceph Dashboard stan klastra, pojemność, OSD, węzły i pule (tylko odczyt)."),
+    Funkcja(NETAPP, "NetApp ONTAP", "Pamięć masowa",
+            "Odczytuje z ONTAP węzły, agregaty, SVM, wolumeny, LUN-y, dyski, półki, interfejsy i SnapMirror "
+            "(tylko odczyt, REST API)."),
     Funkcja(OME, "Dell OpenManage Enterprise", "Sprzęt",
             "Odczytuje z OME serwery Dell: Service Tag, iDRAC, firmware, CPU, RAM, dyski i stan; "
             "dopisuje je do istniejących kart po numerze seryjnym (tylko odczyt)."),
@@ -205,7 +209,10 @@ def stan(db: Session, asset: Asset) -> list[StanFunkcji]:
             r = lista[0]
             liczby = r.odczyt_liczby or {}
             podsumowanie = r.adres
-            if r.odczyt_ok and liczby and klucz == OME:
+            if r.odczyt_ok and liczby and klucz == NETAPP:
+                podsumowanie += (f" · węzły {liczby.get('wezly', 0)}, wolumeny {liczby.get('wolumeny', 0)}, "
+                                 f"dyski {liczby.get('dyski', 0)}")
+            elif r.odczyt_ok and liczby and klucz == OME:
                 podsumowanie += (f" · serwery {liczby.get('serwery', 0)}, "
                                  f"na istniejących kartach {liczby.get('dopasowane', 0)}")
             elif r.odczyt_ok and liczby and klucz == CEPH:

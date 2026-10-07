@@ -348,6 +348,7 @@
     <button type="button" class="tab-button is-active" data-tab="overview">Przegląd</button>
     {% if z_agentem %}<button type="button" class="tab-button" data-tab="hardware">Sprzęt</button>{% endif %}
     {% if wirtualizacja and wirtualizacja.rodzaj == 'ceph' %}{% set dc = wirtualizacja.dane or {} %}<button type="button" class="tab-button" data-tab="ceph">Ceph{% if (dc.osd or []) | selectattr('stan') | list %} <span class="badge badge-warn" title="OSD w złym stanie">!</span>{% endif %}</button>{% endif %}
+    {% if wirtualizacja and wirtualizacja.rodzaj == 'netapp' %}{% set dn = wirtualizacja.dane or {} %}<button type="button" class="tab-button" data-tab="netapp">NetApp{% if (dn.dyski or []) | selectattr('stan') | list or (dn.snapmirror or []) | selectattr('zdrowy', 'sameas', false) | list or (dn.agregaty or []) | selectattr('stan') | list %} <span class="badge badge-warn" title="coś w złym stanie">!</span>{% endif %}</button>{% endif %}
     {% if sprzet_ome %}<button type="button" class="tab-button" data-tab="ome">Sprzęt (OME){% if sprzet_ome.dane and ((sprzet_ome.dane.dyski or []) | selectattr('stan') | list or (sprzet_ome.dane.zasilacze or []) | selectattr('stan') | list or (sprzet_ome.dane.pamiec or []) | selectattr('stan') | list) %} <span class="badge badge-warn" title="komponent w złym stanie">!</span>{% endif %}</button>{% endif %}
     <button type="button" class="tab-button" data-tab="zakup">Zakup i gwarancja</button>
     <button type="button" class="tab-button" data-tab="uwagi">Uwagi</button>
@@ -478,6 +479,9 @@
 
   {% if wirtualizacja and wirtualizacja.rodzaj == 'ceph' %}
   <section class="tab-panel" data-panel="ceph">{% include "_ceph_szczegoly.html" %}</section>
+  {% endif %}
+  {% if wirtualizacja and wirtualizacja.rodzaj == 'netapp' %}
+  <section class="tab-panel" data-panel="netapp">{% include "_netapp_szczegoly.html" %}</section>
   {% endif %}
   {% if sprzet_ome %}
   <section class="tab-panel" data-panel="ome">{% include "_ome_szczegoly.html" %}</section>

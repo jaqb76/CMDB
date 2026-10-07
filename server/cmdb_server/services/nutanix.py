@@ -32,6 +32,7 @@ from ..models import (
     LIFECYCLE_WYCOFANY,
     ZRODLO_AGENT,
     ZRODLO_CEPH,
+    ZRODLO_NETAPP,
     ZRODLO_NUTANIX,
     ZRODLO_OME,
     ZRODLO_OPENSTACK,
@@ -51,6 +52,7 @@ log = logging.getLogger(__name__)
 
 KLASTER, HOST, VM = "klaster", "host", "vm"
 NUTANIX, VMWARE, OPENSTACK, CEPH, OME = ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH, ZRODLO_OME
+NETAPP = ZRODLO_NETAPP
 INTERWALY_MINUT = (15, 30, 60, 120, 240, 720, 1440)
 
 # Wszystko, czym dostawcy sie roznia. retired_by/created_by = klucz dostawcy:
@@ -97,6 +99,13 @@ DOSTAWCY = {
           "przyklad": "https://ome.firma.pl", "przyklad_konta": "cmdb-ro",
           "konto": "z rolą <b>VIEWER</b>", "identyfikator": "OME (Service Tag)", "narzedzia": None,
           "sciezka": False, "projekt": False, "http": False, "sprzet": True},
+    NETAPP: {"nazwa": "NetApp ONTAP", "platforma": "ONTAP",
+             "port": 443, "producent": "NetApp", "model_vm": "", "system_klastra": "ONTAP",
+             "przyklad": "https://netapp.firma.pl", "przyklad_konta": "cmdb-ro",
+             "konto": "z rolą <b>readonly</b> (aplikacja http)",
+             # Sciezka dopuszczona: adres z System Managera ("…/sysmgr/v4/") tez dziala - agent bierze sam host.
+             "identyfikator": "ONTAP (UUID klastra)", "narzedzia": None, "sciezka": True, "projekt": False,
+             "http": False, "magazyn": True},
 }
 
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")

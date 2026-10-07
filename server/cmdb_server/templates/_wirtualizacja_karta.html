@@ -3,7 +3,7 @@
   to druga, niezalezna perspektywa: agent mowi, co jest w srodku, hypervisor
   - na czym to stoi i ile dostalo.
 #}
-{% if wirtualizacja.rodzaj == 'ceph' %}{% include "_ceph_karta.html" %}{% else %}
+{% if wirtualizacja.rodzaj == 'ceph' %}{% include "_ceph_karta.html" %}{% elif wirtualizacja.rodzaj == 'netapp' %}{% include "_netapp_karta.html" %}{% else %}
 {% set d = wirtualizacja.dane or {} %}
 {% set pl = platformy.get(wirtualizacja.dostawca, platformy.nutanix) %}
 {% set producent = pl.producent %}

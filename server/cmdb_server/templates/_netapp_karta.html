@@ -1,0 +1,37 @@
+{#
+  Klaster NetApp ONTAP na zakladce Przeglad: wersja, pojemnosc agregatow,
+  wezly i lista problemow. Szczegoly (wolumeny, dyski...) sa na zakladce NetApp.
+#}
+{% set d = wirtualizacja.dane or {} %}
+{% set aggr = d.agregaty or [] %}
+{% set razem = aggr | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') %}
+{% set zajete = aggr | selectattr('zajete_bajty') | sum(attribute='zajete_bajty') %}
+{% set pct = ((zajete * 100) / razem) | round(1) if razem else none %}
+{% set problemy = [] %}
+{% for x in d.wezly or [] %}{% if x.stan %}{% set _ = problemy.append('węzeł ' ~ x.nazwa ~ ': ' ~ x.stan) %}{% endif %}{% endfor %}
+{% for x in aggr %}{% if x.stan %}{% set _ = problemy.append('agregat ' ~ x.nazwa ~ ': ' ~ x.stan) %}{% elif x.rozmiar_bajty and x.zajete_bajty and x.zajete_bajty * 100 / x.rozmiar_bajty >= 85 %}{% set _ = problemy.append('agregat ' ~ x.nazwa ~ ' zajęty w ' ~ ((x.zajete_bajty * 100 / x.rozmiar_bajty) | round(1)) ~ '%') %}{% endif %}{% endfor %}
+{% set zle_dyski = (d.dyski or []) | selectattr('stan') | list %}
+{% if zle_dyski %}{% set _ = problemy.append('dyski w złym stanie: ' ~ (zle_dyski | length)) %}{% endif %}
+{% set zle_sm = (d.snapmirror or []) | selectattr('zdrowy', 'sameas', false) | list %}
+{% if zle_sm %}{% set _ = problemy.append('relacje SnapMirror niezdrowe: ' ~ (zle_sm | length)) %}{% endif %}
+<div class="panel">
+  <h2>Pamięć masowa <span class="badge">NetApp ONTAP</span>
+    {% if problemy %}<span class="badge badge-warn">wymaga uwagi</span>{% else %}<span class="badge badge-ok">OK</span>{% endif %}</h2>
+  {% if problemy %}<ul class="ceph-ostrzezenia small">{% for p in problemy %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  <dl class="kv">
+    {% if d.wersja %}<dt>Wersja ONTAP</dt><dd>{{ d.wersja }}</dd>{% endif %}
+    {% if d.numer_seryjny %}<dt>Numer seryjny klastra</dt><dd><code>{{ d.numer_seryjny }}</code></dd>{% endif %}
+    {% if d.ip %}<dt>Adres zarządzania</dt><dd>{{ d.ip }}</dd>{% endif %}
+    {% if razem %}<dt>Pojemność agregatów</dt><dd>
+      <div class="usage-cell">
+        <div class="meter {% if pct >= 85 %}meter-danger{% elif pct >= 75 %}meter-warn{% endif %}"><span class="meter-fill" data-percent="{{ pct }}"></span></div>
+        <span class="small">{{ pct }}% · zajęte {{ zajete | bytes }} z {{ razem | bytes }}</span>
+      </div></dd>{% endif %}
+    {% if d.wezly %}<dt>Węzły</dt><dd>{% for w in d.wezly %}{{ w.nazwa }}{% if w.model %} <span class="muted">{{ w.model }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    <dt>Zasoby</dt><dd>agregaty {{ aggr | length }} · SVM {{ (d.svm or []) | length }} · wolumeny {{ (d.wolumeny or []) | length }} · LUN-y {{ (d.luny or []) | length }} · dyski {{ (d.dyski or []) | length }} · półki {{ (d.polki or []) | length }}</dd>
+    {% if d.lokalizacja %}<dt>Lokalizacja (ONTAP)</dt><dd>{{ d.lokalizacja }}</dd>{% endif %}
+    <dt>UUID klastra</dt><dd><code>{{ wirtualizacja.ext_id }}</code></dd>
+    <dt>Odczytano</dt><dd>{{ wirtualizacja.widziany_o | ago }}</dd>
+  </dl>
+  <p class="small">Szczegóły na zakładce <b>NetApp</b> · <a href="/wirtualizacja">Wirtualizacja i pamięć masowa</a></p>
+</div>
