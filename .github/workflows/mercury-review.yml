@@ -1,0 +1,45 @@
+name: Mercury 2.5 review benchmark
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'agent/**'
+      - 'android/**'
+      - '.github/scripts/mercury_review.py'
+      - '.github/workflows/mercury-review.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  mercury-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Run Mercury review
+        env:
+          INCEPTION_API_KEY: ${{ secrets.INCEPTION_API_KEY }}
+        run: |
+          test -n "$INCEPTION_API_KEY" || { echo 'Missing INCEPTION_API_KEY secret'; exit 2; }
+          python .github/scripts/mercury_review.py
+
+      - name: Publish summary
+        if: success()
+        run: |
+          cat .mercury/review.md >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          cat .mercury/metadata.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload result
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercury-2.5-review
+          path: .mercury/
+          retention-days: 7
