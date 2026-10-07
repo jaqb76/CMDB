@@ -205,7 +205,12 @@
             <div class="muted small">Adres appliance OME, np. <code>https://ome.firma.pl</code>. Konto lokalne OME albo z katalogu
               z rolą VIEWER. Certyfikat self-signed appliance wklej poniżej — zostanie przypięty.</div>
             {% endif %}
-            {% if wirt.opis.magazyn %}
+            {% if wirt.dostawca == 'netapp' %}
+            <div class="muted small">Adres klastra (cluster management LIF), np. <code>https://172.16.2.137</code> — adres
+              z System Managera (<code>…/sysmgr/v4/</code>) też zadziała. Konto: <code>security login create -user-or-group-name cmdb-ro
+              -application http -authentication-method password -role readonly</code>. Domyślny certyfikat klastra wklej poniżej — zostanie przypięty.</div>
+            {% endif %}
+            {% if wirt.dostawca == 'ceph' %}
             <div class="muted small">Adres to Ceph Dashboard (aktywny mgr albo adres za load balancerem), np. <code>https://ceph-mgr.firma.pl:8443</code>.
               Konto: <code>ceph dashboard ac-user-create cmdb-ro -i plik-z-haslem read-only</code>.</div>
             {% endif %}
@@ -230,6 +235,7 @@
             {% if not nx.wlaczona %}<span class="badge">wyłączone</span>
             {% elif nx.odczyt_o and not nx.odczyt_ok %}<span class="badge badge-danger">błąd odczytu</span>
             {% elif nx.odczyt_ok and wirt.opis.sprzet %}<span class="badge badge-ok">serwery {{ (nx.odczyt_liczby or {}).serwery or 0 }}</span>
+            {% elif nx.odczyt_ok and wirt.dostawca == 'netapp' %}<span class="badge badge-ok">wolumeny {{ (nx.odczyt_liczby or {}).wolumeny or 0 }}</span>
             {% elif nx.odczyt_ok and wirt.opis.magazyn %}<span class="badge badge-ok">OSD {{ (nx.odczyt_liczby or {}).osd or 0 }}</span>
             {% elif nx.odczyt_ok %}<span class="badge badge-ok">VM {{ (nx.odczyt_liczby or {}).vm or 0 }}</span>
             {% else %}<span class="badge badge-warn">czeka na odczyt</span>{% endif %}

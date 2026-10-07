@@ -524,6 +524,7 @@ class Monitor:
         # na tej samej petli: ta usluga zyje caly czas, wiec zlecony z panelu
         # test wraca w kilka minut, a nie przy nastepnej inwentaryzacji.
         from .ceph import CzytnikCeph
+        from .netapp import CzytnikNetapp
         from .nutanix import CzytnikNutanix
         from .ome import CzytnikOme
         from .openstack import CzytnikOpenstack
@@ -533,6 +534,7 @@ class Monitor:
         self.openstack = CzytnikOpenstack(client, state)
         self.ceph = CzytnikCeph(client, state)
         self.ome = CzytnikOme(client, state)
+        self.netapp = CzytnikNetapp(client, state)
         self._wczytaj_stan()
 
     # --- trwalosc miedzy uruchomieniami ---
@@ -713,7 +715,7 @@ class Monitor:
         if teraz >= self.nastepna_polityka:
             self.odswiez_polityke()
             self.nastepna_polityka = teraz + ODSTEP_POLITYKI
-        for czytnik in (self.nutanix, self.vmware, self.openstack, self.ceph, self.ome):
+        for czytnik in (self.nutanix, self.vmware, self.openstack, self.ceph, self.ome, self.netapp):
             try:
                 czytnik.krok(teraz)
             except Exception as exc:
@@ -810,6 +812,7 @@ class Monitor:
             "openstack": self.openstack.status(),
             "ceph": self.ceph.status(),
             "ome": self.ome.status(),
+            "netapp": self.netapp.status(),
             "przyjeto": self.przyjeto,
             "pominieto": self.pominieto,
             "ostatni_blad": self.ostatni_blad,

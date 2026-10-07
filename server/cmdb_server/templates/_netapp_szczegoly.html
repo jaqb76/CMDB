@@ -1,0 +1,200 @@
+{#
+  Zakladka "NetApp" na karcie klastra ONTAP: wezly, agregaty, SVM, wolumeny,
+  LUN-y, dyski, polki, interfejsy i SnapMirror. Sekcje zwiniete, tabele
+  sortowalne (data-sort = wartosc liczbowa), dlugie listy z filtrem.
+#}
+{% set d = wirtualizacja.dane or {} %}
+{% macro stan(wartosc, ok='OK') %}{% if wartosc %}<span class="badge badge-danger">{{ wartosc }}</span>{% else %}<span class="badge badge-ok">{{ ok }}</span>{% endif %}{% endmacro %}
+{% macro zle(lista) %}{% set n = (lista or []) | selectattr('stan') | list | length %}{% if n %}<span class="badge badge-danger">w złym stanie: {{ n }}</span>{% endif %}{% endmacro %}
+{% macro proc(uzyte, calosc) %}{% if calosc and uzyte is not none %}{{ ((uzyte * 100) / calosc) | round(1) }}%{% else %}—{% endif %}{% endmacro %}
+{% macro proc_sort(uzyte, calosc) %}{{ ((uzyte * 100) / calosc) if calosc and uzyte is not none else -1 }}{% endmacro %}
+
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Węzły</span> <span class="muted small">{{ (d.wezly or []) | length }}</span>{{ zle(d.wezly) }}</summary>
+  <div class="wirt-ceph-tresc"><div class="tabela-przewijana">
+  <table class="table sortowalna">
+    <thead><tr><th>Węzeł</th><th>Model</th><th>Numer seryjny</th><th>System ID</th><th>Partner HA</th><th>Przejęcie</th><th>ONTAP</th><th class="num">Czas pracy</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in d.wezly or [] %}
+      <tr><td>{{ x.nazwa }}{% if x.ip %} <span class="muted small">{{ x.ip }}</span>{% endif %}</td><td class="small">{{ x.model or '—' }}</td>
+        <td class="small"><code>{{ x.numer_seryjny or '—' }}</code></td><td class="small">{{ x.system_id or '—' }}</td>
+        <td class="small">{{ x.partner_ha or '—' }}</td><td class="small">{{ x.przejecie or '—' }}</td><td class="small">{{ x.wersja or '—' }}</td>
+        <td class="num small" data-sort="{{ x.czas_pracy_s or 0 }}">{% if x.czas_pracy_s %}{{ (x.czas_pracy_s // 86400) }} dni{% else %}—{% endif %}</td>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan, 'up') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+
+{% if d.agregaty %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Agregaty</span>
+    <span class="muted small">{{ d.agregaty | length }} · razem {{ d.agregaty | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') | bytes }}</span>{{ zle(d.agregaty) }}</summary>
+  <div class="wirt-ceph-tresc"><div class="tabela-przewijana">
+  <table class="table sortowalna">
+    <thead><tr><th>Agregat</th><th>Węzeł</th><th>RAID</th><th>Klasa</th><th class="num">Dyski</th><th class="num">Rozmiar</th><th class="num">Wolne</th><th class="num">Zajęte</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in d.agregaty %}
+      <tr><td>{{ x.nazwa }}</td><td class="small">{{ x.wezel or '—' }}</td><td class="small">{{ x.raid or '—' }}</td><td class="small">{{ x.klasa or '—' }}</td>
+        <td class="num">{{ x.dyski if x.dyski is not none else '—' }}</td>
+        <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ x.dostepne_bajty or 0 }}">{{ x.dostepne_bajty | bytes if x.dostepne_bajty is not none else '—' }}</td>
+        <td class="num" data-sort="{{ proc_sort(x.zajete_bajty, x.rozmiar_bajty) }}">{{ proc(x.zajete_bajty, x.rozmiar_bajty) }}</td>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan, 'online') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+{% endif %}
+
+{% if d.svm %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">SVM</span> <span class="muted small">{{ d.svm | length }}</span>{{ zle(d.svm) }}</summary>
+  <div class="wirt-ceph-tresc"><div class="tabela-przewijana">
+  <table class="table sortowalna">
+    <thead><tr><th>SVM</th><th>Protokoły</th><th>Adresy IP</th><th>Podtyp</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in d.svm %}
+      <tr><td>{{ x.nazwa }}</td><td class="small">{{ (x.protokoly or []) | join(', ') | upper or '—' }}</td>
+        <td class="small">{{ (x.ip or []) | join(', ') or '—' }}</td><td class="small">{{ x.podtyp or '—' }}</td>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan, 'running') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+{% endif %}
+
+{% if d.wolumeny %}
+{% set pelne = [] %}{% for x in d.wolumeny %}{% if x.rozmiar_bajty and x.zajete_bajty and x.zajete_bajty * 100 / x.rozmiar_bajty >= 90 %}{% set _ = pelne.append(x) %}{% endif %}{% endfor %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Wolumeny</span>
+    <span class="muted small">{{ d.wolumeny | length }} · razem {{ d.wolumeny | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') | bytes }}</span>
+    {{ zle(d.wolumeny) }}{% if pelne %}<span class="badge badge-warn">zajęte ≥90%: {{ pelne | length }}</span>{% endif %}</summary>
+  <div class="wirt-ceph-tresc">
+  <input type="search" class="table-filter" data-filter-for="netapp-wolumeny" placeholder="Filtruj: nazwa, SVM, agregat, ścieżka…">
+  <div class="tabela-przewijana">
+  <table class="table sortowalna" id="netapp-wolumeny">
+    <thead><tr><th>Wolumen</th><th>SVM</th><th>Agregat</th><th>Ścieżka</th><th class="num">Rozmiar</th><th class="num">Zajęte</th><th>Typ</th><th>Snapshoty</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in d.wolumeny | sort(attribute='nazwa') %}
+      <tr><td>{{ x.nazwa }}{% if x.root_svm %} <span class="muted small">root</span>{% endif %}</td><td class="small">{{ x.svm or '—' }}</td>
+        <td class="small">{{ x.agregat or '—' }}</td><td class="small"><code>{{ x.sciezka or '—' }}</code></td>
+        <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ proc_sort(x.zajete_bajty, x.rozmiar_bajty) }}">{{ proc(x.zajete_bajty, x.rozmiar_bajty) }}</td>
+        <td class="small">{{ x.typ or '—' }}{% if x.styl %} <span class="muted">{{ x.styl }}</span>{% endif %}</td>
+        <td class="small">{{ x.polityka_snapshotow or '—' }}</td>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan, 'online') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+{% endif %}
+
+{% if d.luny %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">LUN-y</span> <span class="muted small">{{ d.luny | length }} · razem {{ d.luny | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') | bytes }}</span>{{ zle(d.luny) }}</summary>
+  <div class="wirt-ceph-tresc">
+  <input type="search" class="table-filter" data-filter-for="netapp-luny" placeholder="Filtruj: ścieżka, SVM, numer seryjny…">
+  <div class="tabela-przewijana">
+  <table class="table sortowalna" id="netapp-luny">
+    <thead><tr><th>LUN</th><th>SVM</th><th>System</th><th class="num">Rozmiar</th><th class="num">Zajęte</th><th>Numer seryjny</th><th>Zmapowany</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in d.luny | sort(attribute='nazwa') %}
+      <tr><td class="small"><code>{{ x.nazwa }}</code></td><td class="small">{{ x.svm or '—' }}</td><td class="small">{{ x.os or '—' }}</td>
+        <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ proc_sort(x.zajete_bajty, x.rozmiar_bajty) }}">{{ proc(x.zajete_bajty, x.rozmiar_bajty) }}</td>
+        <td class="small"><code>{{ x.numer_seryjny or '—' }}</code></td>
+        <td>{% if x.zmapowany %}<span class="badge badge-ok">tak</span>{% elif x.zmapowany is sameas false %}<span class="badge badge-warn">nie</span>{% else %}—{% endif %}</td>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan, 'online') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+{% endif %}
+
+{% if d.dyski %}
+{% set grupy = {} %}{% set kolejnosc = [] %}
+{% for x in d.dyski %}{% set k = (x.model or '?') ~ '|' ~ ((x.rozmiar_bajty | bytes) if x.rozmiar_bajty else '?') ~ '|' ~ (x.typ or '') %}
+  {% if k not in grupy %}{% set _ = kolejnosc.append(k) %}{% endif %}{% set _ = grupy.update({k: grupy.get(k, 0) + 1}) %}{% endfor %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Dyski</span>
+    <span class="muted small">{{ d.dyski | length }} · {% for k in kolejnosc %}{% set c = k.split('|') %}{{ grupy[k] }} × {{ c[1] }} {{ c[2] | upper }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{{ zle(d.dyski) }}</summary>
+  <div class="wirt-ceph-tresc">
+  {% set zle_dyski = d.dyski | selectattr('stan') | list %}
+  {% if zle_dyski %}<div class="alert alert-warn"><b>Dyski w złym stanie: {{ zle_dyski | length }}</b>
+    <ul class="small">{% for x in zle_dyski %}<li>{{ x.nazwa }}{% if x.polka %} (półka {{ x.polka }}{% if x.zatoka is not none %}, zatoka {{ x.zatoka }}{% endif %}){% endif %} — {{ x.stan }}{% if x.numer_seryjny %} <span class="muted">s/n {{ x.numer_seryjny }}</span>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+  <input type="search" class="table-filter" data-filter-for="netapp-dyski" placeholder="Filtruj: nazwa, numer seryjny, model, agregat, stan…">
+  <div class="tabela-przewijana">
+  <table class="table sortowalna" id="netapp-dyski">
+    <thead><tr><th>Dysk</th><th>Półka / zatoka</th><th>Model</th><th>Numer seryjny</th><th>Typ</th><th class="num">Rozmiar</th><th>Rola</th><th>Agregat</th><th>Węzeł</th><th>Firmware</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in d.dyski %}
+      <tr><td data-sort="{{ x.nazwa }}">{{ x.nazwa }}</td>
+        <td class="small" data-sort="{{ (x.polka or '') ~ '|' ~ ('%04d' % x.zatoka if x.zatoka is not none else '') }}">{{ x.polka or '—' }}{% if x.zatoka is not none %} / {{ x.zatoka }}{% endif %}</td>
+        <td class="small">{{ x.model or '—' }}{% if x.producent %} <span class="muted">{{ x.producent }}</span>{% endif %}</td>
+        <td class="small"><code>{{ x.numer_seryjny or '—' }}</code></td><td class="small">{{ (x.typ or '—') | upper }}</td>
+        <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
+        <td class="small">{{ x.rola or '—' }}</td><td class="small">{{ x.agregat or '—' }}</td><td class="small">{{ x.wezel or '—' }}</td>
+        <td class="small">{{ x.firmware or '—' }}</td><td data-sort="{{ x.stan or '' }}">{{ stan(x.stan, 'present') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+{% endif %}
+
+{% if d.polki %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Półki dyskowe</span> <span class="muted small">{{ d.polki | length }}</span>{{ zle(d.polki) }}</summary>
+  <div class="wirt-ceph-tresc"><div class="tabela-przewijana">
+  <table class="table sortowalna">
+    <thead><tr><th>Półka</th><th>Model</th><th>Numer seryjny</th><th>Moduł</th><th>Połączenie</th><th class="num">Dyski</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in d.polki %}
+      <tr><td>{{ x.nazwa }}</td><td class="small">{{ x.model or '—' }}</td><td class="small"><code>{{ x.numer_seryjny or '—' }}</code></td>
+        <td class="small">{{ x.modul or '—' }}</td><td class="small">{{ x.polaczenie or '—' }}</td><td class="num">{{ x.dyski if x.dyski is not none else '—' }}</td>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+{% endif %}
+
+{% if d.interfejsy %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Interfejsy (LIF)</span> <span class="muted small">{{ d.interfejsy | length }}</span>{{ zle(d.interfejsy) }}</summary>
+  <div class="wirt-ceph-tresc">
+  <input type="search" class="table-filter" data-filter-for="netapp-lify" placeholder="Filtruj: nazwa, IP, SVM, węzeł…">
+  <div class="tabela-przewijana">
+  <table class="table sortowalna" id="netapp-lify">
+    <thead><tr><th>Interfejs</th><th>Adres IP</th><th>SVM</th><th>Węzeł / port</th><th>Usługi</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in d.interfejsy %}
+      <tr><td>{{ x.nazwa }}</td><td class="small"><code>{{ x.ip or '—' }}{% if x.maska %}/{{ x.maska }}{% endif %}</code></td>
+        <td class="small">{{ x.svm or '—' }}</td><td class="small">{{ x.wezel or '—' }}{% if x.port %} / {{ x.port }}{% endif %}</td>
+        <td class="small">{{ x.uslugi or '—' }}</td><td data-sort="{{ x.stan or '' }}">{{ stan(x.stan, 'up') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+{% endif %}
+
+{% if d.snapmirror %}
+{% set zle_sm = d.snapmirror | selectattr('zdrowy', 'sameas', false) | list %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">SnapMirror</span> <span class="muted small">{{ d.snapmirror | length }}</span>
+    {% if zle_sm %}<span class="badge badge-danger">niezdrowe: {{ zle_sm | length }}</span>{% endif %}</summary>
+  <div class="wirt-ceph-tresc"><div class="tabela-przewijana">
+  <table class="table sortowalna">
+    <thead><tr><th>Źródło</th><th>Cel</th><th>Stan</th><th>Opóźnienie</th><th>Polityka</th><th>Zdrowie</th></tr></thead>
+    <tbody>
+    {% for x in d.snapmirror %}
+      <tr><td class="small"><code>{{ x.zrodlo or '—' }}</code></td><td class="small"><code>{{ x.cel or '—' }}</code></td>
+        <td class="small">{{ x.stan or '—' }}</td><td class="small">{{ (x.opoznienie or '—') | replace('PT', '') | lower }}</td>
+        <td class="small">{{ x.polityka or '—' }}</td>
+        <td>{% if x.zdrowy %}<span class="badge badge-ok">zdrowa</span>{% elif x.zdrowy is sameas false %}<span class="badge badge-danger">niezdrowa</span>{% else %}—{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+</details>
+{% endif %}
+<p class="muted small">Dane z NetApp ONTAP, odczytane {{ wirtualizacja.widziany_o | ago }}. Kliknij nagłówek kolumny, żeby posortować.</p>

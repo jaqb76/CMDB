@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Agent odczytuje klaster NetApp ONTAP przez REST API: węzły, agregaty, SVM, wolumeny, LUN-y, dyski z numerami seryjnymi, półki, interfejsy i SnapMirror (tylko odczyt, bez sesji)."
+}

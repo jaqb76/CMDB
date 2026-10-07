@@ -51,7 +51,7 @@
 </details>
 {% endif %}
 
-{% if not drzewo and not magazyny %}
+{% if not drzewo and not magazyny and not macierze %}
 <section class="panel">
   {% if wybrany %}
   <p>To źródło nie ma jeszcze odczytanych obiektów. <a href="/wirtualizacja">Pokaż wszystkie źródła</a></p>
@@ -140,8 +140,39 @@
 </details>
 {% endfor %}
 
-{% if magazyny %}
+{% if magazyny or macierze %}
 <h2 class="wirt-sekcja">Pamięć masowa</h2>
+{% endif %}
+{% for m in macierze %}{% set d = m.obiekt.dane or {} %}
+{% set razem = (d.agregaty or []) | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') %}
+{% set zajete = (d.agregaty or []) | selectattr('zajete_bajty') | sum(attribute='zajete_bajty') %}
+{% set zle_dyski = (d.dyski or []) | selectattr('stan') | list %}
+<details class="panel wirt-klaster wirt-ceph"
+         data-szukaj="{{ (m.obiekt.nazwa ~ ' ' ~ m.obiekt.ext_id ~ ' netapp ontap ' ~ ((d.wezly or []) | map(attribute='nazwa') | join(' ')) ~ ' ' ~ ((d.svm or []) | map(attribute='nazwa') | join(' ')) ~ ' ' ~ ((d.wolumeny or []) | map(attribute='nazwa') | join(' ')) ~ ' ' ~ ((d.interfejsy or []) | map(attribute='ip') | select | join(' ')) ~ ' ' ~ (d.ip or '')) | lower }}">
+  <summary>
+    <span class="wirt-tytul">{% if m.asset %}<a href="/assets/{{ m.asset.id }}">{{ m.obiekt.nazwa }}</a>{% else %}{{ m.obiekt.nazwa }}{% endif %}
+      <span class="badge">NetApp</span>{% if d.wersja %} <span class="muted small">ONTAP {{ d.wersja }}</span>{% endif %}</span>
+    {% if zle_dyski %}<span class="badge badge-danger">dyski w złym stanie: {{ zle_dyski | length }}</span>{% endif %}
+    <span class="muted small">{% if razem %}zajęte {{ ((zajete * 100) / razem) | round(1) }}% z {{ razem | bytes }} · {% endif %}węzły {{ (d.wezly or []) | length }} · SVM {{ (d.svm or []) | length }} · wolumeny {{ (d.wolumeny or []) | length }} · dyski {{ (d.dyski or []) | length }}{% if m.uzywa %} · korzysta: {{ m.uzywa | map(attribute='hostname') | join(', ') }}{% endif %}</span>
+  </summary>
+  <div class="wirt-ceph-tresc">
+    {% if d.agregaty %}
+    <div class="tabela-przewijana">
+    <table class="table sortowalna">
+      <thead><tr><th>Agregat</th><th>Węzeł</th><th class="num">Rozmiar</th><th class="num">Zajęte</th></tr></thead>
+      <tbody>
+      {% for a in d.agregaty %}<tr><td>{{ a.nazwa }}</td><td class="small">{{ a.wezel or '—' }}</td>
+        <td class="num" data-sort="{{ a.rozmiar_bajty or 0 }}">{{ a.rozmiar_bajty | bytes if a.rozmiar_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ ((a.zajete_bajty * 100) / a.rozmiar_bajty) if a.rozmiar_bajty and a.zajete_bajty is not none else -1 }}">{% if a.rozmiar_bajty and a.zajete_bajty is not none %}{{ ((a.zajete_bajty * 100) / a.rozmiar_bajty) | round(1) }}%{% else %}—{% endif %}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if m.asset %}<p class="small"><a href="/assets/{{ m.asset.id }}">Węzły, wolumeny, dyski i SnapMirror na karcie klastra →</a></p>{% endif %}
+  </div>
+</details>
+{% endfor %}
+{% if magazyny %}
 {% for m in magazyny %}{% set d = m.obiekt.dane or {} %}{% set zdrowie = (d.zdrowie or '') | replace('HEALTH_', '') %}
 {% set pct = ((d.zajete_bajty or 0) * 100 / d.pojemnosc_bajty) | round(1) if d.pojemnosc_bajty else none %}
 <details class="panel wirt-klaster wirt-ceph"

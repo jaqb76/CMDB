@@ -58,7 +58,9 @@ ZRODLO_CEPH = "ceph"
 # Serwer z Dell OpenManage Enterprise, ktorego nie ma jeszcze w ewidencji. Serwer,
 # ktory juz jest (ten sam Service Tag), dostaje dane OME na swojej karcie.
 ZRODLO_OME = "ome"
-ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH, ZRODLO_OME)
+# Klaster NetApp ONTAP - pamiec masowa, jak Ceph.
+ZRODLO_NETAPP = "netapp"
+ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH, ZRODLO_OME, ZRODLO_NETAPP)
 
 # Rodzaj sprzetu. Maszyny z agentem sa komputerami; reszte wybiera czlowiek.
 TYP_KOMPUTER = "komputer"
