@@ -2,7 +2,7 @@ name: CMDB Android build
 on:
   workflow_dispatch:
   push:
-    branches: ["claude/os-data-collection-agent-gfz2o8"]
+    branches: ["main"]
     paths:
       - "android/**"
       - ".github/workflows/android.yml"
@@ -65,7 +65,7 @@ jobs:
         if: >
           github.event_name != 'pull_request' &&
           github.repository == 'jaqb76/CMDB' &&
-          github.ref == 'refs/heads/claude/os-data-collection-agent-gfz2o8'
+          github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           WERSJA: ${{ steps.apk.outputs.wersja }}

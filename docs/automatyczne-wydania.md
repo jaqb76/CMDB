@@ -4,6 +4,29 @@ Build i import **nie zmieniają** wersji oficjalnej, przypisań firm ani maszyn.
 Po pojawieniu się wydania w istniejącym panelu `/admin/wersje` administrator
 wybiera maszyny pilotażowe, firmę lub wersję oficjalną dotychczasowymi formularzami.
 
+## Gałąź produkcyjna: `main`
+
+`main` jest jedynym źródłem produkcji:
+
+- CI publikuje podpisane wydania agenta tylko po `push` do `main`,
+- serwer importuje tylko wydania podpisane z `main` (`CMDB_RELEASE_REF`),
+- `deploy/wdroz.sh` wdraża serwer tylko z `main`.
+
+Praca odbywa się na gałęziach roboczych; do `main` trafia przez pull request.
+
+### Przejście z `claude/os-data-collection-agent-gfz2o8` (jednorazowo)
+
+Do 2026-10-07 gałęzią produkcyjną była `claude/os-data-collection-agent-gfz2o8`.
+Przełączenie na `main` wymaga, poza zmianą w repozytorium:
+
+1. GitHub → Settings → General: domyślna gałąź `main`.
+2. GitHub → Settings → Environments → `agent-release`: dopuszczona tylko gałąź `main`.
+3. Serwer: w `deploy/.env` `CMDB_RELEASE_REF=refs/heads/main`, potem wdrożenie
+   z `main` (`git checkout main && sudo ./deploy/wdroz.sh`).
+
+Wydania podpisane wcześniej ze starej gałęzi, które serwer już zaimportował,
+zostają w katalogu wersji. Importer nie przyjmie już nowych ze starej gałęzi.
+
 ## Co wykonuje pipeline
 
 1. Każdy przebieg workflow otrzymuje wersję `0.6.<run_number>+<run_attempt>`.
@@ -16,7 +39,7 @@ wybiera maszyny pilotażowe, firmę lub wersję oficjalną dotychczasowymi formu
 3. Buduje paczkę Linux i sprawdza wersję/protokół programu z rozpakowanej paczki.
 4. Osobny job weryfikuje komplet rzeczywistych artefaktów i protokół manifestu
    jednorazowym **testowym** kluczem. Ten podpis nigdy nie jest publikowany.
-5. Tylko `push` do zatwierdzonej gałęzi `claude/os-data-collection-agent-gfz2o8`
+5. Tylko `push` do zatwierdzonej gałęzi `main`
    w `jaqb76/CMDB`, po sukcesie wszystkich powyższych jobów, uruchamia publikację.
    PR-y budują paczki do pobrania z Actions, ale nie dostają klucza publikacji.
 6. Publikator podpisuje manifest Ed25519, tworzy szkic GitHub Release, dodaje
@@ -54,7 +77,7 @@ magazynie sekretów. Nie przesyłaj go w rozmowie ani do produkcyjnego CMDB.
 
 W repozytorium utwórz środowisko **agent-release**:
 
-- dopuść wyłącznie gałąź `claude/os-data-collection-agent-gfz2o8`;
+- dopuść wyłącznie gałąź `main`;
 - dodaj sekret środowiska **CMDB_RELEASE_SIGNING_KEY** z `signing-key.txt`;
 - chroń gałąź i pliki workflow/publikatora wymaganym przeglądem kodu;
 - wymagane uprawnienie publikatora to `contents: write`; inne joby mają odczyt.
@@ -72,7 +95,7 @@ W istniejącym `deploy/.env`:
 ```dotenv
 CMDB_RELEASE_IMPORT_ENABLED=true
 CMDB_RELEASE_REPOSITORY=jaqb76/CMDB
-CMDB_RELEASE_REF=refs/heads/claude/os-data-collection-agent-gfz2o8
+CMDB_RELEASE_REF=refs/heads/main
 CMDB_RELEASE_PUBLIC_KEYS='<jednoliniowa zawartosc public-keys.json>'
 CMDB_RELEASE_GITHUB_TOKEN=<token odczytu prywatnego repozytorium>
 CMDB_RELEASE_IMPORT_INTERVAL=300

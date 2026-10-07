@@ -273,12 +273,17 @@ na bazie, której nazwa nie zawiera „test” (chyba że ustawisz
 
 ## Aktualizacja serwera
 
+Produkcja jest wdrażana **wyłącznie z gałęzi `main`**. Zmiany powstają na
+gałęziach roboczych i trafiają do `main` przez pull request po zielonym CI.
+
 ```bash
-cd deploy
-git pull
-docker compose build server
-docker compose up -d server
+cd /opt/CMDB
+git checkout main
+sudo ./deploy/wdroz.sh
 ```
+
+`wdroz.sh` odmawia wdrożenia z innej gałęzi i z niezacommitowanymi zmianami,
+pobiera `main`, wpisuje numer commita w obraz i sprawdza, czy serwer go zgłasza.
 
 Schemat bazy tworzony jest przy starcie (`create_all`) — brakujące tabele
 i indeksy powstają automatycznie, ale **zmiany istniejących kolumn nie są

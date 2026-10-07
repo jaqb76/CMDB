@@ -13,6 +13,22 @@ set -euo pipefail
 KORZEN="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$KORZEN"
 
+# Produkcja tylko z main: to jedyna galaz, z ktorej CI publikuje podpisane
+# wydania agenta i ktora serwer przyjmuje przy imporcie (CMDB_RELEASE_REF).
+# Wdrozenie z galezi roboczej postawiloby serwer z kodem, ktorego nie ma
+# w zadnym wydaniu - i z wersja, ktorej nie da sie powiazac z main.
+GALAZ_PRODUKCYJNA="main"
+if [[ "$(git rev-parse --abbrev-ref HEAD)" != "$GALAZ_PRODUKCYJNA" ]]; then
+    echo "==> BLAD: jestes na galezi '$(git rev-parse --abbrev-ref HEAD)', a produkcja jest tylko z '$GALAZ_PRODUKCYJNA'." >&2
+    echo "    Przejdz na nia: git checkout $GALAZ_PRODUKCYJNA" >&2
+    exit 1
+fi
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+    echo "==> BLAD: w katalogu sa niezacommitowane zmiany - wdrozenie z main musi byc czyste." >&2
+    git status --short --untracked-files=no >&2
+    exit 1
+fi
+
 echo "==> Pobieram zmiany"
 git pull --ff-only
 

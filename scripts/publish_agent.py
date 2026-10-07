@@ -114,7 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("directory", type=Path)
     parser.add_argument("--version", required=True)
     args = parser.parse_args()
-    if os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != "refs/heads/claude/os-data-collection-agent-gfz2o8":
+    if os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != "refs/heads/main":
         raise SystemExit("Publication allowed only for a push to the approved branch")
     key = os.environ.get("CMDB_RELEASE_SIGNING_KEY", "")
     if not key:

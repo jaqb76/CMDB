@@ -121,7 +121,7 @@ class Settings(BaseSettings):
     trusted_windows_builds: dict[str, dict[str, str]] = Field(default_factory=dict)
     release_import_enabled: bool = False
     release_repository: str = "jaqb76/CMDB"
-    release_ref: str = "refs/heads/claude/os-data-collection-agent-gfz2o8"
+    release_ref: str = "refs/heads/main"
     release_public_keys: dict[str, str] = Field(default_factory=dict)
     release_github_token: SecretStr = SecretStr("")
     release_import_interval: int = Field(default=300, ge=60, le=86400)
