@@ -27,8 +27,12 @@
     {% for dysk in d.dyski %}{% set klucz = ((dysk.rozmiar_bajty | bytes) if dysk.rozmiar_bajty else 'rozmiar nieznany') ~ '|' ~ (dysk.typ or '') %}
       {% if klucz not in grupy %}{% set _ = kolejnosc.append(klucz) %}{% endif %}{% set _ = grupy.update({klucz: grupy.get(klucz, 0) + 1}) %}{% endfor %}
     {% set zle = d.dyski | selectattr('stan') | list %}
-    <dt>Dyski</dt><dd>{{ d.dyski | length }}:
+    {% set ile = d.dyski | length %}
+    {% set razem = d.dyski | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') %}
+    {% set slowo = 'dysk' if ile == 1 else ('dyski' if ile % 10 in [2, 3, 4] and ile % 100 not in [12, 13, 14] else 'dysków') %}
+    <dt>Dyski</dt><dd>
       {% for klucz in kolejnosc %}{% set czesci = klucz.split('|') %}{{ grupy[klucz] }} × {{ czesci[0] }}{% if czesci[1] %} <span class="muted">{{ czesci[1] }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+      <div class="muted small">razem {{ ile }} {{ slowo }}{% if razem %}, {{ razem | bytes }}{% endif %}</div>
       {% if zle %}<ul class="ceph-ostrzezenia small">{% for dysk in zle %}<li><b>{{ dysk.stan }}</b>: {{ dysk.miejsce or dysk.model or 'dysk' }}{% if dysk.numer_seryjny %} <span class="muted">s/n {{ dysk.numer_seryjny }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
     </dd>{% endif %}
     {% if d.mac %}<dt>Adresy MAC</dt><dd class="small">{{ d.mac | join(', ') }}</dd>{% endif %}

@@ -93,7 +93,8 @@ def test_serwer_z_ome_dopisuje_sie_do_hosta_esxi(client, tenant_a, make_user):
     assert "Identyfikator w vCenter" in karta and "Dell OME" in karta and "7.10.30.00" in karta
     assert "połączono z tą kartą po Service Tagu" in karta and "https://10.70.0.11" in karta
     # Dyski zgrupowane, a uszkodzony osobno z miejscem i numerem seryjnym.
-    assert "4:" in karta and "3 × 2.0 TB" in karta and "1 × 750.0 GB" in karta
+    assert "3 × 2.0 TB" in karta and "1 × 750.0 GB" in karta
+    assert "razem 4 dyski, 6.7 TB" in karta  # liczba z odmiana i laczna pojemnosc
     assert "<b>Critical</b>: Disk 3 in Backplane 1" in karta and "s/n D3" in karta
     assert [w["nazwa"] for w in client.get("/szukaj.json", params={"q": "10.70.0.99"}).json()["wyniki"]] == ["srv-backup"]
     assert "OME DC1" not in client.get("/wirtualizacja").text  # OME to sprzet, nie zrodlo wirtualizacji
