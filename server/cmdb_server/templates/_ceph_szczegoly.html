@@ -1,14 +1,19 @@
 {#
   Zakladka "Ceph" na karcie klastra: OSD, buckety i uzytkownicy RGW, bramy RGW,
   CephFS. Podsumowanie (zdrowie, pojemnosc, wezly, pule) jest na zakladce Przeglad.
+  Sekcje sa zwiniete - naglowek mowi, ile czego jest i czy cos wymaga uwagi.
+  Tabele "sortowalna": klik w naglowek sortuje (data-sort = wartosc liczbowa).
   Uzytkownicy RGW bez kluczy - agent wysyla tylko ich liczbe.
 #}
 {% set d = wirtualizacja.dane or {} %}
 {% set osd = d.osd or [] %}
+{% set zle = osd | selectattr('stan') | list %}
 
-<div class="panel">
-  <h2>OSD <span class="muted small">{{ osd | length }}{% if osd %}, up {{ osd | selectattr('up') | list | length }}, in {{ osd | selectattr('in') | list | length }}{% endif %}</span></h2>
-  {% set zle = osd | selectattr('stan') | list %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">OSD</span>
+    <span class="muted small">{{ osd | length }}{% if osd %} · up {{ osd | selectattr('up') | list | length }}, in {{ osd | selectattr('in') | list | length }}{% endif %}</span>
+    {% if zle %}<span class="badge badge-danger">w złym stanie: {{ zle | length }}</span>{% endif %}</summary>
+  <div class="wirt-ceph-tresc">
   {% if zle %}
   <div class="alert alert-warn"><b>OSD w złym stanie: {{ zle | length }}</b>
     <ul class="small">{% for x in zle %}<li>osd.{{ x.id }} na {{ x.host or '?' }} — {{ x.stan }}</li>{% endfor %}</ul></div>
@@ -19,109 +24,125 @@
   {% for x in osd %}{% set k = (x.host or '?') ~ '|' ~ (x.klasa or '?') %}
     {% if k not in grupy %}{% set _ = kolejnosc.append(k) %}{% set _ = grupy.update({k: {'n': 0, 'b': 0, 'u': 0}}) %}{% endif %}
     {% set _ = grupy[k].update({'n': grupy[k].n + 1, 'b': grupy[k].b + (x.rozmiar_bajty or 0), 'u': grupy[k].u + (x.zajete_bajty or 0)}) %}{% endfor %}
+  <h3>Według hosta i klasy</h3>
   <div class="tabela-przewijana">
-  <table class="table">
+  <table class="table sortowalna">
     <thead><tr><th>Host</th><th>Klasa</th><th class="num">OSD</th><th class="num">Pojemność</th><th class="num">Zajęte</th></tr></thead>
     <tbody>
     {% for k in kolejnosc | sort %}{% set c = k.split('|') %}{% set g = grupy[k] %}
       <tr><td>{{ c[0] }}</td><td class="small">{{ c[1] }}</td><td class="num">{{ g.n }}</td>
-        <td class="num">{{ g.b | bytes if g.b else '—' }}</td>
-        <td class="num">{% if g.b %}{{ ((g.u * 100) / g.b) | round(1) }}%{% else %}—{% endif %}</td></tr>
+        <td class="num" data-sort="{{ g.b }}">{{ g.b | bytes if g.b else '—' }}</td>
+        <td class="num" data-sort="{{ ((g.u * 100) / g.b) if g.b else -1 }}">{% if g.b %}{{ ((g.u * 100) / g.b) | round(1) }}%{% else %}—{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-  <details class="wirt-host">
-    <summary>Wszystkie OSD ({{ osd | length }})</summary>
-    <div class="wirt-tabela">
-      <input type="search" class="table-filter" data-filter-for="ceph-osd" placeholder="Filtruj: host, numer, klasa, stan…">
-      <div class="tabela-przewijana">
-      <table class="table" id="ceph-osd">
-        <thead><tr><th>OSD</th><th>Host</th><th>Klasa</th><th class="num">Rozmiar</th><th class="num">Zajęte</th><th class="num">PG</th><th>Stan</th></tr></thead>
-        <tbody>
-        {% for x in osd | sort(attribute='id') %}
-          <tr><td>osd.{{ x.id }}</td><td class="small">{{ x.host or '—' }}</td><td class="small">{{ x.klasa or '—' }}</td>
-            <td class="num">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
-            <td class="num">{% if x.rozmiar_bajty and x.zajete_bajty is not none %}{{ ((x.zajete_bajty * 100) / x.rozmiar_bajty) | round(1) }}%{% else %}—{% endif %}</td>
-            <td class="num">{{ x.pg if x.pg is not none else '—' }}</td>
-            <td>{% if x.stan %}<span class="badge badge-danger">{{ x.stan }}</span>{% elif x.up %}<span class="badge badge-ok">up{% if x['in'] %}, in{% endif %}</span>{% else %}<span class="badge">down</span>{% endif %}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-    </div>
-  </details>
+  <h3>Wszystkie OSD</h3>
+  <input type="search" class="table-filter" data-filter-for="ceph-osd" placeholder="Filtruj: host, numer, klasa, stan…">
+  <div class="tabela-przewijana">
+  <table class="table sortowalna" id="ceph-osd">
+    <thead><tr><th>OSD</th><th>Host</th><th>Klasa</th><th class="num">Rozmiar</th><th class="num">Zajęte</th><th class="num">PG</th><th>Stan</th></tr></thead>
+    <tbody>
+    {% for x in osd | sort(attribute='id') %}
+      <tr><td data-sort="{{ x.id }}">osd.{{ x.id }}</td><td class="small">{{ x.host or '—' }}</td><td class="small">{{ x.klasa or '—' }}</td>
+        <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ ((x.zajete_bajty * 100) / x.rozmiar_bajty) if x.rozmiar_bajty and x.zajete_bajty is not none else -1 }}">{% if x.rozmiar_bajty and x.zajete_bajty is not none %}{{ ((x.zajete_bajty * 100) / x.rozmiar_bajty) | round(1) }}%{% else %}—{% endif %}</td>
+        <td class="num" data-sort="{{ x.pg if x.pg is not none else -1 }}">{{ x.pg if x.pg is not none else '—' }}</td>
+        <td>{% if x.stan %}<span class="badge badge-danger">{{ x.stan }}</span>{% elif x.up %}<span class="badge badge-ok">up{% if x['in'] %}, in{% endif %}</span>{% else %}<span class="badge">down</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
   {% endif %}
-</div>
+  </div>
+</details>
 
 {% if d.buckety %}
-<div class="panel">
-  <h2>Buckety RGW <span class="muted small">{{ d.buckety | length }}, razem {{ d.buckety | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') | bytes }}</span></h2>
+{% set pelne = [] %}{% for x in d.buckety %}{% if x.kwota_bajty and x.rozmiar_bajty and x.rozmiar_bajty >= x.kwota_bajty * 0.9 %}{% set _ = pelne.append(x) %}{% endif %}{% endfor %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Buckety RGW</span>
+    <span class="muted small">{{ d.buckety | length }} · razem {{ d.buckety | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') | bytes }}</span>
+    {% if pelne %}<span class="badge badge-warn">kwota ≥90%: {{ pelne | length }}</span>{% endif %}</summary>
+  <div class="wirt-ceph-tresc">
   <input type="search" class="table-filter" data-filter-for="ceph-buckety" placeholder="Filtruj: nazwa, właściciel…">
   <div class="tabela-przewijana">
-  <table class="table" id="ceph-buckety">
-    <thead><tr><th>Bucket</th><th>Właściciel</th><th class="num">Rozmiar</th><th class="num">Obiekty</th><th class="num">Kwota</th><th>Wersjonowanie</th><th>Utworzono</th></tr></thead>
+  <table class="table sortowalna" id="ceph-buckety">
+    <thead><tr><th>Bucket</th><th>Właściciel</th><th class="num">Rozmiar</th><th class="num">Obiekty</th><th class="num">Kwota</th><th class="num">Zajęcie kwoty</th><th>Wersjonowanie</th><th>Utworzono</th></tr></thead>
     <tbody>
     {% for x in d.buckety | sort(attribute='nazwa') %}
-      {% set pelny = x.kwota_bajty and x.rozmiar_bajty and x.rozmiar_bajty >= x.kwota_bajty * 0.9 %}
+      {% set procent = ((x.rozmiar_bajty or 0) * 100 / x.kwota_bajty) if x.kwota_bajty else none %}
       <tr><td>{{ x.nazwa }}</td><td class="small">{{ x.wlasciciel or '—' }}</td>
-        <td class="num">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '0' }}</td>
-        <td class="num">{{ x.obiekty if x.obiekty is not none else '—' }}</td>
-        <td class="num">{% if x.kwota_bajty %}{{ x.kwota_bajty | bytes }}{% if pelny %} <span class="badge badge-warn">≥90%</span>{% endif %}{% else %}—{% endif %}</td>
+        <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '0' }}</td>
+        <td class="num" data-sort="{{ x.obiekty if x.obiekty is not none else -1 }}">{{ x.obiekty if x.obiekty is not none else '—' }}</td>
+        <td class="num" data-sort="{{ x.kwota_bajty or 0 }}">{{ x.kwota_bajty | bytes if x.kwota_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ procent if procent is not none else -1 }}">{% if procent is not none %}{{ procent | round(1) }}%{% if procent >= 90 %} <span class="badge badge-warn">≥90%</span>{% endif %}{% else %}—{% endif %}</td>
         <td class="small">{{ x.wersjonowanie or '—' }}</td><td class="small">{{ (x.utworzono or '')[:10] or '—' }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-</div>
+  </div>
+</details>
 {% endif %}
 
 {% if d.uzytkownicy_rgw %}
-<div class="panel">
-  <h2>Użytkownicy RGW <span class="muted small">{{ d.uzytkownicy_rgw | length }}</span></h2>
+{% set zawieszeni = d.uzytkownicy_rgw | selectattr('zawieszony') | list %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Użytkownicy RGW</span>
+    <span class="muted small">{{ d.uzytkownicy_rgw | length }}</span>
+    {% if zawieszeni %}<span class="badge badge-warn">zawieszeni: {{ zawieszeni | length }}</span>{% endif %}</summary>
+  <div class="wirt-ceph-tresc">
   <input type="search" class="table-filter" data-filter-for="ceph-uzytkownicy" placeholder="Filtruj: identyfikator, nazwa, e-mail…">
   <div class="tabela-przewijana">
-  <table class="table" id="ceph-uzytkownicy">
+  <table class="table sortowalna" id="ceph-uzytkownicy">
     <thead><tr><th>Użytkownik</th><th>Nazwa</th><th>E-mail</th><th class="num">Bucketów (maks.)</th><th class="num">Kwota</th><th class="num">Klucze S3 / Swift</th><th>Stan</th></tr></thead>
     <tbody>
     {% for x in d.uzytkownicy_rgw | sort(attribute='uid') %}
       <tr><td><code>{{ x.uid }}</code>{% if x.admin %} <span class="badge badge-warn">admin</span>{% endif %}</td>
         <td class="small">{{ x.nazwa or '—' }}</td><td class="small">{{ x.email or '—' }}</td>
-        <td class="num">{{ x.max_bucketow if x.max_bucketow is not none else '—' }}</td>
-        <td class="num">{{ x.kwota_bajty | bytes if x.kwota_bajty else '—' }}</td>
-        <td class="num">{{ x.klucze_s3 or 0 }} / {{ x.klucze_swift or 0 }}</td>
+        <td class="num" data-sort="{{ x.max_bucketow if x.max_bucketow is not none else -1 }}">{{ x.max_bucketow if x.max_bucketow is not none else '—' }}</td>
+        <td class="num" data-sort="{{ x.kwota_bajty or 0 }}">{{ x.kwota_bajty | bytes if x.kwota_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ (x.klucze_s3 or 0) + (x.klucze_swift or 0) }}">{{ x.klucze_s3 or 0 }} / {{ x.klucze_swift or 0 }}</td>
         <td>{% if x.zawieszony %}<span class="badge badge-warn">zawieszony</span>{% else %}<span class="badge badge-ok">aktywny</span>{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
   <p class="muted small">Klucze dostępowe nie trafiają do CMDB — agent przekazuje wyłącznie ich liczbę.</p>
-</div>
+  </div>
+</details>
 {% endif %}
 
-{% if d.bramy_rgw or d.cephfs %}
-<div class="panel">
-  {% if d.bramy_rgw %}
-  <h2>Bramy RGW (S3) <span class="muted small">{{ d.bramy_rgw | length }}</span></h2>
-  <table class="table">
+{% if d.bramy_rgw %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Bramy RGW (S3)</span> <span class="muted small">{{ d.bramy_rgw | length }}</span></summary>
+  <div class="wirt-ceph-tresc">
+  <table class="table sortowalna">
     <thead><tr><th>Demon</th><th>Host</th><th class="num">Port</th><th>Strefa</th><th>Grupa stref / realm</th></tr></thead>
     <tbody>
     {% for x in d.bramy_rgw %}<tr><td class="small">{{ x.id or '—' }}</td><td>{{ x.host or '—' }}</td><td class="num">{{ x.port or '—' }}</td>
       <td class="small">{{ x.strefa or '—' }}</td><td class="small">{{ x.grupa_stref or '—' }}{% if x.realm %} / {{ x.realm }}{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
-  {% endif %}
-  {% if d.cephfs %}
-  <h2>CephFS <span class="muted small">{{ d.cephfs | length }}</span></h2>
-  <table class="table">
+  </div>
+</details>
+{% endif %}
+
+{% if d.cephfs %}
+{% set mds_zle = d.cephfs | selectattr('uszkodzone_mds') | list %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">CephFS</span> <span class="muted small">{{ d.cephfs | length }}</span>
+    {% if mds_zle %}<span class="badge badge-danger">MDS z błędem</span>{% endif %}</summary>
+  <div class="wirt-ceph-tresc">
+  <table class="table sortowalna">
     <thead><tr><th>System plików</th><th class="num">MDS aktywne / maks.</th><th>Pule danych</th><th>Pula metadanych</th><th>Stan</th></tr></thead>
     <tbody>
-    {% for x in d.cephfs %}<tr><td>{{ x.nazwa }}</td><td class="num">{{ x.aktywne_mds or 0 }} / {{ x.max_mds or '—' }}</td>
+    {% for x in d.cephfs %}<tr><td>{{ x.nazwa }}</td><td class="num" data-sort="{{ x.aktywne_mds or 0 }}">{{ x.aktywne_mds or 0 }} / {{ x.max_mds or '—' }}</td>
       <td class="small">{{ (x.pule_danych or []) | join(', ') or '—' }}</td><td class="small">{{ x.pula_metadanych if x.pula_metadanych is not none else '—' }}</td>
       <td>{% if x.uszkodzone_mds %}<span class="badge badge-danger">MDS z błędem: {{ x.uszkodzone_mds }}</span>{% else %}<span class="badge badge-ok">OK</span>{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
-  {% endif %}
-</div>
+  </div>
+</details>
 {% endif %}
-<p class="muted small">Dane z Ceph Dashboard, odczytane {{ wirtualizacja.widziany_o | ago }}.</p>
+<p class="muted small">Dane z Ceph Dashboard, odczytane {{ wirtualizacja.widziany_o | ago }}. Kliknij nagłówek kolumny, żeby posortować.</p>

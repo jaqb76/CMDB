@@ -1,79 +1,91 @@
 {#
   Zakladka "Sprzet (OME)": pelny inwentarz serwera z Dell OpenManage Enterprise -
   kazdy dysk, modul pamieci, port sieciowy, kontroler RAID, zasilacz, karta PCIe
-  i licencja. Podsumowanie jest w sekcji "Sprzet" na zakladce Przeglad.
+  i licencja. Sekcje zwiniete; naglowek mowi, ile czego jest i czy cos jest
+  w zlym stanie. Tabele "sortowalna": klik w naglowek sortuje.
 #}
 {% set d = sprzet_ome.dane or {} %}
 {% macro stan(wartosc) %}{% if wartosc %}<span class="badge badge-danger">{{ wartosc }}</span>{% else %}<span class="badge badge-ok">OK</span>{% endif %}{% endmacro %}
+{% macro zle(lista) %}{% set n = (lista or []) | selectattr('stan') | list | length %}{% if n %}<span class="badge badge-danger">w złym stanie: {{ n }}</span>{% endif %}{% endmacro %}
 
-<div class="panel">
-  <h2>Dyski <span class="muted small">{{ (d.dyski or []) | length }}</span></h2>
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Dyski</span>
+    <span class="muted small">{{ (d.dyski or []) | length }}{% if d.dyski %} · razem {{ d.dyski | selectattr('rozmiar_bajty') | sum(attribute='rozmiar_bajty') | bytes }}{% endif %}</span>{{ zle(d.dyski) }}</summary>
+  <div class="wirt-ceph-tresc">
   {% if d.dyski %}
   <div class="tabela-przewijana">
-  <table class="table">
+  <table class="table sortowalna">
     <thead><tr><th>Miejsce</th><th>Model</th><th>Typ</th><th class="num">Rozmiar</th><th>Numer seryjny</th><th>Stan</th></tr></thead>
     <tbody>
     {% for x in d.dyski %}
       <tr><td class="small">{{ x.miejsce or '—' }}</td>
         <td class="small">{{ x.model or '—' }}{% if x.producent %} <span class="muted">{{ x.producent }}</span>{% endif %}</td>
         <td class="small">{{ x.typ or '—' }}</td>
-        <td class="num">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
         <td class="small"><code>{{ x.numer_seryjny or '—' }}</code></td>
-        <td>{{ stan(x.stan) }}</td></tr>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan) }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
   {% else %}<p class="muted small">OME nie podał dysków.</p>{% endif %}
-</div>
+  </div>
+</details>
 
 {% if d.kontrolery %}
-<div class="panel">
-  <h2>Kontrolery RAID <span class="muted small">{{ d.kontrolery | length }}</span></h2>
+{% set vd_zle = [] %}{% for x in d.kontrolery %}{% for w in x.wirtualne_z_bledem or [] %}{% set _ = vd_zle.append(w) %}{% endfor %}{% endfor %}
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Kontrolery RAID</span> <span class="muted small">{{ d.kontrolery | length }}</span>{{ zle(d.kontrolery) }}
+    {% if vd_zle %}<span class="badge badge-danger">dyski wirtualne z błędem: {{ vd_zle | length }}</span>{% endif %}</summary>
+  <div class="wirt-ceph-tresc">
   <div class="tabela-przewijana">
-  <table class="table">
+  <table class="table sortowalna">
     <thead><tr><th>Nazwa</th><th>Miejsce</th><th>Firmware</th><th class="num">Cache</th><th>Dyski wirtualne</th><th>Stan</th></tr></thead>
     <tbody>
     {% for x in d.kontrolery %}
       <tr><td>{{ x.nazwa or '—' }}</td><td class="small">{{ x.opis or '—' }}</td><td class="small">{{ x.firmware or '—' }}</td>
-        <td class="num">{{ (x.cache_mb * 1048576) | bytes if x.cache_mb else '—' }}</td>
-        <td class="small">{{ x.dyski_wirtualne or 0 }}{% if x.uklady %} <span class="muted">({{ x.uklady }})</span>{% endif %}
+        <td class="num" data-sort="{{ x.cache_mb or 0 }}">{{ (x.cache_mb * 1048576) | bytes if x.cache_mb else '—' }}</td>
+        <td class="small" data-sort="{{ x.dyski_wirtualne or 0 }}">{{ x.dyski_wirtualne or 0 }}{% if x.uklady %} <span class="muted">({{ x.uklady }})</span>{% endif %}
           {% for w in x.wirtualne_z_bledem or [] %}<div><span class="badge badge-danger">{{ w }}</span></div>{% endfor %}</td>
-        <td>{{ stan(x.stan) }}</td></tr>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan) }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-</div>
+  </div>
+</details>
 {% endif %}
 
 {% if d.pamiec %}
-<div class="panel">
-  <h2>Pamięć <span class="muted small">{{ d.pamiec | length }} modułów{% if d.ram_bajty %}, {{ d.ram_bajty | bytes }}{% endif %}</span></h2>
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Pamięć</span> <span class="muted small">{{ d.pamiec | length }} modułów{% if d.ram_bajty %} · {{ d.ram_bajty | bytes }}{% endif %}</span>{{ zle(d.pamiec) }}</summary>
+  <div class="wirt-ceph-tresc">
   <div class="tabela-przewijana">
-  <table class="table">
+  <table class="table sortowalna">
     <thead><tr><th>Slot</th><th class="num">Rozmiar</th><th>Typ</th><th class="num">Prędkość</th><th>Producent / part</th><th>Numer seryjny</th><th>Stan</th></tr></thead>
     <tbody>
     {% for x in d.pamiec %}
       <tr><td>{{ x.slot or '—' }}</td>
-        <td class="num">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
+        <td class="num" data-sort="{{ x.rozmiar_bajty or 0 }}">{{ x.rozmiar_bajty | bytes if x.rozmiar_bajty else '—' }}</td>
         <td class="small">{{ x.typ or '—' }}{% if x.ranga %} <span class="muted">{{ x.ranga }}</span>{% endif %}</td>
-        <td class="num small">{% if x.predkosc_robocza %}{{ x.predkosc_robocza }}{% if x.predkosc and x.predkosc != x.predkosc_robocza %} <span class="muted">/ {{ x.predkosc }}</span>{% endif %} MT/s{% elif x.predkosc %}{{ x.predkosc }} MT/s{% else %}—{% endif %}</td>
+        <td class="num small" data-sort="{{ x.predkosc_robocza or x.predkosc or 0 }}">{% if x.predkosc_robocza %}{{ x.predkosc_robocza }}{% if x.predkosc and x.predkosc != x.predkosc_robocza %} <span class="muted">/ {{ x.predkosc }}</span>{% endif %} MT/s{% elif x.predkosc %}{{ x.predkosc }} MT/s{% else %}—{% endif %}</td>
         <td class="small">{{ x.producent or '—' }}{% if x.part %} <span class="muted">{{ x.part }}</span>{% endif %}</td>
         <td class="small"><code>{{ x.numer_seryjny or '—' }}</code></td>
-        <td>{{ stan(x.stan) }}</td></tr>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan) }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-</div>
+  </div>
+</details>
 {% endif %}
 
 {% if d.porty %}
-<div class="panel">
-  <h2>Porty sieciowe <span class="muted small">{{ d.porty | length }}, połączone {{ d.porty | selectattr('lacze', 'equalto', 'Up') | list | length }}</span></h2>
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Porty sieciowe</span> <span class="muted small">{{ d.porty | length }} · połączone {{ d.porty | selectattr('lacze', 'equalto', 'Up') | list | length }}</span></summary>
+  <div class="wirt-ceph-tresc">
   <div class="tabela-przewijana">
-  <table class="table">
+  <table class="table sortowalna">
     <thead><tr><th>Port</th><th>Karta</th><th>MAC</th><th>Łącze</th><th class="num">Prędkość</th></tr></thead>
     <tbody>
     {% for x in d.porty %}
@@ -81,56 +93,64 @@
         <td class="small">{{ x.opis or '—' }}{% if x.producent %} <span class="muted">{{ x.producent }}</span>{% endif %}</td>
         <td class="small"><code>{{ x.mac or '—' }}</code></td>
         <td>{% if x.lacze == 'Up' %}<span class="badge badge-ok">połączony</span>{% elif x.lacze == 'Down' %}<span class="badge">rozłączony</span>{% else %}{{ x.lacze or '—' }}{% endif %}</td>
-        <td class="num small">{% if x.predkosc_mbps %}{{ (x.predkosc_mbps / 1000) | round(1) if x.predkosc_mbps >= 1000 else x.predkosc_mbps }} {{ 'Gb/s' if x.predkosc_mbps >= 1000 else 'Mb/s' }}{% else %}—{% endif %}</td></tr>
+        <td class="num small" data-sort="{{ x.predkosc_mbps or 0 }}">{% if x.predkosc_mbps %}{{ (x.predkosc_mbps / 1000) | round(1) if x.predkosc_mbps >= 1000 else x.predkosc_mbps }} {{ 'Gb/s' if x.predkosc_mbps >= 1000 else 'Mb/s' }}{% else %}—{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-</div>
+  </div>
+</details>
 {% endif %}
 
 {% if d.zasilacze %}
-<div class="panel">
-  <h2>Zasilacze <span class="muted small">{{ d.zasilacze | length }}</span></h2>
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Zasilacze</span> <span class="muted small">{{ d.zasilacze | length }}{% if d.zasilacze | selectattr('moc_w') | list %} · razem {{ d.zasilacze | selectattr('moc_w') | sum(attribute='moc_w') }} W{% endif %}</span>{{ zle(d.zasilacze) }}</summary>
+  <div class="wirt-ceph-tresc">
   <div class="tabela-przewijana">
-  <table class="table">
+  <table class="table sortowalna">
     <thead><tr><th>Nazwa</th><th>Model</th><th class="num">Moc</th><th class="num">Napięcie</th><th>Firmware</th><th>Numer seryjny</th><th>Stan</th></tr></thead>
     <tbody>
     {% for x in d.zasilacze %}
       <tr><td>{{ x.nazwa or '—' }}</td><td class="small">{{ x.model or '—' }}</td>
-        <td class="num">{{ x.moc_w ~ ' W' if x.moc_w else '—' }}</td><td class="num">{{ x.napiecie ~ ' V' if x.napiecie else '—' }}</td>
+        <td class="num" data-sort="{{ x.moc_w or 0 }}">{{ x.moc_w ~ ' W' if x.moc_w else '—' }}</td>
+        <td class="num" data-sort="{{ x.napiecie or 0 }}">{{ x.napiecie ~ ' V' if x.napiecie else '—' }}</td>
         <td class="small">{{ x.firmware or '—' }}</td><td class="small"><code>{{ x.numer_seryjny or '—' }}</code></td>
-        <td>{{ stan(x.stan) }}</td></tr>
+        <td data-sort="{{ x.stan or '' }}">{{ stan(x.stan) }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-</div>
+  </div>
+</details>
 {% endif %}
 
 {% if d.karty_pcie %}
-<div class="panel">
-  <h2>Karty i urządzenia PCIe <span class="muted small">{{ d.karty_pcie | length }}</span></h2>
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Karty i urządzenia PCIe</span> <span class="muted small">{{ d.karty_pcie | length }}</span></summary>
+  <div class="wirt-ceph-tresc">
   <div class="tabela-przewijana">
-  <table class="table">
+  <table class="table sortowalna">
     <thead><tr><th>Slot</th><th>Opis</th><th>Producent</th></tr></thead>
     <tbody>
     {% for x in d.karty_pcie %}<tr><td class="small">{{ x.slot or '—' }}</td><td>{{ x.opis or '—' }}</td><td class="small">{{ x.producent or '—' }}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>
-</div>
+  </div>
+</details>
 {% endif %}
 
 {% if d.licencje %}
-<div class="panel">
-  <h2>Licencje</h2>
-  <table class="table">
+<details class="panel wirt-klaster sekcja-karty">
+  <summary><span class="wirt-tytul">Licencje</span> <span class="muted small">{{ d.licencje | length }}</span>{{ zle(d.licencje) }}</summary>
+  <div class="wirt-ceph-tresc">
+  <table class="table sortowalna">
     <thead><tr><th>Licencja</th><th>Typ</th><th>Stan</th></tr></thead>
     <tbody>
-    {% for x in d.licencje %}<tr><td>{{ x.opis or '—' }}</td><td class="small">{{ x.typ or '—' }}</td><td>{{ stan(x.stan) }}</td></tr>{% endfor %}
+    {% for x in d.licencje %}<tr><td>{{ x.opis or '—' }}</td><td class="small">{{ x.typ or '—' }}</td><td data-sort="{{ x.stan or '' }}">{{ stan(x.stan) }}</td></tr>{% endfor %}
     </tbody>
   </table>
-</div>
+  </div>
+</details>
 {% endif %}
-<p class="muted small">Dane z Dell OpenManage Enterprise, odczytane {{ sprzet_ome.widziany_o | ago }}{% if d.inwentaryzacja_o %}; inwentaryzacja w OME {{ d.inwentaryzacja_o[:16] }}{% endif %}.</p>
+<p class="muted small">Dane z Dell OpenManage Enterprise, odczytane {{ sprzet_ome.widziany_o | ago }}{% if d.inwentaryzacja_o %}; inwentaryzacja w OME {{ d.inwentaryzacja_o[:16] }}{% endif %}. Kliknij nagłówek kolumny, żeby posortować.</p>
