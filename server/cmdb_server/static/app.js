@@ -185,6 +185,38 @@
     });
   });
 
+  // Sortowanie tabel "sortowalna": klik w naglowek sortuje rosnaco, drugi -
+  // malejaco. Komorka z data-sort sortuje sie po tej wartosci (np. bajty
+  // zamiast "10.0 TB" i "2.2 GB" jako tekstu); reszta jak tekst, z liczbami
+  // w srodku ("osd.12" po "osd.9"). Ukryte filtrem wiersze zostaja ukryte.
+  document.querySelectorAll("table.sortowalna").forEach(function (tabela) {
+    var naglowki = tabela.querySelectorAll("thead th");
+    var porownaj = new Intl.Collator("pl", { numeric: true, sensitivity: "base" }).compare;
+    var LICZBA = /^-?\d+(\.\d+)?(e[-+]?\d+)?$/i;
+    function wartosc(wiersz, i) {
+      var komorka = wiersz.cells[i];
+      if (!komorka) { return ""; }
+      return komorka.hasAttribute("data-sort") ? komorka.getAttribute("data-sort") : komorka.textContent.trim();
+    }
+    naglowki.forEach(function (th, i) {
+      th.classList.add("sortuj");
+      th.setAttribute("title", "Sortuj");
+      th.addEventListener("click", function () {
+        var malejaco = th.classList.contains("sort-rosnaco");
+        naglowki.forEach(function (inny) { inny.classList.remove("sort-rosnaco", "sort-malejaco"); });
+        th.classList.add(malejaco ? "sort-malejaco" : "sort-rosnaco");
+        var tbody = tabela.tBodies[0];
+        var wiersze = Array.prototype.slice.call(tbody.rows);
+        wiersze.sort(function (a, b) {
+          var x = wartosc(a, i), y = wartosc(b, i);
+          var wynik = LICZBA.test(x) && LICZBA.test(y) ? parseFloat(x) - parseFloat(y) : porownaj(x, y);
+          return malejaco ? -wynik : wynik;
+        });
+        wiersze.forEach(function (w) { tbody.appendChild(w); });
+      });
+    });
+  });
+
   // Potwierdzenie operacji nieodwracalnych.
   document.querySelectorAll("form[data-confirm]").forEach(function (form) {
     form.addEventListener("submit", function (event) {

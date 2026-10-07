@@ -108,6 +108,10 @@ def test_serwer_z_ome_dopisuje_sie_do_hosta_esxi(client, tenant_a, make_user):
     assert "<b>Critical</b>: Disk 3 in Backplane 1" in karta and "s/n D3" in karta
     # Zakladka "Sprzet (OME)" z pelnym inwentarzem i znacznikiem problemu.
     assert 'data-tab="ome">Sprzęt (OME) <span class="badge badge-warn"' in karta
+    zakladka = karta.split('data-panel="ome"', 1)[1].split("</section>", 1)[0]
+    assert zakladka.count('<details class="panel wirt-klaster sekcja-karty">') == 7 and "<details open" not in zakladka
+    assert zakladka.count('class="table sortowalna"') == 7 and f'data-sort="{2 * 2**40}"' in zakladka
+    assert "zasilacze" not in zakladka or "w złym stanie: 1" in zakladka
     for tekst in ("DIMM A1", "2933 <span class=\"muted\">/ 3200</span> MT/s", "25.0 Gb/s", "PERC H750 Adapter",
                   "8.0 GB", "VD1: Degraded", "750 W", ">Failed<", "Integrated Matrox G200eW3", "iDRAC9 Enterprise License",
                   "Disk 3 in Backplane 1"):

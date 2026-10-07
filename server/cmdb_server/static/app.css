@@ -1928,3 +1928,13 @@ label.check input { width: auto; margin-top: 3px; }
 .ceph-ostrzezenia { margin: 0 0 10px; padding-left: 18px; color: var(--warn-fg); }
 .wirt-ceph-tresc { padding: 0 16px 12px 34px; }
 .wirt-sekcja { margin: 22px 0 10px; font-size: 18px; }
+
+/* Tabele sortowalne: naglowek klikalny, strzalka przy aktywnej kolumnie. */
+table.sortowalna th.sortuj { cursor: pointer; user-select: none; white-space: nowrap; }
+table.sortowalna th.sortuj:hover { color: var(--text); }
+table.sortowalna th.sort-rosnaco::after { content: " ▲"; font-size: 9px; }
+table.sortowalna th.sort-malejaco::after { content: " ▼"; font-size: 9px; }
+/* Sekcje zakladek Ceph / Sprzet (OME): zwiniete panele jedna pod druga. */
+.sekcja-karty { margin-bottom: 10px; }
+.sekcja-karty .wirt-ceph-tresc { padding: 4px 16px 14px; }
+.sekcja-karty .table-filter { margin: 6px 0 8px; }
