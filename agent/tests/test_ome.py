@@ -31,7 +31,25 @@ INWENTARZ = {"value": [
     {"InventoryType": "serverProcessors", "InventoryInfo": [
         {"ModelName": "Intel(R) Xeon(R) Gold 6430", "NumberOfCores": 32, "NumberOfEnabledThreads": 64},
         {"ModelName": "Intel(R) Xeon(R) Gold 6430", "NumberOfCores": 32, "NumberOfEnabledThreads": 64}]},
-    {"InventoryType": "serverMemoryDevices", "InventoryInfo": [{"Size": 65536}] * 16},
+    {"InventoryType": "serverMemoryDevices", "InventoryInfo": [
+        {"Name": "DIMM.Socket.A1", "DeviceDescription": "DIMM A1", "Size": 65536, "Status": 1000,
+         "Manufacturer": "Hynix Semiconductor", "PartNumber": "HMAA8GR7", "SerialNumber": "54C388A6",
+         "TypeDetails": "DDR4", "Speed": 3200, "CurrentOperatingSpeed": 2933, "Rank": "Double Rank"}] * 16},
+    {"InventoryType": "serverRaidControllers", "InventoryInfo": [
+        {"Name": "PERC H750 Adapter", "DeviceDescription": "RAID Controller in Slot 3", "Status": 1000,
+         "StatusTypeString": "NORMAL", "FirmwareVersion": "52.26.0-5179", "CacheSizeInMb": 8192,
+         "ServerVirtualDisks": [{"Name": "NonRAID Disk 29", "Layout": "RAID-0", "Status": 1000, "State": "Online"},
+                                {"Name": "VD1", "Layout": "RAID-1", "Status": 3000, "State": "Degraded"}]}]},
+    {"InventoryType": "serverPowerSupplies", "InventoryInfo": [
+        {"Name": "Power Supply 1", "Model": "PWR SPLY,750W,RDNT,DELTA", "OutputWatts": 750, "Status": 1000,
+         "FirmwareVersion": "00.30.C2", "SerialNumber": "CNDED0017U6CR3", "InputVoltage": 228,
+         "OperationalStatus": "OK"},
+        {"Name": "Power Supply 2", "Model": "PWR SPLY,750W,RDNT,DELTA", "OutputWatts": 750, "Status": 4000,
+         "OperationalStatus": "Failed", "State": "Presence Detected"}]},
+    {"InventoryType": "serverDeviceCards", "InventoryInfo": [
+        {"SlotNumber": "Video.Embedded.1-1", "Manufacturer": "Matrox", "Description": "Integrated Matrox G200eW3"}]},
+    {"InventoryType": "deviceLicense", "InventoryInfo": [
+        {"LicenseDescription": "iDRAC9 Enterprise License", "LicenseStatus": 1000, "LicenseType": {"Name": "Perpetual"}}]},
     # Ksztalt jak w OME 4.x: rozmiar bez jednostki (GB), BusType, pelna nazwa nosnika.
     {"InventoryType": "serverArrayDisks", "InventoryInfo": [
         {"Size": "698.64", "MediaType": "Solid State Drive", "BusType": "PCIe", "Status": 1000, "StatusString": "OK",
@@ -45,8 +63,11 @@ INWENTARZ = {"value": [
          "RaidStatus": "Failed", "ModelNumber": "AL15SEB24EQY", "SerialNumber": "",
          "DiskNumber": "Disk 11 in Backplane 1 of RAID Controller in Slot 3"}]},
     {"InventoryType": "serverNetworkInterfaces", "InventoryInfo": [
-        {"Ports": [{"Partitions": [{"CurrentMacAddress": "B0:26:28:AA:BB:01"}]},
-                   {"Partitions": [{"CurrentMacAddress": "B0:26:28:AA:BB:02"}]}]}]},
+        {"NicId": "NIC.Integrated.1", "VendorName": "Broadcom Corp", "Ports": [
+            {"PortId": "NIC.Integrated.1-1", "ProductName": "Broadcom BCM57414 25GbE - B0:26:28:AA:BB:01",
+             "LinkStatus": "Up", "LinkSpeed": 25000, "Partitions": [{"CurrentMacAddress": "B0:26:28:AA:BB:01"}]},
+            {"PortId": "NIC.Integrated.1-2", "ProductName": "Broadcom BCM57414 25GbE - B0:26:28:AA:BB:02",
+             "LinkStatus": "Down", "LinkSpeed": 0, "Partitions": [{"CurrentMacAddress": "B0:26:28:AA:BB:02"}]}]}]},
     {"InventoryType": "deviceSoftware", "InventoryInfo": [
         {"DeviceDescription": "Integrated Dell Remote Access Controller", "Version": "7.10.30.00"},
         {"DeviceDescription": "BIOS", "Version": "2.3.5"}]},
@@ -135,14 +156,30 @@ def test_pelny_odczyt_serwerow(tmp_path):
         "bios_wersja": "2.3.5", "cpu_model": "Intel(R) Xeon(R) Gold 6430", "gniazda": 2, "rdzenie": 64,
         "watki": 128, "ram_bajty": 1024 * 2**30,
         "dyski": [{"rozmiar_bajty": int(698.64 * 2**30), "typ": "SSD PCIe",
-                   "model": "Dell Express Flash NVMe P4800X 750GB SF", "numer_seryjny": "PHKE1126018D750BGN",
+                   "model": "Dell Express Flash NVMe P4800X 750GB SF", "producent": None, "numer_seryjny": "PHKE1126018D750BGN",
                    "stan": None, "miejsce": "PCIe SSD in Slot 8 in Bay 1"},
-                  {"rozmiar_bajty": int(1788.5 * 2**30), "typ": "HDD SAS", "model": "ST2000NM",
+                  {"rozmiar_bajty": int(1788.5 * 2**30), "typ": "HDD SAS", "model": "ST2000NM", "producent": None,
                    "numer_seryjny": "ZC1ABC", "stan": "Critical", "miejsce": "Disk 3 in Backplane 1"},
-                  {"rozmiar_bajty": None, "typ": "HDD SAS", "model": "AL15SEB24EQY", "numer_seryjny": None,
+                  {"rozmiar_bajty": None, "typ": "HDD SAS", "model": "AL15SEB24EQY", "producent": None, "numer_seryjny": None,
                    "stan": "Error, RAID: Failed", "miejsce": "Disk 11 in Backplane 1 of RAID Controller in Slot 3"}],
         "mac": ["b0:26:28:aa:bb:01", "b0:26:28:aa:bb:02"], "system": "VMware ESXi 8.0.3",
-        "hostname_os": "esx01.firma.pl", "obudowa": None, "inwentaryzacja_o": "2026-10-06 22:00:01.123"}
+        "hostname_os": "esx01.firma.pl", "obudowa": None, "inwentaryzacja_o": "2026-10-06 22:00:01.123",
+        "pamiec": [{"slot": "DIMM A1", "rozmiar_bajty": 64 * 2**30, "typ": "DDR4", "predkosc": 3200,
+                    "predkosc_robocza": 2933, "producent": "Hynix Semiconductor", "part": "HMAA8GR7",
+                    "numer_seryjny": "54C388A6", "ranga": "Double Rank", "stan": None}] * 16,
+        "porty": [{"port": "NIC.Integrated.1-1", "karta": "NIC.Integrated.1", "producent": "Broadcom Corp",
+                   "opis": "Broadcom BCM57414 25GbE", "mac": "b0:26:28:aa:bb:01", "lacze": "Up", "predkosc_mbps": 25000},
+                  {"port": "NIC.Integrated.1-2", "karta": "NIC.Integrated.1", "producent": "Broadcom Corp",
+                   "opis": "Broadcom BCM57414 25GbE", "mac": "b0:26:28:aa:bb:02", "lacze": "Down", "predkosc_mbps": None}],
+        "kontrolery": [{"nazwa": "PERC H750 Adapter", "opis": "RAID Controller in Slot 3", "firmware": "52.26.0-5179",
+                        "cache_mb": 8192, "stan": None, "dyski_wirtualne": 2, "uklady": "1 × RAID-0, 1 × RAID-1",
+                        "wirtualne_z_bledem": ["VD1: Degraded"]}],
+        "zasilacze": [{"nazwa": "Power Supply 1", "model": "PWR SPLY,750W,RDNT,DELTA", "moc_w": 750,
+                       "firmware": "00.30.C2", "numer_seryjny": "CNDED0017U6CR3", "napiecie": 228, "stan": None},
+                      {"nazwa": "Power Supply 2", "model": "PWR SPLY,750W,RDNT,DELTA", "moc_w": 750,
+                       "firmware": None, "numer_seryjny": None, "napiecie": None, "stan": "Failed"}],
+        "karty_pcie": [{"slot": "Video.Embedded.1-1", "producent": "Matrox", "opis": "Integrated Matrox G200eW3"}],
+        "licencje": [{"opis": "iDRAC9 Enterprise License", "typ": "Perpetual", "stan": None}]}
     assert wynik["urzadzenia"][1]["zdrowie"] == "CRITICAL" and wynik["urzadzenia"][1]["zasilanie"] == "OFF"
     assert sum(1 for m, s in zapytania if s == "/api/DeviceService/Devices") == 3  # stronicowanie
     # Tylko odczyt: jedyne zapisy to zalozenie i zamkniecie sesji.

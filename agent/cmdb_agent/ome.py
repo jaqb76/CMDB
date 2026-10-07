@@ -208,6 +208,82 @@ def _inwentarz(szczegoly) -> dict[str, list[dict]]:
     return wynik
 
 
+def _stan(wpis: dict, *pola: str) -> str | None:
+    """Stan komponentu, gdy inny niz OK (kod OME 1000 = OK) - pusty przy sprawnym."""
+    kod = _liczba(wpis.get("Status"))
+    if kod in (1000, None):
+        return None
+    return _tekst(next((wpis.get(p) for p in pola if wpis.get(p)), None) or ZDROWIE.get(kod, kod), 32)
+
+
+def pamiec(inw: dict) -> list[dict]:
+    wynik = []
+    for m in inw.get("serverMemoryDevices", [])[:128]:
+        rozmiar = _liczba(m.get("Size"))
+        wynik.append({"slot": _tekst(m.get("DeviceDescription") or m.get("Name"), 64),
+                      "rozmiar_bajty": rozmiar * 2**20 if rozmiar else None,
+                      "typ": _tekst(m.get("TypeDetails"), 32), "predkosc": _liczba(m.get("Speed")),
+                      "predkosc_robocza": _liczba(m.get("CurrentOperatingSpeed")),
+                      "producent": _tekst(m.get("Manufacturer"), 64), "part": _tekst(m.get("PartNumber"), 64),
+                      "numer_seryjny": _tekst(m.get("SerialNumber"), 64), "ranga": _tekst(m.get("Rank"), 32),
+                      "stan": _stan(m)})
+    return wynik
+
+
+def porty_sieciowe(inw: dict) -> list[dict]:
+    wynik = []
+    for karta in inw.get("serverNetworkInterfaces", []):
+        for port in karta.get("Ports") or []:
+            if not isinstance(port, dict):
+                continue
+            partycja = next(iter(port.get("Partitions") or []), {}) or {}
+            mac = _tekst(_z(partycja, "CurrentMacAddress", "PermanentMacAddress"), 32)
+            # "Broadcom NetXtreme ... (BCM5720) - 34:73:5A:..." - MAC jest osobno.
+            opis = str(port.get("ProductName") or "").rsplit(" - ", 1)[0] if mac else port.get("ProductName")
+            wynik.append({"port": _tekst(port.get("PortId"), 64), "karta": _tekst(karta.get("NicId"), 64),
+                          "producent": _tekst(karta.get("VendorName"), 64), "opis": _tekst(opis),
+                          "mac": mac.lower() if mac else None, "lacze": _tekst(port.get("LinkStatus"), 16),
+                          "predkosc_mbps": _liczba(port.get("LinkSpeed")) or None})
+    return wynik[:64]
+
+
+def kontrolery(inw: dict) -> list[dict]:
+    wynik = []
+    for k in inw.get("serverRaidControllers", [])[:16]:
+        wirtualne = [w for w in k.get("ServerVirtualDisks") or [] if isinstance(w, dict)]
+        uklady: dict[str, int] = {}
+        for w in wirtualne:
+            uklady[str(w.get("Layout") or "?")] = uklady.get(str(w.get("Layout") or "?"), 0) + 1
+        wynik.append({"nazwa": _tekst(k.get("Name"), 128), "opis": _tekst(k.get("DeviceDescription"), 128),
+                      "firmware": _tekst(k.get("FirmwareVersion"), 64), "cache_mb": _liczba(k.get("CacheSizeInMb")),
+                      "stan": _stan(k, "StatusTypeString"),
+                      "dyski_wirtualne": len(wirtualne),
+                      "uklady": ", ".join(f"{n} × {u}" for u, n in sorted(uklady.items()))[:255] or None,
+                      "wirtualne_z_bledem": [_tekst(f"{w.get('Name')}: {w.get('State')}", 128) for w in wirtualne
+                                             if _liczba(w.get("Status")) not in (1000, None)][:32]})
+    return wynik
+
+
+def zasilacze(inw: dict) -> list[dict]:
+    return [{"nazwa": _tekst(z.get("Name"), 64), "model": _tekst(z.get("Model"), 128),
+             "moc_w": _liczba(z.get("OutputWatts")), "firmware": _tekst(z.get("FirmwareVersion"), 32),
+             "numer_seryjny": _tekst(z.get("SerialNumber"), 64), "napiecie": _liczba(z.get("InputVoltage")),
+             "stan": _stan(z, "OperationalStatus", "State")}
+            for z in inw.get("serverPowerSupplies", [])[:16]]
+
+
+def karty_pcie(inw: dict) -> list[dict]:
+    return [{"slot": _tekst(k.get("SlotNumber"), 64), "producent": _tekst(k.get("Manufacturer"), 128),
+             "opis": _tekst(k.get("Description"))}
+            for k in inw.get("serverDeviceCards", [])[:64]]
+
+
+def licencje(inw: dict) -> list[dict]:
+    return [{"opis": _tekst(lic.get("LicenseDescription"), 128), "typ": _tekst(_z(lic, "LicenseType.Name"), 32),
+             "stan": None if _liczba(lic.get("LicenseStatus")) in (1000, None) else _tekst(lic.get("LicenseStatus"), 32)}
+            for lic in inw.get("deviceLicense", [])[:8]]
+
+
 def _idrac_ip(d: dict) -> str | None:
     for zarzadzanie in d.get("DeviceManagement") or []:
         if isinstance(zarzadzanie, dict) and zarzadzanie.get("NetworkAddress"):
@@ -218,7 +294,7 @@ def _idrac_ip(d: dict) -> str | None:
 def serwer(d: dict, szczegoly: dict | None = None) -> dict:
     inw = _inwentarz(szczegoly)
     procesory = inw.get("serverProcessors", [])
-    pamiec = inw.get("serverMemoryDevices", [])
+    moduly = inw.get("serverMemoryDevices", [])
     dyski = []
     for dysk in inw.get("serverArrayDisks", [])[:64]:
         nosnik = str(dysk.get("MediaType") or "").strip()
@@ -232,6 +308,7 @@ def serwer(d: dict, szczegoly: dict | None = None) -> dict:
         dyski.append({"rozmiar_bajty": _rozmiar_bajty(dysk.get("Size")),
                       "typ": _tekst(" ".join(str(x) for x in (nosnik, magistrala) if x), 64),
                       "model": _tekst(dysk.get("ModelNumber"), 128),
+                      "producent": _tekst(dysk.get("VendorName"), 64),
                       "numer_seryjny": _tekst(dysk.get("SerialNumber"), 64),
                       "stan": stan,
                       "miejsce": _tekst(dysk.get("DiskNumber"), 128)})
@@ -253,7 +330,7 @@ def serwer(d: dict, szczegoly: dict | None = None) -> dict:
 
     system = next(iter(inw.get("serverOperatingSystems", [])), {})
     pierwszy_cpu = next(iter(procesory), {})
-    ram_mb = sum(_liczba(p.get("Size")) or 0 for p in pamiec)
+    ram_mb = sum(_liczba(p.get("Size")) or 0 for p in moduly)
     return {
         "ext_id": _tekst(d.get("DeviceServiceTag"), 64),
         "nazwa": _tekst(d.get("DeviceName")) or "",
@@ -275,6 +352,13 @@ def serwer(d: dict, szczegoly: dict | None = None) -> dict:
         "hostname_os": _tekst(system.get("Hostname")),
         "obudowa": _tekst(d.get("ChassisServiceTag"), 64),
         "inwentaryzacja_o": _tekst(d.get("LastInventoryTime"), 64),
+        # Szczegoly do zakladki "Sprzet (OME)" na karcie.
+        "pamiec": pamiec(inw),
+        "porty": porty_sieciowe(inw),
+        "kontrolery": kontrolery(inw),
+        "zasilacze": zasilacze(inw),
+        "karty_pcie": karty_pcie(inw),
+        "licencje": licencje(inw),
     }
 
 

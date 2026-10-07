@@ -33,7 +33,17 @@ def serwer(tag, **zmiany):
                    {"rozmiar_bajty": 2 * 2**40, "typ": "SSD SAS", "model": "KPM6", "numer_seryjny": "D3",
                     "stan": "Critical", "miejsce": "Disk 3 in Backplane 1"},
                    {"rozmiar_bajty": 750 * 2**30, "typ": "SSD PCIe", "model": "P4800X"}],
-         "system": "VMware ESXi 8.0.3", "hostname_os": None}
+         "system": "VMware ESXi 8.0.3", "hostname_os": None,
+         "pamiec": [{"slot": "DIMM A1", "rozmiar_bajty": 64 * 2**30, "typ": "DDR4", "predkosc": 3200,
+                     "predkosc_robocza": 2933, "producent": "Hynix", "part": "HMAA8GR7", "numer_seryjny": "54C388A6"}],
+         "porty": [{"port": "NIC.Integrated.1-1", "opis": "Broadcom BCM57414 25GbE", "mac": "b0:26:28:aa:bb:01",
+                    "lacze": "Up", "predkosc_mbps": 25000}],
+         "kontrolery": [{"nazwa": "PERC H750 Adapter", "opis": "RAID Controller in Slot 3", "firmware": "52.26.0",
+                         "cache_mb": 8192, "dyski_wirtualne": 2, "uklady": "1 × RAID-0, 1 × RAID-1",
+                         "wirtualne_z_bledem": ["VD1: Degraded"]}],
+         "zasilacze": [{"nazwa": "Power Supply 2", "model": "PWR SPLY,750W", "moc_w": 750, "stan": "Failed"}],
+         "karty_pcie": [{"slot": "Video.Embedded.1-1", "producent": "Matrox", "opis": "Integrated Matrox G200eW3"}],
+         "licencje": [{"opis": "iDRAC9 Enterprise License", "typ": "Perpetual"}]}
     s.update(zmiany)
     return s
 
@@ -96,6 +106,12 @@ def test_serwer_z_ome_dopisuje_sie_do_hosta_esxi(client, tenant_a, make_user):
     assert "3 × 2.0 TB" in karta and "1 × 750.0 GB" in karta
     assert "razem 4 dyski, 6.7 TB" in karta  # liczba z odmiana i laczna pojemnosc
     assert "<b>Critical</b>: Disk 3 in Backplane 1" in karta and "s/n D3" in karta
+    # Zakladka "Sprzet (OME)" z pelnym inwentarzem i znacznikiem problemu.
+    assert 'data-tab="ome">Sprzęt (OME) <span class="badge badge-warn"' in karta
+    for tekst in ("DIMM A1", "2933 <span class=\"muted\">/ 3200</span> MT/s", "25.0 Gb/s", "PERC H750 Adapter",
+                  "8.0 GB", "VD1: Degraded", "750 W", ">Failed<", "Integrated Matrox G200eW3", "iDRAC9 Enterprise License",
+                  "Disk 3 in Backplane 1"):
+        assert tekst in karta, tekst
     assert [w["nazwa"] for w in client.get("/szukaj.json", params={"q": "10.70.0.99"}).json()["wyniki"]] == ["srv-backup"]
     assert "OME DC1" not in client.get("/wirtualizacja").text  # OME to sprzet, nie zrodlo wirtualizacji
 

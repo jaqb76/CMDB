@@ -21,10 +21,67 @@ class DyskOme(_Model):
     rozmiar_bajty: int | None = Field(default=None, ge=0)
     typ: str | None = Field(default=None, max_length=64)
     model: str | None = Field(default=None, max_length=128)
+    producent: str | None = Field(default=None, max_length=64)
     numer_seryjny: str | None = Field(default=None, max_length=64)
     # Stan z OME, gdy inny niz OK (np. "Critical") - do wyroznienia na karcie.
     stan: str | None = Field(default=None, max_length=32)
     miejsce: str | None = Field(default=None, max_length=128)
+
+
+class PamiecOme(_Model):
+    slot: str | None = Field(default=None, max_length=64)
+    rozmiar_bajty: int | None = Field(default=None, ge=0)
+    typ: str | None = Field(default=None, max_length=32)
+    predkosc: int | None = Field(default=None, ge=0)
+    predkosc_robocza: int | None = Field(default=None, ge=0)
+    producent: str | None = Field(default=None, max_length=64)
+    part: str | None = Field(default=None, max_length=64)
+    numer_seryjny: str | None = Field(default=None, max_length=64)
+    ranga: str | None = Field(default=None, max_length=32)
+    stan: str | None = Field(default=None, max_length=32)
+
+
+class PortOme(_Model):
+    port: str | None = Field(default=None, max_length=64)
+    karta: str | None = Field(default=None, max_length=64)
+    producent: str | None = Field(default=None, max_length=64)
+    opis: str | None = Field(default=None, max_length=_TEKST)
+    mac: str | None = Field(default=None, max_length=32)
+    lacze: str | None = Field(default=None, max_length=16)
+    predkosc_mbps: int | None = Field(default=None, ge=0)
+
+
+class KontrolerOme(_Model):
+    nazwa: str | None = Field(default=None, max_length=128)
+    opis: str | None = Field(default=None, max_length=128)
+    firmware: str | None = Field(default=None, max_length=64)
+    cache_mb: int | None = Field(default=None, ge=0)
+    stan: str | None = Field(default=None, max_length=32)
+    dyski_wirtualne: int | None = Field(default=None, ge=0)
+    uklady: str | None = Field(default=None, max_length=_TEKST)
+    wirtualne_z_bledem: list[str] = Field(default_factory=list, max_length=32)
+
+
+class ZasilaczOme(_Model):
+    nazwa: str | None = Field(default=None, max_length=64)
+    model: str | None = Field(default=None, max_length=128)
+    moc_w: int | None = Field(default=None, ge=0)
+    firmware: str | None = Field(default=None, max_length=32)
+    numer_seryjny: str | None = Field(default=None, max_length=64)
+    napiecie: int | None = Field(default=None, ge=0)
+    stan: str | None = Field(default=None, max_length=32)
+
+
+class KartaPcieOme(_Model):
+    slot: str | None = Field(default=None, max_length=64)
+    producent: str | None = Field(default=None, max_length=128)
+    opis: str | None = Field(default=None, max_length=_TEKST)
+
+
+class LicencjaOme(_Model):
+    opis: str | None = Field(default=None, max_length=128)
+    typ: str | None = Field(default=None, max_length=32)
+    stan: str | None = Field(default=None, max_length=32)
 
 
 class SerwerOme(_Model):
@@ -48,6 +105,13 @@ class SerwerOme(_Model):
     hostname_os: str | None = Field(default=None, max_length=_TEKST)
     obudowa: str | None = Field(default=None, max_length=64)
     inwentaryzacja_o: str | None = Field(default=None, max_length=64)
+    # Szczegoly do zakladki "Sprzet (OME)" na karcie.
+    pamiec: list[PamiecOme] = Field(default_factory=list, max_length=128)
+    porty: list[PortOme] = Field(default_factory=list, max_length=64)
+    kontrolery: list[KontrolerOme] = Field(default_factory=list, max_length=16)
+    zasilacze: list[ZasilaczOme] = Field(default_factory=list, max_length=16)
+    karty_pcie: list[KartaPcieOme] = Field(default_factory=list, max_length=64)
+    licencje: list[LicencjaOme] = Field(default_factory=list, max_length=8)
 
 
 class WynikOme(_Model):
