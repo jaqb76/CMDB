@@ -56,7 +56,7 @@ def wyslij(db: Session, tenant_id: str, adresaci: list[str], temat: str,
 
     wiadomosc = EmailMessage()
     wiadomosc["Subject"] = temat
-    wiadomosc["From"] = formataddr((konfiguracja.nazwa_nadawcy or "CMDB", konfiguracja.nadawca))
+    wiadomosc["From"] = formataddr((konfiguracja.nazwa_nadawcy or "Nexassert", konfiguracja.nadawca))
     wiadomosc["To"] = ", ".join(adresaci)
     # Wersja tekstowa nie jest ozdoba: czesc klientow i filtrow ocenia
     # wiadomosc bez alternatywy tekstowej jako podejrzana.
@@ -88,7 +88,7 @@ def sprawdz(db: Session, tenant_id: str, adres: str) -> None:
     """Wysyla wiadomosc probna - jedyny pewny sposob sprawdzenia ustawien."""
     wyslij(
         db, tenant_id, [adres],
-        "CMDB: wiadomosc probna",
-        "<p>Ustawienia poczty dzialaja. Ta wiadomosc zostala wyslana z panelu CMDB.</p>",
-        "Ustawienia poczty dzialaja. Ta wiadomosc zostala wyslana z panelu CMDB.",
+        "Nexassert: wiadomosc probna",
+        "<p>Ustawienia poczty dzialaja. Ta wiadomosc zostala wyslana z portalu Nexassert.</p>",
+        "Ustawienia poczty dzialaja. Ta wiadomosc zostala wyslana z portalu Nexassert.",
     )

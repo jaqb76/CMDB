@@ -1,6 +1,6 @@
-# CMDB Mobile
+# Nexassert Mobile
 
-Natywna aplikacja Android dla portalu CMDB. Nie osadza portalu w WebView.
+Natywna aplikacja Android dla portalu Nexassert CMDB. Nie osadza portalu w WebView.
 
 ## Wymagania
 

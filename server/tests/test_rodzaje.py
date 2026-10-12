@@ -398,7 +398,7 @@ def test_maszyna_wirtualna_bez_agenta_widzi_wyszarzone_zakladki(client, tenant_a
 
     for etykieta in ("Sprzęt", "Agent", "Oprogramowanie", "Aktualizacje",
                      "Podatności", "Użytkownicy", "Historia", "JSON"):
-        assert f"disabled title=\"Dostępne po zainstalowaniu agenta CMDB na tej maszynie\">{etykieta}<" \
+        assert f"disabled title=\"Dostępne po zainstalowaniu agenta Nexassert na tej maszynie\">{etykieta}<" \
             in przyciski.replace(' aria-disabled="true"', ""), etykieta
     assert 'data-tab="software"' not in przyciski, "wyszarzona zakladka nie przelacza panelu"
 

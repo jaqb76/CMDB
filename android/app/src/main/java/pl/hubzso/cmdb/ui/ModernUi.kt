@@ -165,19 +165,21 @@ import pl.hubzso.cmdb.data.ReportWrite
 import pl.hubzso.cmdb.data.TicketAttachment
 import pl.hubzso.cmdb.data.WybranyPlik
 
-// Granat jest kolorem marki i w motywie jasnym pelni role koloru wiodacego:
-// pasek gorny, przyciski, zaznaczone filtry. W motywie ciemnym granat zlewa
-// sie z tlem, wiec role wiodaca przejmuje jasny blekit.
-internal val BrandNavy = Color(0xFF0B3C6E)
-internal val BrandBlue = Color(0xFF2E9BF5)
-internal val BrandCyan = Color(0xFF29A0F0)
+// Barwy marki Nexassert (te same w app.css portalu i w agencie). Granat niesie
+// pasek gorny, niebieski - przyciski i zaznaczenia, turkus - akcent drugiego
+// planu. W motywie ciemnym niebieski marki jest za ciemny na granatowym tle,
+// wiec role wiodaca przejmuje jego rozjasniona wersja.
+internal val BrandNavy = Color(0xFF142A43)
+internal val BrandBlue = Color(0xFF167CBA)
+internal val BrandBlueLight = Color(0xFF4EA7E3)
+internal val BrandCyan = Color(0xFF23B8B0)
 internal val SuccessGreen = Color(0xFF23A455)
 internal val WarningAmber = Color(0xFFEE9F1B)
 internal val DangerRed = Color(0xFFDE3B40)
 
-private val LightBackground = Color(0xFFF2F4F7)
-private val DarkBackground = Color(0xFF0A1A2B)
-private val DarkSurface = Color(0xFF12263C)
+private val LightBackground = Color(0xFFF4F7FA)
+private val DarkBackground = Color(0xFF0C1828)
+private val DarkSurface = Color(0xFF132339)
 
 /**
  * Barwy, ktorych Material nie ma w swoim schemacie, a ktore musza byc inne w
@@ -202,7 +204,7 @@ private val LightExtras = CmdbColors(
     bar = BrandNavy,
     cardBorder = Color(0xFFE1E6EE),
     loginBackground = Color.White,
-    chart = listOf(BrandNavy, BrandCyan, Color(0xFFC3CBD6), Color(0xFF7E6BE0), SuccessGreen, WarningAmber),
+    chart = listOf(BrandBlue, BrandCyan, Color(0xFFC3CBD6), Color(0xFF7E6BE0), SuccessGreen, WarningAmber),
 )
 
 private val DarkExtras = CmdbColors(
@@ -212,30 +214,30 @@ private val DarkExtras = CmdbColors(
     bar = DarkBackground,
     cardBorder = Color(0xFF1E3A52),
     loginBackground = DarkBackground,
-    chart = listOf(Color(0xFF1D6FC4), BrandBlue, Color(0xFF8A99AB), Color(0xFF8B7BE8), Color(0xFF2ECC71), Color(0xFFF5A623)),
+    chart = listOf(BrandBlueLight, BrandCyan, Color(0xFF8A99AB), Color(0xFF8B7BE8), Color(0xFF2ECC71), Color(0xFFF5A623)),
 )
 
 internal val LocalCmdbColors = staticCompositionLocalOf { LightExtras }
 
 private val CmdbLightColors = lightColorScheme(
-    primary = BrandNavy,
+    primary = BrandBlue,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE3EDF9),
+    primaryContainer = Color(0xFFE1EFF8),
     onPrimaryContainer = BrandNavy,
     secondary = BrandCyan,
     background = LightBackground,
     surface = Color.White,
     surfaceVariant = Color(0xFFEAEFF5),
-    onSurface = Color(0xFF15202C),
+    onSurface = Color(0xFF15263B),
     onSurfaceVariant = Color(0xFF66748A),
     outline = Color(0xFFC6CFDA),
     error = DangerRed,
 )
 
 private val CmdbDarkColors = darkColorScheme(
-    primary = BrandBlue,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFF10365C),
+    primary = BrandBlueLight,
+    onPrimary = Color(0xFF0A1422),
+    primaryContainer = Color(0xFF123A5C),
     onPrimaryContainer = Color(0xFFD9EAFF),
     secondary = BrandCyan,
     background = DarkBackground,
@@ -330,19 +332,25 @@ internal fun ModernLoginScreen(
                     .padding(horizontal = 26.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
+                Image(
+                    painterResource(R.drawable.logo_nexassert),
+                    contentDescription = null,
+                    Modifier.fillMaxWidth().height(64.dp),
+                )
+                Spacer(Modifier.height(10.dp))
                 Text(
-                    "CMDB",
+                    "Nexassert",
                     Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 58.sp,
-                    lineHeight = 62.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 44.sp,
+                    lineHeight = 50.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Bezpieczny dostęp do infrastruktury",
+                    "One Connected View of IT.",
                     Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -427,7 +435,7 @@ internal fun ModernLoginScreen(
                     ) { Text("Konto Google, Microsoft lub GitHub") }
                 } else {
                     Text(
-                        "Tylko dla osób zaproszonych do CMDB",
+                        "Tylko dla osób zaproszonych do Nexassert",
                         Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -471,7 +479,9 @@ internal fun ModernLockScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("CMDB", color = MaterialTheme.colorScheme.primary, fontSize = 48.sp, fontWeight = FontWeight.Bold)
+            Image(painterResource(R.drawable.logo_nexassert), contentDescription = null, Modifier.height(48.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Nexassert", color = MaterialTheme.colorScheme.onSurface, fontSize = 36.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             Text(email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(40.dp))
@@ -481,7 +491,7 @@ internal fun ModernLockScreen(
             )
             Spacer(Modifier.height(16.dp))
             Text(
-                reason ?: "Odblokuj CMDB",
+                reason ?: "Odblokuj Nexassert",
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
             )

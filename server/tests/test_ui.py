@@ -284,6 +284,23 @@ def test_strony_wskazuja_ikone(client, tenant_a, make_user):
         assert 'rel="icon"' in client.get(sciezka).text, sciezka
 
 
+
+def test_marka_nexassert_na_logowaniu_i_w_menu(client, tenant_a, make_user):
+    """Logo i nazwa marki stoja na ekranie logowania i w menu portalu, a sam
+    znak jest plikiem statycznym (CSP nie wpusci SVG wklejonego stylem)."""
+    logowanie = client.get("/login").text
+    assert "Nexassert" in logowanie
+    assert 'src="/static/logo.svg"' in logowanie
+    logo = client.get("/static/logo.svg")
+    assert logo.status_code == 200
+    assert "#167cba" in logo.text and "#23b8b0" in logo.text
+
+    make_user(tenant_a["id"], "marka@firma.pl", "haslo-do-testow-123")
+    _login(client, "marka@firma.pl", "haslo-do-testow-123")
+    pulpit = client.get("/").text
+    assert "<title>" in pulpit and "Nexassert</title>" in pulpit
+    assert 'src="/static/logo.svg"' in pulpit
+
 # --- pamiec podreczna plikow statycznych -------------------------------------
 
 def test_arkusz_stylow_ma_znacznik_wersji(client, tenant_a, make_user):

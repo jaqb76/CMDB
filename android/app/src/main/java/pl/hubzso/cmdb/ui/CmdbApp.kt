@@ -457,7 +457,7 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
             val challenge = temporary.challenge(ChallengeRequest(deviceId)).challenge
             val signature = Biometria.podpisz(
                 activity, challenge, session.allowDeviceCredential,
-                _state.value.lockReason ?: "Odblokuj CMDB",
+                _state.value.lockReason ?: "Odblokuj Nexassert",
             )
             temporary.loginBiometric(BiometricRequest(deviceId, challenge, signature))
         }.onSuccess { result ->
@@ -519,7 +519,7 @@ class CmdbViewModel(application: Application) : AndroidViewModel(application) {
         if (session.biometricsEnabled && _state.value.user != null && !_state.value.locked &&
             SystemClock.elapsedRealtime() - od >= minuty * 60_000L
         ) {
-            _state.value = _state.value.copy(locked = true, lockReason = "Odblokuj CMDB")
+            _state.value = _state.value.copy(locked = true, lockReason = "Odblokuj Nexassert")
         }
     }
 
@@ -1041,8 +1041,8 @@ private fun LoginScreen(
             Modifier.fillMaxSize().padding(padding).padding(24.dp),
             verticalArrangement = Arrangement.Center,
         ) {
-            Text("CMDB", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-            Text("Bezpieczny dostęp do infrastruktury", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Nexassert", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+            Text("One Connected View of IT.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(28.dp))
             OutlinedTextField(server, { server = it }, label = { Text("Adres portalu (HTTPS)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             Spacer(Modifier.height(12.dp))

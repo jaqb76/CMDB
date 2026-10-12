@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Pulpit - CMDB{% endblock %}
+{% block title %}Pulpit - Nexassert{% endblock %}
 {% from "_pulpit.html" import ikona, ikona_typu, znak_systemu, pierscien, tabela_podatnych, wersje_agentow with context %}
 
 {% macro procent(ile) %}{{ ((ile * 100 / total) if total else 0) | round(1) }}%{% endmacro %}

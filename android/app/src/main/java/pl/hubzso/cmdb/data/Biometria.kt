@@ -138,7 +138,7 @@ object Biometria {
             )
             val info = BiometricPrompt.PromptInfo.Builder()
                 .setTitle(tytul)
-                .setSubtitle("CMDB")
+                .setSubtitle("Nexassert")
                 .setAllowedAuthenticators(uprawnienia(pin))
                 .apply { if (uprawnienia(pin) == BIOMETRIC_STRONG) setNegativeButtonText("Anuluj") }
                 .build()

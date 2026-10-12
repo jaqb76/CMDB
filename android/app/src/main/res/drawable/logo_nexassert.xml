@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sam znak Nexassert (bez kafelka) - naglowek ekranow logowania. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="72dp" android:height="48dp"
+    android:viewportWidth="60" android:viewportHeight="40">
+    <group android:translateX="-2" android:translateY="-12">
+        <path android:pathData="M4,50 L13,50 L18,14 L9,14 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="64" android:endY="0"
+                    android:startColor="#FF167CBA" android:endColor="#FF23B8B0" />
+            </aapt:attr>
+        </path>
+        <path android:pathData="M9,14 L18,14 L33,50 L24,50 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="64" android:endY="0"
+                    android:startColor="#FF167CBA" android:endColor="#FF23B8B0" />
+            </aapt:attr>
+        </path>
+        <path android:pathData="M24,50 L33,50 L46,14 L37,14 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="64" android:endY="0"
+                    android:startColor="#FF167CBA" android:endColor="#FF23B8B0" />
+            </aapt:attr>
+        </path>
+        <path android:pathData="M37,14 L46,14 L60,50 L51,50 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="64" android:endY="0"
+                    android:startColor="#FF167CBA" android:endColor="#FF23B8B0" />
+            </aapt:attr>
+        </path>
+        <path android:pathData="M36,35 L49,35 L51,40 L34,40 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="64" android:endY="0"
+                    android:startColor="#FF167CBA" android:endColor="#FF23B8B0" />
+            </aapt:attr>
+        </path>
+        <path android:fillColor="#2E061428" android:pathData="M9,14 L18,14 L33,50 L24,50 Z" />
+        <path android:fillColor="#2E061428" android:pathData="M37,14 L46,14 L60,50 L51,50 Z" />
+    </group>
+</vector>

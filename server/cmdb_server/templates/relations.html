@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Relacje zasobów - CMDB{% endblock %}
+{% block title %}Relacje zasobów - Nexassert{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Relacje zasobów</h1><div><a class="btn btn-primary" href="/relacje/mapa{% if asset_id %}?zasob={{ asset_id }}{% endif %}">Pokaż na mapie</a> <a class="btn" href="/assets/nowy">Dodaj zasób</a></div></div>
 <p class="muted">Kierunek: VM → host, host → klaster, aplikacja → serwer. Aplikacja może korzystać z wielu serwerow.

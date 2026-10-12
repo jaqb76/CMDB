@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_monitoring_stan.html" as stany %}
 {% from "_zmiany.html" import podsumowanie_raportu, tabela_zmian %}
-{% block title %}{{ asset.hostname }} - CMDB{% endblock %}
+{% block title %}{{ asset.hostname }} - Nexassert{% endblock %}
 {% block content %}
 
 <div class="page-head">
@@ -353,7 +353,7 @@
   {% set agent_mozliwy = not z_agentem and asset.typ == 'vm' %}
   {% macro zakladka_agenta(klucz, etykieta) -%}
     {%- if z_agentem -%}<button type="button" class="tab-button" data-tab="{{ klucz }}">{{ etykieta }}{{ caller() if caller else '' }}</button>
-    {%- elif agent_mozliwy -%}<button type="button" class="tab-button is-disabled" disabled aria-disabled="true" title="Dostępne po zainstalowaniu agenta CMDB na tej maszynie">{{ etykieta }}</button>
+    {%- elif agent_mozliwy -%}<button type="button" class="tab-button is-disabled" disabled aria-disabled="true" title="Dostępne po zainstalowaniu agenta Nexassert na tej maszynie">{{ etykieta }}</button>
     {%- endif -%}
   {%- endmacro %}
   <div class="tab-buttons">

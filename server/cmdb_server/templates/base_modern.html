@@ -12,7 +12,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block title %}CMDB{% endblock %}</title>
+  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block title %}Nexassert{% endblock %}</title>
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
@@ -30,8 +30,8 @@
 <div class="app-shell" data-sidebar-shell>
   <aside class="app-sidebar" aria-label="Menu portalu firmowego">
     <div class="sidebar-brand">
-      <a href="/" class="sidebar-logo" aria-label="CMDB — pulpit">C</a>
-      <a href="/" class="sidebar-brand-name">CMDB Portal</a>
+      <a href="/" class="sidebar-logo" aria-label="Nexassert — pulpit"><img src="/static/logo.svg" alt="" width="30" height="20"></a>
+      <a href="/" class="sidebar-brand-name">Nexassert <span>CMDB</span></a>
     </div>
     <button type="button" class="sidebar-toggle" data-sidebar-toggle
             aria-expanded="{{ 'true' if menu_rozwiniete else 'false' }}"
@@ -143,7 +143,7 @@
       </div>
     </header>
     <main class="content">{% block content %}{% endblock %}</main>
-    <footer class="footer">CMDB {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wyłącznie dla Twojej firmy &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span></footer>
+    <footer class="footer">Nexassert {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wyłącznie dla Twojej firmy &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span></footer>
   </div>
 </div>
 <script src="{{ zasob('app.js') }}"></script>

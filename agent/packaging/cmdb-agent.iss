@@ -8,7 +8,10 @@
 ; wdrozenie masowe przez GPO. Dzieki temu jest jedno zrodlo prawdy zamiast
 ; dwoch rozjezdzajacych sie sciezek instalacji.
 
-#define AppName        "CMDB Agent"
+; Nazwa widoczna (kreator, Programy i funkcje, menu Start). Katalog
+; instalacji, zadanie harmonogramu, AppId i AppUserModelID zostaja "CMDB" -
+; zmiana ktoregokolwiek z nich zerwalaby aktualizacje juz zainstalowanych agentow.
+#define AppName        "Nexassert Agent"
 #ifndef AppVersion
 #define AppVersion     "0.5.10"
 #endif
@@ -27,7 +30,7 @@ VersionInfoVersion={#NumericVersion}
 #endif
 AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\CMDB Agent
-DefaultGroupName=CMDB Agent
+DefaultGroupName=Nexassert Agent
 DisableProgramGroupPage=yes
 OutputDir={#BuildDir}
 OutputBaseFilename=CMDB-Agent-Setup-{#AppVersion}
@@ -54,8 +57,14 @@ Source: "uninstall-agent.ps1";        DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 ; AppUserModelID musi byc taki sam jak w gui/appearance.py - inaczej
 ; przypiety skrot i dzialajace okno to dla paska zadan dwa rozne programy.
-Name: "{group}\Status agenta CMDB"; Filename: "{app}\{#AgentExe}"; Parameters: "gui"; AppUserModelID: "CMDB.Agent.Tray"
-Name: "{group}\Odinstaluj agenta CMDB"; Filename: "{uninstallexe}"
+Name: "{group}\Status agenta Nexassert"; Filename: "{app}\{#AgentExe}"; Parameters: "gui"; AppUserModelID: "CMDB.Agent.Tray"
+Name: "{group}\Odinstaluj agenta Nexassert"; Filename: "{uninstallexe}"
+
+[InstallDelete]
+; Skroty sprzed zmiany nazwy - bez tego aktualizacja zostawilaby w menu Start
+; obie pary obok siebie.
+Type: files; Name: "{group}\Status agenta CMDB.lnk"
+Type: files; Name: "{group}\Odinstaluj agenta CMDB.lnk"
 
 [Code]
 var
@@ -66,7 +75,7 @@ var
 procedure InitializeWizard;
 begin
   ServerPage := CreateInputQueryPage(wpSelectDir,
-    'Polaczenie z serwerem CMDB',
+    'Polaczenie z serwerem Nexassert',
     'Podaj dane otrzymane od administratora',
     'Agent bedzie wysylal informacje o tej maszynie na wskazany serwer.' + #13#10 +
     'Token sluzy tylko do pierwszej rejestracji - potem maszyna posluguje sie' + #13#10 +
@@ -163,7 +172,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    WizardForm.StatusLabel.Caption := 'Rejestruje maszyne w serwerze CMDB...';
+    WizardForm.StatusLabel.Caption := 'Rejestruje maszyne w serwerze Nexassert...';
     if not Exec('powershell.exe', BuildInstallArguments(), '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
     begin
       MsgBox('Nie udalo sie uruchomic skryptu instalacyjnego (kod ' + IntToStr(ResultCode) + ').',

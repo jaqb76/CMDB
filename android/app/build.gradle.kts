@@ -14,8 +14,8 @@ android {
         applicationId = "pl.hubzso.cmdb"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.7.0"
+        versionCode = 12
+        versionName = "0.8.0"
     }
 
     // Kazdy przebieg CI generowal wlasny, losowy klucz debugowy, wiec Android

@@ -3,14 +3,14 @@
 {% block karta %}
   {% if not link %}
   <div class="login-card">
-    <h1>CMDB</h1>
+    <h1 class="login-logo"><img src="/static/logo.svg" alt="" width="48" height="32">Nexassert</h1>
     <div class="alert alert-error">Ten link jest nieważny: wygasł, został już użyty albo zastąpił go nowszy.</div>
     <p class="small">Poproś o nowy link administratora CMDB{% if not zaproszenie %} albo <a href="/haslo/zapomniane">zamów go ponownie</a>{% endif %}.</p>
     <p class="small"><a href="/login">← Logowanie</a></p>
   </div>
   {% else %}
   <form method="post" class="login-card">
-    <h1>CMDB</h1>
+    <h1 class="login-logo"><img src="/static/logo.svg" alt="" width="48" height="32">Nexassert</h1>
     {% if zaproszenie %}
       <p class="muted">Zaproszenie dla {{ link.email }}</p>
       <p class="small">Ustaw hasło do swojego konta. Po zapisaniu od razu się zalogujesz.</p>

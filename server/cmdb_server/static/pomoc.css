@@ -1,6 +1,6 @@
     :root{
       --bg:#f4f7fb; --panel:#ffffff; --text:#152033; --muted:#65758b; --line:#dfe6ef;
-      --nav:#0f1f34; --nav2:#183453; --accent:#2563eb; --accent2:#eaf2ff;
+      --nav:#142a43; --nav2:#1b3a5c; --accent:#167cba; --accent2:#eaf2ff;
       --ok:#15803d; --warn:#a16207; --danger:#b91c1c; --soft:#f8fafc;
       --radius:16px; --shadow:0 12px 34px rgba(30,41,59,.08);
     }
@@ -47,7 +47,7 @@
     pre{background:#0b1220;color:#e6edf7;border-radius:12px;padding:14px;overflow:auto;white-space:pre-wrap}
     .mock{border:1px solid #cfd8e5;border-radius:15px;overflow:hidden;background:#edf2f7;margin:16px 0;box-shadow:0 10px 25px rgba(15,23,42,.08)}
     .mock-label{font-size:12px;padding:8px 12px;background:#fff7d6;color:#7c5a00;border-bottom:1px solid #eadb9e;font-weight:700}
-    .mock-top{background:#0f1f34;color:#fff;padding:12px 16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+    .mock-top{background:#142a43;color:#fff;padding:12px 16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
     .mock-brand{font-weight:800;font-size:18px}
     .mock-nav{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#cfdeee}
     .mock-body{padding:18px;background:#f7f9fc}

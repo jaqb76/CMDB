@@ -38,28 +38,32 @@ log = logging.getLogger(__name__)
 POLL_MS = 200
 TRAY_REFRESH_MS = 30_000
 
-# Kolor kropki w zasobniku - stan widoczny bez otwierania czegokolwiek.
+# Kolor paska stanu na ikonie w zasobniku - widoczny bez otwierania czegokolwiek.
 ICON_COLORS = {
-    "ok": (34, 139, 64),
-    "error": (176, 38, 38),
-    "offline": (200, 145, 20),
-    "never": (120, 128, 140),
-    "not_configured": (120, 128, 140),
+    "ok": (34, 160, 90),
+    "error": (210, 50, 50),
+    "offline": (230, 160, 20),
+    "never": (140, 150, 162),
+    "not_configured": (140, 150, 162),
 }
 
 
 def _make_icon_image(state: str):
-    """Rysuje ikone proceduralnie - nie musimy dolaczac plikow graficznych."""
+    """Znak marki na kafelku, dol kafelka w barwie stanu - bez dolaczanych plikow.
+
+    Pasek stanu lezy ponizej znaku, wiec go nie zaslania, a przy 16 px w
+    zasobniku nadal ma trzy piksele wysokosci - dosc, zeby kolor byl widoczny.
+    """
     from PIL import Image, ImageDraw
 
     size = 64
-    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
+    image = appearance.mark_image(size=size, tile=True)
     color = ICON_COLORS.get(state, ICON_COLORS["never"])
-
-    draw.ellipse((4, 4, size - 4, size - 4), fill=color + (255,))
-    # Stylizowana litera "C" - odrozniamy agenta od innych kolorowych kropek.
-    draw.arc((18, 18, size - 18, size - 18), start=40, end=320, fill=(255, 255, 255, 255), width=7)
+    band = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(band).rounded_rectangle((0, 0, size - 1, size - 1), radius=14, fill=color + (255,))
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rectangle((0, 51, size, size), fill=255)
+    image.paste(band, (0, 0), mask)
     return image
 
 
@@ -77,7 +81,7 @@ class TrayApp:
         appearance.use_app_identity()
         self.root = tk.Tk()
         self.root.withdraw()          # ikona zyje w zasobniku, nie na pasku zadan
-        self.root.title("CMDB Agent")
+        self.root.title("Nexassert Agent")
         brand_window(self.root)
 
         self.status_window = StatusWindow(
@@ -202,8 +206,8 @@ class TrayApp:
     def _tooltip(snapshot) -> str:
         if snapshot.last_sync_at:
             when = status_module.format_relative(snapshot.last_sync_at)
-            return f"CMDB Agent - ostatnia synchronizacja {when}"
-        return "CMDB Agent - brak synchronizacji"
+            return f"Nexassert Agent - ostatnia synchronizacja {when}"
+        return "Nexassert Agent - brak synchronizacji"
 
     def _refresh_icon(self) -> None:
         """Kolor i podpowiedz ikony odswiezane cyklicznie z pliku statusu."""

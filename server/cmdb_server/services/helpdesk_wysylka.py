@@ -413,7 +413,7 @@ def sprawdz(db: Session, adres: str) -> None:
     wiadomosc["To"] = adres
     wiadomosc["Message-ID"] = make_msgid(domain=helpdesk.domena_adresu(konfiguracja.nadawca) or None)
     wiadomosc.set_content(
-        "Ustawienia wysyłki helpdesku działają. Ta wiadomość została wysłana z panelu CMDB."
+        "Ustawienia wysyłki helpdesku działają. Ta wiadomość została wysłana z portalu Nexassert."
     )
     _wyslij(konfiguracja, wiadomosc)
 
