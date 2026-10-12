@@ -159,7 +159,7 @@ def _odswiez_paczke_agenta(settings) -> None:
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="CMDB",
+        title="Nexassert CMDB",
         description="Inwentaryzacja maszyn z agentow, wielofirmowa (multi-tenant).",
         version="0.1.0",
         lifespan=lifespan,

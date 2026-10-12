@@ -58,7 +58,7 @@ class SettingsWindow:
 
         self.root = tk.Tk()
         apply_style(self.root)
-        self.root.title("CMDB Agent - konfiguracja")
+        self.root.title("Nexassert Agent - konfiguracja")
         self.root.resizable(False, False)
         self.root.minsize(640, 0)
         self.root.columnconfigure(0, weight=1)
@@ -84,7 +84,7 @@ class SettingsWindow:
 
         ttk.Label(
             frame,
-            text="Połączenie z CMDB",
+            text="Połączenie z Nexassert",
             style="Title.TLabel",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
 
@@ -127,7 +127,7 @@ class SettingsWindow:
         if is_admin():
             discovery = ttk.LabelFrame(frame, text="Wykrywanie urzadzen w sieci", padding=8)
             discovery.grid(row=10, column=0, columnspan=3, sticky="we", pady=(12, 4))
-            ttk.Label(discovery, text="Zarządzane centralnie przez administratora CMDB.",
+            ttk.Label(discovery, text="Zarządzane centralnie przez administratora Nexassert.",
                       wraplength=500).pack(anchor="w")
             self.discovery_state_var = tk.StringVar(value="Odczytywanie stanu…")
             ttk.Label(discovery, textvariable=self.discovery_state_var, wraplength=500,
@@ -439,7 +439,7 @@ def _explain_failure(returncode: int, output: str) -> str:
     if returncode == 3:
         return (
             "Brak lacznosci z serwerem. Sprawdz adres, polaczenie sieciowe "
-            "i czy zapora przepuszcza ruch HTTPS do serwera CMDB."
+            "i czy zapora przepuszcza ruch HTTPS do serwera Nexassert."
         )
     if returncode == 4:
         return (

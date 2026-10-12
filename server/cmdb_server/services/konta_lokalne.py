@@ -121,12 +121,12 @@ def wyslij_link(db: Session, tenant_id: str | None, email: str, rodzaj: str,
     if not tenant_id or poczta.ustawienia(db, tenant_id) is None:
         return False
     if rodzaj == LINK_ZAPROSZENIE:
-        temat = "Zaproszenie do CMDB"
-        tekst = (f"Masz zaproszenie do panelu CMDB. Ustaw hasło, otwierając link:\n\n{adres}\n\n"
+        temat = "Zaproszenie do Nexassert"
+        tekst = (f"Masz zaproszenie do portalu Nexassert. Ustaw hasło, otwierając link:\n\n{adres}\n\n"
                  f"Link jest ważny {get_settings().zaproszenie_dni} dni.")
     else:
-        temat = "CMDB: ustawienie nowego hasła"
-        tekst = (f"Ktoś poprosił o nowe hasło do CMDB dla adresu {email}. "
+        temat = "Nexassert: ustawienie nowego hasła"
+        tekst = (f"Ktoś poprosił o nowe hasło do portalu Nexassert dla adresu {email}. "
                  f"Jeśli to Ty, otwórz link:\n\n{adres}\n\n"
                  f"Link jest ważny {get_settings().reset_hasla_minut} minut. "
                  "Jeśli to nie Ty, zignoruj tę wiadomość - hasło się nie zmieni.")
@@ -201,7 +201,7 @@ def sprawdz_kod(sekret: str, kod: str, ostatni_krok: int | None = None,
 
 
 def adres_otpauth(sekret: str, email: str) -> str:
-    wystawca = "CMDB"
+    wystawca = "Nexassert"
     return (f"otpauth://totp/{quote(wystawca)}:{quote(email)}"
             f"?secret={sekret}&issuer={quote(wystawca)}&digits={CYFR}&period={KROK_SEKUND}")
 

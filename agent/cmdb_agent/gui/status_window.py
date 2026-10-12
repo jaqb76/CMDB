@@ -46,7 +46,7 @@ class StatusWindow:
     def _build(self) -> None:
         self.window = tk.Toplevel(self.root)
         icon = apply_style(self.window)
-        self.window.title("CMDB Agent · Status")
+        self.window.title("Nexassert Agent · Status")
         self.window.resizable(False, False)
         self.window.protocol("WM_DELETE_WINDOW", self.hide)
         frame = ttk.Frame(self.window, padding=24)
@@ -58,7 +58,7 @@ class StatusWindow:
             ttk.Label(header, image=icon).pack(side="left", padx=(0, 12))
         title = ttk.Frame(header)
         title.pack(side="left")
-        ttk.Label(title, text="CMDB Agent", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(title, text="Nexassert Agent", style="Title.TLabel").pack(anchor="w")
         ttk.Label(title, text="Inwentaryzacja i stan połączenia", style="Muted.TLabel").pack(anchor="w")
         self.version_label = ttk.Label(header, text=f"v{__version__}", style="Muted.TLabel")
         self.version_label.pack(side="right", padx=(25, 0))
@@ -74,7 +74,7 @@ class StatusWindow:
 
         detail = ttk.Frame(frame, style="Card.TFrame", padding=18)
         detail.grid(row=2, column=0, sticky="ew", pady=(0, 12))
-        rows = [("machine", "Komputer"), ("tenant", "Firma"), ("server", "Serwer CMDB"),
+        rows = [("machine", "Komputer"), ("tenant", "Firma"), ("server", "Serwer Nexassert"),
                 ("last_attempt", "Ostatnia próba"), ("next_sync", "Planowana synchronizacja"),
                 ("monitoring", "Monitorowanie usług")]
         for index, (key, label) in enumerate(rows):

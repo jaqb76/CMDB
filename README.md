@@ -1,4 +1,4 @@
-# CMDB — inwentaryzacja maszyn z agentów
+# Nexassert CMDB — inwentaryzacja maszyn z agentów
 
 System zbiera dane o sprzęcie, zainstalowanym i uruchomionym oprogramowaniu
 oraz kontach użytkowników z maszyn w firmie, przesyła je szyfrowanym

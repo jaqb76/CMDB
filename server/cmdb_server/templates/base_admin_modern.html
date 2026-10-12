@@ -10,7 +10,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block title %}Administracja - CMDB{% endblock %}</title>
+  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block title %}Administracja - Nexassert{% endblock %}</title>
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
@@ -29,8 +29,8 @@
 <div class="app-shell" data-sidebar-shell>
   <aside class="app-sidebar app-sidebar-admin" aria-label="Menu administratora głównego">
     <div class="sidebar-brand">
-      <a href="/admin" class="sidebar-logo" aria-label="CMDB — administracja">C</a>
-      <a href="/admin" class="sidebar-brand-name">CMDB <span>administracja</span></a>
+      <a href="/admin" class="sidebar-logo" aria-label="Nexassert — administracja"><img src="/static/logo.svg" alt="" width="30" height="20"></a>
+      <a href="/admin" class="sidebar-brand-name">Nexassert <span>administracja</span></a>
     </div>
     <button type="button" class="sidebar-toggle" data-sidebar-toggle
             aria-expanded="{{ 'true' if menu_rozwiniete else 'false' }}"
@@ -71,7 +71,7 @@
     <header class="topbar topbar-admin">
       <div class="topbar-context">
         <button type="button" class="topbar-menu" data-sidebar-toggle aria-expanded="false" title="Rozwiń menu" aria-label="Rozwiń menu">☰</button>
-        <div><span class="topbar-scope">CMDB</span><strong>Administrator główny</strong></div>
+        <div><span class="topbar-scope">Nexassert</span><strong>Administrator główny</strong></div>
       </div>
       <div class="userbox">
         {# Przy zwinietym menu w panelu bocznym widac tylko strzalke, wiec
@@ -84,7 +84,7 @@
       </div>
     </header>
     <main class="content">{% block content %}{% endblock %}</main>
-    <footer class="footer">CMDB &middot; panel głównego administratora &middot; widok obejmuje wszystkie firmy &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span></footer>
+    <footer class="footer">Nexassert &middot; panel głównego administratora &middot; widok obejmuje wszystkie firmy &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span></footer>
   </div>
 </div>
 <script src="{{ zasob('app.js') }}"></script>

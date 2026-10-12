@@ -2,7 +2,7 @@
 {% block tytul %}Kod weryfikacyjny{% endblock %}
 {% block karta %}
   <form method="post" action="/login/kod" class="login-card" autocomplete="off">
-    <h1>CMDB</h1>
+    <h1 class="login-logo"><img src="/static/logo.svg" alt="" width="48" height="32">Nexassert</h1>
     {% if konfiguracja %}
       <p class="muted">Ustaw weryfikację dwuetapową dla {{ email }}</p>
       <p class="small">To konto musi mieć weryfikację dwuetapową. Zeskanuj kod aplikacją

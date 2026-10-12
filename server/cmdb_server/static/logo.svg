@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2 12 60 40" role="img" aria-label="Nexassert">
+<!-- Znak Nexassert. Wspolrzedne jak MARK_RIBBONS w agent/cmdb_agent/gui/appearance.py. -->
+<defs><linearGradient id="nx" x1="0" x2="64" y1="0" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#167cba"/><stop offset="1" stop-color="#23b8b0"/></linearGradient></defs>
+<g fill="url(#nx)"><path d="M4,50 L13,50 L18,14 L9,14 Z"/><path d="M9,14 L18,14 L33,50 L24,50 Z"/><path d="M24,50 L33,50 L46,14 L37,14 Z"/><path d="M37,14 L46,14 L60,50 L51,50 Z"/><path d="M36,35 L49,35 L51,40 L34,40 Z"/></g>
+<g fill="#061428" fill-opacity=".18"><path d="M9,14 L18,14 L33,50 L24,50 Z"/><path d="M37,14 L46,14 L60,50 L51,50 Z"/></g>
+</svg>

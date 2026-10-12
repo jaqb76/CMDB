@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if instancja %}[{{ instancja }}] {% endif %}Logowanie - CMDB</title>
+  <title>{% if instancja %}[{{ instancja }}] {% endif %}Logowanie - Nexassert</title>
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
@@ -19,8 +19,8 @@
 {% endif %}
 
   <form method="post" action="/login" class="login-card">
-    <h1>CMDB</h1>
-    <p class="muted">Inwentaryzacja maszyn</p>
+    <h1 class="login-logo"><img src="/static/logo.svg" alt="" width="48" height="32">Nexassert</h1>
+    <p class="muted login-haslo">One Connected View of IT.</p>
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
     {% if komunikat %}<div class="alert alert-ok">{{ komunikat }}</div>{% endif %}
     <label for="email">Login</label>

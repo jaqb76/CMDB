@@ -2,7 +2,7 @@
 {% block tytul %}Nowe hasło{% endblock %}
 {% block karta %}
   <form method="post" action="/haslo/zapomniane" class="login-card">
-    <h1>CMDB</h1>
+    <h1 class="login-logo"><img src="/static/logo.svg" alt="" width="48" height="32">Nexassert</h1>
     <p class="muted">Nie pamiętasz hasła?</p>
     {% if wyslane %}
       <div class="alert alert-ok">Jeśli pod tym adresem jest konto lokalne CMDB, wysłaliśmy na niego

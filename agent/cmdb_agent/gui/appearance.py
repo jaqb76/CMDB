@@ -1,4 +1,4 @@
-"""Shared native-window branding; the same C mark as the existing tray."""
+"""Shared native-window branding: the Nexassert mark used by windows, tray and EXE."""
 from __future__ import annotations
 
 import sys
@@ -27,18 +27,74 @@ def use_app_identity() -> None:
         pass
 
 BG = "#f3f6fa"
-INK = "#172b3a"
+INK = "#142a43"
 MUTED = "#5b6d7c"
-GREEN = "#228b40"
+
+# Barwy marki Nexassert. Te same wartosci sa w app.css portalu i w
+# ModernUi.kt aplikacji - zmiana tylko w jednym miejscu rozjedzie wyglad.
+NAVY = "#142a43"
+BLUE = "#167cba"
+TEAL = "#23b8b0"
+BLUE_ACTIVE = "#106297"
+
+# Znak "NA" w siatce 64x64: cztery wstegi (N i A dziela jedno ramie)
+# i poprzeczka litery A. Te same wspolrzedne maja logo.svg portalu
+# i ic_launcher_foreground.xml aplikacji.
+MARK_RIBBONS = (
+    ((4, 50), (13, 50), (18, 14), (9, 14)),
+    ((9, 14), (18, 14), (33, 50), (24, 50)),
+    ((24, 50), (33, 50), (46, 14), (37, 14)),
+    ((37, 14), (46, 14), (60, 50), (51, 50)),
+    ((36, 35), (49, 35), (51, 40), (34, 40)),
+)
+# Wstegi biegnace w dol leza "pod spodem" - przyciemnienie daje efekt zalamania.
+MARK_SHADED = (1, 3)
 
 
-def icon_image(color=GREEN, size=64):
+def _hex(color: str) -> tuple[int, int, int]:
+    color = color.lstrip("#")
+    return tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def mark_image(size=64, tile=True):
+    """Znak marki; tile=True kladzie go na granatowym kafelku jak ikone aplikacji."""
     from PIL import Image, ImageDraw
-    image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    draw.ellipse((4, 4, 60, 60), fill=color)
-    draw.arc((18, 18, 46, 46), start=40, end=320, fill="white", width=7)
+
+    scale = 8                                   # rysujemy wiekszy i zmniejszamy - gladkie krawedzie
+    big = 64 * scale
+    image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    if tile:
+        ImageDraw.Draw(image).rounded_rectangle((0, 0, big - 1, big - 1), radius=14 * scale, fill=_hex(NAVY))
+        inset, k = 7 * scale, 50 / 64           # znak mniejszy, zeby nie dotykal krawedzi kafelka
+    else:
+        inset, k = 0, 1.0
+
+    gradient = Image.new("RGBA", (big, big))
+    a, b = _hex(BLUE), _hex(TEAL)
+    gdraw = ImageDraw.Draw(gradient)
+    for x in range(big):
+        t = x / (big - 1)
+        gdraw.line((x, 0, x, big), fill=tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3)) + (255,))
+
+    def pts(poly):
+        return [(inset + px * scale * k, inset + py * scale * k) for px, py in poly]
+
+    mask = Image.new("L", (big, big), 0)
+    mdraw = ImageDraw.Draw(mask)
+    for poly in MARK_RIBBONS:
+        mdraw.polygon(pts(poly), fill=255)
+    image.paste(gradient, (0, 0), mask)
+
+    shade = Image.new("L", (big, big), 0)
+    sdraw = ImageDraw.Draw(shade)
+    for i in MARK_SHADED:
+        sdraw.polygon(pts(MARK_RIBBONS[i]), fill=45)
+    image.paste(Image.new("RGBA", (big, big), (6, 20, 40, 255)), (0, 0), shade)
     return image.resize((size, size), Image.Resampling.LANCZOS)
+
+
+def icon_image(size=64):
+    return mark_image(size=size, tile=True)
 
 
 def brand_window(window):
@@ -68,9 +124,9 @@ def apply_style(window):
     style.configure("Section.TLabel", font=("Segoe UI", 10, "bold"), background="white", foreground=MUTED)
     style.configure("TButton", padding=(12, 9), background="white", borderwidth=1)
     style.map("TButton", background=[("active", "#e7edf3")])
-    style.configure("Primary.TButton", background=GREEN, foreground="white", borderwidth=0)
-    style.map("Primary.TButton", background=[("active", "#176f32"), ("disabled", "#dce9e0")],
-              foreground=[("disabled", "#627469")])
+    style.configure("Primary.TButton", background=BLUE, foreground="white", borderwidth=0)
+    style.map("Primary.TButton", background=[("active", BLUE_ACTIVE), ("disabled", "#d8e5ef")],
+              foreground=[("disabled", "#5f7385")])
     style.configure("TEntry", padding=7, fieldbackground="white")
     style.configure("TSpinbox", padding=6, fieldbackground="white")
     style.configure("TLabelframe", padding=12, background=BG, bordercolor="#dce4ec")

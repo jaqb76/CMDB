@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block title %}CMDB{% endblock %}</title>
+  <title>{% if instancja %}[{{ instancja }}] {% endif %}{% block title %}Nexassert{% endblock %}</title>
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="{{ zasob('app.css') }}">
@@ -19,7 +19,7 @@
 {% endif %}
 
 <header class="topbar">
-  <div class="brand"><a href="/">CMDB</a></div>
+  <div class="brand"><a href="/"><img src="/static/logo.svg" alt="" width="30" height="20">Nexassert</a></div>
   <nav class="mainnav">
     <a href="/">Pulpit</a>
     <a href="/assets">Sprzęt</a>
@@ -89,7 +89,7 @@
 </main>
 
 <footer class="footer">
-  CMDB {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wyłącznie dla Twojej firmy
+  Nexassert {{ ctx.tenant_slug if ctx else '' }} &middot; dane widoczne wyłącznie dla Twojej firmy
   &middot; <span class="wersja-portalu" title="Wersja portalu — podaj ją przy zgłoszeniu błędu">wersja {{ wersja_portalu }}</span>
 </footer>
 <script src="{{ zasob('app.js') }}"></script>
