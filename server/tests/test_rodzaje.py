@@ -386,3 +386,25 @@ def test_pasek_akcji_rozdziela_zapis_od_usuwania(client, tenant_a, make_user):
     # formularzy nie wolno zagniezdzac, a usuwanie jest osobnym.
     assert 'form="dane-sprzetu"' in strona
     assert 'id="dane-sprzetu"' in strona
+
+
+def test_maszyna_wirtualna_bez_agenta_widzi_wyszarzone_zakladki(client, tenant_a, make_user):
+    """VM bez agenta pokazuje zakladki, ktore wypelnilby agent - wyszarzone
+    i nieklikalne, zeby bylo widac, co da instalacja, bez klikania po pustych."""
+    _admin_firmy(client, tenant_a, make_user)
+    vm_id = _sprzet(client, tenant_a, nazwa="VM-1", typ="vm")
+    strona = client.get(f"/assets/{vm_id}").text
+    przyciski = strona.split('class="tab-buttons"')[1].split("</div>")[0]
+
+    for etykieta in ("Sprzęt", "Agent", "Oprogramowanie", "Aktualizacje",
+                     "Podatności", "Użytkownicy", "Historia", "JSON"):
+        assert f"disabled title=\"Dostępne po zainstalowaniu agenta CMDB na tej maszynie\">{etykieta}<" \
+            in przyciski.replace(' aria-disabled="true"', ""), etykieta
+    assert 'data-tab="software"' not in przyciski, "wyszarzona zakladka nie przelacza panelu"
+
+    # Monitor agenta nigdy nie dostanie - tam tych zakladek nadal nie ma.
+    monitor_id = _sprzet(client, tenant_a)
+    strona = client.get(f"/assets/{monitor_id}").text
+    przyciski = strona.split('class="tab-buttons"')[1].split("</div>")[0]
+    assert "is-disabled" not in przyciski
+    assert "Oprogramowanie" not in przyciski

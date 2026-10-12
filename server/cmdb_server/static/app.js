@@ -156,7 +156,10 @@
 
     function zHasza() {
       var nazwa = window.location.hash.replace("#", "");
-      if (nazwa && root.querySelector('[data-panel="' + CSS.escape(nazwa) + '"]')) {
+      // Panel bez aktywnego przycisku (np. "Sprzet" maszyny wirtualnej bez
+      // agenta) jest pusty - stary odnosnik z haszem nie powinien go otwierac.
+      if (nazwa && root.querySelector('[data-panel="' + CSS.escape(nazwa) + '"]')
+          && root.querySelector('.tab-button[data-tab="' + CSS.escape(nazwa) + '"]')) {
         activate(nazwa);
       }
     }
