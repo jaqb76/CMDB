@@ -52,7 +52,7 @@ docker compose -f deploy/docker-compose.yml up -d --build
 # a jednorazowy kontener nie stoi w ich sieci.
 echo "==> Sprawdzam konfiguracje nginx"
 if docker run --rm \
-        --add-host server:127.0.0.1 --add-host cmdb-dev:127.0.0.1 \
+        --add-host cmdb-prod:127.0.0.1 --add-host cmdb-dev:127.0.0.1 \
         -v "$PWD/deploy/nginx/cmdb.conf:/etc/nginx/conf.d/default.conf:ro" \
         -v "$PWD/deploy/certs:/etc/nginx/certs:ro" \
         nginx:1.27-alpine nginx -t -q; then
