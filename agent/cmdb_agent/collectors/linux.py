@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import socket
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,11 @@ from pathlib import Path
 from .base import BaseCollector, Step
 from . import poprawki
 from .common import CommandError, clean, percent, run_command, to_int
+
+# Naglowek pakietu w wyjsciu "rpm -q --changelog"; changelog nie zaczyna
+# linii od niego, wiec oddziela pakiety jednoznacznie.
+ZNACZNIK_CHANGELOGU = "@@CMDB-PAKIET@@"
+NUMER_CVE = re.compile(r"CVE-\d{4}-\d{4,}")
 
 log = logging.getLogger(__name__)
 
@@ -547,6 +553,48 @@ class LinuxCollector(BaseCollector):
             if line.startswith("nameserver") and len(line.split()) > 1
         ]
 
+    def _cve_z_changelogu_rpm(self, packages: list[dict]) -> None:
+        """CVE wymienione w changelogu zainstalowanej wersji pakietu RPM.
+
+        Red Hat lata jadro 9.7 wstecznie, ale nie kazda luke wpisuje do
+        biuletynu 9.7 - czesc widnieje w jego danych wylacznie przy jadrze
+        9.8, choc changelog zainstalowanego jadra 9.7 ja wymienia. Changelog
+        pochodzi z samego pakietu, wiec to najpewniejsze zrodlo.
+
+        Jeden pakiet binarny na pare (zrodlo, wersja): kernel-core,
+        kernel-modules i reszta maja ten sam changelog, a wysylanie go
+        dziesiec razy tylko powiekszaloby raport. Kazda zainstalowana wersja
+        osobno - stare jadro, ktore jeszcze dziala, nie moze skorzystac
+        z changelogu nowego, zainstalowanego bez restartu.
+        """
+        wybrane: dict[tuple[str, str], dict] = {}
+        for pakiet in packages:
+            if pakiet.get("evr") and pakiet.get("version"):
+                wybrane.setdefault((pakiet["source_package"], pakiet["evr"]), pakiet)
+        if not wybrane:
+            return
+        wedlug_nvr = {(p["name"], p["version"]): p for p in wybrane.values()}
+        try:
+            wyjscie = run_command(
+                ["rpm", "-q", "--qf", f"{ZNACZNIK_CHANGELOGU} %{{NAME}}\t%{{VERSION}}-%{{RELEASE}}\n"
+                 "[%{CHANGELOGTEXT}\n]",
+                 *sorted(f"{nazwa}-{wersja}" for nazwa, wersja in wedlug_nvr)],
+                timeout=180, check=False)
+        except CommandError as exc:
+            self.record_error("software.patched_cves", str(exc))
+            return
+        biezacy = None
+        znalezione: dict[tuple[str, str], set[str]] = {}
+        for linia in wyjscie.splitlines():
+            if linia.startswith(ZNACZNIK_CHANGELOGU + " "):
+                nazwa, _, wersja = linia[len(ZNACZNIK_CHANGELOGU) + 1:].partition("\t")
+                biezacy = (nazwa.strip(), wersja.strip())
+                continue
+            if biezacy in wedlug_nvr and "CVE-" in linia:
+                znalezione.setdefault(biezacy, set()).update(NUMER_CVE.findall(linia))
+        for klucz, cves in znalezione.items():
+            wedlug_nvr[klucz]["patched_cves"] = sorted(cves)
+
     def collect_packages(self) -> list:
         managers = [
             # Pakiet zrodlowy jest tu po to, zeby dalo sie zestawic inwentarz
@@ -607,6 +655,8 @@ class LinuxCollector(BaseCollector):
                 if evr:
                     pakiet["evr"] = evr
                 packages.append(pakiet)
+            if source == "rpm":
+                self._cve_z_changelogu_rpm(packages)
             packages.sort(key=lambda p: p["name"].lower())
             return self.limit(packages)
 

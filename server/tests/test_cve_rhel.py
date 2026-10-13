@@ -655,3 +655,58 @@ def test_wersja_systemu_bez_numeru_linii_zachowuje_dotychczasowe_porownanie(kana
     with SessionLocal() as db:
         wynik = cve.dopasuj(db, _jadro_97(version="9"))
     assert {e["cve"] for e in wynik["entries"]} == {"CVE-2025-0001", "CVE-2025-0002", "CVE-2025-0003"}
+
+
+def test_changelog_pakietu_zamyka_luke_brakujaca_w_danych_linii(kanal_linii):
+    """Zgloszenie: CVE-2026-23060 jest w changelogu jadra 611.55.1.el9_7,
+    a Red Hat podaje poprawke tylko dla 9.8. Changelog pochodzi z samego
+    pakietu, wiec rozstrzyga - dla tego zrodla i tej wersji."""
+    wersja = "5.14.0-611.55.1.el9_7"
+    rdzen = _pakiet("kernel-core", wersja, evr=f"0:{wersja}", source_package="kernel")
+    rdzen["patched_cves"] = ["CVE-2025-0002"]
+    moduly = _pakiet("kernel-modules", wersja, evr=f"0:{wersja}", source_package="kernel")
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport([rdzen, moduly], version="9.7", kernel=f"{wersja}.x86_64"))
+    assert "CVE-2025-0002" not in {e["cve"] for e in wynik["entries"]}
+
+
+def test_changelog_nie_dziala_na_inna_wersje_ani_inne_zrodlo(kanal_linii):
+    """Stare jadro, ktore jeszcze dziala, nie korzysta z changelogu nowego."""
+    nowe = _pakiet("kernel-core", "5.14.0-611.55.1.el9_7",
+                   evr="0:5.14.0-611.55.1.el9_7", source_package="kernel")
+    nowe["patched_cves"] = ["CVE-2025-0002"]
+    stare = _pakiet("kernel-core", "5.14.0-611.20.1.el9_7",
+                    evr="0:5.14.0-611.20.1.el9_7", source_package="kernel")
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport([nowe, stare], version="9.7",
+                                        kernel="5.14.0-611.20.1.el9_7.x86_64"))
+    pozycja = next(e for e in wynik["entries"] if e["cve"] == "CVE-2025-0002")
+    assert pozycja["compared_version"] == "0:5.14.0-611.20.1.el9_7"
+
+
+def test_luka_z_poprawka_tylko_w_nowszym_wydaniu_liczona_osobno(kanal_linii):
+    """Zgloszenie: 434 luki jadra 9.7 z poprawka wylacznie w 9.8 liczyly sie
+    jako "z gotowa poprawka", choc lista aktualizacji byla pusta."""
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97())
+    pozycja = next(e for e in wynik["entries"] if e["cve"] == "CVE-2025-0002")
+    assert pozycja["newer_release"] == "9.8"
+    assert wynik["fixable_count"] == 0, "zwykla aktualizacja niczego nie zamknie"
+    assert wynik["upgrade_count"] == 1 and wynik["upgrade_release"] == "9.8"
+    assert wynik["packages_summary"] == [], "nie trafia do 'Co zaktualizowac'"
+
+
+def test_poprawka_we_wlasnym_wydaniu_dalej_do_zrobienia(kanal_linii):
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97(wersja="5.14.0-611.20.1.el9_7"))
+    pozycje = {e["cve"]: e for e in wynik["entries"]}
+    assert pozycje["CVE-2025-0001"]["newer_release"] is None
+    assert wynik["fixable_count"] == 1 and wynik["upgrade_count"] == 1
+    assert [g["package"] for g in wynik["packages_summary"]] == ["kernel"]
+
+
+def test_maszyna_na_najnowszym_wydaniu_nie_ma_kategorii_podniesienia(kanal_linii):
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97(version="9.8", wersja="5.14.0-687.1.1.el9_8"))
+    assert wynik["upgrade_count"] == 0 and wynik["upgrade_release"] is None
+    assert wynik["fixable_count"] == 3

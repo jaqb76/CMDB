@@ -726,6 +726,26 @@ def _modul_pasuje(zainstalowana: str, naprawiona: str | None) -> bool:
     return wersja_a.split(".")[0] == wersja_b.split(".")[0]
 
 
+def _zalatane_wedlug_changelogu(pakiety: list[dict]) -> dict[tuple[str, str], set[str]]:
+    """CVE z changelogu RPM, wedlug (pakiet zrodlowy, wersja z epoka).
+
+    Agent czyta changelog jednego pakietu binarnego na zrodlo i wersje -
+    kernel-core i kernel-modules z tego samego wydania dziela changelog,
+    wiec CVE dotyczy ich wszystkich. Inna wersja tego samego zrodla (stare
+    jadro, ktore jeszcze dziala) ma wlasny changelog i z cudzego nie korzysta.
+    """
+    wynik: dict[tuple[str, str], set[str]] = {}
+    for pakiet in pakiety:
+        cves = pakiet.get("patched_cves")
+        if not cves:
+            continue
+        nazwa = (pakiet.get("name") or "").strip()
+        klucz = ((pakiet.get("source_package") or nazwa).strip(),
+                 (pakiet.get("evr") or pakiet.get("version") or "").strip())
+        wynik.setdefault(klucz, set()).update(str(c).strip() for c in cves if c)
+    return wynik
+
+
 def dopasuj(db: Session, payload: dict) -> dict:
     """Podatnosci maszyny na podstawie jej ostatniego raportu."""
     wydanie_windows = cve_windows.wydanie_maszyny(payload)
@@ -753,6 +773,7 @@ def dopasuj(db: Session, payload: dict) -> dict:
 
     rpm = source == "rhel"
     resolved_repo_cves = repo_meta.repo_resolved_cves(payload) if rpm else set()
+    zalatane = _zalatane_wedlug_changelogu(pakiety) if rpm else {}
 
     # Jedno zapytanie na maszyne zamiast jednego na pakiet.
     klucze = {_klucz_pakietu(p, rpm) for p in pakiety} - {""}
@@ -820,14 +841,23 @@ def dopasuj(db: Session, payload: dict) -> dict:
         if not nazwa or not wersja_porownywana:
             continue
 
+        zalatane_tu = zalatane.get((zrodlo, wersja_porownywana), ())
         for wpis in wedlug_pakietu.get(_klucz_pakietu(pakiet, rpm), []):
-            if wpis.cve in resolved_repo_cves:
+            if wpis.cve in resolved_repo_cves or wpis.cve in zalatane_tu:
                 continue
             nieaktywne_jadro = False
             naprawiona = wpis.fixed_version
+            nowsze_wydanie = None
             if rpm and "@" not in wpis.package:
                 naprawiona = _poprawka_dla_linii(
                     naprawiona, linie.get((wpis.package, wpis.cve), {}), linia_maszyny)
+                # Poprawka tylko z nowszej linii (9.8 przy maszynie na 9.7):
+                # luka jest prawdziwa, ale zwykla aktualizacja jej nie zamknie -
+                # repozytoria 9.7 tego pakietu nie maja.
+                linia_poprawki = _linia_rhel(naprawiona)
+                if linia_maszyny is not None and linia_poprawki is not None \
+                        and linia_poprawki > linia_maszyny:
+                    nowsze_wydanie = f"{release}.{linia_poprawki}"
             if wpis.status == "resolved":
                 if rpm:
                     if not wersje_pakietow.starsza_niz_rpm(wersja_porownywana, naprawiona):
@@ -877,10 +907,13 @@ def dopasuj(db: Session, payload: dict) -> dict:
                     "running_kernel": dzialajace_jadro or None,
                     "distro_score": wpis.cvss_score,
                     "distro_vector": wpis.cvss_vector,
+                    "newer_release": nowsze_wydanie,
                 }
             else:
                 if nazwa not in grupa["packages"]:
                     grupa["packages"].append(nazwa)
+                # Wystarczy jeden pakiet zrodla z poprawka we wlasnej linii.
+                grupa["newer_release"] = grupa["newer_release"] and nowsze_wydanie
                 # Grupa jest "tylko nieaktywnym jadrem" dopiero wtedy, gdy
                 # WSZYSTKIE jej pakiety takie sa. Jeden podatny pakiet
                 # dzialajacego jadra wystarczy, zeby pozycja byla prawdziwa.
@@ -1038,7 +1071,9 @@ def _podsumowanie_pakietow(znalezione: list[dict], rpm: bool) -> list[dict]:
     """
     grupy: dict[str, dict] = {}
     for z in znalezione:
-        if z["status"] != "resolved":
+        # Pakiet, ktorego poprawka jest tylko w nowszym wydaniu, nie trafia
+        # do "Co zaktualizowac" - aktualizacja w obecnym wydaniu go nie zamknie.
+        if z["status"] != "resolved" or z.get("newer_release"):
             continue
         g = grupy.setdefault(z["source_package"], {
             "package": z["source_package"], "count": 0, "critical": 0,
@@ -1062,6 +1097,15 @@ def _podsumowanie_pakietow(znalezione: list[dict], rpm: bool) -> list[dict]:
                   key=lambda g: (-g["critical"], -g["count"], g["package"]))
 
 
+def _do_aktualizacji(p: dict) -> bool:
+    return (p["status"] == "resolved" and not p.get("inactive_kernel")
+            and not p.get("newer_release"))
+
+
+def _do_podniesienia(p: dict) -> bool:
+    return p["status"] == "resolved" and not p.get("inactive_kernel") and bool(p.get("newer_release"))
+
+
 def _wynik(status: str, detail: str | None, entries: list | None = None,
            source: str | None = None, feed_age_hours: float | None = None,
            feed_entries: int | None = None, stale_kernels: list | None = None,
@@ -1080,12 +1124,24 @@ def _wynik(status: str, detail: str | None, entries: list | None = None,
         # Przy stanie "nieznany" liczby sa puste, a nie zerowe: zero znaczyloby
         # "sprawdzone, nic nie ma", a tego wlasnie nie wiemy.
         "count": len(pozycje) if status == STATUS_OK else None,
-        # Do zrobienia teraz: poprawka istnieje, a maszyna jej nie ma.
+        # Do zrobienia teraz: poprawka istnieje w wydaniu maszyny, a maszyna
+        # jej nie ma - zamyka ja zwykla aktualizacja.
         "fixable_count": (
-            sum(1 for p in pozycje
-                if p["status"] == "resolved" and not p.get("inactive_kernel"))
+            sum(1 for p in pozycje if _do_aktualizacji(p))
             if status == STATUS_OK else None
         ),
+        # Poprawka istnieje tylko w nowszym wydaniu (RHEL 9.8 przy 9.7). Luka
+        # jest prawdziwa, ale zamyka ja dopiero podniesienie systemu - liczona
+        # osobno, zeby "do zrobienia" zgadzalo sie z lista aktualizacji.
+        "upgrade_count": (
+            sum(1 for p in pozycje if _do_podniesienia(p)) if status == STATUS_OK else None
+        ),
+        "upgrade_critical_count": (
+            sum(1 for p in pozycje if _do_podniesienia(p) and (p.get("base_score") or 0) >= 7.0)
+            if status == STATUS_OK else None
+        ),
+        "upgrade_release": max((p["newer_release"] for p in pozycje if _do_podniesienia(p)),
+                               key=lambda w: [int(c) for c in w.split(".")], default=None),
         # Dotyczy jadra, ktore juz nie dziala - maszyna uruchomila sie
         # z nowszego, a stare pakiety tylko zalegaja na dysku. Tych pozycji
         # nie ma na liscie, wiec liczba przychodzi z zewnatrz.
@@ -1103,9 +1159,7 @@ def _wynik(status: str, detail: str | None, entries: list | None = None,
         # Do naprawienia i powazne wedlug CVSS - to jest lista, od ktorej
         # zaczyna sie prace.
         "critical_count": (
-            sum(1 for p in pozycje
-                if p["status"] == "resolved" and not p.get("inactive_kernel")
-                and (p.get("base_score") or 0) >= 7.0)
+            sum(1 for p in pozycje if _do_aktualizacji(p) and (p.get("base_score") or 0) >= 7.0)
             if status == STATUS_OK else None
         ),
         "bez_oceny": (

@@ -141,7 +141,9 @@ def najbardziej_podatne(db: Session, tenant_id: str | None, odswiez: bool = Fals
             bez_danych += 1
             continue
         zbadanych += 1
-        if not (wynik["fixable_count"] or wynik["open_count"]):
+        # Maszyna z lukami, ktore zamyka dopiero nowsze wydanie, nie moze
+        # zniknac z listy tylko dlatego, ze nic jej sie nie aktualizuje.
+        if not (wynik["fixable_count"] or wynik["open_count"] or wynik.get("upgrade_count")):
             continue
         oceny = [p.get("base_score") for p in wynik["entries"] if p.get("base_score") is not None]
         pozycje.append({
@@ -153,16 +155,21 @@ def najbardziej_podatne(db: Session, tenant_id: str | None, odswiez: bool = Fals
             "do_naprawy": wynik["fixable_count"],
             "powazne": wynik["critical_count"],
             "bez_poprawki": wynik["open_count"],
+            "do_podniesienia": wynik.get("upgrade_count") or 0,
+            "podniesienie_powazne": wynik.get("upgrade_critical_count") or 0,
+            "wydanie": wynik.get("upgrade_release"),
             "najwyzsza": max(oceny) if oceny else None,
         })
 
-    pozycje.sort(key=lambda p: (p["powazne"], p["do_naprawy"], p["bez_poprawki"]), reverse=True)
+    pozycje.sort(key=lambda p: (p["powazne"] + p["podniesienie_powazne"],
+                                p["do_naprawy"] + p["do_podniesienia"], p["bez_poprawki"]),
+                 reverse=True)
     # Dla panelu administratora: ile podatnych maszyn ma kazda firma.
     wedlug_firmy: dict[str, dict] = {}
     for p in pozycje:
         firma = wedlug_firmy.setdefault(p["tenant_id"], {"maszyn": 0, "powazne": 0})
         firma["maszyn"] += 1
-        firma["powazne"] += 1 if p["powazne"] else 0
+        firma["powazne"] += 1 if (p["powazne"] or p["podniesienie_powazne"]) else 0
     wynik = {
         "wedlug_firmy": wedlug_firmy,
         "z_powaznymi": sum(1 for p in pozycje if p["powazne"]),

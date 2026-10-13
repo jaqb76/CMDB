@@ -69,6 +69,7 @@
     {{ kafelek(d.powazne, 'powazne (CVSS >= 7) z gotowa poprawka', true) }}
     {{ kafelek(d.do_zrobienia, 'wszystkie do zrobienia') }}
     {{ kafelek(d.bez_poprawki, 'znane, bez dostepnej poprawki') }}
+    {% if d.do_podniesienia %}{{ kafelek(d.do_podniesienia, 'poprawka tylko w nowszym wydaniu systemu', true) }}{% endif %}
   </div>
 
   {{ pierscien(wykresy.z_paskow(d.wykres_wagi, wykresy.PALETA_WAGI),
