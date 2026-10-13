@@ -409,7 +409,8 @@ def test_zapis_rhel_trafia_do_bazy(kanal_rhel):
     with SessionLocal() as db:
         liczba = len(db.execute(
             select(CveEntry).where(CveEntry.source == "rhel")).scalars().all())
-    assert liczba == 10
+    # 10 wpisow glownych i 2 wpisy linii 9.4 (kernel-core, kernel-tools).
+    assert liczba == 12
 
 
 def test_ocena_red_hat_gdy_nvd_nie_ocenil(kanal_rhel):
@@ -573,3 +574,84 @@ def test_okno_szczegolow_cve(client, make_user, kanal_rhel, monkeypatch):
     strona = client.get("/podatnosci/cve/CVE-2024-11235?zrodlo=rhel/9")
     assert strona.status_code == 200 and "<html" in strona.text
     assert client.get("/podatnosci/cve/nie-cve").status_code == 404
+
+
+# --- poprawki w liniach wydan pomniejszych (9.6, 9.7, 9.8) -------------------
+
+def _definicja_jadra(numer: str, cves: list[str], wersja: str) -> str:
+    lista = "".join(f"<cve>{c}</cve>" for c in cves)
+    return f"""
+  <definition class="patch" id="oval:com.redhat.rhsa:def:{numer}" version="1">
+   <metadata><title>RHSA-{numer}: kernel security update (Important)</title>
+    <advisory><severity>Important</severity>{lista}</advisory></metadata>
+   <criteria operator="OR">
+    <criterion comment="kernel-core is earlier than 0:{wersja}" test_ref="t{numer}"/>
+   </criteria>
+  </definition>"""
+
+
+# CVE-A: poprawka w 9.7 i powtorzona w biuletynie 9.8.
+# CVE-B: tylko w 9.8 - na 9.7 jej nie ma.
+# CVE-C: poprawka w 9.6 (przed wydaniem 9.7) i powtorzona w 9.8.
+OVAL_LINIE = f"""<?xml version="1.0" encoding="UTF-8"?>
+<oval_definitions xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+ <definitions>
+{_definicja_jadra("1", ["CVE-2025-0001"], "5.14.0-611.30.1.el9_7")}
+{_definicja_jadra("2", ["CVE-2025-0001", "CVE-2025-0002", "CVE-2025-0003"], "5.14.0-687.5.1.el9_8")}
+{_definicja_jadra("3", ["CVE-2025-0003"], "5.14.0-570.40.1.el9_6")}
+ </definitions>
+</oval_definitions>
+"""
+
+
+@pytest.fixture()
+def kanal_linii():
+    with SessionLocal() as db:
+        cve.zapisz_kanal(db, "rhel", "9", cve.wpisy_rhel(bz2.compress(OVAL_LINIE.encode()), "9"))
+    yield
+
+
+def _jadro_97(version="9.7", wersja="5.14.0-611.55.1.el9_7"):
+    return _raport([_pakiet("kernel-core", wersja, evr=f"0:{wersja}", source_package="kernel")],
+                   version=version, kernel=f"{wersja}.x86_64")
+
+
+def test_oval_zapamietuje_poprawke_kazdej_linii():
+    wpisy = {(w["package"], w["cve"]): w
+             for w in cve.wpisy_rhel(bz2.compress(OVAL_LINIE.encode()), "9")}
+    # Wpis glowny niesie najnowsza poprawke - jak dotad.
+    assert wpisy[("kernel-core", "CVE-2025-0001")]["fixed_version"] == "0:5.14.0-687.5.1.el9_8"
+    assert wpisy[("kernel-core~el9_7", "CVE-2025-0001")]["fixed_version"] == "0:5.14.0-611.30.1.el9_7"
+    assert wpisy[("kernel-core~el9_8", "CVE-2025-0001")]["fixed_version"] == "0:5.14.0-687.5.1.el9_8"
+    assert ("kernel-core~el9_7", "CVE-2025-0002") not in wpisy
+
+
+def test_maszyna_97_z_poprawka_swojej_linii_nie_jest_podatna(kanal_linii):
+    """Zgloszenie: 9.7 z aktualnym jadrem 611.x, pusta lista aktualizacji,
+    a setki luk "z gotowa poprawka" w 687.x.el9_8."""
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97())
+    pozycje = {e["cve"]: e for e in wynik["entries"]}
+    assert "CVE-2025-0001" not in pozycje, "naprawiona w 9.7"
+    assert "CVE-2025-0003" not in pozycje, "naprawiona w 9.6, przed wydaniem 9.7"
+    # Tej luki 9.7 nie naprawilo - zostaje, z wersja, ktora ja zamyka.
+    assert pozycje["CVE-2025-0002"]["fixed_version"] == "0:5.14.0-687.5.1.el9_8"
+
+
+def test_maszyna_97_przed_poprawka_swojej_linii_widzi_wersje_ze_swojej_linii(kanal_linii):
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97(wersja="5.14.0-611.20.1.el9_7"))
+    pozycje = {e["cve"]: e for e in wynik["entries"]}
+    assert pozycje["CVE-2025-0001"]["fixed_version"] == "0:5.14.0-611.30.1.el9_7"
+
+
+def test_maszyna_98_porownuje_z_poprawka_98(kanal_linii):
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97(version="9.8", wersja="5.14.0-687.1.1.el9_8"))
+    assert {e["cve"] for e in wynik["entries"]} == {"CVE-2025-0001", "CVE-2025-0002", "CVE-2025-0003"}
+
+
+def test_wersja_systemu_bez_numeru_linii_zachowuje_dotychczasowe_porownanie(kanal_linii):
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97(version="9"))
+    assert {e["cve"] for e in wynik["entries"]} == {"CVE-2025-0001", "CVE-2025-0002", "CVE-2025-0003"}

@@ -321,6 +321,63 @@ def _definicja_rhel(definicja: ET.Element, wydanie: str,
             obecny = najlepsze.get(klucz)
             if obecny is None or _lepsza_poprawka_rhel(nowy["fixed_version"], obecny["fixed_version"]):
                 najlepsze[klucz] = nowy
+            _zapamietaj_linie(klucz_pakietu, cve, wersja, wydanie, najlepsze)
+
+
+# Linia wydania pomniejszego w wersji pakietu: "5.14.0-611.55.1.el9_7" -> 7.
+_LINIA_RHEL = re.compile(r"\.el(\d+)_(\d+)")
+# Wpis poprawki dla jednej linii ma klucz "kernel-core~el9_7". Tylda nie
+# wystepuje w nazwach pakietow RPM, a "@" jest juz zajete przez moduly.
+_SEP_LINII = "~"
+
+
+def _linia_rhel(wersja: str | None) -> int | None:
+    trafienie = _LINIA_RHEL.search(wersja or "")
+    return int(trafienie.group(2)) if trafienie else None
+
+
+def _zapamietaj_linie(klucz_pakietu: str, cve: str, wersja: str, wydanie: str,
+                      najlepsze: dict[tuple[str, str], dict]) -> None:
+    """Poprawka w obrebie jednej linii (9.6, 9.7...) obok najnowszej ogolnie.
+
+    Red Hat wymienia ten sam CVE w biuletynie kazdej linii, ktora go naprawia:
+    jadro 9.7 dostaje poprawke jako 611.x.el9_7, a 9.8 - jako 687.x.el9_8.
+    Sama najnowsza wersja oznaczalaby kazda maszyne na 9.7 jako podatna, choc
+    jej repozytorium ma juz swoja poprawke, a nowszego jadra nie ma wcale -
+    stad setki luk przy pustej liscie aktualizacji. Wpis linii niesie tylko
+    wersje; opis i oceny zostaja przy wpisie glownym.
+    """
+    if _z_modulu(wersja):
+        return
+    linia = _linia_rhel(wersja)
+    if linia is None:
+        return
+    klucz = (f"{klucz_pakietu}{_SEP_LINII}el{wydanie}_{linia}", cve)
+    obecny = najlepsze.get(klucz)
+    if obecny is None or wersje_pakietow.porownaj_rpm(obecny["fixed_version"], wersja) < 0:
+        najlepsze[klucz] = {
+            "package": klucz[0], "cve": cve, "release": wydanie, "fixed_version": wersja,
+            "status": "resolved", "severity": None, "no_fix_reason": None,
+            "description": None, "cvss_score": None, "cvss_vector": None, "cwe": None,
+        }
+
+
+def _poprawka_dla_linii(najnowsza: str | None, linie: dict[int, str],
+                        linia_maszyny: int | None) -> str | None:
+    """Ktora wersje z poprawka porownac z pakietem maszyny z danej linii.
+
+    Wlasna linia, gdy ma poprawke. Inaczej najblizsza starsza: luke
+    naprawiona w 9.6 ma juz 9.7 z wydania, a gdyby poprawka 9.6 wyszla po
+    wydaniu 9.7, Red Hat wydalby ja tez dla 9.7 - i bylaby to linia wlasna.
+    Dopiero gdy poprawki nie ma w zadnej linii do wlasnej wlacznie, obowiazuje
+    najnowsza - luka jest prawdziwa i zamyka ja przejscie na nowsze wydanie.
+    """
+    if linia_maszyny is None or not linie:
+        return najnowsza
+    if linia_maszyny in linie:
+        return linie[linia_maszyny]
+    starsze = [linia for linia in linie if linia < linia_maszyny]
+    return linie[max(starsze)] if starsze else najnowsza
 
 
 def _lepsza_poprawka_rhel(nowa: str, obecna: str) -> bool:
@@ -633,7 +690,8 @@ def dopasuj(db: Session, payload: dict) -> dict:
     if rpm:
         # Wpisy z modulow maja klucz "php@php:8.3" - szukamy po nazwie przed "@".
         from sqlalchemy import func, or_
-        warunek = or_(warunek, func.split_part(CveEntry.package, "@", 1).in_(klucze))
+        warunek = or_(warunek, func.split_part(CveEntry.package, "@", 1).in_(klucze),
+                      func.split_part(CveEntry.package, _SEP_LINII, 1).in_(klucze))
     wpisy = db.execute(
         select(CveEntry).where(
             CveEntry.source == source,
@@ -643,8 +701,20 @@ def dopasuj(db: Session, payload: dict) -> dict:
     ).scalars().all()
 
     wedlug_pakietu: dict[str, list[CveEntry]] = {}
+    # (pakiet, cve) -> {linia: wersja z poprawka}; tylko RHEL.
+    linie: dict[tuple[str, str], dict[int, str]] = {}
     for wpis in wpisy:
+        if _SEP_LINII in wpis.package:
+            nazwa, _, linia = wpis.package.partition(_SEP_LINII)
+            numer = _linia_rhel("." + linia)
+            if numer is not None:
+                linie.setdefault((nazwa, wpis.cve), {})[numer] = wpis.fixed_version
+            continue
         wedlug_pakietu.setdefault(wpis.package.split("@", 1)[0], []).append(wpis)
+    # Linia maszyny z wersji systemu ("9.7"), nie z pakietow - te, ktorych
+    # Red Hat nie przebudowal, nosza starsze oznaczenia albo samo "el9".
+    trafienie = re.match(r"^\s*\d+\.(\d+)", str((payload.get("os") or {}).get("version") or ""))
+    linia_maszyny = int(trafienie.group(1)) if rpm and trafienie else None
 
     # Wersje zainstalowanych pakietow - do rozpoznania strumienia modulu
     # po jego glownym pakiecie (php, nodejs, postgresql...).
@@ -684,27 +754,31 @@ def dopasuj(db: Session, payload: dict) -> dict:
             if wpis.cve in resolved_repo_cves:
                 continue
             nieaktywne_jadro = False
+            naprawiona = wpis.fixed_version
+            if rpm and "@" not in wpis.package:
+                naprawiona = _poprawka_dla_linii(
+                    naprawiona, linie.get((wpis.package, wpis.cve), {}), linia_maszyny)
             if wpis.status == "resolved":
                 if rpm:
-                    if not wersje_pakietow.starsza_niz_rpm(wersja_porownywana, wpis.fixed_version):
+                    if not wersje_pakietow.starsza_niz_rpm(wersja_porownywana, naprawiona):
                         continue
                     if "@" in wpis.package:
                         if not _strumien_pasuje(wpis.package.split("@", 1)[1],
                                                 wersja_porownywana, zainstalowane):
                             continue
-                    elif not _modul_pasuje(wersja_porownywana, wpis.fixed_version):
+                    elif not _modul_pasuje(wersja_porownywana, naprawiona):
                         continue
-                elif not wersje_pakietow.starsza_niz(wersja_porownywana, wpis.fixed_version):
+                elif not wersje_pakietow.starsza_niz(wersja_porownywana, naprawiona):
                     continue
                 if rpm and _to_jadro_rpm(nazwa, zrodlo):
                     starsze = wersje_pakietow.dzialajace_jadro_starsze_rpm(
-                        dzialajace_jadro, wpis.fixed_version
+                        dzialajace_jadro, naprawiona
                     )
                     if starsze is False:
                         nieaktywne_jadro = True
                 elif not rpm and _to_jadro(zrodlo):
                     starsze = wersje_pakietow.dzialajace_jadro_starsze(
-                        dzialajace_jadro, wpis.fixed_version
+                        dzialajace_jadro, naprawiona
                     )
                     # Dziala nowsze jadro niz to z poprawka - maszyna nie jest
                     # podatna teraz. Stary pakiet nadal lezy na dysku, wiec
@@ -722,7 +796,7 @@ def dopasuj(db: Session, payload: dict) -> dict:
                     "packages": [nazwa],
                     "installed_version": wersja,
                     "compared_version": wersja_porownywana,
-                    "fixed_version": wpis.fixed_version,
+                    "fixed_version": naprawiona,
                     "status": wpis.status,
                     "severity": wpis.severity,
                     "no_fix_reason": wpis.no_fix_reason,
@@ -1368,7 +1442,8 @@ def szczegoly_cve(db: Session, numer: str, zrodlo: str | None = None) -> dict | 
     if dystrybucja and wydanie:
         wpis = db.execute(
             select(CveEntry).where(CveEntry.source == dystrybucja, CveEntry.release == wydanie,
-                                   CveEntry.cve == numer).limit(1)
+                                   CveEntry.cve == numer,
+                                   ~CveEntry.package.contains(_SEP_LINII)).limit(1)
         ).scalar_one_or_none()
 
     ocena, waga, wektor, zrodlo_oceny = None, None, None, None
