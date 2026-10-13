@@ -1,0 +1,5 @@
+{
+  "category": "fixed",
+  "text": "Poprawiono raportowanie aktywnego jądra Linuksa: agent używa teraz os.uname().release zamiast platform.release(), co zapobiega fałszywym alarmom po instalacji pakietów bez restartu.",
+  "systemy": ["linux"]
+}
