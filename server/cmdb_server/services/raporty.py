@@ -226,6 +226,7 @@ def dane_podatnosci(db: Session, tenant_id: str) -> dict:
 
         laczne["do_zrobienia"] += wynik["fixable_count"]
         laczne["bez_poprawki"] += wynik["open_count"]
+        laczne["do_podniesienia"] += wynik.get("upgrade_count") or 0
         laczne["powazne"] += wynik["critical_count"]
         for pozycja in wynik["entries"]:
             if pozycja["status"] != "resolved":
@@ -260,13 +261,15 @@ def dane_podatnosci(db: Session, tenant_id: str) -> dict:
     # Maszyny z najwieksza liczba rzeczy do zrobienia - od nich zaczyna sie prace.
     najgorsze = sorted(
         (w for w in wiersze if w["wynik"]),
-        key=lambda w: (-w["wynik"]["critical_count"], -w["wynik"]["fixable_count"]),
+        key=lambda w: (-w["wynik"]["critical_count"] - (w["wynik"].get("upgrade_critical_count") or 0),
+                       -w["wynik"]["fixable_count"] - (w["wynik"].get("upgrade_count") or 0)),
     )[:15]
 
     return {
         "liczba_maszyn": len(wiersze),
         "do_zrobienia": laczne["do_zrobienia"],
         "bez_poprawki": laczne["bez_poprawki"],
+        "do_podniesienia": laczne["do_podniesienia"],
         "powazne": laczne["powazne"],
         "wykres_wagi": paski,
         "najgorsze": najgorsze,
@@ -543,6 +546,7 @@ def wersja_tekstowa(raport: dict) -> str:
             f"Powazne (CVSS >= 7) z gotowa poprawka: {d['powazne']}",
             f"Wszystkie do zrobienia: {d['do_zrobienia']}",
             f"Znane, bez dostepnej poprawki: {d['bez_poprawki']}",
+            f"Poprawka tylko w nowszym wydaniu systemu: {d.get('do_podniesienia', 0)}",
             "",
             "Maszyny wymagajace uwagi:",
         ]

@@ -985,6 +985,12 @@
             <div class="card-value">{{ podatnosci.fixable_count }}</div>
             <div class="card-label">wszystkie do zrobienia</div>
           </div>
+          {% if podatnosci.upgrade_count %}
+          <div class="card card-danger">
+            <div class="card-value">{{ podatnosci.upgrade_count }}</div>
+            <div class="card-label">poprawka tylko w {{ podatnosci.upgrade_release }} — wymaga podniesienia systemu</div>
+          </div>
+          {% endif %}
           <div class="card {% if podatnosci.open_count %}card-warn{% endif %}">
             <div class="card-value">{{ podatnosci.open_count }}</div>
             <div class="card-label">bez poprawki</div>
@@ -1021,6 +1027,20 @@
           {% endif %}
           Windows Update pokazuje zwykle jedną brakującą aktualizację zbiorczą — ona zawiera wszystkie
           poprzednie, więc zamyka całą tę listę.
+        </div>
+        {% endif %}
+
+        {% if podatnosci.upgrade_count %}
+        <div class="alert alert-error">
+          <b>{{ podatnosci.upgrade_count }} luk{% if podatnosci.upgrade_critical_count %}, w tym
+          {{ podatnosci.upgrade_critical_count }} poważnych (CVSS ≥ 7),{% endif %} zamyka dopiero
+          przejście na {{ podatnosci.upgrade_release }}.</b>
+          Dystrybucja wydała poprawki tylko dla nowszego wydania — dla wersji tej maszyny
+          ich nie ma ani w repozytoriach, ani w changelogu zainstalowanych pakietów, więc zwykła
+          aktualizacja ich nie zamknie. Zwykle oznacza to wersję przypiętą do starszego
+          wydania (<code>subscription-manager release --show</code>) albo repozytoria,
+          które nowszego jeszcze nie oferują. Na liście poniżej mają stan
+          „wymaga {{ podatnosci.upgrade_release }}”.
         </div>
         {% endif %}
 
@@ -1147,7 +1167,10 @@
                 {% else %}<span class="muted">brak poprawki</span>{% endif %}
               </td>
               <td class="small">
-                {% if p.status == 'resolved' %}
+                {% if p.status == 'resolved' and p.newer_release %}
+                  <span class="badge badge-danger">wymaga {{ p.newer_release }}</span>
+                  <div class="muted">brak poprawki dla wydania maszyny</div>
+                {% elif p.status == 'resolved' %}
                   <span class="badge badge-danger">do zrobienia</span>
                 {% elif p.no_fix_reason %}
                   <span class="badge">drobne</span>

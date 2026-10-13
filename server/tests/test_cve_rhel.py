@@ -682,3 +682,31 @@ def test_changelog_nie_dziala_na_inna_wersje_ani_inne_zrodlo(kanal_linii):
                                         kernel="5.14.0-611.20.1.el9_7.x86_64"))
     pozycja = next(e for e in wynik["entries"] if e["cve"] == "CVE-2025-0002")
     assert pozycja["compared_version"] == "0:5.14.0-611.20.1.el9_7"
+
+
+def test_luka_z_poprawka_tylko_w_nowszym_wydaniu_liczona_osobno(kanal_linii):
+    """Zgloszenie: 434 luki jadra 9.7 z poprawka wylacznie w 9.8 liczyly sie
+    jako "z gotowa poprawka", choc lista aktualizacji byla pusta."""
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97())
+    pozycja = next(e for e in wynik["entries"] if e["cve"] == "CVE-2025-0002")
+    assert pozycja["newer_release"] == "9.8"
+    assert wynik["fixable_count"] == 0, "zwykla aktualizacja niczego nie zamknie"
+    assert wynik["upgrade_count"] == 1 and wynik["upgrade_release"] == "9.8"
+    assert wynik["packages_summary"] == [], "nie trafia do 'Co zaktualizowac'"
+
+
+def test_poprawka_we_wlasnym_wydaniu_dalej_do_zrobienia(kanal_linii):
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97(wersja="5.14.0-611.20.1.el9_7"))
+    pozycje = {e["cve"]: e for e in wynik["entries"]}
+    assert pozycje["CVE-2025-0001"]["newer_release"] is None
+    assert wynik["fixable_count"] == 1 and wynik["upgrade_count"] == 1
+    assert [g["package"] for g in wynik["packages_summary"]] == ["kernel"]
+
+
+def test_maszyna_na_najnowszym_wydaniu_nie_ma_kategorii_podniesienia(kanal_linii):
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _jadro_97(version="9.8", wersja="5.14.0-687.1.1.el9_8"))
+    assert wynik["upgrade_count"] == 0 and wynik["upgrade_release"] is None
+    assert wynik["fixable_count"] == 3

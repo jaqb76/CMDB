@@ -572,6 +572,8 @@ def podatnosci_dla_telefonu(wynik: dict) -> dict:
         "source": wynik.get("source"),
         "count": wynik.get("count"),
         "fixable_count": wynik.get("fixable_count"),
+        "upgrade_count": wynik.get("upgrade_count"),
+        "upgrade_release": wynik.get("upgrade_release"),
         "critical_count": wynik.get("critical_count"),
         "open_count": wynik.get("open_count"),
         "minor_count": wynik.get("minor_count"),

@@ -105,7 +105,7 @@
             <td><a href="/assets/{{ p.id }}#podatnosci" class="strong">{{ p.hostname }}</a></td>
             {% endif %}
             <td class="small"><span class="os-komorka">{{ znak_systemu(p.os_family) }} <span>{{ p.os_name or nazwa_systemu(p.os_family) }}</span></span></td>
-            <td class="lp"><b>{{ p.do_naprawy }}</b></td>
+            <td class="lp"><b>{{ p.do_naprawy }}</b>{% if p.do_podniesienia %}<div class="tekst-drobny"><span class="badge badge-danger" title="Poprawki tylko w nowszym wydaniu systemu — zwykła aktualizacja ich nie zamknie">+{{ p.do_podniesienia }} wymaga {{ p.wydanie }}</span></div>{% endif %}</td>
             <td class="lp">{% if p.powazne %}<span class="badge badge-danger">{{ p.powazne }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
             <td class="lp">{% if p.bez_poprawki %}<span class="badge badge-warn">{{ p.bez_poprawki }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
             <td class="lp">{% if p.najwyzsza is not none %}<span class="{{ 'cvss-wysoki' if p.najwyzsza >= 7 else 'cvss-sredni' if p.najwyzsza >= 4 else 'muted' }}">{{ '%.1f' | format(p.najwyzsza) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
