@@ -129,6 +129,21 @@ class LinuxCollector(BaseCollector):
     name = "linux"
     os_family = "linux"
 
+    @staticmethod
+    def _running_kernel_release() -> str | None:
+        """Wersja aktywnego jądra uruchomionego w systemie.
+
+        Nie wolno uzywac platform.release() do raportowania jądra, bo to jest
+        wartość z runtime interpretera, a nie z uruchomionego kernela. Po
+        instalacji nowego RPM bez rebootu raport nadal pokazywałby stare jądro,
+        generujac falszywe alarmy podatności.
+        """
+        try:
+            release = os.uname().release
+        except AttributeError:
+            release = None
+        return release or platform.release()
+
     def machine_id(self) -> str:
         # /etc/machine-id jest stabilny i czytelny dla kazdego uzytkownika.
         for candidate in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
@@ -428,16 +443,17 @@ class LinuxCollector(BaseCollector):
                 "%Y-%m-%dT%H:%M:%SZ"
             )
 
+        kernel_release = self._running_kernel_release()
         return {
             "name": release.get("PRETTY_NAME") or release.get("NAME"),
             "version": release.get("VERSION_ID"),
-            "build": platform.release(),
+            "build": kernel_release,
             "edition": release.get("VARIANT"),
             "architecture": platform.machine(),
             "last_boot": last_boot,
             "uptime_seconds": uptime,
             "locale": os.environ.get("LANG"),
-            "kernel": platform.release(),
+            "kernel": kernel_release,
             # Identyfikator dystrybucji i nazwa kodowa wydania. Bez nich nie da
             # sie dobrac wlasciwego kanalu danych o podatnosciach: ta sama
             # wersja pakietu jest zalatana w bookworm, a podatna w bullseye.
