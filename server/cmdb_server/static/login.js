@@ -32,8 +32,8 @@
       b.textContent = dane.firma || "";
       opis.appendChild(b);
     } else {
-      znak.textContent = "C";
-      opis.textContent = "Konto lokalne CMDB";
+      znak.textContent = "L";
+      opis.textContent = "Konto lokalne";
     }
     sposob.appendChild(znak);
     sposob.appendChild(opis);
