@@ -351,10 +351,10 @@ def test_ponowny_zapis_podmienia_wpisy(kanal_debian):
 
 def test_nieudane_pobranie_nie_kasuje_starych_danych(kanal_debian, monkeypatch):
     """Lepiej dane sprzed tygodnia z widocznym wiekiem niz zadne."""
-    def padnij(adres):
+    def padnij(adres, walidator):
         raise cve.BladKanalu("brak lacznosci")
 
-    monkeypatch.setattr(cve, "_pobierz", padnij)
+    monkeypatch.setattr(cve, "_pobierz_kanal", padnij)
     with SessionLocal() as db:
         cve.odswiez(db, {"debian": {"bookworm"}})
         wpisy = db.execute(select(CveEntry).where(CveEntry.source == "debian")).scalars().all()

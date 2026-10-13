@@ -311,11 +311,11 @@ def test_rhel_narzedzia_jadra_nie_podlegaja_regule_jadra(kanal_rhel):
 def test_odswiez_pobiera_osobny_plik_na_wydanie_rhel(monkeypatch):
     adresy = []
 
-    def pobierz(adres):
+    def pobierz(adres, walidator):
         adresy.append(adres)
-        return _surowe()
+        return _surowe(), None
 
-    monkeypatch.setattr(cve, "_pobierz", pobierz)
+    monkeypatch.setattr(cve, "_pobierz_kanal", pobierz)
     with SessionLocal() as db:
         podsumowanie = cve.odswiez(db, {"rhel": {"8", "9"}})
         stany = {k.release: k for k in db.execute(
@@ -326,12 +326,12 @@ def test_odswiez_pobiera_osobny_plik_na_wydanie_rhel(monkeypatch):
 
 
 def test_blad_jednego_wydania_rhel_nie_psuje_drugiego(monkeypatch):
-    def pobierz(adres):
+    def pobierz(adres, walidator):
         if "RHEL8" in adres:
             raise cve.BladKanalu("brak lacznosci")
-        return _surowe()
+        return _surowe(), None
 
-    monkeypatch.setattr(cve, "_pobierz", pobierz)
+    monkeypatch.setattr(cve, "_pobierz_kanal", pobierz)
     with SessionLocal() as db:
         cve.odswiez(db, {"rhel": {"8", "9"}})
         stany = {k.release: k.status for k in db.execute(
@@ -398,7 +398,7 @@ def test_harmonogram_dobiera_oceny(monkeypatch):
     monkeypatch.setattr(cve, "kanaly_do_odswiezenia", lambda db, h: {})
     monkeypatch.setattr(cve, "cve_we_flocie",
                         lambda db, source=None: [] if source else ["CVE-2024-0727"])
-    monkeypatch.setattr(cve, "pobierz_oceny",
+    monkeypatch.setattr(cve, "oceny_nvd",
                         lambda db, cves, klucz_api="", **_: oceny.append((cves, klucz_api)) or {"pobrane": 1})
     wynik = harmonogram.przebieg_podatnosci(24, "klucz")
     assert oceny == [(["CVE-2024-0727"], "klucz")]
@@ -462,10 +462,10 @@ def test_przebieg_zapisuje_stan_dla_panelu(monkeypatch):
         postep(1, 2)
         with SessionLocal() as inna:
             stan = inna.get(CveSyncStatus, 1)
-            assert (stan.state, stan.phase, stan.done, stan.total) == ("running", "oceny NVD", 1, 2)
+            assert (stan.state, stan.phase, stan.done, stan.total) == ("running", "oceny NVD (pliki)", 1, 2)
         return {"pobrane": 1, "bez_oceny": 0, "bledy": 0, "pozostalo": 5}
 
-    monkeypatch.setattr(cve, "pobierz_oceny", oceny)
+    monkeypatch.setattr(cve, "oceny_nvd", oceny)
     harmonogram.przebieg_podatnosci(24)
     with SessionLocal() as db:
         stan = db.get(CveSyncStatus, 1)
