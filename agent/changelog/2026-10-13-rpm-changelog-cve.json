@@ -1,0 +1,4 @@
+{
+  "category": "fixed",
+  "text": "Na RHEL i pochodnych agent podaje CVE z changelogu zainstalowanych pakietów RPM. Serwer nie zgłasza już luk załatanych wstecznie w pakiecie, których Red Hat nie wpisał do danych dla danej wersji systemu (np. jądro 9.7)."
+}

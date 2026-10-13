@@ -117,8 +117,8 @@ def repo_resolved_cves(payload: dict | None) -> set[str]:
       }
     }
 
-    Dodatkowo wspierane jest pole `patched_cves` na pakiecie z agenta, aby
-    bylo możliwe podanie puli CVE już backportowanych w danym repo.
+    Pole `patched_cves` pakietu (changelog RPM) obsluguje cve.dopasuj -
+    osobno dla pakietu zrodlowego i wersji, nie dla calej maszyny.
     """
     if not payload:
         return set()
@@ -127,12 +127,10 @@ def repo_resolved_cves(payload: dict | None) -> set[str]:
     pakiety = (payload.get("software") or {}).get("packages") or []
     pakieti = {((p.get("name") or "").strip()): p for p in pakiety if (p.get("name") or "").strip()}
 
-    # Direct agent hint: per-package list of CVEs already backported by the
-    # package changelog / repo metadata.
-    for pakiet in pakiety:
-        for cve in pakiet.get("patched_cves") or []:
-            if cve:
-                wynik.add(str(cve).strip())
+    # patched_cves z changelogu pakietu NIE trafia tutaj: ten zbior dziala na
+    # wszystkie pakiety maszyny, a CVE z changelogu jadra nie mowi nic
+    # o innych pakietach. Obsluguje je cve.dopasuj osobno dla kazdego
+    # pakietu zrodlowego i wersji.
 
     repozytoria = ((payload.get("os") or {}).get("repos") or [])
     if not repozytoria and (payload.get("software") or {}).get("repositories"):

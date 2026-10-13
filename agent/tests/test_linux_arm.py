@@ -229,7 +229,7 @@ def test_rpm_podaje_wersje_z_epoka(monkeypatch):
                         lambda nazwa: "/usr/bin/rpm" if nazwa == "rpm" else None)
     polecenia = []
     monkeypatch.setattr(kolektor, "run_command",
-                        lambda polecenie, timeout=0: (polecenia.append(polecenie), wyjscie)[1])
+                        lambda polecenie, timeout=0, check=True: (polecenia.append(polecenie), wyjscie)[1])
 
     pakiety = {p["name"]: p for p in kolektor.LinuxCollector(AgentConfig()).collect_packages()}
 
@@ -239,3 +239,47 @@ def test_rpm_podaje_wersje_z_epoka(monkeypatch):
     # Wersja zrodlowa to nadal wersja-wydanie - epoka nie przecieka tam.
     assert pakiety["openssl-libs"]["source_version"] == "3.0.7-27.el9"
     assert pakiety["bash"]["evr"] == "0:5.1.8-9.el9"
+
+
+def test_rpm_cve_z_changelogu_zainstalowanej_wersji(monkeypatch):
+    """Changelog jadra 9.7 wymienia luki, ktorych Red Hat nie wpisal do
+    biuletynu 9.7. Kazda zainstalowana wersja osobno, raz na zrodlo."""
+    pakiety_rpm = (
+        "kernel-core\t5.14.0-611.55.1.el9_7\tRed Hat, Inc.\tkernel-5.14.0-611.55.1.el9_7.src.rpm\t0:5.14.0-611.55.1.el9_7\n"
+        "kernel-modules\t5.14.0-611.55.1.el9_7\tRed Hat, Inc.\tkernel-5.14.0-611.55.1.el9_7.src.rpm\t0:5.14.0-611.55.1.el9_7\n"
+        "kernel-core\t5.14.0-611.30.1.el9_7\tRed Hat, Inc.\tkernel-5.14.0-611.30.1.el9_7.src.rpm\t0:5.14.0-611.30.1.el9_7\n"
+    )
+    znak = kolektor.ZNACZNIK_CHANGELOGU
+    changelogi = (
+        f"{znak} kernel-core\t5.14.0-611.55.1.el9_7\n"
+        "- crypto: authencesn - reject too-short AAD [RHEL-172201] {CVE-2026-23060}\n"
+        "- crypto: af_alg - limit RX SG (Vladislav Dronov) {CVE-2026-31677, CVE-2026-31431}\n"
+        "- [5.14.0-611.30.1.el9_7]\n"
+        "- nfsd: fix (Olga Kornievskaia) {CVE-2025-22026}\n"
+        f"{znak} kernel-core\t5.14.0-611.30.1.el9_7\n"
+        "- nfsd: fix (Olga Kornievskaia) {CVE-2025-22026}\n"
+    )
+    polecenia = []
+
+    def uruchom(polecenie, timeout=0, check=True):
+        polecenia.append(polecenie)
+        return changelogi if "-q" in polecenie and "-qa" not in polecenie else pakiety_rpm
+
+    monkeypatch.setattr(kolektor.shutil, "which",
+                        lambda nazwa: "/usr/bin/rpm" if nazwa == "rpm" else None)
+    monkeypatch.setattr(kolektor, "run_command", uruchom)
+
+    pakiety = kolektor.LinuxCollector(AgentConfig()).collect_packages()
+    po_wersji = {(p["name"], p["version"]): p for p in pakiety}
+
+    nowe = po_wersji[("kernel-core", "5.14.0-611.55.1.el9_7")]
+    assert nowe["patched_cves"] == ["CVE-2025-22026", "CVE-2026-23060",
+                                    "CVE-2026-31431", "CVE-2026-31677"]
+    assert po_wersji[("kernel-core", "5.14.0-611.30.1.el9_7")]["patched_cves"] == ["CVE-2025-22026"]
+    assert "patched_cves" not in po_wersji[("kernel-modules", "5.14.0-611.55.1.el9_7")], \
+        "jeden pakiet na zrodlo i wersje"
+    # Jedno wywolanie rpm na wszystkie changelogi, po konkretnych wersjach.
+    zapytanie = polecenia[1]
+    assert zapytanie[:2] == ["rpm", "-q"]
+    assert "kernel-core-5.14.0-611.55.1.el9_7" in zapytanie
+    assert "kernel-modules-5.14.0-611.55.1.el9_7" not in zapytanie

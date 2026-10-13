@@ -726,6 +726,26 @@ def _modul_pasuje(zainstalowana: str, naprawiona: str | None) -> bool:
     return wersja_a.split(".")[0] == wersja_b.split(".")[0]
 
 
+def _zalatane_wedlug_changelogu(pakiety: list[dict]) -> dict[tuple[str, str], set[str]]:
+    """CVE z changelogu RPM, wedlug (pakiet zrodlowy, wersja z epoka).
+
+    Agent czyta changelog jednego pakietu binarnego na zrodlo i wersje -
+    kernel-core i kernel-modules z tego samego wydania dziela changelog,
+    wiec CVE dotyczy ich wszystkich. Inna wersja tego samego zrodla (stare
+    jadro, ktore jeszcze dziala) ma wlasny changelog i z cudzego nie korzysta.
+    """
+    wynik: dict[tuple[str, str], set[str]] = {}
+    for pakiet in pakiety:
+        cves = pakiet.get("patched_cves")
+        if not cves:
+            continue
+        nazwa = (pakiet.get("name") or "").strip()
+        klucz = ((pakiet.get("source_package") or nazwa).strip(),
+                 (pakiet.get("evr") or pakiet.get("version") or "").strip())
+        wynik.setdefault(klucz, set()).update(str(c).strip() for c in cves if c)
+    return wynik
+
+
 def dopasuj(db: Session, payload: dict) -> dict:
     """Podatnosci maszyny na podstawie jej ostatniego raportu."""
     wydanie_windows = cve_windows.wydanie_maszyny(payload)
@@ -753,6 +773,7 @@ def dopasuj(db: Session, payload: dict) -> dict:
 
     rpm = source == "rhel"
     resolved_repo_cves = repo_meta.repo_resolved_cves(payload) if rpm else set()
+    zalatane = _zalatane_wedlug_changelogu(pakiety) if rpm else {}
 
     # Jedno zapytanie na maszyne zamiast jednego na pakiet.
     klucze = {_klucz_pakietu(p, rpm) for p in pakiety} - {""}
@@ -820,8 +841,9 @@ def dopasuj(db: Session, payload: dict) -> dict:
         if not nazwa or not wersja_porownywana:
             continue
 
+        zalatane_tu = zalatane.get((zrodlo, wersja_porownywana), ())
         for wpis in wedlug_pakietu.get(_klucz_pakietu(pakiet, rpm), []):
-            if wpis.cve in resolved_repo_cves:
+            if wpis.cve in resolved_repo_cves or wpis.cve in zalatane_tu:
                 continue
             nieaktywne_jadro = False
             naprawiona = wpis.fixed_version

@@ -655,3 +655,30 @@ def test_wersja_systemu_bez_numeru_linii_zachowuje_dotychczasowe_porownanie(kana
     with SessionLocal() as db:
         wynik = cve.dopasuj(db, _jadro_97(version="9"))
     assert {e["cve"] for e in wynik["entries"]} == {"CVE-2025-0001", "CVE-2025-0002", "CVE-2025-0003"}
+
+
+def test_changelog_pakietu_zamyka_luke_brakujaca_w_danych_linii(kanal_linii):
+    """Zgloszenie: CVE-2026-23060 jest w changelogu jadra 611.55.1.el9_7,
+    a Red Hat podaje poprawke tylko dla 9.8. Changelog pochodzi z samego
+    pakietu, wiec rozstrzyga - dla tego zrodla i tej wersji."""
+    wersja = "5.14.0-611.55.1.el9_7"
+    rdzen = _pakiet("kernel-core", wersja, evr=f"0:{wersja}", source_package="kernel")
+    rdzen["patched_cves"] = ["CVE-2025-0002"]
+    moduly = _pakiet("kernel-modules", wersja, evr=f"0:{wersja}", source_package="kernel")
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport([rdzen, moduly], version="9.7", kernel=f"{wersja}.x86_64"))
+    assert "CVE-2025-0002" not in {e["cve"] for e in wynik["entries"]}
+
+
+def test_changelog_nie_dziala_na_inna_wersje_ani_inne_zrodlo(kanal_linii):
+    """Stare jadro, ktore jeszcze dziala, nie korzysta z changelogu nowego."""
+    nowe = _pakiet("kernel-core", "5.14.0-611.55.1.el9_7",
+                   evr="0:5.14.0-611.55.1.el9_7", source_package="kernel")
+    nowe["patched_cves"] = ["CVE-2025-0002"]
+    stare = _pakiet("kernel-core", "5.14.0-611.20.1.el9_7",
+                    evr="0:5.14.0-611.20.1.el9_7", source_package="kernel")
+    with SessionLocal() as db:
+        wynik = cve.dopasuj(db, _raport([nowe, stare], version="9.7",
+                                        kernel="5.14.0-611.20.1.el9_7.x86_64"))
+    pozycja = next(e for e in wynik["entries"] if e["cve"] == "CVE-2025-0002")
+    assert pozycja["compared_version"] == "0:5.14.0-611.20.1.el9_7"
