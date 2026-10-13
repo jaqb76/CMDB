@@ -151,14 +151,15 @@ def przebieg_podatnosci(co_ile_godzin: float, klucz_nvd: str = "",
                     _stan_pobierania(phase="katalog słabości CWE")
                     wynik["cwe"] = cve.odswiez_cwe(db)
                 if oceny:
-                    # Oceny dobieramy przy kazdym obiegu, porcjami. Jeden
-                    # przebieg bez klucza NVD to do 200 ocen, wiec nowa flota
-                    # dostaje komplet po kilku godzinach bez niczyjego klikania.
+                    # Oceny z plikow NVD: brakujace z plikow swoich lat, a
+                    # biezace zmiany z pliku ostatnich 8 dni. Niezmieniony
+                    # plik nie jest pobierany ponownie. API (porcjami po 200)
+                    # zostaje jako zapas, gdy NVD nie wyda plikow.
                     _stan_pobierania(phase="wyszukiwanie podatności we flocie")
                     znalezione = cve.cve_we_flocie(db)
                     if znalezione:
-                        wynik["oceny"] = cve.pobierz_oceny(
-                            db, znalezione, klucz_api=klucz_nvd, postep=postep("oceny NVD"))
+                        wynik["oceny"] = cve.oceny_nvd(
+                            db, znalezione, klucz_api=klucz_nvd, postep=postep("oceny NVD (pliki)"))
                     # Ubuntu ocenia swieze CVE szybciej niz NVD i ma wlasny
                     # priorytet - pobieramy go dla maszyn z Ubuntu.
                     ubuntu = cve.cve_we_flocie(db, source="ubuntu")

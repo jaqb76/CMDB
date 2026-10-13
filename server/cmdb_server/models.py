@@ -764,6 +764,11 @@ class CveFeed(Base):
     # "ok" albo "blad" - pobranie moglo sie nie udac, a stare dane zostaja.
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")
     detail: Mapped[str | None] = mapped_column(Text)
+    # Znacznik wersji pobranego pliku ("v2|ETag|Last-Modified"). Przy kolejnym
+    # odswiezeniu serwer pyta, czy plik sie zmienil, i przy odpowiedzi 304 nie
+    # pobiera ani nie przetwarza go ponownie. Pierwszy czlon to wersja odczytu
+    # po naszej stronie - zmiana sposobu czytania kanalu wymusza pelne pobranie.
+    walidator: Mapped[str | None] = mapped_column(String(512))
 
 
 class CveEntry(Base):

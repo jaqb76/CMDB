@@ -1020,6 +1020,8 @@ def strona_podatnosci(
         k for k in db.execute(select(CveFeed).order_by(CveFeed.source, CveFeed.release)).scalars()
         if k.source != "msrc-biuletyn"
         and (k.source != "msrc" or k.release in wydania.get("msrc", set()))
+        # Pliki roczne NVD sa wewnetrzne; widac tylko plik biezacych zmian.
+        and (k.source != "nvd" or k.release == "modified")
     ]
     return render_admin(
         request, "admin_podatnosci.html", user, "podatnosci",

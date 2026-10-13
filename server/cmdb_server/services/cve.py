@@ -26,6 +26,7 @@ bada uslug sieciowych i nie wie, czy podatny pakiet jest w ogole uzywany.
 from __future__ import annotations
 
 import bz2
+import gzip
 import io
 import json
 import logging
@@ -72,15 +73,64 @@ class BladKanalu(RuntimeError):
 
 
 def _pobierz(adres: str, naglowki: dict | None = None) -> bytes:
+    dane, _ = _pobierz_kanal(adres, None)
+    assert dane is not None             # bez walidatora nie ma odpowiedzi 304
+    return dane
+
+
+# Wersja odczytu kanalow po naszej stronie. Podbicie jej sprawia, ze kazdy
+# kanal zostanie przy najblizszym odswiezeniu pobrany i przeczytany od nowa,
+# nawet jesli plik u dostawcy sie nie zmienil - np. gdy odczyt zaczyna
+# zapisywac cos, czego wczesniej nie zapisywal (poprawki linii RHEL).
+WERSJA_ODCZYTU = "v2"
+
+
+def _pobierz_kanal(adres: str, walidator: str | None) -> tuple[bytes | None, str | None]:
+    """Pobiera plik, o ile zmienil sie od ostatniego razu.
+
+    Zwraca (dane, nowy walidator), a (None, walidator) gdy serwer odpowie
+    304 - plik jest ten sam, wiec nie ma czego pobierac ani przeliczac.
+    Red Hat i Ubuntu podaja ETag i Last-Modified, wiec niezmieniony kanal
+    kosztuje jedno krotkie zapytanie zamiast pobrania i przepisania
+    setek tysiecy wpisow.
+    """
+    naglowki = dict(NAGLOWKI)
+    wersja, _, reszta = (walidator or "").partition("|")
+    if wersja == WERSJA_ODCZYTU:
+        etag, _, zmieniony = reszta.partition("|")
+        if etag:
+            naglowki["If-None-Match"] = etag
+        if zmieniony:
+            naglowki["If-Modified-Since"] = zmieniony
     try:
-        zadanie = urllib.request.Request(adres, headers={**NAGLOWKI, **(naglowki or {})})
+        zadanie = urllib.request.Request(adres, headers=naglowki)
         with urllib.request.urlopen(zadanie, timeout=CZAS_POBIERANIA) as odpowiedz:
             dane = odpowiedz.read(LIMIT_POBIERANIA + 1)
+            etag = odpowiedz.headers.get("ETag") or ""
+            zmieniony = odpowiedz.headers.get("Last-Modified") or ""
+    except urllib.error.HTTPError as exc:
+        if exc.code == 304:
+            return None, walidator
+        raise BladKanalu(f"nie udalo sie pobrac {adres}: {exc}") from exc
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise BladKanalu(f"nie udalo sie pobrac {adres}: {exc}") from exc
     if len(dane) > LIMIT_POBIERANIA:
         raise BladKanalu(f"kanal {adres} przekracza dozwolony rozmiar")
-    return dane
+    nowy = f"{WERSJA_ODCZYTU}|{etag}|{zmieniony}" if (etag or zmieniony) else None
+    return dane, nowy
+
+
+def _walidator_wspolny(db: Session, source: str, wydania: set[str]) -> str | None:
+    """Walidator pliku wspolnego dla kilku wydan (Debian, Ubuntu).
+
+    Uzywamy go tylko wtedy, gdy kazde z wydan ma ten sam i ostatnio udane
+    pobranie. Nowe wydanie we flocie albo nieudana proba - pobieramy calosc.
+    """
+    stany = {k.release: k for k in db.execute(
+        select(CveFeed).where(CveFeed.source == source, CveFeed.release.in_(wydania))).scalars()}
+    walidatory = {(stany[w].walidator if w in stany and stany[w].status == STATUS_OK else None)
+                  for w in wydania}
+    return walidatory.pop() if len(walidatory) == 1 else None
 
 
 # --- odczyt kanalow ---------------------------------------------------------
@@ -400,7 +450,8 @@ def _z_modulu(wersja: str | None) -> bool:
 
 # --- zapis do bazy ----------------------------------------------------------
 
-def zapisz_kanal(db: Session, source: str, release: str, wpisy: list[dict]) -> int:
+def zapisz_kanal(db: Session, source: str, release: str, wpisy: list[dict],
+                 walidator: str | None = None) -> int:
     """Podmienia wpisy kanalu dla wydania. Zwraca liczbe zapisanych."""
     db.execute(
         delete(CveEntry).where(CveEntry.source == source, CveEntry.release == release)
@@ -429,14 +480,15 @@ def zapisz_kanal(db: Session, source: str, release: str, wpisy: list[dict]) -> i
             for w in unikalne.values()
         ]
     )
-    _zapisz_stan(db, source, release, STATUS_OK, None, len(unikalne))
+    _zapisz_stan(db, source, release, STATUS_OK, None, len(unikalne), walidator)
     db.commit()
     log.info("kanal %s/%s: zapisano %d wpisow", source, release, len(unikalne))
     return len(unikalne)
 
 
 def _zapisz_stan(db: Session, source: str, release: str, status: str,
-                 detail: str | None, entries: int | None = None) -> None:
+                 detail: str | None, entries: int | None = None,
+                 walidator: str | None = None) -> None:
     stan = db.execute(
         select(CveFeed).where(CveFeed.source == source, CveFeed.release == release)
     ).scalar_one_or_none()
@@ -449,6 +501,14 @@ def _zapisz_stan(db: Session, source: str, release: str, status: str,
         stan.fetched_at = utcnow()
         if entries is not None:
             stan.entries = entries
+        stan.walidator = walidator
+
+
+def _bez_zmian(db: Session, source: str, wydania: set[str], walidator: str | None) -> None:
+    """Plik u dostawcy sie nie zmienil: wpisy zostaja, data sprawdzenia rosnie."""
+    for wydanie in wydania:
+        _zapisz_stan(db, source, wydanie, STATUS_OK, None, walidator=walidator)
+    db.commit()
 
 
 def odswiez(db: Session, wydania: dict[str, set[str]]) -> dict:
@@ -467,7 +527,11 @@ def odswiez(db: Session, wydania: dict[str, set[str]]) -> dict:
         if not wybrane:
             continue
         try:
-            surowe = _pobierz(adres)
+            surowe, walidator = _pobierz_kanal(adres, _walidator_wspolny(db, source, wybrane))
+            if surowe is None:
+                _bez_zmian(db, source, wybrane, walidator)
+                podsumowanie[source] = "bez zmian"
+                continue
             wszystkie = czytnik(surowe, wybrane)
         except BladKanalu as exc:
             log.warning("kanal %s: %s", source, exc)
@@ -479,20 +543,26 @@ def odswiez(db: Session, wydania: dict[str, set[str]]) -> dict:
 
         for wydanie in wybrane:
             zapisz_kanal(db, source, wydanie,
-                         [w for w in wszystkie if w["release"] == wydanie])
+                         [w for w in wszystkie if w["release"] == wydanie], walidator)
         podsumowanie[source] = f"{len(wszystkie)} wpisow"
 
     for wydanie in sorted(wydania.get("rhel") or set()):
         klucz = f"rhel/{wydanie}"
         try:
-            wpisy = wpisy_rhel(_pobierz(ADRES_RHEL.format(wydanie=wydanie)), wydanie)
+            surowe, walidator = _pobierz_kanal(ADRES_RHEL.format(wydanie=wydanie),
+                                               _walidator_wspolny(db, "rhel", {wydanie}))
+            if surowe is None:
+                _bez_zmian(db, "rhel", {wydanie}, walidator)
+                podsumowanie[klucz] = "bez zmian"
+                continue
+            wpisy = wpisy_rhel(surowe, wydanie)
         except BladKanalu as exc:
             log.warning("kanal %s: %s", klucz, exc)
             _zapisz_stan(db, "rhel", wydanie, "blad", str(exc)[:500])
             db.commit()
             podsumowanie[klucz] = f"blad: {exc}"
             continue
-        zapisz_kanal(db, "rhel", wydanie, wpisy)
+        zapisz_kanal(db, "rhel", wydanie, wpisy, walidator)
         podsumowanie[klucz] = f"{len(wpisy)} wpisow"
 
     # Windows: jeden zestaw biuletynow MSRC na wszystkie wydania.
@@ -1239,6 +1309,157 @@ def pobierz_oceny(db: Session, cves: list[str], klucz_api: str = "",
     }
 
 
+# --- oceny CVSS z plikow NVD -------------------------------------------------
+
+# NVD publikuje komplet danych jako pliki: jeden na rok numeru CVE i jeden
+# ze zmianami z ostatnich osmiu dni. Pliki nie podlegaja limitowi zapytan API
+# (5 na 30 s), wiec zamiast setek zapytan po jednym CVE pobieramy kilka plikow.
+ADRES_NVD_PLIK = "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{nazwa}.json.gz"
+ZRODLO_NVD = "nvd"
+PLIK_ZMIAN_NVD = "modified"
+_ROK_CVE = re.compile(r"^CVE-(\d{4})-")
+_PORCJA_ODCZYTU = 1024 * 1024
+
+
+def podatnosci_z_pliku_nvd(surowe: bytes):
+    """Kolejne pozycje "vulnerabilities" z pliku NVD (gzip), bez wczytywania calosci.
+
+    Rozpakowany plik roczny ma kilkaset megabajtow - json.loads zajalby
+    kilka gigabajtow pamieci. Czytamy go porcjami i dekodujemy po jednej
+    pozycji tablicy.
+    """
+    try:
+        strumien = io.TextIOWrapper(gzip.GzipFile(fileobj=io.BytesIO(surowe)), encoding="utf-8")
+        dekoder = json.JSONDecoder()
+        bufor = ""
+
+        def dolej() -> bool:
+            nonlocal bufor
+            porcja = strumien.read(_PORCJA_ODCZYTU)
+            bufor += porcja
+            return bool(porcja)
+
+        while True:
+            poczatek = bufor.find('"vulnerabilities"')
+            if poczatek >= 0 and bufor.find("[", poczatek) >= 0:
+                bufor = bufor[bufor.find("[", poczatek) + 1:]
+                break
+            if not dolej():
+                return
+        pozycja = 0
+        while True:
+            while pozycja < len(bufor) and bufor[pozycja] in " \t\r\n,":
+                pozycja += 1
+            if pozycja >= len(bufor):
+                bufor, pozycja = "", 0
+                if not dolej():
+                    raise BladKanalu("plik NVD urywa sie w srodku listy")
+                continue
+            if bufor[pozycja] == "]":
+                return
+            try:
+                obiekt, pozycja = dekoder.raw_decode(bufor, pozycja)
+            except ValueError:
+                # Pozycja przecieta granica porcji - dolewamy i probujemy znowu.
+                bufor, pozycja = bufor[pozycja:], 0
+                if not dolej():
+                    raise BladKanalu("niepoprawny JSON w pliku NVD") from None
+                continue
+            yield obiekt
+            if pozycja > _PORCJA_ODCZYTU:
+                bufor, pozycja = bufor[pozycja:], 0
+    except (OSError, EOFError, UnicodeDecodeError) as exc:
+        raise BladKanalu(f"nie moge odczytac pliku NVD: {exc}") from exc
+
+
+def oceny_z_plikow_nvd(db: Session, cves: list[str], postep=None) -> dict:
+    """Oceny CVSS dla podatnosci we flocie - z plikow NVD zamiast z API.
+
+    * Brakujace oceny bierzemy z plikow lat, z ktorych sa te CVE - tylko tych.
+      CVE, ktorego w pliku nie ma, zapisujemy jako "bez oceny", zeby nie
+      pobierac tego samego roku przy kazdym obiegu.
+    * Plik zmian z ostatnich 8 dni aktualizuje oceny wszystkich CVE we
+      flocie - NVD dopisuje oceny swiezym lukom po kilku dniach.
+
+    Kazdy plik pobieramy tylko wtedy, gdy zmienil sie od poprzedniego razu
+    (ETag), wiec obieg bez zmian u NVD to kilka krotkich zapytan.
+    """
+    from ..models import CveScore
+
+    we_flocie = set(cves)
+    znane: set[str] = set()
+    for ocena in db.execute(select(CveScore).where(CveScore.cve.in_(we_flocie))).scalars():
+        if not (ocena.found and (ocena.summary is None or ocena.cwe is None)):
+            znane.add(ocena.cve)
+    brakujace = we_flocie - znane
+    lata = sorted({m.group(1) for c in brakujace if (m := _ROK_CVE.match(c))})
+    pliki = [*lata, PLIK_ZMIAN_NVD]
+
+    pobrane = puste = 0
+    przetworzone, bez_zmian = [], []
+    for numer, nazwa in enumerate(pliki):
+        if postep:
+            postep(numer, len(pliki))
+        stan = db.execute(select(CveFeed).where(
+            CveFeed.source == ZRODLO_NVD, CveFeed.release == nazwa)).scalar_one_or_none()
+        walidator = stan.walidator if stan is not None and stan.status == STATUS_OK else None
+        try:
+            surowe, walidator = _pobierz_kanal(ADRES_NVD_PLIK.format(nazwa=nazwa), walidator)
+            if surowe is None:
+                bez_zmian.append(nazwa)
+                _zapisz_stan(db, ZRODLO_NVD, nazwa, STATUS_OK, None, walidator=walidator)
+                db.commit()
+                continue
+            # Plik zmian odswieza wszystko we flocie, roczny - tylko brakujace.
+            szukane = we_flocie if nazwa == PLIK_ZMIAN_NVD else {
+                c for c in brakujace if c.startswith(f"CVE-{nazwa}-")}
+            znalezione: set[str] = set()
+            for pozycja in podatnosci_z_pliku_nvd(surowe):
+                numer_cve = (pozycja.get("cve") or {}).get("id")
+                if numer_cve not in szukane:
+                    continue
+                znalezione.add(numer_cve)
+                ocena = _ocena_z_odpowiedzi({"vulnerabilities": [pozycja]})
+                if ocena is None or ocena["base_score"] is None:
+                    db.merge(CveScore(cve=numer_cve, found=False,
+                                      summary=(ocena or {}).get("summary") or None,
+                                      cwe=(ocena or {}).get("cwe") or ""))
+                    puste += 1
+                else:
+                    db.merge(CveScore(cve=numer_cve, found=True, fetched_at=utcnow(), **ocena))
+                    pobrane += 1
+                if len(znalezione) % 500 == 0:
+                    db.commit()
+            if nazwa != PLIK_ZMIAN_NVD:
+                # Brak w pliku swojego roku = NVD tego CVE jeszcze nie opisal.
+                for numer_cve in szukane - znalezione:
+                    db.merge(CveScore(cve=numer_cve, found=False, summary="", cwe=""))
+                    puste += 1
+                brakujace -= szukane
+            _zapisz_stan(db, ZRODLO_NVD, nazwa, STATUS_OK, None, len(znalezione), walidator)
+            db.commit()
+            przetworzone.append(nazwa)
+        except BladKanalu as exc:
+            db.rollback()
+            log.warning("plik NVD %s: %s", nazwa, exc)
+            _zapisz_stan(db, ZRODLO_NVD, nazwa, "blad", str(exc)[:500])
+            db.commit()
+            raise
+    if postep:
+        postep(len(pliki), len(pliki))
+    return {"pobrane": pobrane, "bez_oceny": puste, "bledy": 0, "pozostalo": 0,
+            "pliki": przetworzone, "bez_zmian": bez_zmian}
+
+
+def oceny_nvd(db: Session, cves: list[str], klucz_api: str = "", postep=None) -> dict:
+    """Oceny NVD: z plikow, a gdy NVD ich nie wyda - dotychczasowo, z API."""
+    try:
+        return oceny_z_plikow_nvd(db, cves, postep=postep)
+    except BladKanalu as exc:
+        log.warning("pliki NVD niedostepne (%s) - oceny z API, porcja", exc)
+        return pobierz_oceny(db, cves, klucz_api=klucz_api, postep=postep)
+
+
 def cve_we_flocie(db: Session, source: str | None = None) -> list[str]:
     """Podatnosci faktycznie dopasowane do maszyn - i tylko dla nich pobieramy
     oceny. Kanal Debiana ma 45 tysiecy wpisow, maszyny dotyczy kilkaset.
@@ -1249,11 +1470,15 @@ def cve_we_flocie(db: Session, source: str | None = None) -> list[str]:
 
     znalezione: list[str] = []
     widziane: set[str] = set()
+    # DISTINCT ON: baza oddaje od razu tylko najnowszy raport kazdej maszyny.
+    # Wczesniej czytalismy wszystkie zachowane raporty (do 50 na maszyne)
+    # i odrzucali starsze dopiero tutaj.
     podzapytanie = (
         select(InventorySnapshot.payload, InventorySnapshot.asset_id)
         .join(Asset, Asset.id == InventorySnapshot.asset_id)
         .where(Asset.os_family.in_(("linux", "windows")))
-        .order_by(InventorySnapshot.collected_at.desc())
+        .distinct(InventorySnapshot.asset_id)
+        .order_by(InventorySnapshot.asset_id, InventorySnapshot.collected_at.desc())
     )
     obsluzone: set[str] = set()
     for payload, asset_id in db.execute(podzapytanie):
