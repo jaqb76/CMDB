@@ -428,6 +428,8 @@ class LinuxCollector(BaseCollector):
                 "%Y-%m-%dT%H:%M:%SZ"
             )
 
+        uname = platform.uname()
+        kernel = clean(uname.release) or clean(platform.release())
         return {
             "name": release.get("PRETTY_NAME") or release.get("NAME"),
             "version": release.get("VERSION_ID"),
@@ -437,7 +439,7 @@ class LinuxCollector(BaseCollector):
             "last_boot": last_boot,
             "uptime_seconds": uptime,
             "locale": os.environ.get("LANG"),
-            "kernel": platform.release(),
+            "kernel": kernel,
             # Identyfikator dystrybucji i nazwa kodowa wydania. Bez nich nie da
             # sie dobrac wlasciwego kanalu danych o podatnosciach: ta sama
             # wersja pakietu jest zalatana w bookworm, a podatna w bullseye.
@@ -538,13 +540,13 @@ class LinuxCollector(BaseCollector):
             # zrodlowym ("openssl"), a zainstalowane sa pakiety binarne
             # ("libssl3"). Bez tego wiekszosc podatnosci nie zostalaby
             # dopasowana.
-            (["dpkg-query", "-W", "-f=${Package}\\t${Version}\\t${Maintainer}\\t${source:Package}\\t${source:Version}\\n"], "dpkg"),
+            (["dpkg-query", "-W", "-f=${Package}\t${Version}\t${Maintainer}\t${source:Package}\t${source:Version}\n"], "dpkg"),
             # Piata kolumna to wersja z epoka ("1:3.0.7-27.el9") - tak opisuje
             # pakiety Red Hat i bez niej porownanie z jego danymi bywa bledne.
             # Skladnia warunkowa zamiast %{EPOCHNUM}, bo ta nie istnieje
             # w rpm z RHEL 7, a nieznany znacznik wywraca cale zapytanie.
-            (["rpm", "-qa", "--qf", "%{NAME}\\t%{VERSION}-%{RELEASE}\\t%{VENDOR}\\t%{SOURCERPM}"
-              "\\t%|EPOCH?{%{EPOCH}}:{0}|:%{VERSION}-%{RELEASE}\\n"], "rpm"),
+            (["rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{VENDOR}\t%{SOURCERPM}"
+              "\t%|EPOCH?{%{EPOCH}}:{0}|:%{VERSION}-%{RELEASE}\n"], "rpm"),
             (["pacman", "-Q"], "pacman"),
         ]
         for command, source in managers:
