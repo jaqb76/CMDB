@@ -41,7 +41,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..models import CveEntry, CveFeed, as_utc, utcnow
-from . import cve_windows, wersje_pakietow
+from . import cve_windows, repo_meta, wersje_pakietow
 
 log = logging.getLogger(__name__)
 
@@ -235,7 +235,7 @@ _MODUL = re.compile(r"^Module (?P<modul>\S+:\S+) is enabled$")
 
 
 def _kryteria_rhel(kryteria: ET.Element, modul: str | None,
-                   wynik: list[tuple[str, str, str | None]]) -> None:
+                    wynik: list[tuple[str, str, str | None]]) -> None:
     """Zbiera (pakiet, wersja, strumien modulu) z drzewa kryteriow.
 
     Warunek "Module php:8.3 is enabled" stoi obok kryteriow pakietow w tej
@@ -291,7 +291,7 @@ def _definicja_rhel(definicja: ET.Element, wydanie: str,
                 cves[numer] = {"waga": (element.get("impact") or "").strip() or None,
                                "ocena": ocena, "wektor": wektor,
                                "cwe": ",".join(f"CWE-{n}" for n in dict.fromkeys(
-                                   _NUMER_CWE.findall(element.get("cwe") or ""))) or None}
+                                    _NUMER_CWE.findall(element.get("cwe") or ""))) or None}
         elif nazwa == "reference" and element.get("source") == "CVE":
             numer = (element.get("ref_id") or "").strip()
             if numer.startswith("CVE-"):
@@ -625,6 +625,7 @@ def dopasuj(db: Session, payload: dict) -> dict:
         return _wynik(STATUS_NIEZNANY, "raport nie zawiera listy pakietow")
 
     rpm = source == "rhel"
+    resolved_repo_cves = repo_meta.repo_resolved_cves(payload) if rpm else set()
 
     # Jedno zapytanie na maszyne zamiast jednego na pakiet.
     klucze = {_klucz_pakietu(p, rpm) for p in pakiety} - {""}
@@ -680,6 +681,8 @@ def dopasuj(db: Session, payload: dict) -> dict:
             continue
 
         for wpis in wedlug_pakietu.get(_klucz_pakietu(pakiet, rpm), []):
+            if wpis.cve in resolved_repo_cves:
+                continue
             nieaktywne_jadro = False
             if wpis.status == "resolved":
                 if rpm:
@@ -815,7 +818,7 @@ DOSTAWCY = {"rhel": "Red Hat", "msrc": "Microsoft"}
 
 
 def _dolacz_oceny(db: Session, source: str, release: str, znalezione: list[dict],
-                  rpm: bool) -> None:
+                   rpm: bool) -> None:
     """Oceny CVSS, priorytety i odnosniki - wspolne dla Linuksa i Windows."""
     # Oceny doklejamy jednym zapytaniem - z bufora, bez ruchu sieciowego.
     from ..models import CveScore
@@ -1308,7 +1311,7 @@ def wpisy_cwe(surowe: bytes) -> list[dict]:
                                     if tekst:
                                         pola[_nazwa(pole)].append(tekst)
                             skutki.append({"scopes": pola["Scope"], "impacts": pola["Impact"],
-                                           "note": " ".join(pola["Note"])[:1500] or None})
+                                            "note": " ".join(pola["Note"])[:1500] or None})
                 if element.get("ID"):
                     wynik.append({"id": element.get("ID"), "name": (element.get("Name") or "")[:255],
                                   "description": opis[:4000] or None, "consequences": skutki})
@@ -1421,3 +1424,4 @@ def szczegoly_cve(db: Session, numer: str, zrodlo: str | None = None) -> dict | 
                    "msrc": "Microsoft"}.get(dystrybucja),
         "nvd_link": ODNOSNIK_NVD.format(cve=numer),
     }
+
