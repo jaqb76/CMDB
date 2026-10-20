@@ -1,0 +1,4 @@
+{
+  "category": "added",
+  "text": "Agent odczytuje Proxmox VE: klaster, węzły, maszyny wirtualne QEMU i kontenery LXC (tylko odczyt). Logowanie tokenem API albo hasłem z realmem; adresy IP i system z QEMU Guest Agent."
+}

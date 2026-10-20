@@ -9,9 +9,9 @@
   <span class="muted small" data-wirt-wynik></span>
 </form>
 <p class="muted">
-  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central, VMware vCenter i OpenStacka, a pod nimi
+  Klastry, hosty i maszyny wirtualne odczytane z Nutanix Prism Central, VMware vCenter, OpenStacka i Proxmox VE, a pod nimi
   pamięć masowa z Ceph — przez agentów z włączoną funkcją odczytu (karta maszyny → Agent → Dodatkowe funkcjonalności).
-  W OpenStacku klastrem jest region, a hostem hypervisor Novy.
+  W OpenStacku klastrem jest region, a hostem hypervisor Novy; w Proxmoxie hostem jest węzeł, a maszynami — VM QEMU i kontenery LXC.
   Kolumna „Agent CMDB” pokazuje, które maszyny wirtualne nie są objęte inwentaryzacją oprogramowania.
 </p>
 
@@ -56,9 +56,9 @@
   {% if wybrany %}
   <p>To źródło nie ma jeszcze odczytanych obiektów. <a href="/wirtualizacja">Pokaż wszystkie źródła</a></p>
   {% else %}
-  <p>Nie ma jeszcze danych z Prism Central, vCenter, OpenStacka ani Cepha.</p>
-  <p class="muted">Włącz odczyt na karcie maszyny, która widzi Prism Central, vCenter albo OpenStack:
-    <b>Agent → Dodatkowe funkcjonalności → Nutanix Prism Central / VMware vCenter / OpenStack</b>.
+  <p>Nie ma jeszcze danych z Prism Central, vCenter, OpenStacka, Proxmoxa ani Cepha.</p>
+  <p class="muted">Włącz odczyt na karcie maszyny, która widzi Prism Central, vCenter, OpenStack albo Proxmox VE:
+    <b>Agent → Dodatkowe funkcjonalności → Nutanix Prism Central / VMware vCenter / OpenStack / Proxmox VE</b>.
     Pierwszy odczyt pojawi się po najbliższym sprawdzeniu konfiguracji przez agenta.</p>
   {% endif %}
 </section>
@@ -85,7 +85,7 @@
 {% macro wiersz_vm(v) %}{% set d = v.obiekt.dane or {} %}
   <tr class="wirt-vm" data-szukaj="{{ szukaj_vm(v, d) | lower }}">
     <td>{% if v.asset %}<a href="/assets/{{ v.asset.id }}">{{ v.obiekt.nazwa or v.obiekt.ext_id }}</a>{% else %}{{ v.obiekt.nazwa }}{% endif %}
-      {% if d.projekt %}<div class="muted small">projekt {{ d.projekt }}</div>{% endif %}</td>
+      {% if d.projekt %}<div class="muted small">{{ (platformy.get(v.obiekt.dostawca, platformy.nutanix).etykieta_projektu or 'projekt') | lower }} {{ d.projekt }}</div>{% endif %}</td>
     <td>{% if d.stan == 'ON' %}<span class="badge badge-ok">włączona</span>{% elif d.stan == 'OFF' %}<span class="badge">wyłączona</span>{% elif d.stan %}<span class="badge">{{ d.stan | lower }}</span>{% endif %}</td>
     <td class="small">{% if v.z_agentem %}{{ v.asset.os_name or d.system or '' }}{% else %}{{ d.system or '' }}{% if d.system %} <span class="muted">(wg {{ platformy.get(v.obiekt.dostawca, platformy.nutanix).producent }})</span>{% endif %}{% endif %}</td>
     <td class="num">{% if d.gniazda or d.rdzenie_na_gniazdo %}{{ (d.gniazda or 1) * (d.rdzenie_na_gniazdo or 1) }}{% endif %}</td>

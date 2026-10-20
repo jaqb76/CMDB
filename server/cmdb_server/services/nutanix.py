@@ -1,8 +1,8 @@
-"""Wirtualizacja (Nutanix Prism Central, VMware vCenter, OpenStack): konfiguracja
+"""Wirtualizacja (Nutanix Prism Central, VMware vCenter, OpenStack, Proxmox VE): konfiguracja
 dla agenta i wlaczanie odczytu do ewidencji.
 
 Wszyscy dostawcy przechodza te sama droge - roznia sie tylko tym, co agent pyta
-(agent/cmdb_agent/nutanix.py, vmware.py, openstack.py). Agent sprowadza
+(agent/cmdb_agent/nutanix.py, vmware.py, openstack.py, proxmox.py). Agent sprowadza
 odpowiedz do tej samej plaskiej postaci, wiec reszta jest wspolna.
 
 Z platformy laczy sie agent. Serwer tylko
@@ -12,9 +12,9 @@ wydaje mu konfiguracje, przyjmuje wynik i przeklada go na zasoby i relacje:
 
 Maszyna wirtualna, w ktorej dziala agent CMDB, nie dostaje drugiego wpisu:
 jej UUID z BIOS-u (raport agenta) rowna sie identyfikatorowi VM w Prism
-albo bios_uuid z vCenter (na KVM w OpenStacku: UUID instancji), wiec odczyt
-dopisuje sie do karty maszyny agenta. Pozostale VM, hosty i klastry dostaja
-wpisy o zrodle dostawcy ("nutanix", "vmware", "openstack").
+albo bios_uuid z vCenter (na KVM w OpenStacku: UUID instancji, w Proxmoxie:
+smbios1), wiec odczyt dopisuje sie do karty maszyny agenta. Pozostale VM, hosty
+i klastry dostaja wpisy o zrodle dostawcy ("nutanix", "vmware", "openstack", "proxmox").
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ from ..models import (
     ZRODLO_NUTANIX,
     ZRODLO_OME,
     ZRODLO_OPENSTACK,
+    ZRODLO_PROXMOX,
     ZRODLO_VMWARE,
     Asset,
     AssetChange,
@@ -52,7 +53,7 @@ log = logging.getLogger(__name__)
 
 KLASTER, HOST, VM = "klaster", "host", "vm"
 NUTANIX, VMWARE, OPENSTACK, CEPH, OME = ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH, ZRODLO_OME
-NETAPP = ZRODLO_NETAPP
+NETAPP, PROXMOX = ZRODLO_NETAPP, ZRODLO_PROXMOX
 INTERWALY_MINUT = (15, 30, 60, 120, 240, 720, 1440)
 
 # Wszystko, czym dostawcy sie roznia. retired_by/created_by = klucz dostawcy:
@@ -63,7 +64,13 @@ INTERWALY_MINUT = (15, 30, 60, 120, 240, 720, 1440)
 #   http      - mozna zezwolic na polaczenie bez TLS (OpenStack, Ceph Dashboard),
 #   magazyn   - pamiec masowa (Ceph): wlasny zapis do ewidencji, poza drzewem
 #               klaster -> host -> VM,
-#   narzedzia - nazwa narzedzi goscia, ktore podaja system VM (brak = nie podaje).
+#   narzedzia - nazwa narzedzi goscia, ktore podaja system VM (brak = nie podaje),
+#   host_z_agentem - host to zwykly Linux, czesto z agentem CMDB: dopisuje sie
+#               do jego karty po nazwie,
+#   typ_vm    - pole typ VM to rodzaj maszyny (QEMU/KVM, LXC), a nie flavor;
+#               idzie do modelu w ewidencji,
+#   vm_po_nazwie - VM bez UUID z BIOS-u (kontener LXC) laczy sie z agentem po nazwie,
+#   etykieta_projektu - jak platforma nazywa pole projekt (Proxmox: pula).
 DOSTAWCY = {
     NUTANIX: {"nazwa": "Nutanix Prism Central", "platforma": "Prism Central",
               "port": 9440, "producent": "Nutanix", "model_vm": "AHV", "system_klastra": "AOS",
@@ -88,6 +95,16 @@ DOSTAWCY = {
                 # Compute to zwykly Linux - czesto z agentem CMDB, wiec host
                 # dopisuje sie do jego karty (po nazwie), zamiast zakladac druga.
                 "host_z_agentem": True},
+    PROXMOX: {"nazwa": "Proxmox VE", "platforma": "Proxmox VE",
+              "port": 8006, "producent": "Proxmox", "model_vm": "Proxmox VE", "system_klastra": "Proxmox VE",
+              "przyklad": "https://pve01.firma.pl:8006", "przyklad_konta": "cmdb@pve!cmdb",
+              "konto": "z rolą <b>PVEAuditor</b> na ścieżce <code>/</code> (z propagacją); "
+                       "zalecany <b>token API</b> zamiast hasła",
+              "identyfikator": "Proxmox VE (VMID)", "narzedzia": "QEMU Guest Agent",
+              "sciezka": False, "projekt": False, "http": False,
+              "etykieta_konta": "Użytkownik albo ID tokenu API", "etykieta_hasla": "Hasło albo sekret tokenu",
+              # Wezel to Debian - czesto z agentem CMDB, jak compute OpenStacka.
+              "host_z_agentem": True, "typ_vm": True, "vm_po_nazwie": True, "etykieta_projektu": "Pula"},
     CEPH: {"nazwa": "Ceph", "platforma": "Ceph Dashboard",
            "port": 8443, "producent": "Ceph", "model_vm": "", "system_klastra": "Ceph",
            "przyklad": "https://ceph-mgr.firma.pl:8443", "przyklad_konta": "cmdb-ro",
@@ -307,9 +324,9 @@ def usun_polaczenie(db: Session, czytnik: Asset, row: WirtualizacjaPolaczenie) -
 
 def _przestrzen(row, dostawca: str) -> str:
     """Przedrostek identyfikatorow: w VMware "vm-123" powtarza sie w kazdym vCenter,
-    a w OpenStacku region "RegionOne" - w kazdej chmurze, wiec skrot adresu
-    platformy odroznia obiekty dwoch instalacji."""
-    if dostawca not in (VMWARE, OPENSTACK):
+    w OpenStacku region "RegionOne" - w kazdej chmurze, a w Proxmoxie VMID 100 -
+    w kazdym klastrze, wiec skrot adresu platformy odroznia obiekty dwoch instalacji."""
+    if dostawca not in (VMWARE, OPENSTACK, PROXMOX):
         return ""
     host = (urlsplit(row.adres or "").hostname or ("vcenter" if dostawca == VMWARE else dostawca)).lower()
     return hashlib.sha1(host.encode()).hexdigest()[:8] + "/"
@@ -323,6 +340,9 @@ def _opis_testu(wynik: WynikNutanix, dostawca: str = NUTANIX) -> str:
         czesci.append("lista serwerów dostępna" if wynik.klastry else "OME nie zwrócił żadnego serwera")
     else:
         czesci.append(f"klastry: {len(wynik.klastry)}")
+    # Proxmox w tescie podaje tez wezly - pojedynczy serwer nie ma klastra.
+    if wynik.hosty:
+        czesci.append(f"hosty: {len(wynik.hosty)}")
     if wynik.czas_ms is not None:
         czesci.append(f"{wynik.czas_ms} ms")
     return " · ".join(czesci)
@@ -493,6 +513,10 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
     for v in wynik.vm:
         uuidy |= warianty_uuid(v.ext_id) | warianty_uuid(v.bios_uuid)
     agenci = _maszyny_agentow(db, tenant_id, uuidy)
+    # Kontener LXC nie ma wlasnego UUID z BIOS-u (agent w nim widzi UUID wezla),
+    # wiec z agentem laczy go nazwa - tylko jednoznaczna.
+    agenci_nazw = _hosty_agentow(db, tenant_id, [v.nazwa for v in wynik.vm if not v.bios_uuid]) \
+        if opis.get("vm_po_nazwie") else {}
 
     for v in wynik.vm:
         dane = v.model_dump(exclude={"ext_id", "nazwa"})
@@ -500,13 +524,16 @@ def synchronizuj(db: Session, czytnik: Asset, wynik: WynikNutanix,
         o = obiekt(VM, v.ext_id, v.nazwa, dane)
         agent = next((agenci[u] for u in warianty_uuid(v.ext_id) | warianty_uuid(v.bios_uuid)
                       if u in agenci), None)
+        if agent is None and not v.bios_uuid:
+            agent = next((agenci_nazw[n] for n in _nazwy_hosta(v.nazwa) if n in agenci_nazw), None)
         if agent is not None:
             _polacz_z_agentem(db, o, agent, dostawca)
             asset = agent
             liczby["vm_z_agentem"] += 1
         else:
             ip = next((a for karta in v.karty for a in karta.ip), None)
-            asset = wpis(o, "vm", manufacturer=opis["producent"], model=opis["model_vm"],
+            asset = wpis(o, "vm", manufacturer=opis["producent"],
+                         model=_pierwsze(v.typ, opis["model_vm"]) if opis.get("typ_vm") else opis["model_vm"],
                          os_name=v.system, primary_ip=ip)
         host = hosty.get(ident(v.host_id))
         _ustaw_relacje(db, tenant_id, asset, host, "vm_host", dostawca, zapisz_zmiane=True)
@@ -571,7 +598,7 @@ def _przywroc(asset: Asset, dostawca: str = NUTANIX) -> None:
 
 
 def _polacz_z_agentem(db: Session, o: NutanixObiekt, agent: Asset, dostawca: str = NUTANIX) -> None:
-    """VM (albo host OpenStacka) ma agenta: odczyt dopisuje sie do jego karty.
+    """VM (albo host OpenStacka i Proxmoxa) ma agenta: odczyt dopisuje sie do jego karty.
 
     Wpis zalozony wczesniej z samego odczytu (zanim zainstalowano agenta)
     zostaje wycofany z adnotacja - nie kasujemy go, bo mogl juz dostac

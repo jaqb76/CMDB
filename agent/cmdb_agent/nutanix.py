@@ -405,7 +405,8 @@ class CzytnikNutanix:
     Agent moze czytac kilka instalacji naraz - kazde polaczenie ma wlasny
     odstep, wlasne zlecenia z panelu i wlasny watek; wolny odczyt jednego
     nie wstrzymuje drugiego. Ten sam czytnik obsluguje vCenter
-    (vmware.CzytnikVmware) i OpenStack (openstack.CzytnikOpenstack) - dostawca
+    (vmware.CzytnikVmware), OpenStack (openstack.CzytnikOpenstack) i Proxmox VE
+    (proxmox.CzytnikProxmox) - dostawca
     wnosi tylko adresy w CMDB, klienta platformy i funkcje odczytu.
     """
 

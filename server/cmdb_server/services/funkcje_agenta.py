@@ -30,12 +30,13 @@ MONITOROWANIE = "monitorowanie"
 NUTANIX = "nutanix"
 VMWARE = "vmware"
 OPENSTACK = "openstack"
+PROXMOX = "proxmox"
 CEPH = "ceph"
 OME = "ome"
 NETAPP = "netapp"
 # Funkcje odczytu platform (wirtualizacja, pamiec masowa, sprzet) - wspolna
 # konfiguracja polaczen (services/nutanix.py).
-WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK, CEPH, NETAPP, OME)
+WIRTUALIZACJA = (NUTANIX, VMWARE, OPENSTACK, PROXMOX, CEPH, NETAPP, OME)
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ KATALOG: tuple[Funkcja, ...] = (
             "Odczytuje z vCenter klastry, hosty ESXi i maszyny wirtualne (tylko odczyt, REST API)."),
     Funkcja(OPENSTACK, "OpenStack", "Wirtualizacja",
             "Odczytuje z OpenStacka regiony, hypervisory Novy i maszyny wirtualne wszystkich projektów (tylko odczyt)."),
+    Funkcja(PROXMOX, "Proxmox VE", "Wirtualizacja",
+            "Odczytuje z Proxmox VE klaster, węzły, maszyny wirtualne QEMU i kontenery LXC (tylko odczyt, API token)."),
     Funkcja(CEPH, "Ceph", "Pamięć masowa",
             "Odczytuje z Ceph Dashboard stan klastra, pojemność, OSD, węzły i pule (tylko odczyt)."),
     Funkcja(NETAPP, "NetApp ONTAP", "Pamięć masowa",

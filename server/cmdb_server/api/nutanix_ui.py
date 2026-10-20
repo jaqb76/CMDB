@@ -1,7 +1,7 @@
-"""Panel: konfiguracja odczytu Prism Central / vCenter / OpenStack i widok Wirtualizacja.
+"""Panel: konfiguracja odczytu Prism Central / vCenter / OpenStack / Proxmox i widok Wirtualizacja.
 
 Wszyscy dostawcy maja te same trasy pod wlasnym przedrostkiem
-(/assets/{id}/nutanix, /assets/{id}/vmware, /assets/{id}/openstack) - jawnie, bez parametru w
+(/assets/{id}/nutanix, /assets/{id}/vmware, /assets/{id}/proxmox...) - jawnie, bez parametru w
 sciezce, ktory zlapalby tez /assets/{id}/owner i podobne.
 """
 from __future__ import annotations
