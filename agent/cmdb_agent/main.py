@@ -362,7 +362,7 @@ def _wypisz_monitorowanie(monitoring: dict) -> None:
     if monitoring.get("ostatni_blad"):
         print(f"blad monitorowania   : {monitoring['ostatni_blad']}")
     for klucz, nazwa in (("nutanix", "Nutanix"), ("vmware", "VMware"), ("openstack", "OpenStack"),
-                          ("ceph", "Ceph"), ("ome", "OME"),
+                          ("proxmox", "Proxmox"), ("ceph", "Ceph"), ("ome", "OME"),
                           ("netapp", "NetApp")):
         czytnik = monitoring.get(klucz) or {}
         # Kilka polaczen - wiersz na kazde; jedno (albo starszy status) - jak dotad.

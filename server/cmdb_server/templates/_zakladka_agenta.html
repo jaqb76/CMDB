@@ -176,9 +176,9 @@
                 </select></div>
             </div>
             <div class="row-form">
-              <div><label for="nx-user-{{ nr }}">{{ 'Użytkownik albo ID application credential' if wirt.opis.projekt else 'Użytkownik' }}</label>
+              <div><label for="nx-user-{{ nr }}">{{ wirt.opis.etykieta_konta or ('Użytkownik albo ID application credential' if wirt.opis.projekt else 'Użytkownik') }}</label>
                 <input id="nx-user-{{ nr }}" name="uzytkownik" maxlength="128" autocomplete="off" value="{{ nx.uzytkownik if nx else '' }}" placeholder="{{ wirt.opis.przyklad_konta }}"></div>
-              <div><label for="nx-haslo-{{ nr }}">{{ 'Hasło albo sekret' if wirt.opis.projekt else 'Hasło' }}</label>
+              <div><label for="nx-haslo-{{ nr }}">{{ wirt.opis.etykieta_hasla or ('Hasło albo sekret' if wirt.opis.projekt else 'Hasło') }}</label>
                 <input id="nx-haslo-{{ nr }}" name="haslo" type="password" maxlength="512" autocomplete="new-password"
                        placeholder="{% if nx and nx.haslo %}zapisane — puste pole = bez zmian{% else %}hasło konta w {{ wirt.opis.platforma }}{% endif %}"></div>
             </div>
@@ -209,6 +209,13 @@
             <div class="muted small">Adres klastra (cluster management LIF), np. <code>https://172.16.2.137</code> — adres
               z System Managera (<code>…/sysmgr/v4/</code>) też zadziała. Konto: <code>security login create -user-or-group-name cmdb-ro
               -application http -authentication-method password -role readonly</code>. Domyślny certyfikat klastra wklej poniżej — zostanie przypięty.</div>
+            {% endif %}
+            {% if wirt.dostawca == 'proxmox' %}
+            <div class="muted small">Adres dowolnego węzła klastra, np. <code>https://pve01.firma.pl:8006</code> (port 8006 dopisze się sam).
+              Token API (zalecany): w polu użytkownika <code>cmdb@pve!cmdb</code>, w haśle sekret tokenu. Konto i token:
+              <code>pveum user add cmdb@pve</code>, <code>pveum acl modify / --users cmdb@pve --roles PVEAuditor</code>,
+              <code>pveum user token add cmdb@pve cmdb --privsep 0</code>. Logowanie hasłem: użytkownik z realmem, np. <code>cmdb@pve</code> (bez 2FA).
+              Certyfikat CA klastra (<code>/etc/pve/pve-root-ca.pem</code>) wklej poniżej.</div>
             {% endif %}
             {% if wirt.dostawca == 'ceph' %}
             <div class="muted small">Adres to Ceph Dashboard (aktywny mgr albo adres za load balancerem), np. <code>https://ceph-mgr.firma.pl:8443</code>.

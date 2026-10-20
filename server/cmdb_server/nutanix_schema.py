@@ -1,6 +1,6 @@
-"""Wynik odczytu platformy wirtualizacji (Prism Central, vCenter, OpenStack) od agenta.
+"""Wynik odczytu platformy wirtualizacji (Prism Central, vCenter, OpenStack, Proxmox VE) od agenta.
 
-Agent sprowadza odpowiedzi API (Prism v4, vCenter REST, Nova) do tej plaskiej postaci, zanim cokolwiek
+Agent sprowadza odpowiedzi API (Prism v4, vCenter REST, Nova, Proxmox) do tej plaskiej postaci, zanim cokolwiek
 wysle: serwer nie musi znac ksztaltu API Nutanixa, a zmiana po stronie
 Prism konczy sie poprawka jednego pliku w agencie. Limity chronia baze
 przed raportem, ktory urosl z bledu, a nie z wielkosci instalacji.
@@ -84,6 +84,7 @@ class Vm(_Model):
     bios_uuid: str | None = Field(default=None, max_length=64)
     opis: str | None = Field(default=None, max_length=1000)
     # OpenStack: projekt (nazwa albo ID), strefa dostepnosci i flavor.
+    # Proxmox: pula (pool) w projekcie, a w typie QEMU/KVM albo LXC.
     projekt: str | None = Field(default=None, max_length=_TEKST)
     strefa: str | None = Field(default=None, max_length=_TEKST)
     typ: str | None = Field(default=None, max_length=_TEKST)

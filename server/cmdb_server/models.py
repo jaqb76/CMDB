@@ -49,9 +49,10 @@ ZRODLO_RECZNE = "reczne"
 # "bez kontaktu" - ale tez nie jest do recznej edycji, bo nadpisalby ja
 # kolejny odczyt.
 ZRODLO_NUTANIX = "nutanix"
-# To samo dla VMware vCenter i OpenStacka.
+# To samo dla VMware vCenter, OpenStacka i Proxmox VE.
 ZRODLO_VMWARE = "vmware"
 ZRODLO_OPENSTACK = "openstack"
+ZRODLO_PROXMOX = "proxmox"
 # Klaster Ceph odczytany z Ceph Dashboard - pamiec masowa, nie wirtualizacja,
 # ale ta sama droga odczytu (konfiguracja polaczenia, test, odczyt agenta).
 ZRODLO_CEPH = "ceph"
@@ -60,7 +61,8 @@ ZRODLO_CEPH = "ceph"
 ZRODLO_OME = "ome"
 # Klaster NetApp ONTAP - pamiec masowa, jak Ceph.
 ZRODLO_NETAPP = "netapp"
-ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_CEPH, ZRODLO_OME, ZRODLO_NETAPP)
+ZRODLA_WIRTUALIZACJI = (ZRODLO_NUTANIX, ZRODLO_VMWARE, ZRODLO_OPENSTACK, ZRODLO_PROXMOX, ZRODLO_CEPH, ZRODLO_OME,
+                        ZRODLO_NETAPP)
 
 # Rodzaj sprzetu. Maszyny z agentem sa komputerami; reszte wybiera czlowiek.
 TYP_KOMPUTER = "komputer"
@@ -1119,7 +1121,7 @@ class WirtualizacjaPolaczenie(_UstawieniaWirtualizacji, Base):
     asset_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )
-    # nutanix | vmware | openstack | ceph
+    # nutanix | vmware | openstack | proxmox | ceph | ome | netapp
     dostawca: Mapped[str] = mapped_column(String(16), nullable=False)
     # Wlasna nazwa w panelu, np. "POD01"; pusta = adres.
     nazwa: Mapped[str] = mapped_column(String(100), nullable=False, default="")
@@ -1186,9 +1188,9 @@ class NutanixObiekt(Base):
     tenant_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # nutanix | vmware | openstack - identyfikatory VMware i OpenStacka maja
-    # przedrostek adresu platformy, bo "vm-123" powtarza sie w kazdym vCenter,
-    # a "RegionOne" - w kazdym OpenStacku.
+    # nutanix | vmware | openstack | proxmox - identyfikatory VMware, OpenStacka
+    # i Proxmoxa maja przedrostek adresu platformy, bo "vm-123" powtarza sie
+    # w kazdym vCenter, "RegionOne" - w kazdym OpenStacku, a VMID 100 - w kazdym Proxmoxie.
     dostawca: Mapped[str] = mapped_column(String(16), nullable=False, default="nutanix")
     # klaster | host | vm
     rodzaj: Mapped[str] = mapped_column(String(16), nullable=False)

@@ -390,6 +390,7 @@ agent nie jest w stanie zaraportować maszyny do cudzej firmy.
 | [`docs/ome.md`](docs/ome.md) | odczyt serwerów Dell z OpenManage Enterprise: iDRAC, firmware, sprzęt i zdrowie dopisane do istniejących kart po Service Tagu |
 | [`docs/netapp.md`](docs/netapp.md) | odczyt klastra NetApp ONTAP przez agenta: węzły, agregaty, SVM, wolumeny, LUN-y, dyski, SnapMirror |
 | [`docs/ceph.md`](docs/ceph.md) | odczyt klastra Ceph przez agenta (Ceph Dashboard): stan, pojemność, OSD, węzły, pule; relacja z regionem OpenStacka po fsid |
+| [`docs/proxmox.md`](docs/proxmox.md) | odczyt Proxmox VE przez agenta: klaster, węzły, VM QEMU i kontenery LXC; token API, rola PVEAuditor |
 | [`docs/openstack.md`](docs/openstack.md) | odczyt OpenStacka przez agenta: regiony, hypervisory Novy, VM wszystkich projektów; application credential, http po zgodzie |
 | [`docs/monitorowanie-uslug.md`](docs/monitorowanie-uslug.md) | monitorowanie dostępności usług i ważności certyfikatów SSL, progi, powiadomienia |
 | [`docs/helpdesk.md`](docs/helpdesk.md) | zgłoszenia z maili, rozpoznawanie wątków, czas pracy, raporty, dostępy techników |

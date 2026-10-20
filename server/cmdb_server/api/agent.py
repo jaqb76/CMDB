@@ -290,7 +290,7 @@ def monitoring_report(raport: RaportDostepnosci, request: Request,
     )
 
 
-# --- wirtualizacja: Nutanix Prism Central, VMware vCenter, OpenStack ----------
+# --- wirtualizacja: Nutanix Prism Central, VMware vCenter, OpenStack, Proxmox VE ---
 
 def _polityka_wirtualizacji(dostawca: str, response: Response, nonce: str, db: Session,
                             auth: tuple[AgentCredential, TenantContext]) -> dict:
@@ -384,6 +384,21 @@ def openstack_wynik(wynik: WynikNutanix, db: Session = Depends(get_db),
                     auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
     """Wynik testu albo odczytu OpenStacka."""
     return _wynik_wirtualizacji(funkcje_agenta.OPENSTACK, wynik, db, auth)
+
+
+@router.get("/agent/proxmox-policy")
+def proxmox_policy(response: Response, nonce: str = Query(..., pattern=r"^[0-9a-f]{32}$"),
+                   db: Session = Depends(get_db),
+                   auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Konfiguracja odczytu Proxmox VE dla tej maszyny."""
+    return _polityka_wirtualizacji(funkcje_agenta.PROXMOX, response, nonce, db, auth)
+
+
+@router.post("/agent/proxmox")
+def proxmox_wynik(wynik: WynikNutanix, db: Session = Depends(get_db),
+                  auth: tuple[AgentCredential, TenantContext] = Depends(require_agent)):
+    """Wynik testu albo odczytu Proxmox VE."""
+    return _wynik_wirtualizacji(funkcje_agenta.PROXMOX, wynik, db, auth)
 
 
 @router.get("/agent/ceph-policy")

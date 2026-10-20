@@ -520,7 +520,7 @@ class Monitor:
         self.pilne: set[str] = set()
         self.przyjeto = self.pominieto = 0
         self.zatrzymaj = threading.Event()
-        # Odczyt Nutanix Prism Central, VMware vCenter, OpenStack i Ceph jedzie
+        # Odczyt Nutanix Prism Central, VMware vCenter, OpenStack, Proxmox i Ceph jedzie
         # na tej samej petli: ta usluga zyje caly czas, wiec zlecony z panelu
         # test wraca w kilka minut, a nie przy nastepnej inwentaryzacji.
         from .ceph import CzytnikCeph
@@ -528,10 +528,12 @@ class Monitor:
         from .nutanix import CzytnikNutanix
         from .ome import CzytnikOme
         from .openstack import CzytnikOpenstack
+        from .proxmox import CzytnikProxmox
         from .vmware import CzytnikVmware
         self.nutanix = CzytnikNutanix(client, state)
         self.vmware = CzytnikVmware(client, state)
         self.openstack = CzytnikOpenstack(client, state)
+        self.proxmox = CzytnikProxmox(client, state)
         self.ceph = CzytnikCeph(client, state)
         self.ome = CzytnikOme(client, state)
         self.netapp = CzytnikNetapp(client, state)
@@ -715,7 +717,7 @@ class Monitor:
         if teraz >= self.nastepna_polityka:
             self.odswiez_polityke()
             self.nastepna_polityka = teraz + ODSTEP_POLITYKI
-        for czytnik in (self.nutanix, self.vmware, self.openstack, self.ceph, self.ome, self.netapp):
+        for czytnik in (self.nutanix, self.vmware, self.openstack, self.proxmox, self.ceph, self.ome, self.netapp):
             try:
                 czytnik.krok(teraz)
             except Exception as exc:
@@ -810,6 +812,7 @@ class Monitor:
             "nutanix": self.nutanix.status(),
             "vmware": self.vmware.status(),
             "openstack": self.openstack.status(),
+            "proxmox": self.proxmox.status(),
             "ceph": self.ceph.status(),
             "ome": self.ome.status(),
             "netapp": self.netapp.status(),

@@ -1,5 +1,5 @@
 {#
-  Dane z Nutanix Prism Central, VMware vCenter albo OpenStacka na karcie zasobu. Przy maszynie z agentem
+  Dane z Nutanix Prism Central, VMware vCenter, OpenStacka albo Proxmox VE na karcie zasobu. Przy maszynie z agentem
   to druga, niezalezna perspektywa: agent mowi, co jest w srodku, hypervisor
   - na czym to stoi i ile dostalo.
 #}
@@ -16,8 +16,8 @@
       {% if d.ram_bajty %}<dt>RAM</dt><dd>{{ d.ram_bajty | bytes }}</dd>{% endif %}
       {% if d.dyski %}<dt>Dyski</dt><dd>{% for dysk in d.dyski %}{{ dysk.rozmiar_bajty | bytes if dysk.rozmiar_bajty else '?' }}{% if dysk.magistrala %} <span class="muted">{{ dysk.magistrala }}</span>{% elif dysk.kontener %} <span class="muted">{{ dysk.kontener }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
       {% if d.karty %}<dt>Karty sieciowe</dt><dd>{% for k in d.karty %}{{ k.mac or '?' }}{% if k.ip %} — {{ k.ip | join(', ') }}{% endif %}{% if k.siec %} <span class="muted">{{ k.siec }}</span>{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}
-      {% if d.typ %}<dt>Flavor</dt><dd>{{ d.typ }}</dd>{% endif %}
-      {% if d.projekt %}<dt>Projekt</dt><dd>{{ d.projekt }}</dd>{% endif %}
+      {% if d.typ %}<dt>{{ 'Typ' if pl.typ_vm else 'Flavor' }}</dt><dd>{{ d.typ }}</dd>{% endif %}
+      {% if d.projekt %}<dt>{{ pl.etykieta_projektu or 'Projekt' }}</dt><dd>{{ d.projekt }}</dd>{% endif %}
       {% if d.strefa %}<dt>Strefa dostępności</dt><dd>{{ d.strefa }}</dd>{% endif %}
       {% if d.ngt is not none and pl.narzedzia %}<dt>{{ pl.narzedzia }}</dt><dd>{{ 'zainstalowane' if d.ngt else 'brak' }}</dd>{% endif %}
       {% if d.system %}<dt>System wg {{ producent }}</dt><dd>{{ d.system }}</dd>{% endif %}
@@ -39,7 +39,7 @@
       {% if d.liczba_hostow is not none %}<dt>Liczba hostów</dt><dd>{{ d.liczba_hostow }}</dd>{% endif %}
     {% endif %}
     <dt>Identyfikator w {{ pl.identyfikator }}</dt><dd><code>{{ wirtualizacja.ext_id.split('/')[-1] }}</code></dd>
-    <dt>Odczytano</dt><dd>{{ wirtualizacja.widziany_o | ago }}{% if asset.zrodlo == 'agent' %} · <span class="badge badge-ok">połączono z raportem agenta po {{ 'UUID' if wirtualizacja.rodzaj == 'vm' else 'nazwie hosta' }}</span>{% endif %}</dd>
+    <dt>Odczytano</dt><dd>{{ wirtualizacja.widziany_o | ago }}{% if asset.zrodlo == 'agent' %} · <span class="badge badge-ok">połączono z raportem agenta po {{ 'UUID' if wirtualizacja.rodzaj == 'vm' and (d.bios_uuid or not pl.vm_po_nazwie) else 'nazwie hosta' }}</span>{% endif %}</dd>
   </dl>
   <p class="small"><a href="/relacje?asset_id={{ asset.id }}">Host i klaster w relacjach</a> · <a href="/wirtualizacja">Cała wirtualizacja</a></p>
 </div>
