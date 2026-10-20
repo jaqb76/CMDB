@@ -183,3 +183,25 @@ def test_test_polaczenia_podaje_wezly(client, tenant_a, make_user):
     with SessionLocal() as db:
         opis = ustawienia_agenta(db, enrolled["asset_id"], "proxmox").test_opis
     assert opis == "polaczenie OK · Proxmox VE 8.2.4 · klastry: 0 · hosty: 1 · 40 ms"
+
+
+def test_lista_zasobow_pokazuje_stan_i_przydzial_vm(client, tenant_a, make_user):
+    enrolled, _, rev = _wlaczony(client, tenant_a, make_user)
+    vm = odczyt(rev)["vm"]
+    vm[1].update(gniazda=2, rdzenie_na_gniazdo=2, ram_bajty=4 * 2**30,
+                 dyski=[{"rozmiar_bajty": 64 * 2**30}])
+    assert wyslij(client, enrolled, odczyt(rev, vm=vm)) == "przyjeto"
+
+    lista = client.get("/assets").text
+    assert "<h1>Zasoby" in lista and "<th>Stan</th>" in lista
+    assert '<span class="badge badge-ok">włączona</span>' in lista
+    assert '<span class="badge">wyłączona</span>' in lista
+    # VM bez agenta: podzespoly z przydzialu hypervisora.
+    assert "4 vCPU" in lista and "4.0 GB RAM" in lista and "64.0 GB" in lista
+
+    wlaczone = client.get("/assets?state=wlaczone").text
+    assert "dns-01" in wlaczone and "win-01" not in wlaczone
+    # Maszyna z agentem tez ma stan z platformy.
+    assert "bastionjps" in wlaczone
+    wylaczone = client.get("/assets?state=wylaczone").text
+    assert "win-01" in wylaczone and "dns-01" not in wylaczone and "pve01" not in wylaczone

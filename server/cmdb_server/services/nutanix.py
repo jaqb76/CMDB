@@ -657,6 +657,49 @@ def obiekt_zasobu(db: Session, asset: Asset) -> NutanixObiekt | None:
     ).order_by(NutanixObiekt.widziany_o.desc()).limit(1)).scalar_one_or_none()
 
 
+# Stan VM z odczytu platformy: ON/OFF/SUSPENDED (Prism, vCenter, Proxmox) albo
+# stan Novy (ACTIVE, SHUTOFF...). Filtr listy zasobow sprowadza je do dwoch grup.
+STANY_WLACZONE = ("ON", "ACTIVE", "RUNNING")
+STANY_WYLACZONE = ("OFF", "SHUTOFF", "STOPPED", "SUSPENDED", "PAUSED", "SHELVED", "SHELVED_OFFLOADED")
+
+
+def warunek_stanu_vm(stan: str):
+    """Warunek na Asset: ma maszyne wirtualna z odczytu w danym stanie
+    ("wlaczone" albo "wylaczone"). None - nieznany stan, bez filtra."""
+    stany = {"wlaczone": STANY_WLACZONE, "wylaczone": STANY_WYLACZONE}.get(stan)
+    if stany is None:
+        return None
+    return select(NutanixObiekt.id).where(
+        NutanixObiekt.asset_id == Asset.id, NutanixObiekt.rodzaj == VM,
+        NutanixObiekt.zniknal_o.is_(None),
+        func.upper(NutanixObiekt.dane["stan"].astext).in_(stany)).exists()
+
+
+def vm_zasobow(db: Session, tenant_id: str, asset_ids: list[str]) -> dict[str, dict]:
+    """Asset -> dane maszyny wirtualnej z odczytu (stan, vCPU, RAM, dyski) -
+    jedno zapytanie dla calej listy. Przy kilku obiektach - ostatnio widziany."""
+    if not asset_ids:
+        return {}
+    wynik: dict[str, dict] = {}
+    for o in db.execute(select(NutanixObiekt).where(
+            NutanixObiekt.tenant_id == tenant_id, NutanixObiekt.asset_id.in_(asset_ids),
+            NutanixObiekt.rodzaj == VM, NutanixObiekt.zniknal_o.is_(None))
+            .order_by(NutanixObiekt.widziany_o.desc())).scalars():
+        if o.asset_id in wynik:
+            continue
+        d = o.dane or {}
+        stan = str(d.get("stan") or "").upper()
+        wynik[o.asset_id] = {
+            "stan": d.get("stan"),
+            "wlaczona": True if stan in STANY_WLACZONE else False if stan in STANY_WYLACZONE else None,
+            "vcpu": (d.get("gniazda") or 1) * (d.get("rdzenie_na_gniazdo") or 1)
+            if d.get("gniazda") or d.get("rdzenie_na_gniazdo") else None,
+            "ram_bajty": d.get("ram_bajty"),
+            "dysk_bajty": sum(x.get("rozmiar_bajty") or 0 for x in d.get("dyski") or []) or None,
+        }
+    return wynik
+
+
 def drzewo(db: Session, tenant_id: str, zrodlo: WirtualizacjaPolaczenie | None = None) -> list[dict]:
     """Klastry -> hosty -> VM dla widoku Wirtualizacja.
 

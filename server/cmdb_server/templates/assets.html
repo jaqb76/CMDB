@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Sprzęt - Nexassert{% endblock %}
+{% block title %}Zasoby - Nexassert{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Sprzęt <span class="muted">({{ assets | length }})</span></h1>
+  <h1>Zasoby <span class="muted">({{ assets | length }})</span></h1>
   <div class="head-actions">
     {% if ctx.can_write %}
       <a class="btn btn-small btn-primary" href="/assets/nowy">Dodaj sprzęt ręcznie</a>
@@ -42,6 +42,8 @@
     <option value="">dowolny stan</option>
     <option value="online" {% if filters.state == 'online' %}selected{% endif %}>aktywne</option>
     <option value="stale" {% if filters.state == 'stale' %}selected{% endif %}>bez kontaktu</option>
+    <option value="wlaczone" {% if filters.state == 'wlaczone' %}selected{% endif %}>VM włączone</option>
+    <option value="wylaczone" {% if filters.state == 'wylaczone' %}selected{% endif %}>VM wyłączone</option>
   </select>
   <select name="funkcja" aria-label="Dodatkowa funkcja agenta">
     <option value="">każda funkcja agenta</option>
@@ -62,13 +64,13 @@
 <table class="table table-assets">
   <thead>
     <tr>
-      <th>Nazwa</th><th>Rodzaj</th><th>System</th><th>Podzespoły</th><th>IP</th>
+      <th>Nazwa</th><th>Rodzaj</th><th>Stan</th><th>System</th><th>Podzespoły</th><th>IP</th>
       <th>Lokalizacja</th><th>Opiekun / użytkownik</th><th>Rola</th><th>Ostatni kontakt</th>
     </tr>
   </thead>
   <tbody>
   {% for a in assets %}
-    {% set f = a.facts or {} %}
+    {% set f = a.facts or {} %}{% set w = wirtualne.get(a.id) %}
     <tr>
       <td>
         <a class="strong" href="/assets/{{ a.id }}">{{ a.hostname }}</a>
@@ -80,14 +82,26 @@
         {{ typy.get(a.typ, a.typ) }}
         {% if a.zrodlo == 'reczne' %}<div class="muted">wpis ręczny</div>{% elif a.zrodlo in platformy %}<div class="muted">z {{ platformy[a.zrodlo].producent }}</div>{% endif %}
       </td>
+      <td class="small">
+        {% if w and w.wlaczona %}<span class="badge badge-ok">włączona</span>
+        {% elif w and w.wlaczona is false %}<span class="badge">{{ 'wstrzymana' if (w.stan or '') | upper in ('SUSPENDED', 'PAUSED') else 'wyłączona' }}</span>
+        {% elif w and w.stan %}<span class="badge badge-warn">{{ w.stan | lower }}</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
       <td>
         {{ a.os_name or a.os_family or '-' }}
         {% if a.os_version %}<div class="muted small">{{ a.os_version }}</div>{% endif %}
       </td>
       <td class="small">
+        {% if f.cpu_threads or f.memory_gb %}
         {% if f.cpu_threads %}{{ f.cpu_threads }} vCPU{% endif %}
         {% if f.memory_gb %} &middot; {{ f.memory_gb }} GB RAM{% endif %}
         {% if f.storage_gb %} &middot; {{ f.storage_gb }} GB{% endif %}
+        {% elif w %}{# bez raportu agenta - to, co przydzielil hypervisor #}
+        {% if w.vcpu %}{{ w.vcpu }} vCPU{% endif %}
+        {% if w.ram_bajty %} &middot; {{ w.ram_bajty | bytes }} RAM{% endif %}
+        {% if w.dysk_bajty %} &middot; {{ w.dysk_bajty | bytes }}{% endif %}
+        {% endif %}
       </td>
       <td class="small">{{ a.primary_ip or '-' }}</td>
       <td class="small">{% if a.lokalizacja %}{{ a.lokalizacja.wartosc }}{% else %}—{% endif %}</td>
@@ -115,6 +129,6 @@
   </tbody>
 </table>
 {% else %}
-  <p class="muted">Brak sprzętu spełniającego kryteria.</p>
+  <p class="muted">Brak zasobów spełniających kryteria.</p>
 {% endif %}
 {% endblock %}
