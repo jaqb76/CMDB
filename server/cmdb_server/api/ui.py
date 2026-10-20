@@ -702,6 +702,9 @@ def asset_list(
         stmt = stmt.where(Asset.zrodlo == ZRODLO_AGENT, Asset.last_seen < granica)
     elif state == "online":
         stmt = stmt.where(Asset.zrodlo == ZRODLO_AGENT, Asset.last_seen >= granica)
+    elif (warunek_vm := nutanix.warunek_stanu_vm(state)) is not None:
+        # Wlaczona/wylaczona wg platformy wirtualizacji - takze VM z agentem.
+        stmt = stmt.where(warunek_vm)
 
     # Wycofane maszyny znikaja z domyslnej listy, ale zostaja w bazie razem
     # z cala historia - pokazujemy je na zadanie.
@@ -737,6 +740,8 @@ def asset_list(
         # Ile artykulow bazy wiedzy dotyczy kazdej maszyny - jedno zapytanie
         # dla calej listy, bez wzgledu na liczbe artykulow.
         wiedza_liczniki=wiedza_dopasowanie.liczniki(db, ctx.tenant_id, [a.id for a in assets]),
+        # Stan i zasoby maszyn wirtualnych z odczytu platformy - tez jednym zapytaniem.
+        wirtualne=nutanix.vm_zasobow(db, ctx.tenant_id, [a.id for a in assets]),
         liczba_wycofanych=db.execute(
             select(func.count(Asset.id)).where(
                 Asset.tenant_id == ctx.tenant_id, Asset.lifecycle == LIFECYCLE_WYCOFANY
